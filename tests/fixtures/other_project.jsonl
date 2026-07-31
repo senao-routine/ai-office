@@ -1,0 +1,2 @@
+{"type": "user", "cwd": "/Users/test/other-project", "gitBranch": "main", "message": {"role": "user", "content": "READMEを直して"}}
+{"type": "assistant", "cwd": "/Users/test/other-project", "gitBranch": "main", "message": {"role": "assistant", "content": [{"type": "tool_use", "name": "Edit", "input": {"file_path": "/Users/test/other-project/README.md"}}]}}

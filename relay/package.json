@@ -1,0 +1,14 @@
+{
+  "name": "ai-office-relay",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI Office P2 中継 Worker（Cloudflare Worker + Durable Object）",
+  "scripts": {
+    "dev": "wrangler dev --port 8788",
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}

@@ -1,0 +1,8 @@
+{"timestamp":1799998200,"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Skill","input":{"skill":"too-old"}}]},"cwd":"/Users/test/skill-project"}
+{"timestamp":1800000003,"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Skill","input":{"skill":"research/deep"}}]},"cwd":"/Users/test/skill-project"}
+{"timestamp":1800000004,"type":"user","message":{"role":"user","content":"<command-name>/memo</command-name>"},"cwd":"/Users/test/skill-project"}
+{"timestamp":1800000005,"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Skill","input":{"skill":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA!bad"}}]},"cwd":"/Users/test/skill-project"}
+{"timestamp":1800000006,"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Skill","input":{"skill":"video-edit"}}]},"cwd":"/Users/test/skill-project"}
+{"timestamp":1800000007,"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Skill","input":{"skill":"A!B@C#"}}]},"cwd":"/Users/test/skill-project"}
+{"timestamp":1800000008,"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Skill","input":{"skill":"blog/write"}}]},"cwd":"/Users/test/skill-project"}
+{"timestamp":1800000009,"type":"user","message":{"role":"user","content":"<command-name>/x-post</command-name>"},"cwd":"/Users/test/skill-project"}

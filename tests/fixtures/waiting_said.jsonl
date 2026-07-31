@@ -1,0 +1,2 @@
+{"type": "user", "message": {"role": "user", "content": "まとめて"}, "cwd": "/Users/test/demo-project", "gitBranch": "main"}
+{"type": "assistant", "message": {"role": "assistant", "content": [{"type": "text", "text": "完了しました。次の指示をください。"}]}, "cwd": "/Users/test/demo-project", "gitBranch": "main"}

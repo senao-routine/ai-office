@@ -1,0 +1,6 @@
+{
+  "_使い方": "このファイルを ~/.claude/office_relay.json にコピーし、url と token を埋める（chmod 600 推奨・秘密なのでリポジトリには置かない）。token は Worker の RELAY_TOKEN と一致させる。interval=ポーリング間隔秒（既定5）。",
+  "url": "https://ai-office-relay.<your-subdomain>.workers.dev",
+  "token": "ここに長いランダム文字列（wrangler secret put RELAY_TOKEN と同じ値）",
+  "interval": 5
+}

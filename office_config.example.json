@@ -1,0 +1,5 @@
+{
+  "_note": "Optional config. Copy to office_config.json to customize (the server runs fine without it). Keys under projects are matched against each session's cwd path; the first match wins and overrides the department name (name) and role.",
+  "officeName": "AI Office",
+  "projects": {}
+}

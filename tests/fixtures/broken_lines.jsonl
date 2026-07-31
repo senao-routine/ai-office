@@ -1,0 +1,4 @@
+{{{ this is not json
+{"type": "user", "message": {"role": "user", "content": "続けて"}, "cwd": "/Users/test/demo-project", "gitBranch": "main"}
+またゴミ行
+{"type": "assistant", "message": {"role": "assistant", "content": [{"type": "tool_use", "name": "Edit", "input": {"file_path": "/tmp/app.py"}}]}, "cwd": "/Users/test/demo-project", "gitBranch": "main"}

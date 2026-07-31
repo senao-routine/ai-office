@@ -1,0 +1,26 @@
+logs/
+tests/artifacts/
+__pycache__/
+*.pyc
+# 独立リポ化(2026-07-14)で親worksの.gitignoreが効かなくなったため自前で除外
+relay/node_modules/
+relay/.wrangler/
+relay/.dev.vars
+.claude/settings.local.json
+# P3 秘密（実体は ~/.claude 配下・リポジトリ外だが、誤コピー時の保険）
+office_devices.json
+office_nonces.json
+office_relay.json
+office_secrets
+# P4 プロセス間ロック（dev実行時に repo 側へできることがある）
+office_config.json.lock
+verify.local
+
+# 個人スクショの誤コミット防止
+CleanShot*.png
+# R50: ui_shot.py / ui_contract.py が立てるサーバーの使い捨てHOME
+.ui_shot_home/
+.ui_contract_home/
+
+# 個人設定はローカルのみ（出荷は office_config.example.json・2026-07-31 提案2a）
+office_config.json

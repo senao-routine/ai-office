@@ -1,0 +1,6 @@
+{
+  "name": "ai-office-ui",
+  "private": true,
+  "type": "module",
+  "description": "新UI(R50)をESMとして扱うためだけの宣言。依存パッケージは持たない（npm install 不要＝clone即動作を維持）。node --test で ui/core を検査するのに必要。"
+}

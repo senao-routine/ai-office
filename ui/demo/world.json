@@ -1,0 +1,449 @@
+{
+ "_note": "Demo world served at /ui/demo/world.json. The new UI loads this when opened with ?demo=1 (no live sessions required). Regenerate by hand if the roster contract changes.",
+ "officeName": "AI Office (demo)",
+ "lang": "en",
+ "generatedAt": 1753800000.0,
+ "setup": {
+  "hookInstalled": true
+ },
+ "edition": {
+  "id": "claude",
+  "features": {
+   "claudeSessions": true,
+   "openclaw": true,
+   "relayPwa": false,
+   "push": false,
+   "costDash": false
+  }
+ },
+ "counts": {
+  "working": 4,
+  "waiting": 2,
+  "resting": 1
+ },
+ "history": [
+  {
+   "session": "sess-fixture-0001",
+   "disp": "AI Office Core",
+   "text": "Fix the failing test, then push.",
+   "ts": 1753799880.0,
+   "pending": false
+  },
+  {
+   "session": "sess-fixture-0005",
+   "disp": "Growth Tools",
+   "text": "Approved — keep going.",
+   "ts": 1753799760.0,
+   "pending": true
+  }
+ ],
+ "employees": [],
+ "tasks": {
+  "pending": 2,
+  "inProgress": 1,
+  "completed": 3
+ },
+ "roster": [
+  {
+   "projectId": "3396004620d3",
+   "session": "sess-fixture-0001",
+   "name": "AI Office Core",
+   "role": "dev",
+   "cwd": "",
+   "branch": "master",
+   "crew": 3,
+   "state": "working",
+   "kind": "idle",
+   "verb": "Editing",
+   "target": "the launch checklist",
+   "age": 8,
+   "minions": 3,
+   "pending": false,
+   "attention": false,
+   "approvalMin": 0,
+   "question": "",
+   "stuckTool": "",
+   "lastSaid": "",
+   "lastOrder": "",
+   "feed": [
+    "Editing scene3d.js",
+    "Running npm test"
+   ],
+   "skills": [],
+   "sprite": "/assets/sakutto.png",
+   "spriteWalk": "/assets/sakutto_walk.png",
+   "avatar": 0,
+   "sessions": [
+    {
+     "session": "sess-fixture-0001",
+     "state": "working",
+     "age": 8,
+     "attention": false,
+     "minions": 3,
+     "pending": false
+    },
+    {
+     "session": "sess-fixture-0002b",
+     "state": "working",
+     "age": 22,
+     "attention": false,
+     "minions": 0,
+     "pending": false
+    },
+    {
+     "session": "sess-fixture-0003b",
+     "state": "working",
+     "age": 29,
+     "attention": false,
+     "minions": 0,
+     "pending": false
+    }
+   ],
+   "work": {
+    "now": [
+     "Run the visual regression suite"
+    ],
+    "next": [
+     "Tighten drawCall budget"
+    ],
+    "done": [
+     "Ship glass HUD",
+     "Fix slab geometry"
+    ],
+    "counts": {
+     "completed": 5,
+     "in_progress": 1,
+     "pending": 1
+    }
+   },
+   "disp": "AI Office Core"
+  },
+  {
+   "projectId": "22a643abb13d",
+   "session": "sess-fixture-0002",
+   "name": "Content Studio",
+   "role": "ops",
+   "cwd": "",
+   "branch": "main",
+   "crew": 1,
+   "state": "working",
+   "kind": "idle",
+   "verb": "Running",
+   "target": "the launch checklist",
+   "age": 22,
+   "minions": 0,
+   "pending": false,
+   "attention": false,
+   "approvalMin": 0,
+   "question": "",
+   "stuckTool": "",
+   "lastSaid": "",
+   "lastOrder": "",
+   "feed": [
+    "Running deploy.sh",
+    "Editing worker.js"
+   ],
+   "skills": [],
+   "sprite": "/assets/works_hq.png",
+   "spriteWalk": "/assets/works_hq_walk.png",
+   "avatar": 1,
+   "sessions": [
+    {
+     "session": "sess-fixture-0002",
+     "state": "working",
+     "age": 22,
+     "attention": false,
+     "minions": 0,
+     "pending": false
+    }
+   ],
+   "disp": "Content Studio",
+   "work": {
+    "now": [
+     "Draft launch post"
+    ],
+    "next": [
+     "Cut demo GIF"
+    ],
+    "done": [
+     "Outline review"
+    ],
+    "counts": {
+     "completed": 3,
+     "in_progress": 2,
+     "pending": 2
+    }
+   }
+  },
+  {
+   "projectId": "eaeb7dfea81a",
+   "session": "sess-fixture-0003",
+   "name": "Blog Team",
+   "role": "writing",
+   "cwd": "",
+   "branch": "main",
+   "crew": 1,
+   "state": "working",
+   "kind": "idle",
+   "verb": "Reading",
+   "target": "the launch checklist",
+   "age": 45,
+   "minions": 0,
+   "pending": false,
+   "attention": false,
+   "approvalMin": 0,
+   "question": "",
+   "stuckTool": "",
+   "lastSaid": "",
+   "lastOrder": "",
+   "feed": [
+    "Reading draft.md"
+   ],
+   "skills": [],
+   "sprite": "/assets/blog.png",
+   "spriteWalk": "/assets/blog_walk.png",
+   "avatar": 2,
+   "sessions": [
+    {
+     "session": "sess-fixture-0003",
+     "state": "working",
+     "age": 45,
+     "attention": false,
+     "minions": 0,
+     "pending": false
+    }
+   ],
+   "disp": "Blog Team"
+  },
+  {
+   "projectId": "ee4d805240bd",
+   "session": "sess-fixture-0004",
+   "name": "Video Lab",
+   "role": "editing",
+   "cwd": "",
+   "branch": "main",
+   "crew": 1,
+   "state": "working",
+   "kind": "idle",
+   "verb": "Thinking…",
+   "target": "",
+   "age": 260,
+   "minions": 1,
+   "pending": true,
+   "attention": false,
+   "approvalMin": 0,
+   "question": "",
+   "stuckTool": "",
+   "lastSaid": "",
+   "lastOrder": "",
+   "feed": [
+    "Thinking…"
+   ],
+   "skills": [],
+   "sprite": "/assets/video.png",
+   "spriteWalk": "/assets/video_walk.png",
+   "avatar": 3,
+   "sessions": [
+    {
+     "session": "sess-fixture-0004",
+     "state": "working",
+     "age": 260,
+     "attention": false,
+     "minions": 1,
+     "pending": true
+    }
+   ],
+   "disp": "Video Lab"
+  },
+  {
+   "projectId": "499969f86d31",
+   "session": "sess-fixture-0005",
+   "name": "Growth Tools",
+   "role": "dev",
+   "cwd": "",
+   "branch": "main",
+   "crew": 1,
+   "state": "waiting",
+   "kind": "idle",
+   "verb": "Running",
+   "target": "the launch checklist",
+   "age": 240,
+   "minions": 0,
+   "pending": false,
+   "attention": true,
+   "approvalMin": 4,
+   "question": "",
+   "stuckTool": "Running git push",
+   "lastSaid": "",
+   "lastOrder": "",
+   "feed": [
+    "Running git push"
+   ],
+   "skills": [],
+   "sprite": "/assets/xpost.png",
+   "spriteWalk": "/assets/xpost_walk.png",
+   "avatar": 4,
+   "sessions": [
+    {
+     "session": "sess-fixture-0005",
+     "state": "waiting",
+     "age": 240,
+     "attention": true,
+     "minions": 0,
+     "pending": false
+    }
+   ],
+   "disp": "Growth Tools",
+   "work": {
+    "now": [
+     "Waiting for your approval"
+    ],
+    "next": [
+     "Deploy webhook"
+    ],
+    "done": [
+     "Add retry queue"
+    ],
+    "counts": {
+     "completed": 4,
+     "in_progress": 1,
+     "pending": 0
+    }
+   }
+  },
+  {
+   "projectId": "528bb74fbc40",
+   "session": "sess-fixture-0006",
+   "name": "Meeting Notes App",
+   "role": "dev",
+   "cwd": "",
+   "branch": "main",
+   "crew": 1,
+   "state": "waiting",
+   "kind": "idle",
+   "verb": "Waiting for input",
+   "target": "",
+   "age": 300,
+   "minions": 0,
+   "pending": false,
+   "attention": true,
+   "approvalMin": 0,
+   "question": "Ship this design as-is?",
+   "stuckTool": "",
+   "lastSaid": "",
+   "lastOrder": "",
+   "feed": [
+    "💬 Ship this design as-is?"
+   ],
+   "skills": [],
+   "sprite": "/assets/memo.png",
+   "spriteWalk": "/assets/memo_walk.png",
+   "avatar": 5,
+   "sessions": [
+    {
+     "session": "sess-fixture-0006",
+     "state": "waiting",
+     "age": 300,
+     "attention": true,
+     "minions": 0,
+     "pending": false
+    }
+   ],
+   "questionOptions": [
+    {
+     "label": "Go with plan A",
+     "description": "recommended",
+     "recommended": true
+    },
+    {
+     "label": "Plan B",
+     "description": ""
+    },
+    {
+     "label": "I'll write it myself",
+     "description": ""
+    }
+   ],
+   "disp": "Meeting Notes App"
+  },
+  {
+   "projectId": "09098acc907d",
+   "session": "sess-fixture-0007",
+   "name": "Client Project",
+   "role": "client work",
+   "cwd": "",
+   "branch": "main",
+   "crew": 1,
+   "state": "resting",
+   "kind": "idle",
+   "verb": "On a break",
+   "target": "",
+   "age": 2400,
+   "minions": 0,
+   "pending": false,
+   "attention": false,
+   "approvalMin": 0,
+   "question": "",
+   "stuckTool": "",
+   "lastSaid": "",
+   "lastOrder": "",
+   "feed": [],
+   "skills": [],
+   "sprite": "/assets/ribbon.png",
+   "spriteWalk": "/assets/ribbon_walk.png",
+   "avatar": 6,
+   "sessions": [
+    {
+     "session": "sess-fixture-0007",
+     "state": "resting",
+     "age": 2400,
+     "attention": false,
+     "minions": 0,
+     "pending": false
+    }
+   ],
+   "disp": "Client Project"
+  },
+  {
+   "projectId": "oc-lobster-1",
+   "session": "oc-lobster-1",
+   "name": "OpenClaw Node",
+   "role": "general",
+   "cwd": "",
+   "branch": "",
+   "crew": 1,
+   "state": "working",
+   "kind": "idle",
+   "verb": "Replying",
+   "target": "",
+   "age": 30,
+   "minions": 0,
+   "pending": false,
+   "attention": false,
+   "approvalMin": 0,
+   "question": "",
+   "stuckTool": "",
+   "lastSaid": "",
+   "lastOrder": "",
+   "feed": [
+    "Replying"
+   ],
+   "skills": [],
+   "sprite": "/assets/agent_bot.png",
+   "spriteWalk": "",
+   "avatar": 0,
+   "sessions": [
+    {
+     "session": "oc-lobster-1",
+     "state": "working",
+     "age": 30,
+     "attention": false,
+     "minions": 0,
+     "pending": false
+    }
+   ],
+   "external": "openclaw",
+   "disp": "OpenClaw Node"
+  }
+ ]
+}

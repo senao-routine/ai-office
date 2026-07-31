@@ -1,0 +1,48 @@
+{
+ "v": 1,
+ "site": "macmini",
+ "generatedAt": 1753500000.0,
+ "agents": [
+  {
+   "id": "main",
+   "name": "OpenClaw",
+   "state": "working",
+   "verb": "replying on WhatsApp",
+   "channel": "whatsapp",
+   "age": 12,
+   "minions": 1
+  },
+  {
+   "id": "research-bot",
+   "name": "OpenClaw",
+   "state": "waiting",
+   "verb": "awaiting orders",
+   "channel": "telegram",
+   "age": 300,
+   "minions": 0
+  },
+  {
+   "id": "night-batch",
+   "name": "Scheduler",
+   "state": "resting",
+   "verb": "on break",
+   "age": 4000,
+   "minions": 0
+  },
+  {
+   "id": "BAD ID!",
+   "name": "evil",
+   "state": "working",
+   "verb": "x",
+   "age": 1
+  },
+  {
+   "id": "badstate",
+   "name": "odd",
+   "state": "exploded",
+   "verb": "x",
+   "age": 1
+  },
+  "not-a-dict"
+ ]
+}

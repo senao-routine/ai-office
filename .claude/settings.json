@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(bash verify.sh*)",
+      "Bash(RUN_RELAY=1 bash verify.sh*)",
+      "Bash(bash server/officectl.sh*)",
+      "Bash(bash relay/deploy.sh*)",
+      "Bash(bash macapp/install.sh*)",
+      "Bash(bash tests/relay_e2e.sh*)",
+      "Bash(python3 -m unittest*)",
+      "Bash(python3 tools/gen_pwa_sprites.py*)",
+      "Bash(node --check*)",
+      "Bash(node tests/*)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/quick-check.sh\""
+          }
+        ]
+      }
+    ]
+  }
+}

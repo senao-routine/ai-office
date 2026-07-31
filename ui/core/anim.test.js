@@ -1,0 +1,157 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import {
+  RIG, TAU, idlePose, poseFor, seatedPose, seedOf, smoothstep, travel,
+  typingPose, walkPhaseFor, walkPose,
+} from "./anim.js";
+
+const ALL_POSES = [walkPose(1.1), typingPose(3.2), seatedPose(3.2), idlePose(3.2)];
+
+test("すべてのポーズが同じ形を返す（描画側が分岐せずに済む）", () => {
+  for (const p of ALL_POSES) {
+    assert.deepEqual(Object.keys(p).sort(),
+      ["arms", "headPitch", "headYaw", "hipRoll", "hipY", "hipYaw", "legs"].sort());
+    assert.equal(p.legs.length, 2);
+    assert.equal(p.arms.length, 2);
+    for (const l of p.legs) assert.deepEqual(Object.keys(l).sort(), ["hip", "knee", "side"]);
+    for (const a of p.arms) assert.deepEqual(Object.keys(a).sort(), ["elbow", "shoulder", "side"]);
+  }
+});
+
+test("ポーズの数値は全部有限（NaN が混ざると体が消える）", () => {
+  for (const p of ALL_POSES) {
+    const nums = [p.hipY, p.hipYaw, p.hipRoll, p.headYaw, p.headPitch,
+      ...p.legs.flatMap((l) => [l.hip, l.knee]),
+      ...p.arms.flatMap((a) => [a.shoulder, a.elbow])];
+    for (const n of nums) assert.ok(Number.isFinite(n), `非有限値: ${n}`);
+  }
+});
+
+test("歩行: 左右の脚は逆位相（同時に同じ側へ出さない）", () => {
+  for (const ph of [0, 0.7, 1.9, 3.3, 5.1]) {
+    const p = walkPose(ph);
+    const [l, r] = p.legs;
+    assert.ok(Math.abs(l.hip + r.hip) < 1e-9, `位相 ${ph} で脚が同相`);
+  }
+});
+
+test("歩行: 腕は脚と逆に振る", () => {
+  const p = walkPose(0.9);
+  // 左脚(side=-1)が前なら、左腕(side=-1)は後ろ
+  assert.ok(Math.sign(p.legs[0].hip) !== Math.sign(p.arms[0].shoulder));
+});
+
+test("歩行: 膝は決して逆に折れない", () => {
+  for (let ph = 0; ph < TAU * 2; ph += 0.05) {
+    for (const l of walkPose(ph).legs) {
+      assert.ok(l.knee >= 0, `位相 ${ph.toFixed(2)} で膝が逆折れ (${l.knee})`);
+    }
+  }
+});
+
+test("歩行: 腰は必ず立位の高さ以上で上下する（地面にめり込まない）", () => {
+  let min = Infinity;
+  let max = -Infinity;
+  for (let ph = 0; ph < TAU; ph += 0.02) {
+    const y = walkPose(ph).hipY;
+    min = Math.min(min, y);
+    max = Math.max(max, y);
+  }
+  assert.ok(min >= RIG.hipY - 1e-9, `腰が沈みすぎ: ${min}`);
+  assert.ok(max - min > 0.01, "上下動が無い（歩いて見えない）");
+  assert.ok(max - min < 0.12, "上下動が大きすぎる（跳ねて見える）");
+});
+
+test("歩行: 1周期でポーズが元に戻る（継ぎ目が出ない）", () => {
+  const a = walkPose(0.4);
+  const b = walkPose(0.4 + TAU);
+  assert.ok(Math.abs(a.hipY - b.hipY) < 1e-9);
+  assert.ok(Math.abs(a.legs[0].hip - b.legs[0].hip) < 1e-9);
+});
+
+test("着席ポーズは腰が低く、脚が畳まれている", () => {
+  for (const p of [typingPose(3.2), seatedPose(3.2)]) {
+    assert.equal(p.hipY, RIG.sitHipY);
+    for (const l of p.legs) {
+      assert.ok(l.hip < -1, "腿が前に出ていない（立って見える）");
+      assert.ok(l.knee > 1, "膝が曲がっていない");
+    }
+  }
+});
+
+test("タイピングは肘が動く＝指を刻んで見える", () => {
+  const e1 = typingPose(3.20).arms[0].elbow;
+  const e2 = typingPose(3.35).arms[0].elbow;
+  assert.notEqual(e1, e2);
+});
+
+test("poseFor: ゾーンからポーズが決まる（場所＝状態）", () => {
+  assert.deepEqual(poseFor("desk", 3.2, 0), typingPose(3.2, 0));
+  assert.deepEqual(poseFor("meeting", 3.2, 0), seatedPose(3.2, 0));
+  assert.deepEqual(poseFor("queue", 3.2, 0), idlePose(3.2, 0));
+  // 歩行位相が渡されたらゾーンより優先（移動中）
+  assert.deepEqual(poseFor("desk", 3.2, 0, 1.1), walkPose(1.1));
+});
+
+test("poseFor は決定論（同じ t/seed なら必ず同じ）", () => {
+  for (const zone of ["desk", "meeting", "lounge", "queue", "external"]) {
+    assert.deepEqual(poseFor(zone, 7.5, 2.2), poseFor(zone, 7.5, 2.2));
+  }
+});
+
+// ── 移動 ──────────────────────────────────────────────────────
+test("travel: 開始点から終了点へ、u は 0→1", () => {
+  const from = [0, 0];
+  const to = [3, 4];                       // 距離5
+  const dur = 5 / RIG.speed;
+  assert.deepEqual(travel(from, to, 10, 10).u, 0);
+  assert.equal(travel(from, to, 10, 10 + dur).u, 1);
+  const mid = travel(from, to, 10, 10 + dur / 2);
+  assert.ok(Math.abs(mid.x - 1.5) < 1e-9);
+  assert.ok(Math.abs(mid.z - 2.0) < 1e-9);
+});
+
+test("travel: 到着後は行き過ぎない", () => {
+  const p = travel([0, 0], [1, 0], 0, 9999);
+  assert.equal(p.u, 1);
+  assert.equal(p.x, 1);
+});
+
+test("travel: 出発前でも戻らない（u は 0 未満にならない）", () => {
+  assert.equal(travel([0, 0], [1, 0], 100, 50).u, 0);
+});
+
+test("travel: 同一地点は距離0で即到着（0除算しない）", () => {
+  const p = travel([2, 3], [2, 3], 0, 0);
+  assert.equal(p.u, 1);
+  assert.equal(p.dist, 0);
+  assert.ok(Number.isFinite(p.x) && Number.isFinite(p.z));
+});
+
+test("travel: 向きは進行方向を向く", () => {
+  assert.ok(Math.abs(travel([0, 0], [0, 5], 0, 0).yaw - 0) < 1e-9);          // +z
+  assert.ok(Math.abs(travel([0, 0], [5, 0], 0, 0).yaw - Math.PI / 2) < 1e-9); // +x
+});
+
+test("walkPhaseFor: 進んだ距離で位相が決まる＝足が滑らない", () => {
+  assert.equal(walkPhaseFor(0, 0), 0);
+  assert.ok(walkPhaseFor(1, 0) > walkPhaseFor(0.5, 0));
+  // 同じ距離なら必ず同じ位相
+  assert.equal(walkPhaseFor(2.5, 1.1), walkPhaseFor(2.5, 1.1));
+});
+
+test("seedOf: 決定論で 0..TAU の範囲", () => {
+  assert.equal(seedOf("abc"), seedOf("abc"));
+  assert.notEqual(seedOf("abc"), seedOf("abd"));
+  for (const s of ["", "a", "とても長い日本語のプロジェクト名", "x".repeat(300)]) {
+    const v = seedOf(s);
+    assert.ok(v >= 0 && v < TAU && Number.isFinite(v));
+  }
+});
+
+test("smoothstep: 端で 0/1・範囲外でも飽和", () => {
+  assert.equal(smoothstep(0, 1, -5), 0);
+  assert.equal(smoothstep(0, 1, 5), 1);
+  assert.equal(smoothstep(0, 1, 0.5), 0.5);
+  assert.equal(smoothstep(1, 1, 2), 1);          // 0除算しない
+});

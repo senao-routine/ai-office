@@ -1,0 +1,2 @@
+{"type": "user", "message": {"role": "user", "content": "リリースして"}, "cwd": "/Users/test/demo-project", "gitBranch": "main"}
+{"type": "assistant", "message": {"role": "assistant", "content": [{"type": "tool_use", "name": "AskUserQuestion", "input": {"questions": [{"question": "本番に公開しますか？", "options": [{"label": "公開する"}, {"label": "下書きのまま"}]}]}}]}, "cwd": "/Users/test/demo-project", "gitBranch": "main"}

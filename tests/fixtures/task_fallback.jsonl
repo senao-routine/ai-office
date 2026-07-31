@@ -1,0 +1,2 @@
+{"type":"assistant","timestamp":"2026-07-24T10:00:00+09:00","message":{"role":"assistant","content":[{"type":"tool_use","id":"task-create-fallback","name":"TaskCreate","input":{"subject":"IDなしタスク","activeForm":"IDなしタスクを作成中"}}]}}
+{"type":"user","timestamp":"2026-07-24T10:00:01+09:00","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"wrong-id","content":[{"type":"text","text":"Task #99 created successfully: IDなしタスク"}]}]}}

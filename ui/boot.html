@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>🏢 AI Office — Claude Code Live</title>
+<style>
+  :root { color-scheme: light; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    background: #f4f4fa;
+    font-family: "Hiragino Kaku Gothic ProN", "Noto Sans JP", system-ui, sans-serif;
+    color: #23213a;
+    overflow: hidden;
+  }
+  #app { width: 100%; height: 100dvh; display: flex; }
+  /* 起動中の表示。スタイル側が mount したら消える */
+  #bootstate {
+    margin: auto; text-align: center; display: flex; flex-direction: column;
+    align-items: center; gap: 14px;
+  }
+  #bootstate .mark {
+    width: 46px; height: 46px; border-radius: 13px;
+    background: linear-gradient(140deg, #7c5cff, #4f8dff);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 24px; color: #fff;
+  }
+  #bootstate h1 { font-size: 15px; font-weight: 700; letter-spacing: .01em; }
+  #bootstate p { font-size: 12.5px; color: #6c6890; max-width: 34em; line-height: 1.7; }
+  #bootstate code {
+    font-family: "SFMono-Regular", Menlo, monospace; font-size: 11.5px;
+    background: #e9e7f6; border-radius: 5px; padding: 1px 6px;
+  }
+  #bootstate a { color: #5b46c4; }
+  @media (prefers-reduced-motion: no-preference) {
+    #bootstate .mark { animation: pulse 1.6s ease-in-out infinite; }
+    @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.06); } }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="bootstate">
+    <div class="mark">🏢</div>
+    <h1 id="boottitle">AI Office is starting…</h1>
+    <p id="bootmsg">Loading the interface.</p>
+  </div>
+</div>
+<script>
+// 起動画面だけの最小言語切替（データ到着前なので navigator で仮判定。
+// 本判定は office_json の lang に UI 側 strings.js が追随する）
+if (String(navigator.language || "").toLowerCase().startsWith("ja")) {
+  document.getElementById("boottitle").textContent = "AIオフィス を起動しています…";
+  document.getElementById("bootmsg").textContent = "スタイルを読み込んでいます。";
+}
+</script>
+
+<script type="module">
+// ──────────────────────────────────────────────────────────────
+// R50 エントリ。ここは「どのスタイルを起動するか」だけを決める。
+// 描画・HUD・データはスタイル側と ui/core/ が持つ。
+// ──────────────────────────────────────────────────────────────
+import { resolveStyle, persistStyle } from "/ui/platform/style.js";
+
+const el = document.getElementById("app");
+const msg = document.getElementById("bootmsg");
+
+function fail(text, detail) {
+  msg.innerHTML = "";
+  msg.append(document.createTextNode(text));
+  if (detail) {
+    msg.append(document.createElement("br"));
+    const c = document.createElement("code");
+    c.textContent = String(detail).slice(0, 300);
+    msg.append(c);
+  }
+}
+
+const style = resolveStyle();
+document.documentElement.dataset.uiStyle = style;
+
+try {
+  // 動的 import。スタイルごとに完全に独立したモジュールツリーを読む。
+  const mod = await import(`/ui/${style}/index.js`);
+  if (typeof mod.mount !== "function") {
+    throw new Error(`ui/${style}/index.js に mount() がありません`);
+  }
+  persistStyle(style);
+  await mod.mount(el);
+} catch (err) {
+  // WebGL不可・古いGPU等。R52: 旧UI(?ui=legacy)は削除済み＝失敗理由の提示のみ。
+  console.error("[boot] failed to start the UI", err);
+  fail("Couldn't start the UI (WebGL may be unavailable).", err && err.message);
+}
+</script>
+</body>
+</html>
