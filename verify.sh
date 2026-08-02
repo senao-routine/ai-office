@@ -502,6 +502,8 @@ elif [ -x "$VENV_PY" ] && "$VENV_PY" -c 'import playwright' >/dev/null 2>&1 \
   run_ui "R50 初回体験スモーク" "$VENV_PY" tests/ui_onboard_smoke.py
   # R50提案2c: 新UIの日本語文字カナリア（lang=en で日本語0・旧i18n_smokeの新UI版）
   run_ui "R50 新UI i18nカナリア" "$VENV_PY" tests/i18n_iso_smoke.py
+  # R42.6骨格: エディション別表示（openclawダーク/バッジ/Claude面ゲート/②→③導線・claude無退行）
+  run_ui "R42.6 エディションUI(新)スモーク" "$VENV_PY" tests/edition_iso_smoke.py
   # R50: 新UIのビジュアル回帰。自前でサーバーを立て /api/office を fixture で差し替えるので
   # 実セッションの状態に左右されない。バックエンドは SwiftShader 固定（実測でビット一致）。
   "$VENV_PY" tools/ui_shot.py --check | sed 's/^/  /'

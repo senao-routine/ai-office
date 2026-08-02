@@ -68,6 +68,7 @@ export async function mount(root) {
     <main class="main">
       <header class="head">
         <h1 id="greet"></h1>
+        <span class="edbadge" id="edbadge" hidden></span>
         <p class="sub" id="sub"></p>
         <i class="freshness" id="freshness" hidden></i>
       </header>
@@ -155,6 +156,11 @@ export async function mount(root) {
     built = buildWorld(office);
     // 言語は office_json の lang が正本（サーバー設定に追随）。変わったら静的文言も貼り直す
     if (built.lang !== lang()) { setLang(built.lang); applyStaticStrings(shell); }
+    // R42.6骨格: openclaw版はCSS変数オーバーライドでダーク基調へ（R42.1bのカフェ転用と同思想）
+    root.classList.toggle("ed-openclaw", built.edition === "openclaw");
+    const eb = shell.querySelector("#edbadge");
+    eb.hidden = built.edition !== "openclaw";
+    if (!eb.hidden) eb.textContent = T("ed_badge_openclaw");
     lastDataMono = now();
     // 回答済み(楽観表示)の解除: サーバーデータでその❗が消えた/内容が変わったら戻す
     for (const [sess, key] of answered) {
@@ -749,6 +755,7 @@ export async function mount(root) {
           mEl("span", "mkeyname", pr.label || pr.id));
         const keyName = NAME_BY_ID[pr.id];
         if (pr.mode !== "key") {
+          if (pr.id === "claude" && built?.features?.claudeSessions === false) continue;
           // 🅰: バッジ「自動」＋ガイド1行（Claude/Codexは今のアカウントも見せる）
           head.append(mEl("span", "mkeyauto", T("keys_badge_auto")));
           const email = (pr.id === "claude" || pr.id === "codex") ? acctEmail(pr.id) : "";
@@ -1059,6 +1066,9 @@ export async function mount(root) {
     if (!lic.valid) {
       // 購入導線: LS checkout 確定までは「リリース通知を受け取る」を置く
       // （興味を持った瞬間の熱を袋小路にしない）。URL確定後はここを Buy に差し替える
+      if (built?.edition === "openclaw") {
+        modal.append(mEl("p", "mnote", T("lic_upgrade_hybrid")));
+      }
       const buy = mEl("a", "mbuy", T("lic_buy"));
       buy.href = "https://github.com/senao-routine/ai-office";
       buy.target = "_blank";
@@ -1267,6 +1277,7 @@ export async function mount(root) {
           `${fmtTok(pr.used || 0)} / ${fmtTok(pr.cap)}`));
         creditsBody.append(box);
       } else if (pr.kind === "tokens" && pr.tokens?.byModel) {
+        if (built?.features?.claudeSessions === false) continue;   // openclaw版=Claude面を出さない
         // Claude: R61=statusLine capture の実測枠%（rate_limits）が新鮮(15分以内)なら
         // それを主役にし、推定のペースゲージは隠す（実測>推定・両方出すと二重表示）。
         // 実測が無い/古いときだけ従来の「直近7日の5hピーク比」ペース（R55.1）へ戻す。

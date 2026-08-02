@@ -760,3 +760,41 @@
   .ui-iso .qchip { min-height: 30px; padding: 4px 9px; }
   .ui-iso .crewlist { max-height: 84px; overflow-y: auto; }    /* 内訳は独立スクロール */
 }
+
+/* ── R42.6骨格: OpenClaw Edition のダーク基調（CSS変数オーバーライドのみ・scene無改変） ──
+   配色はロブスター前提の深紅〜オレンジ系アクセント。美術差し替えはロブスター選定後。 */
+.ui-iso.ed-openclaw {
+  --iso-bg: #12101c;
+  --iso-glass: rgba(26, 22, 40, .78);
+  --iso-glass-solid: #1c1830;
+  --iso-line: rgba(70, 58, 110, .55);
+  --iso-hairline: rgba(224, 96, 68, .22);
+  --iso-ink: #efe9e2;
+  --iso-ink-soft: #a89f94;
+  --iso-accent: #e06044;
+  --iso-accent-2: #f5a524;
+  --iso-shadow: 0 12px 34px rgba(0, 0, 0, .5), 0 2px 6px rgba(0, 0, 0, .3);
+  background:
+    radial-gradient(90% 70% at 18% 6%, rgba(224, 96, 68, .12) 0%, rgba(224, 96, 68, 0) 55%),
+    radial-gradient(80% 60% at 88% 90%, rgba(245, 165, 36, .08) 0%, rgba(245, 165, 36, 0) 58%),
+    linear-gradient(165deg, #16131f 0%, #131020 52%, #0e0c18 100%);
+}
+.ui-iso.ed-openclaw .card, .ui-iso.ed-openclaw .side { background: var(--iso-glass); }
+.ui-iso.ed-openclaw .abtn, .ui-iso.ed-openclaw .gcard {
+  background: rgba(34, 28, 52, .8); color: var(--iso-ink);
+}
+.ui-iso.ed-openclaw .modal, .ui-iso.ed-openclaw .sheet {
+  background: rgba(28, 24, 44, .96); border-color: rgba(70, 58, 110, .6);
+}
+.ui-iso.ed-openclaw .qchip, .ui-iso.ed-openclaw .sheetopt, .ui-iso.ed-openclaw .kbd {
+  background: rgba(42, 35, 62, .9); color: var(--iso-ink); border-color: rgba(224, 96, 68, .3);
+}
+
+/* エディションバッジ（openclaw時のみ表示） */
+.ui-iso .edbadge {
+  display: inline-block; margin-left: 10px; padding: 2px 10px;
+  font-size: 10.5px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--iso-accent); background: rgba(224, 96, 68, .12);
+  border: 1px solid rgba(224, 96, 68, .3); border-radius: 999px; vertical-align: 3px;
+}
+.ui-iso .edbadge[hidden] { display: none; }

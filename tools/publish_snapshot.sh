@@ -21,6 +21,7 @@ EXCLUDES=(
   "docs/quality-checklist.md"
   "docs/プロダクト構想_20260708.md"
   "docs/進捗ハンドオフ_20260708.md"
+  "docs/show-hn-draft.md"
 )
 
 if ! git diff --quiet || ! git diff --cached --quiet; then

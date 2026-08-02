@@ -306,7 +306,9 @@ def main():
                 status=200, content_type="application/json; charset=utf-8", body=payload))
             page3.goto(f"http://127.0.0.1:{port}/?ui=iso&seed=11")
             page3.wait_for_function("window.__office && window.__office.ready", timeout=60000)
-            page3.wait_for_selector(".arow", timeout=10000)
+            # R68の環境アニメ導入後、SwiftShaderのliveモードは初回描画が更に遅い
+            #（オフライン検知(4)の150s待ちと同じ教訓）
+            page3.wait_for_selector(".arow", timeout=60000)
             handle = page3.query_selector(f'.arow[data-session="{target_session}"]')
             page3.wait_for_timeout(3600)          # ポーリング1周以上またぐ
             alive = handle.evaluate("el => el.isConnected") if handle else False
