@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  DESK_SLOTS, activityGloss, activityText, agoStr, assignRestSpots, assignSeats, attentionQueue, buildWorld,
+  DESK_SLOTS, activityGloss, activityText, agoStr, assignMeetingRooms, assignRestSpots, assignSeats, attentionQueue, buildWorld,
   countByZone, deliveryTransitions, needsAttention, stableIndex, summarizeWorld, tidyActivity,
   topAttention, triageSort, zoneOf,
 } from "./world.js";
@@ -347,4 +347,27 @@ test("R69: stuckTool が agent に通る（承認対象の表示素材）", () =
     stuckTool: "実行中 E2Eの残骸行を確認" })] });
   assert.equal(w.agents[0].stuckTool, "実行中 E2Eの残骸行を確認");
   assert.equal(buildWorld({ roster: [proj()] }).agents[0].stuckTool, "");
+});
+
+// ── R70: 会議の3室分散 ────────────────────────────────────────
+test("assignMeetingRooms: 最空き部屋へ分散・決定論・満席あふれ安全", () => {
+  const caps = { meet: 5, meet2: 3, meet3: 2 };
+  const mk = (id, minions = 2) => ({ ...proj({ session: id, minions }), id });
+  // 2プロジェクト → 必ず別部屋
+  const two = assignMeetingRooms([mk("a"), mk("b")], caps);
+  assert.notEqual(two.get("a").room, two.get("b").room);
+  // 3プロジェクト → 3部屋に1つずつ
+  const three = assignMeetingRooms([mk("a"), mk("b"), mk("c")], caps);
+  assert.equal(new Set([...three.values()].map((v) => v.room)).size, 3);
+  // 決定論
+  const again = assignMeetingRooms([mk("a"), mk("b"), mk("c")], caps);
+  assert.deepEqual([...three.entries()], [...again.entries()]);
+  // 大量(12)でも例外なく全員に部屋がつく（あふれは最終席重なり）
+  const many = assignMeetingRooms(Array.from({ length: 12 }, (_, i) => mk(`p${i}`)), caps);
+  assert.equal(many.size, 12);
+  for (const v of many.values()) assert.ok(v.room in caps && v.seat >= 0);
+  // meeting以外は割当なし・壊れ入力安全
+  assert.equal(assignMeetingRooms([proj({ session: "d" })], caps).size, 0);
+  assert.equal(assignMeetingRooms(null, caps).size, 0);
+  assert.equal(assignMeetingRooms([mk("a")], {}).size, 0);
 });

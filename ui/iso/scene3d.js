@@ -12,13 +12,13 @@ import * as THREE from "/ui/vendor/three/three.module.min.js";
 import {
   LAYOUT, buildMonitors, buildOffice, chibiSeats, externalAnchors, loungeAnchors,
   BOSS_SEAT, COFFEE_STOP, ENTRANCE, HOLO_PANELS, envTexture, floorTexture,
-  keyboardTexture, meetingAnchors, queueAnchors, rugTexture,
+  keyboardTexture, meetingAnchors, meetingAnchorsByRoom, queueAnchors, rugTexture,
   screenTexture, seatAnchors, skyTexture, slab, woodTexture,
 } from "./office.js";
 import {
   RobotBatch, applyPose, makeChibiSkeleton, makeCleanerBot, makeSkeleton,
 } from "./robot.js";
-import { assignRestSpots, stableIndex } from "/ui/core/world.js";
+import { assignMeetingRooms, assignRestSpots, stableIndex } from "/ui/core/world.js";
 
 const CAPACITY = 40;                 // 同時に描けるロボット数の上限（本人32+ボス+会議チビ最大8・R56）
 const CHIBI_MAX = 8;                 // 会議チビロボの総数上限（1卓4体×2卓）
@@ -490,6 +490,7 @@ export class IsoScene {
         CLEANER_ROUTE[i][1] - CLEANER_ROUTE[i - 1][1]);
     }
 
+    this._meetingRooms = meetingAnchorsByRoom();   // R70: 3室分散（assignMeetingRoomsが選ぶ）
     this.anchors = {
       desk: seatAnchors(),
       meeting: meetingAnchors(),
@@ -624,6 +625,15 @@ export class IsoScene {
   /** ゾーンと席番号から目的地を決める。席が尽きたら床に立たせる（決定論）。 */
   anchorFor(agent, world, index) {
     const list = this.anchors[agent.zone] || this.anchors.desk;
+    if (agent.zone === "meeting") {
+      // R70: 3室へ「いちばん空いている部屋」分散（純関数＝labelAnchorForとも一致）
+      const as = this._roomAssign(world).get(agent.id);
+      if (as) {
+        const room = this._meetingRooms[as.room] || [];
+        const a = room[Math.min(as.seat, room.length - 1)];
+        if (a) return a;
+      }
+    }
     if (agent.zone === "desk") {
       const seat = world.seats.get(agent.id);
       if (seat !== undefined && list[seat]) return list[seat];
@@ -631,6 +641,16 @@ export class IsoScene {
     const a = list[index % list.length];
     if (a) return a;
     return { x: 0, z: LAYOUT.floor.z, yaw: 0, y: 0 };
+  }
+
+  _roomAssign(world) {
+    if (this._meetAssignWorld !== world) {
+      const caps = {};
+      for (const [k, v] of Object.entries(this._meetingRooms)) caps[k] = v.length;
+      this._meetAssign = assignMeetingRooms(world.agents, caps);
+      this._meetAssignWorld = world;
+    }
+    return this._meetAssign;
   }
 
   /** 画像ロード確定時に最後の world で描き直す（frozen ではループが回らないため）。 */
@@ -674,13 +694,49 @@ export class IsoScene {
       mesh.rotation.y = mesh.userData.baseYaw + t * 0.15 + i * 0.9;
     });
     // ④カメラの呼吸ドリフト（非frozen限定＝goldenは完全不変。振幅は視野の約1%）
+    //   ＋R70 フォーカスズーム: シートで選んだロボへ 0.5s で寄る（0.90倍・操作イベント起点。
+    //   golden はシート閉じ=フォーカス無しで不変。frozen 中の openCompose は1フレームで完了状態）
     if (this._frame) {
-      const dx = frozen ? 0 : Math.sin(t * 0.045) * this.view * 0.012;
-      const dy = frozen ? 0 : Math.sin(t * 0.031 + 1.7) * this.view * 0.007;
-      this.camera.left = this._frame.left + dx;
-      this.camera.right = this._frame.right + dx;
-      this.camera.top = this._frame.top + dy;
-      this.camera.bottom = this._frame.bottom + dy;
+      let k = this._focusK ?? 0;
+      if (this._focusAnim) {
+        const a = this._focusAnim;
+        if (a.t0 === null) a.t0 = t;                     // イベント後の最初のフレームで開始
+        const u = frozen ? 1 : Math.min(1, (t - a.t0) / 0.5);
+        const s = u * u * (3 - 2 * u);                   // smoothstep
+        k = a.k0 + (a.k1 - a.k0) * s;
+        if (u >= 1) {
+          this._focusK = a.k1;
+          this._focusAnim = null;
+          if (a.k1 === 0) this._focusId = null;
+        } else { this._focusK = k; }
+      }
+      let f = this._frame;
+      const target = this._focusId != null ? this.actors.get(this._focusId) : null;
+      if (k > 0 && target) {
+        // 対象ロボのカメラ空間位置を寄り先フレームの中心に（毎フレーム追従＝歩行中もOK）
+        this.camera.updateMatrixWorld();
+        this._focusInv = (this._focusInv || new THREE.Matrix4());
+        this._focusInv.copy(this.camera.matrixWorld).invert();
+        const p = target.nodes.root.position;
+        this._focusV = (this._focusV || new THREE.Vector3());
+        this._focusV.set(p.x, p.y + 0.9, p.z).applyMatrix4(this._focusInv);
+        const zoom = 0.90;
+        const aspect = (f.right - f.left) / (f.top - f.bottom);
+        const halfH = (f.top - f.bottom) / 2 * zoom;
+        const halfW = halfH * aspect;
+        const g = { left: this._focusV.x - halfW, right: this._focusV.x + halfW,
+          top: this._focusV.y + halfH, bottom: this._focusV.y - halfH };
+        f = { left: f.left + (g.left - f.left) * k,
+          right: f.right + (g.right - f.right) * k,
+          top: f.top + (g.top - f.top) * k,
+          bottom: f.bottom + (g.bottom - f.bottom) * k };
+      }
+      const dx = frozen ? 0 : Math.sin(t * 0.045) * this.view * 0.012 * (1 - k * 0.6);
+      const dy = frozen ? 0 : Math.sin(t * 0.031 + 1.7) * this.view * 0.007 * (1 - k * 0.6);
+      this.camera.left = f.left + dx;
+      this.camera.right = f.right + dx;
+      this.camera.top = f.top + dy;
+      this.camera.bottom = f.bottom + dy;
       this.camera.updateProjectionMatrix();
     }
     // ⑤🧹掃除ロボ: t>=30 で通路を永久巡回（golden t=3.2 は非表示・首振りで掃除感）
@@ -904,7 +960,7 @@ export class IsoScene {
     // R56: 会議チビロボ＝minions を親と同じ卓の縁に立たせて頷かせる（上限4/卓・8/全体）。
     // InstancedMesh への行列追加だけ＝drawCalls は増えない。位相は親id+序数で分散。
     // R68: 登場は床から「ぴょこん」と生え（popScale）、解散は0.3秒のシュリンクで消える。
-    const tableUsed = { meet: 0, meet2: 0 };
+    const tableUsed = { meet: 0, meet2: 0, meet3: 0 };   // R70: 3室
     const chibiKeys = new Set();
     let chibiN = 0;
     const borrowChibi = () => {
@@ -923,7 +979,8 @@ export class IsoScene {
       if (agent.zone !== "meeting" || !(agent.minions > 0)) continue;
       const actor = this.actors.get(agent.id);
       if (!actor) continue;
-      const table = actor.dest[0] < 0 ? "meet" : "meet2";
+      const as = this._roomAssign(world).get(agent.id);
+      const table = as ? as.room : (actor.dest[0] < 0 ? "meet" : "meet2");
       const seats = this._chibiSeats[table];
       const count = Math.min(agent.minions, 4);
       for (let i = 0; i < count && tableUsed[table] < seats.length
@@ -1095,6 +1152,19 @@ export class IsoScene {
     if (!actor) return null;
     const p = actor.nodes.root.position;
     return this.project(p.x, p.y + 1.1, p.z);
+  }
+
+  /** R70: フォーカスズーム＝シートで選んだロボへ0.5sで寄る（update④が補間を描く）。 */
+  focusOn(agentId) {
+    if (!agentId || !this.actors.has(agentId)) return;
+    this._focusId = agentId;
+    this._focusAnim = { t0: null, k0: this._focusK ?? 0, k1: 1 };
+  }
+
+  focusOff() {
+    if ((this._focusK ?? 0) === 0 && !this._focusAnim) return;
+    this._focusAnim = { t0: null, k0: this._focusK ?? 0, k1: 0 };
+    // _focusId は k が 0 に落ちるまで保持（寄り先の中心が要る）
   }
 
   labelAnchorFor(agent, world, index) {

@@ -11,7 +11,7 @@
 
 /** 席の数。使われないスロットは机ごと描かない＝空席を作らないための上限。 */
 export const DESK_SLOTS = 12;
-export const QUEUE_SLOTS = 6;   // R69: ❗5件で密集した実測→6席へ
+export const QUEUE_SLOTS = 12;  // R70: 机12台ぶん＝❗が大量でも2列×6で整列（ユーザーFB）
 export const MEETING_SLOTS = 5;
 export const LOUNGE_SLOTS = 3;
 
@@ -241,6 +241,35 @@ export function assignSeats(agents, slots = DESK_SLOTS) {
  * 乱数も時刻も使わない決定論）。spots は nav.js の REST_SPOTS（area/容量は配列が表す）。
  * 戻り値: Map(agentId → spots のindex)。あふれたら希望位置に重なって座る（従来より悪化しない）。
  */
+/**
+ * R70: 会議の3室分散。複数プロジェクトが同時に会議中のとき meet/meet2/meet3 へ
+ * 「いちばん空いている部屋」を選んで散らす（assignRestSpots と同じ流儀・決定論）。
+ * rooms = {meet: 席数, meet2: 席数, ...}（office.js の meetingAnchorsByRoom から導出）。
+ * 戻り値: Map(agentId → {room, seat})。seat は部屋内の席index（あふれは最終席に重なる）。
+ */
+export function assignMeetingRooms(agents, rooms) {
+  const out = new Map();
+  const keys = Object.keys(rooms || {});
+  if (!keys.length) return out;
+  const used = keys.map(() => 0);
+  const meeting = (Array.isArray(agents) ? agents : []).filter((a) => zoneOf(a) === "meeting");
+  meeting.forEach((a, i) => {
+    const id = a.id || a.session || "";
+    const start = (stableIndex(id, keys.length) + i) % keys.length;
+    let pick = -1;
+    for (let step = 0; step < keys.length; step++) {
+      const cand = (start + step) % keys.length;
+      if (used[cand] >= rooms[keys[cand]]) continue;  // 満席
+      if (pick < 0 || used[cand] < used[pick]) pick = cand;  // 最空き（タイ=start起点順）
+    }
+    if (pick < 0) pick = start;                       // 全室満席→希望部屋に重なる（悪化させない）
+    const seat = Math.min(used[pick], rooms[keys[pick]] - 1);
+    used[pick] += 1;
+    out.set(a.id, { room: keys[pick], seat });
+  });
+  return out;
+}
+
 export function assignRestSpots(agents, spots) {
   const out = new Map();
   if (!Array.isArray(spots) || !spots.length) return out;

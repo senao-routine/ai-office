@@ -17,7 +17,10 @@ export const LAYOUT = Object.freeze({
   meetZone: { x: -9.2, z: -7.7, w: 7.2, d: 4.4, lift: 0.22 },
   stageZone: { x: -12.55, z: 0.1, w: 2.9, d: 3.4, lift: 0.12 },   // ソファコーナー
   meet2Zone: { x: 11.3, z: 2.3, w: 4.8, d: 3.8, lift: 0.22 },     // 第2会議室（右中）
-  loungeZone: { x: 9.7, z: 6.3, w: 7.0, d: 4.0, lift: 0.12 },
+  // R70: ラウンジを西へ寄せて（家具は元からx6.5..11.0に集中）東側の空床に第3会議室を新設。
+  // 位置はオーバーレイ投影で実測確定（scratchpad/r70_overlay.png・候補A=空床/候補B=タッチダウン干渉）
+  loungeZone: { x: 8.75, z: 6.25, w: 5.0, d: 3.4, lift: 0.12 },
+  meet3Zone: { x: 13.05, z: 6.45, w: 2.7, d: 3.1, lift: 0.22 },   // 第3会議室（小・右手前）
   serverZone: { x: 10.2, z: -9.25 },
   queueZone: { x: -2.2, z: 6.0 },
 });
@@ -54,6 +57,7 @@ export function obstacleRects() {
     x2: zdef.x + zdef.w / 2, z2: zdef.z + zdef.d / 2 });
   zone("meet", LAYOUT.meetZone);
   zone("meet2", LAYOUT.meet2Zone);
+  zone("meet3", LAYOUT.meet3Zone);
   zone("stage", LAYOUT.stageZone);
   zone("lounge", LAYOUT.loungeZone);
   // ボス壇（5.4×3.5・奥中央）とサーバーラック帯（北壁東側）・タッチダウン・外部コンソール
@@ -85,6 +89,7 @@ export function walkGraph() {
     [XL, 7.6],                                                       // 14 エントランス前
     [XD, -7.0],                                                      // 15 コーヒー支線
     [5.9, 5.9],                                                      // 16 ラウンジ口
+    [5.9, 8.45], [13.05, 8.45],                                      // 17..18 南辺通路（R70 meet3口）
   ];
   const edges = [
     [0, 1], [1, 2], [2, 3], [3, 4], [4, 5],       // 北通路
@@ -96,6 +101,7 @@ export function walkGraph() {
     [4, 9],                                       // 7.4 縦
     [3, 15],                                      // コーヒー支線
     [13, 16],                                     // ラウンジ口
+    [16, 17], [17, 18],                           // R70: 南辺通路（ラウンジ南→meet3南口）
   ];
   return { nodes, edges };
 }

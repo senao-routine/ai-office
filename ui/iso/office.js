@@ -48,23 +48,37 @@ export function seatAnchors() {
   return out;                                   // 12席
 }
 
-/** 会議ゾーン。index 0 は発表ステージ（白板を指す）。 */
-export function meetingAnchors() {
+/** 会議アンカーを部屋別に返す（R70: 3室分散の割当= core assignMeetingRooms が使う）。 */
+export function meetingAnchorsByRoom() {
   const m = LAYOUT.meetZone;
-  const s = LAYOUT.stageZone;
   const n = LAYOUT.meet2Zone;
-  return [
-    // 発表者はメイン会議室の白板（奥壁）の前に立つ
-    { x: m.x - 1.4, z: m.z - 1.55, yaw: Math.PI, y: m.lift, role: "present" },
-    { x: m.x - 1.6, z: m.z + 1.15, yaw: Math.PI, y: m.lift },
-    { x: m.x, z: m.z + 1.15, yaw: Math.PI, y: m.lift },
-    { x: m.x + 1.6, z: m.z + 1.15, yaw: Math.PI, y: m.lift },
-    { x: m.x + 0.8, z: m.z - 1.15, yaw: 0, y: m.lift },
-    // 第2会議室（右中）
-    { x: n.x - 1.1, z: n.z + 1.25, yaw: Math.PI, y: n.lift },
-    { x: n.x + 0.45, z: n.z + 1.25, yaw: Math.PI, y: n.lift },
-    { x: n.x - 0.3, z: n.z - 1.25, yaw: 0, y: n.lift },
-  ];
+  const k = LAYOUT.meet3Zone;
+  return {
+    meet: [
+      // 発表者はメイン会議室の白板（奥壁）の前に立つ
+      { x: m.x - 1.4, z: m.z - 1.55, yaw: Math.PI, y: m.lift, role: "present" },
+      { x: m.x - 1.6, z: m.z + 1.15, yaw: Math.PI, y: m.lift },
+      { x: m.x, z: m.z + 1.15, yaw: Math.PI, y: m.lift },
+      { x: m.x + 1.6, z: m.z + 1.15, yaw: Math.PI, y: m.lift },
+      { x: m.x + 0.8, z: m.z - 1.15, yaw: 0, y: m.lift },
+    ],
+    meet2: [
+      { x: n.x - 1.1, z: n.z + 1.25, yaw: Math.PI, y: n.lift },
+      { x: n.x + 0.45, z: n.z + 1.25, yaw: Math.PI, y: n.lift },
+      { x: n.x - 0.3, z: n.z - 1.25, yaw: 0, y: n.lift },
+    ],
+    meet3: [
+      // 第3会議室（小・右手前）: 小卓の南北に1席ずつ
+      { x: k.x - 0.35, z: k.z + 0.95, yaw: Math.PI, y: k.lift },
+      { x: k.x + 0.35, z: k.z - 0.95, yaw: 0, y: k.lift },
+    ],
+  };
+}
+
+/** 会議ゾーンのflat一覧（互換・部屋順= meet→meet2→meet3）。 */
+export function meetingAnchors() {
+  const rooms = meetingAnchorsByRoom();
+  return [...rooms.meet, ...rooms.meet2, ...rooms.meet3];
 }
 
 export function loungeAnchors() {
@@ -76,11 +90,17 @@ export function loungeAnchors() {
   ];
 }
 
-/** ❗の待機列＝受付の前。顔がカメラを向く（yaw 0 = +z）。 */
+/** ❗の待機列＝受付の前。顔がカメラを向く（yaw 0 = +z）。
+ *  R70: 2列×6=12席（机12台ぶん・❗大量発生でも整列）。2列目は受付から見て後ろ（北側）。 */
 export function queueAnchors() {
   const q = LAYOUT.queueZone;
-  // R69: QUEUE_SLOTS=6 に追随（❗5件で相互に食い込む密集の実測対応）
-  return [0, 1, 2, 3, 4, 5].map((i) => ({ x: q.x + 1.1 * i, z: q.z, yaw: 0, y: 0 }));
+  const out = [];
+  for (let row = 0; row < 2; row++) {
+    for (let i = 0; i < 6; i++) {
+      out.push({ x: q.x + 1.1 * i, z: q.z - row * 1.1, yaw: 0, y: 0 });
+    }
+  }
+  return out;                                   // 12席（前列0..5・後列6..11）
 }
 
 /** R56: 会議チビロボ（部下）の立ち位置。親アンカーが使わない卓の縁に置く。
@@ -102,6 +122,15 @@ export function chibiSeats() {
       { x: n.x + 0.85, z: n.z - 1.25, yaw: 0, y: n.lift },
       { x: n.x + 1.5, z: n.z + 1.25, yaw: Math.PI, y: n.lift },
     ],
+    meet3: (() => {
+      const k = LAYOUT.meet3Zone;
+      return [
+        { x: k.x - 1.05, z: k.z, yaw: Math.PI / 2, y: k.lift },   // 西端→東向き
+        { x: k.x + 1.05, z: k.z, yaw: -Math.PI / 2, y: k.lift },  // 東端→西向き
+        { x: k.x + 0.75, z: k.z + 0.95, yaw: Math.PI, y: k.lift },
+        { x: k.x - 0.75, z: k.z - 0.95, yaw: 0, y: k.lift },
+      ];
+    })(),
   };
 }
 
@@ -459,6 +488,7 @@ export function buildOffice(materials, rand) {
     [L.meetZone, "floor2", "neon"],
     [L.stageZone, "woodFloor", "neon"],   // ソファコーナー（第2会議室と入替）
     [L.meet2Zone, "floor2", "neon"],
+    [L.meet3Zone, "floor2", "neon"],   // R70: 第3会議室（小・右手前）
     [L.loungeZone, "woodFloor", "neon"],
   ]) {
     put(slab(zone.w, zone.lift, zone.d, 0.34), mat, zone.x, zone.lift / 2, zone.z);
@@ -609,6 +639,22 @@ export function buildOffice(materials, rand) {
   put(slab(0.14, 0.08, 2.0, 0.05), "white", n2.x + 2.2, n2.lift + 1.52, n2.z);
   P.push({ geometry: flat(5.6, 4.6), material: "shadow",
     matrix: at(n2.x, n2.lift + 0.005, n2.z) });
+
+  // ── 第3会議室（R70・小・右手前＝ラウンジ東の空床。位置はオーバーレイ実測で確定） ──
+  const k3 = L.meet3Zone;
+  put(slab(2.3, 0.012, 2.0, 0.35), "rugB", k3.x, k3.lift + 0.005, k3.z);
+  put(slab(1.7, 0.12, 1.0, 0.28), "wood2", k3.x, k3.lift + 0.80, k3.z);      // 小卓
+  put(slab(0.36, 0.6, 0.7, 0.10), "white", k3.x, k3.lift + 0.42, k3.z);      // 卓脚
+  put(slab(0.34, 0.03, 0.24, 0.02), "paper", k3.x - 0.35, k3.lift + 0.98, k3.z + 0.05);
+  put(slab(0.12, 0.15, 0.12, 0.04), "mugB", k3.x + 0.5, k3.lift + 1.0, k3.z - 0.15);
+  // ガラス（西面＋北面・南=開口が入口・東=外壁ガラスに任せる）
+  glassWall(P, 2.6, k3.x - 1.3, k3.z + 0.2, Math.PI / 2, 2.35);
+  glassWall(P, 2.4, k3.x - 0.1, k3.z - 1.5, 0, 2.35);
+  // 観葉植物（北東の角）
+  put(slab(0.34, 0.35, 0.34, 0.08), "white", k3.x + 0.95, k3.lift + 0.18, k3.z - 1.15);
+  put(slab(0.4, 0.5, 0.4, 0.16), "plant", k3.x + 0.95, k3.lift + 0.6, k3.z - 1.15);
+  P.push({ geometry: flat(3.1, 3.4), material: "shadow",
+    matrix: at(k3.x, k3.lift + 0.005, k3.z) });
 
   // ── ラウンジ（右前・L字ソファ＋プーフ） ──────────────────────────
   const lz = L.loungeZone;

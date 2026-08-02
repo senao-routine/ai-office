@@ -178,10 +178,14 @@ test("R68: ボスの見回り路は北通路レーン上（壇アプローチの
   }
 });
 
-test("R69: queue 6席が障害物の外＋entranceからの経路が交差0", () => {
-  // queueAnchors は iso 層なので同じ式で再現（queueZone 相対・1.1mピッチ×6）
-  const seats = [0, 1, 2, 3, 4, 5].map(
-    (i) => ({ x: LAYOUT.queueZone.x + 1.1 * i, z: LAYOUT.queueZone.z }));
+test("R70: queue 12席（2列×6）が障害物の外＋entranceからの経路が交差0", () => {
+  // queueAnchors は iso 層なので同じ式で再現（queueZone 相対・1.1mピッチ×6・2列目は北へ1.1）
+  const seats = [];
+  for (let row = 0; row < 2; row++) {
+    for (let i = 0; i < 6; i++) {
+      seats.push({ x: LAYOUT.queueZone.x + 1.1 * i, z: LAYOUT.queueZone.z - row * 1.1 });
+    }
+  }
   const obstacles = obstacleRects();
   for (const s of seats) {
     for (const r of obstacles) {
@@ -198,4 +202,32 @@ test("R69: queue 6席が障害物の外＋entranceからの経路が交差0", ()
       }
     }
   }
+});
+
+test("R70: 第3会議室=障害物登録・全席が部屋の内側・南口ノード経由の経路が交差0", () => {
+  const k = LAYOUT.meet3Zone;
+  const obstacles = obstacleRects();
+  assert.ok(obstacles.some((r) => r.id === "meet3"), "meet3 が障害物に登録されている");
+  // 会議席（iso 層の meetingAnchorsByRoom と同式・小卓の南北）
+  const seats = [
+    { x: k.x - 0.35, z: k.z + 0.95 }, { x: k.x + 0.35, z: k.z - 0.95 },
+  ];
+  for (const s of seats) {
+    assert.ok(Math.abs(s.x - k.x) <= k.w / 2 && Math.abs(s.z - k.z) <= k.d / 2,
+      `meet3席(${s.x},${s.z})が部屋の外`);
+    // エントランス→席の中間セグメントが meet3 以外の障害物と交差しない
+    const entrance = { x: -8.3, z: WALL.front - 0.85 };
+    const path = routePath(entrance, s);
+    for (let i = 0; i + 1 < path.length - 1; i++) {
+      for (const r of obstacles) {
+        if (r.id === "meet3") continue;               // 目的の部屋自身へは入ってよい
+        assert.ok(!segIntersectsRect(path[i].x, path[i].z, path[i + 1].x, path[i + 1].z, r),
+          `entrance→meet3席 が ${r.id} と交差`);
+      }
+    }
+  }
+  // 新設の南辺通路エッジ（ラウンジ南→meet3口）も全障害物と非交差=walkGraphテストが包括するが
+  // ラウンジ縮小の回帰として明示ピン: ラウンジ矩形が南辺通路(z8.45)に達していない
+  const lounge = obstacles.find((r) => r.id === "lounge");
+  assert.ok(lounge.z2 < 8.45, "ラウンジが南辺通路を塞いでいる");
 });

@@ -403,6 +403,7 @@ export async function mount(root) {
     dock.append(board);
     paintTarget(agent);
     sheetEl.hidden = false;
+    scene.focusOn?.(agent.id);          // R70: 選んだロボへカメラが寄る
     // R67: 開きだけ .show 2段階でフェードイン（hidden の即時性は維持＝スモーク互換・
     // frozen は .no-anim で transition:none＝golden 非干渉）
     requestAnimationFrame(() => sheetEl.classList.add("show"));
@@ -410,6 +411,7 @@ export async function mount(root) {
     if (built) render(shell, built);            // 選択ハイライトを反映
   };
   const closeCompose = () => {
+    scene.focusOff?.();                 // R70: 全景へ戻る
     composeTarget = null;
     sheetEl.classList.remove("show");
     sheetEl.hidden = true;
