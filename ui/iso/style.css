@@ -751,3 +751,12 @@
 .ui-iso .freshness[hidden] { display: none; }
 /* 履歴「ほか N 件」注記 */
 .ui-iso .hmore { font-size: 10.5px; color: var(--iso-ink-soft); padding: 2px 4px; }
+
+/* R69: 低い画面（1280x800等）でシート本文が定型ボード+内訳に押し潰される実測
+   （sheetbody可視域118px）への対応＝本文の最低可視域を確保し周辺をcompact化 */
+@media (max-height: 840px) {
+  .ui-iso .sheetbody { min-height: 200px; }
+  .ui-iso .sheetquick { grid-template-columns: 1fr; }          /* QUICKを1列に */
+  .ui-iso .qchip { min-height: 30px; padding: 4px 9px; }
+  .ui-iso .crewlist { max-height: 84px; overflow-y: auto; }    /* 内訳は独立スクロール */
+}

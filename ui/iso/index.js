@@ -297,7 +297,9 @@ export async function mount(root) {
       // 集約＝「返信はここ」の一箇所感（R54ユーザーFB）
       const q = sEl("div", "sheetq");
       q.append(sEl("b", "", agent.question
-        ? `❓ ${agent.question}` : `❗ ${T("approval_min", agent.approvalMin)}`));
+        ? `❓ ${agent.question}`
+        : `❗ ${T("approval_min", agent.approvalMin)}` +
+          (agent.stuckTool ? `\n${T("attn_target", tidyActivity(agent.stuckTool, 60))}` : "")));
       body.append(q);
     }
     // ×N集約の内訳: 非代表セッションへの宛先切替（配達経路・APIは無改変＝sessionの差替だけ）
@@ -1404,13 +1406,11 @@ function paintLabels(shell, scene, w) {
   const oldChips = new Map([...host.children].map((n) => [n.dataset.project, n]));
   const perZone = {};
   const placed = [];
-  let count = 0;
   for (const a of w.agents) {
     const idx = (perZone[a.zone] = (perZone[a.zone] ?? -1) + 1);
-    if (count >= 10) break;
+    // R69: cap10撤廃＝11体目以降も名札を出す（差分更新化済みでコストは許容・実測14体で確認）
     const at = scene.labelAnchorFor(a, w, idx);
     if (!Number.isFinite(at.left) || !Number.isFinite(at.top)) continue;
-    count += 1;
     let chip = oldChips.get(a.id);
     if (!chip) {
       chip = document.createElement("div");
@@ -1431,6 +1431,7 @@ function paintLabels(shell, scene, w) {
       (a.crew > 1 ? `${a.name} ×${a.crew}` : a.name);
     if (nameEl.textContent !== txt) {
       nameEl.textContent = txt;
+      chip.title = a.crew > 1 ? `${a.name} ×${a.crew}` : a.name;   // R69: 省略時も全文が読める
       chip.dataset.w = "";                                    // テキスト変化＝寸法キャッシュ無効化
     }
     if (!chip.dataset.w) {
@@ -1519,7 +1520,9 @@ function render(shell, w) {
   // ── 中央: 挨拶＋❗トレイ ─────────────────────────────────────
   shell.querySelector("#greet").textContent = w.officeName || T("office_fallback");
   shell.querySelector("#sub").textContent =
-    T("sub_line", w.agents.length, z.desk + z.meeting, z.queue, z.lounge);
+    T("sub_line", w.agents.length,
+      w.agents.filter((a) => a.state === "working").length,   // R69: ゾーン頭数でなく実働数
+      z.queue, z.lounge);
 
   // 📮 配達未設定バナー（旧UIのオンボーディング表現の復元）。demoでは出ない
   let setupBar = shell.querySelector("#setupbar");
@@ -1540,7 +1543,9 @@ function render(shell, w) {
   const acts = [];
   if (attn) {
     tray.append(el("b", "", T("tray_head", attn.name, ti + 1, queue.length)),
-      el("span", "", attn.question || T("approval_min", attn.approvalMin)));
+      el("span", "", attn.question
+        || T("approval_min", attn.approvalMin)
+          + (attn.stuckTool ? ` — ${T("attn_target", tidyActivity(attn.stuckTool, 40))}` : "")));
     const isAnswered = (shell._ops?.answeredKey?.(attn.session) || "") === attnKeyFor(attn);
     if (isAnswered) {
       // 回答済み・反映待ち: ボタンを出さない＝数字キーも無効（二重送信の窓を閉じる）
@@ -1619,6 +1624,7 @@ function render(shell, w) {
     const cls = `arow st-${a.state} zone-${a.zone}${a.id === selectedId ? " sel" : ""}`;
     if (row.className.replace(" fresh", "") !== cls) row.className = cls;
     let changed = setText(row.querySelector(".aname"), a.name || "?");
+    row.title = a.crew > 1 ? `${a.name} ×${a.crew}` : (a.name || "");   // R69: 省略時の全文
     const crewEl = row.querySelector(".acrew");
     crewEl.hidden = !(a.crew > 1);
     if (a.crew > 1) changed = setText(crewEl, `×${a.crew}`) || changed;

@@ -1246,15 +1246,34 @@ def group_by_project(employees, lang="ja"):
             proj["external"] = lead["external"]
         if lead.get("questionOptions"):
             proj["questionOptions"] = lead["questionOptions"]
-        if lead.get("work"):
-            proj["work"] = lead["work"]
+        # R69: work の counts はプロジェクト内の全セッションを合算する。
+        # 代表(lead)だけを見ると、代表交代のたびにドーナツが急変して
+        # 「タスクが完了した」ように見える（実測: 未着手8→2）。now/next/done の
+        # リストは代表のものを維持（本文面は1セッション分で十分・宛先とも一致）。
+        work_members = [m.get("work") for m in members if isinstance(m.get("work"), dict)]
+        if work_members:
+            counts = {"pending": 0, "in_progress": 0, "completed": 0}
+            for w in work_members:
+                c = w.get("counts") or {}
+                for k in counts:
+                    counts[k] += int(c.get(k) or 0)
+            lead_work = lead.get("work") or {}
+            proj["work"] = {
+                "now": lead_work.get("now") or [],
+                "next": lead_work.get("next") or [],
+                "done": lead_work.get("done") or [],
+                "counts": counts,
+            }
         # 表示名: 同名プロジェクトが並ぶことは（cwd単位なので）原則ないが、
         # dept フォールバック時の衝突に備えて採番は残す。
         proj["disp"] = proj["name"]
         projects.append(proj)
 
+    # R69: 採番はグループの不変キー（projectId=cwdハッシュ）昇順で振る。
+    # 出現順（employeesの走査順=mtime依存）で振ると、ポーリング間で
+    # 「制作本部(works)」↔「制作本部(works) 2号」が入れ替わる（実測）。
     seen = {}
-    for p in projects:
+    for p in sorted(projects, key=lambda p: p["projectId"]):
         n = seen.get(p["name"], 0) + 1
         seen[p["name"]] = n
         if n > 1:

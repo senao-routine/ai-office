@@ -11,7 +11,7 @@
 
 /** 席の数。使われないスロットは机ごと描かない＝空席を作らないための上限。 */
 export const DESK_SLOTS = 12;
-export const QUEUE_SLOTS = 4;
+export const QUEUE_SLOTS = 6;   // R69: ❗5件で密集した実測→6席へ
 export const MEETING_SLOTS = 5;
 export const LOUNGE_SLOTS = 3;
 
@@ -37,6 +37,7 @@ export function buildWorld(office) {
     attention: needsAttention(p),
     approvalMin: Number(p.approvalMin) || 0,
     question: p.question || "",
+    stuckTool: p.stuckTool || "",
     questionOptions: Array.isArray(p.questionOptions) ? p.questionOptions : [],
     pending: Boolean(p.pending),
     minions: Number(p.minions) || 0,

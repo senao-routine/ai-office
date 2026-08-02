@@ -79,6 +79,7 @@ const DICT = {
     hs_waiting: "次の指示を待っています。",
     // ❗トレイ・回答定型文（セッションへ送る本文も言語連動）
     approval_min: (m) => `承認まち ${m}分`,
+    attn_target: (w) => `対象: ${w}`,
     opt_text: (label) => `選択肢「${label}」でお願いします。`,
     opt_approve: "承認して続行",
     opt_approve_text: "承認します。このまま進めてください。",
@@ -256,6 +257,7 @@ const DICT = {
     hs_working: "Working.",
     hs_waiting: "Waiting for the next instruction.",
     approval_min: (m) => `Approval wait ${m} min`,
+    attn_target: (w) => `target: ${w}`,
     opt_text: (label) => `Please go with option "${label}".`,
     opt_approve: "Approve & continue",
     opt_approve_text: "Approved — keep going.",

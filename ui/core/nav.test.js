@@ -177,3 +177,25 @@ test("R68: ボスの見回り路は北通路レーン上（壇アプローチの
     }
   }
 });
+
+test("R69: queue 6席が障害物の外＋entranceからの経路が交差0", () => {
+  // queueAnchors は iso 層なので同じ式で再現（queueZone 相対・1.1mピッチ×6）
+  const seats = [0, 1, 2, 3, 4, 5].map(
+    (i) => ({ x: LAYOUT.queueZone.x + 1.1 * i, z: LAYOUT.queueZone.z }));
+  const obstacles = obstacleRects();
+  for (const s of seats) {
+    for (const r of obstacles) {
+      assert.ok(!(s.x > r.x1 && s.x < r.x2 && s.z > r.z1 && s.z < r.z2),
+        `queue席(${s.x},${s.z})が障害物 ${JSON.stringify(r)} の中`);
+    }
+    // ENTRANCE は iso 層＝coreからimportしない（office.js の定義と同式でWALLから導出）
+    const entrance = { x: -8.3, z: WALL.front - 0.85 };
+    const path = routePath(entrance, s);
+    for (let i = 0; i + 1 < path.length - 1; i++) {   // 中間セグメントのみ（末尾は席へのアプローチ）
+      for (const r of obstacles) {
+        assert.ok(!segIntersectsRect(path[i].x, path[i].z, path[i + 1].x, path[i + 1].z, r),
+          `entrance→queue席(${s.x.toFixed(1)}) が障害物と交差`);
+      }
+    }
+  }
+});

@@ -341,3 +341,10 @@ test("activityGloss: 未知パターンは tidy 済みフォールバック・�
   assert.equal(activityGloss(null), "");
   assert.equal(activityGloss(proj({ verb: "", target: "", state: "working" })), "⚙️ 処理を実行中");
 });
+
+test("R69: stuckTool が agent に通る（承認対象の表示素材）", () => {
+  const w = buildWorld({ roster: [proj({ approvalMin: 3, attention: true,
+    stuckTool: "実行中 E2Eの残骸行を確認" })] });
+  assert.equal(w.agents[0].stuckTool, "実行中 E2Eの残骸行を確認");
+  assert.equal(buildWorld({ roster: [proj()] }).agents[0].stuckTool, "");
+});

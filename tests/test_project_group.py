@@ -179,3 +179,50 @@ class ProjectGroupTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class R69GroupTest(unittest.TestCase):
+    """R69: 採番の安定性・work counts のプロジェクト内合算（group_by_project 直呼び）。"""
+
+    @staticmethod
+    def _emp(session, cwd, dept, age=10, **over):
+        base = {"session": session, "cwd": cwd, "dept": dept, "age": age,
+                "state": "working", "minions": 0, "pending": False}
+        base.update(over)
+        return base
+
+    def test_numbering_is_stable_across_ordering(self):
+        """同名dept×別cwdの「N号」は、employeesの並び順（=mtime変動）が変わっても回転しない。"""
+        a = self._emp("sess-aaa", "/w/alpha", "制作本部", age=5)
+        b = self._emp("sess-bbb", "/w/beta", "制作本部", age=50)
+        d1 = {p["session"]: p["disp"] for p in office.group_by_project([a, b])}
+        d2 = {p["session"]: p["disp"] for p in office.group_by_project([b, a])}
+        self.assertEqual(d1, d2, "並び順で採番が回転した")
+        self.assertEqual(sorted(d1.values()), ["制作本部", "制作本部 2号"])
+
+    def test_numbering_survives_lead_change(self):
+        """❗で代表が入れ替わっても各グループの disp は不変。"""
+        a = self._emp("sess-aaa", "/w/alpha", "制作本部", age=5)
+        b = self._emp("sess-bbb", "/w/beta", "制作本部", age=50)
+        before = {p["cwd"]: p["disp"] for p in office.group_by_project([a, b])}
+        b_attn = dict(b, approvalMin=4, age=1)     # betaが❗＋最新＝順序も変わる
+        after = {p["cwd"]: p["disp"] for p in office.group_by_project([b_attn, a])}
+        self.assertEqual(before, after)
+
+    def test_work_counts_are_summed_across_sessions(self):
+        """countsは全セッション合算・now/next/doneは代表のもの＝代表交代でドーナツが急変しない。"""
+        lead = self._emp("sess-lead", "/w/x", "開発", age=1,
+                         work={"now": ["A"], "next": [], "done": [],
+                               "counts": {"pending": 2, "in_progress": 1, "completed": 0}})
+        other = self._emp("sess-other", "/w/x", "開発", age=99,
+                          work={"now": ["B"], "next": [], "done": [],
+                                "counts": {"pending": 6, "in_progress": 0, "completed": 3}})
+        p = office.group_by_project([lead, other])[0]
+        self.assertEqual(p["work"]["counts"],
+                         {"pending": 8, "in_progress": 1, "completed": 3})
+        self.assertEqual(p["work"]["now"], ["A"])          # リストは代表のもの
+        # 代表にworkが無くても合算countsは出る（ドーナツ急変の根本）
+        lead2 = self._emp("sess-lead", "/w/x", "開発", age=1)
+        p2 = office.group_by_project([lead2, other])[0]
+        self.assertEqual(p2["work"]["counts"],
+                         {"pending": 6, "in_progress": 0, "completed": 3})

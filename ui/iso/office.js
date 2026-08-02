@@ -79,7 +79,8 @@ export function loungeAnchors() {
 /** ❗の待機列＝受付の前。顔がカメラを向く（yaw 0 = +z）。 */
 export function queueAnchors() {
   const q = LAYOUT.queueZone;
-  return [0, 1, 2, 3].map((i) => ({ x: q.x + 1.1 * i, z: q.z, yaw: 0, y: 0 }));
+  // R69: QUEUE_SLOTS=6 に追随（❗5件で相互に食い込む密集の実測対応）
+  return [0, 1, 2, 3, 4, 5].map((i) => ({ x: q.x + 1.1 * i, z: q.z, yaw: 0, y: 0 }));
 }
 
 /** R56: 会議チビロボ（部下）の立ち位置。親アンカーが使わない卓の縁に置く。
