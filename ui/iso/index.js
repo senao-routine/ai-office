@@ -4,10 +4,14 @@
 //   右=オフィス概況タイル＋エージェント一覧
 // 全ての数値は world（実データ）から。参考画像にある FUNDS 等の
 // 実データが無い数値は出さない（嘘のメトリクス禁止＝プラン確定事項）。
-import { agoStr, attentionQueue, buildWorld, summarizeWorld } from "/ui/core/world.js";
 import {
-  getOffice, getStatusBoard, licenseSet, licenseStatus, newProject,
-  pairList, pairNew, pairRevoke, pickProjectFolder, poll, postInstruction, spendApply,
+  STARVE_MIN, activityGloss, agoStr, attentionQueue, buildWorld,
+  deliveryTransitions, summarizeWorld, tidyActivity,
+} from "/ui/core/world.js";
+import {
+  focusTerminal, getKeysStatus, getOffice, getStatusBoard, licenseSet, licenseStatus,
+  newProject, pairList, pairNew, pairRevoke, pickProjectFolder, poll, postInstruction,
+  budgetApply, setOfficeKey, spendApply,
 } from "/ui/platform/api.js";
 import { frozen, loop, now } from "/ui/platform/clock.js";
 import { installProbe } from "/ui/platform/probe.js";
@@ -73,12 +77,14 @@ export async function mount(root) {
           <header class="sheethead">
             <b id="sheetname"></b>
             <span class="sheettools">
+              <button class="sheetterm" id="sheetterm" type="button">🖥</button>
               <button class="sheetsnd" id="sheetsnd" type="button">🔇</button>
               <button class="sheetclose" id="sheetclose" type="button">✕</button>
             </span>
           </header>
           <p class="sheetact" id="sheetact"></p>
           <div class="sheetbody" id="sheetbody"></div>
+          <div class="quickdock" id="quickdock"></div>
           <p class="sheettarget" id="sheettarget" hidden></p>
           <div class="compose" id="compose">
             <input id="composeinput" type="text" autocomplete="off">
@@ -141,6 +147,17 @@ export async function mount(root) {
       const a = built.agents.find((x) => x.session === sess);
       if (!a || !a.attention || attnKeyFor(a) !== key) answered.delete(sess);
     }
+    // R53.2 配達の手応え: 自分が最近投函した相手の「📨解消=動き出し」「❗解消=反映」を知らせる
+    // （全遷移を鳴らすとノイズ＝このUI発の指示だけ・15分でトラッキング解除）
+    for (const [sess, at] of recentSends) {
+      if (now() - at > 900) recentSends.delete(sess);
+    }
+    for (const tr of deliveryTransitions(prevAgents, built.agents)) {
+      if (!recentSends.has(tr.session)) continue;
+      showToast(tr.kind === "woke" ? T("woke", tr.name) : T("attn_resolved", tr.name));
+      wakeUntil.set(tr.session, now() + 5);
+    }
+    prevAgents = built.agents;
     if (!gaugesKicked) { gaugesKicked = true; refreshGauges(); }   // features判明後に初回起動
     render(shell, built);
     // frozen（?t=固定）だと loop は起動時の1回しか回らず、それはデータ到着前なので
@@ -156,6 +173,9 @@ export async function mount(root) {
   let lastDataMono = null;           // 最後にデータが届いた時刻（clock.now の単調秒）
   let gaugesKicked = false;          // 経費ゲージの初回起動フラグ（features判明後に）
   const answered = new Map();        // session -> ❗内容キー（回答済み・反映待ちの楽観状態）
+  let prevAgents = null;             // 前回world（配達の手応え=遷移検出用）
+  const recentSends = new Map();     // session -> mono秒（このUIから最近投函した相手だけ手応えを出す）
+  const wakeUntil = new Map();       // session -> mono秒（足元チップの動き出しハイライト期限）
   const toastEl = shell.querySelector("#toast");
   let toastTimer = 0;
   const showToast = (msg, ok = true) => {
@@ -172,6 +192,7 @@ export async function mount(root) {
     try {
       await postInstruction(session, text);
       showToast(T("deliver_ok", name));
+      recentSends.set(session, now());   // R53.2: 手応え（woke/answered）を出す対象に登録
       if (attnKey) {
         // ❗への回答は「回答済み・反映待ち」を楽観表示し、二重送信の窓を即closeする
         // （実セッションでは transcript 反映まで❗が数十秒残るため）
@@ -206,7 +227,8 @@ export async function mount(root) {
   };
   /** ターミナルの生ログではなく「人間が読む1文」へ変換する（ユーザーFBの核）。 */
   const humanSummary = (a) => {
-    const doing = a.activity ? T("hs_doing", a.activity) : "";
+    const g = activityGloss(a, lang());
+    const doing = g ? T("hs_doing", g) : "";
     if (a.question) return `${doing}${T("hs_question")}`;
     if (a.attention) return `${doing}${T("hs_approval", a.approvalMin)}`;
     if (a.zone === "meeting") return `${doing}${T("hs_meeting", a.minions)}`;
@@ -233,23 +255,11 @@ export async function mount(root) {
     const body = shell.querySelector("#sheetbody");
     body.replaceChildren();
     if (agent.attention) {
+      // 質問文の表示は本文の先頭に。回答ボタンは quickboard（compose直上の常設ボード）へ
+      // 集約＝「返信はここ」の一箇所感（R54ユーザーFB）
       const q = sEl("div", "sheetq");
       q.append(sEl("b", "", agent.question
         ? `❓ ${agent.question}` : `❗ ${T("approval_min", agent.approvalMin)}`));
-      const opts = (agent.questionOptions || []).length
-        ? agent.questionOptions.slice(0, 4).map((o) => ({
-            label: o.label ?? o, text: T("opt_text", o.label ?? o) }))
-        : [{ label: T("opt_approve"), text: T("opt_approve_text") },
-           { label: T("opt_pause"), text: T("opt_pause_text") }];
-      for (const o of opts) {
-        const b = sEl("button", "sheetopt", o.label);
-        b.type = "button";
-        b.addEventListener("click", () => {
-          send(agent.session, agent.name, o.text, attnKeyFor(agent));
-          closeCompose();
-        });
-        q.append(b);
-      }
       body.append(q);
     }
     // ×N集約の内訳: 非代表セッションへの宛先切替（配達経路・APIは無改変＝sessionの差替だけ）
@@ -278,31 +288,78 @@ export async function mount(root) {
       });
       body.append(crewWrap);
     }
+    // 📋 いまの仕事: ラベル列＋内容列で整列（フラットな sheetline 羅列をやめ読める形に）
     const work = agent.work || {};
-    for (const [key, label] of [["now", T("work_now")], ["next", T("work_next")],
-                                ["done", T("work_done")]]) {
-      for (const item of (work[key] || []).slice(0, 3)) {
-        body.append(sEl("div", "sheetline", `${label} ${item}`));
+    const workRows = [["now", T("work_now"), true], ["next", T("work_next"), false],
+                      ["done", T("work_done"), false]]
+      .flatMap(([key, label, strong]) => (work[key] || []).slice(0, 3)
+        .map((item, i) => ({ label, item, strong: strong && i === 0 })));
+    if (workRows.length) {
+      const sec = sEl("div", "sheetsec");
+      sec.append(sEl("b", "sheetsec-head", T("work_head")));
+      const grid = sEl("div", "workgrid");
+      for (const r of workRows) {
+        grid.append(sEl("i", "wl", r.label),
+          sEl("span", r.strong ? "wv strong" : "wv", tidyActivity(r.item, 80)));
       }
+      sec.append(grid);
+      body.append(sec);
     }
+    // 🕑 最近の動き: 件数バッジ＋独立スクロール・💬発言は色分け
     if ((agent.feed || []).length) {
-      body.append(sEl("b", "sheetsub", T("recent_moves")));
-      for (const line of agent.feed.slice(-8)) {
-        body.append(sEl("div", "sheetline feed", line));
+      const feed = agent.feed.slice(-8);
+      const sec = sEl("div", "sheetsec");
+      const head = sEl("b", "sheetsec-head", T("recent_moves"));
+      head.append(sEl("i", "seccount", String(feed.length)));
+      sec.append(head);
+      const listEl = sEl("div", "feedlist");
+      for (const line of feed) {
+        const isSay = line.trimStart().startsWith("💬");
+        listEl.append(sEl("div", `sheetline feed feedline${isSay ? " say" : ""}`,
+          tidyActivity(line, 90)));
       }
+      sec.append(listEl);
+      body.append(sec);
+    }
+    // ⚡ 定型ボード: 回答ボタン＋よく押す定型を compose 直上に常設（本文スクロールでも動かない）
+    const dock = shell.querySelector("#quickdock");
+    dock.replaceChildren();
+    const board = sEl("div", "quickboard");
+    board.append(sEl("b", "qb-head", T("qb_head")));
+    if (agent.attention) {
+      const answers = sEl("div", "qb-answers");
+      const opts = (agent.questionOptions || []).length
+        ? agent.questionOptions.slice(0, 4).map((o) => ({
+            label: o.label ?? o, text: T("opt_text", o.label ?? o) }))
+        : [{ label: T("opt_approve"), text: T("opt_approve_text") },
+           { label: T("opt_pause"), text: T("opt_pause_text") }];
+      for (const o of opts) {
+        const b = sEl("button", "sheetopt", o.label);
+        b.type = "button";
+        b.addEventListener("click", () => {
+          send(agent.session, agent.name, o.text, attnKeyFor(agent));
+          closeCompose();
+        });
+        answers.append(b);
+      }
+      board.append(answers);
     }
     const quick = sEl("div", "sheetquick");
-    for (const q of T("quick")) {
-      const b = sEl("button", "qchip", q);
+    const QUICK_ICONS = ["▶", "👍", "🧪", "⏸"];
+    T("quick").forEach((q, i) => {
+      const b = sEl("button", "qchip");
       b.type = "button";
+      b.title = q;                       // 狭幅で省略された全文はツールチップで
+      b.append(sEl("i", "qicon", QUICK_ICONS[i] || "・"), sEl("span", "", q));
       // 内訳で宛先を切り替えた後は QUICK もその宛先へ（❗回答ボタンは代表=❗保持者のまま）
       b.addEventListener("click", () => {
         send(composeTarget?.session || agent.session, agent.name, q);
         closeCompose();
       });
       quick.append(b);
-    }
-    body.append(quick);
+    });
+    board.append(quick);
+    dock.append(board);
     paintTarget(agent);
     sheetEl.hidden = false;
     composeInput.focus();
@@ -312,6 +369,7 @@ export async function mount(root) {
     composeTarget = null;
     sheetEl.hidden = true;
     composeInput.value = "";
+    shell.querySelector("#quickdock").replaceChildren();
     clearInterval(typeTimer);
     if (built) render(shell, built);
   };
@@ -319,6 +377,20 @@ export async function mount(root) {
   const paintSnd = () => { sndBtn.textContent = soundOn() ? "🔈" : "🔇"; };
   paintSnd();
   sndBtn.addEventListener("click", () => { setSound(!soundOn()); paintSnd(); });
+  // R53: 🖥 実ターミナルへジャンプ（宛先切替中はそのセッションのターミナルへ）
+  const jumpTerminal = async (session, name) => {
+    if (DEMO) { showToast(T("demo_no_send")); return; }
+    if (!session || session.startsWith("oc-")) { showToast(T("term_none"), false); return; }
+    try {
+      const r = await focusTerminal(session);
+      showToast(T("term_ok", r.app || "Terminal"));
+    } catch (err) {
+      showToast(`${name ? name + ": " : ""}${err.message}`, false);
+    }
+  };
+  shell.querySelector("#sheetterm").addEventListener("click", () => {
+    if (composeTarget) jumpTerminal(composeTarget.session, composeTarget.name);
+  });
   shell.querySelector("#sheetclose").addEventListener("click", closeCompose);
   composeInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && composeInput.value.trim() && composeTarget) {
@@ -328,6 +400,26 @@ export async function mount(root) {
       closeCompose();
     }
   });
+  // R54-A: デスクトップ通知→タブへ戻ってきた瞬間、❗集合が変わっていれば最優先の1件を
+  // トレイへ出し直す（「通知を見て開いたら該当❗が待っている」）。入力中の誤リセット無し
+  let hiddenAttnIds = null;
+  const onVis = () => {
+    if (document.hidden) {
+      hiddenAttnIds = new Set(attentionQueue(built?.agents || []).map((a) => a.id));
+      return;
+    }
+    if (!hiddenAttnIds) return;
+    const cur = attentionQueue(built?.agents || []);
+    const changed = cur.length !== hiddenAttnIds.size ||
+      cur.some((a) => !hiddenAttnIds.has(a.id));
+    hiddenAttnIds = null;
+    if (changed && cur.length) {
+      trayIndex = 0;
+      if (built) render(shell, built);
+    }
+  };
+  document.addEventListener("visibilitychange", onVis);
+
   // ❗キューの巡回（J/K・▸次へ）。件数は render 時点の attentionQueue と同期する
   const cycleTray = (delta) => {
     const q = attentionQueue(built?.agents || []);
@@ -392,7 +484,7 @@ export async function mount(root) {
         row.type = "button";
         const dot = mEl("i", `sq-ish st-${a.state}`);
         row.append(dot, mEl("b", "", a.crew > 1 ? `${a.name} ×${a.crew}` : a.name),
-          mEl("span", "", a.activity || ""));
+          mEl("span", "", activityGloss(a, lang())));
         row.addEventListener("click", () => { closeModal(); openCompose(a); });
         modal.append(row);
       }
@@ -402,6 +494,13 @@ export async function mount(root) {
     const id = scene.pickAgent?.(x, y);
     const a = id && (built?.agents || []).find((q) => q.id === id);
     if (a) openCompose(a);
+  });
+  // R53: ロボをダブルクリック → そのセッションの実ターミナルを前面へ（見る→実物の輪）
+  viewportEl.addEventListener("dblclick", (e) => {
+    const { x, y } = stagePoint(e);
+    const id = scene.pickAgent?.(x, y);
+    const a = id && (built?.agents || []).find((q) => q.id === id);
+    if (a && !a.external) jumpTerminal(a.session, a.name);
   });
   // ホバー: ロボット/ボスの上で cursor:pointer＋対応する足元チップを強調（60msスロットリング）
   let hoverLast = 0;
@@ -568,6 +667,7 @@ export async function mount(root) {
       mEl("p", "mnote", T("res_note")));
     const jpy = sb.fx?.jpyPerUsd || 155;
     for (const pr of sb.providers || []) {
+      if (pr.kind === "api") continue;        // R63: APIプロバイダは専用セクションへ
       const row = mEl("div", "mres");
       const head = mEl("div", "mreshead");
       head.append(mEl("b", "", pr.label || pr.id));
@@ -593,6 +693,70 @@ export async function mount(root) {
       head.append(mEl("span", "mressub", sub));
       row.append(head);
       modal.append(row);
+    }
+    // ── R63: 🔌 APIプロバイダ（消費・残高・上限を1箇所に集約） ──────────
+    // 上限が判明しているものだけバー。取れないものは「上限が設定されていません」と
+    // 明示して消費/残高だけ出す（嘘の%を作らない掟）。予算はその場で設定できる。
+    const apis = (sb.providers || []).filter((p) => p.kind === "api");
+    if (apis.length) {
+      const sec = mEl("div", "mapis");
+      sec.append(mEl("b", "msub", T("api_head")));
+      for (const pr of apis) {
+        const row = mEl("div", "mapi");
+        const head = mEl("div", "mreshead");
+        head.append(mEl("b", "", pr.label || pr.id));
+        const money = (v) => (pr.currency === "CNY" ? `CN¥${v.toFixed(2)}`
+          : pr.currency === "JPY" ? `¥${Math.round(v).toLocaleString()}`
+          : `$${v.toFixed(2)}`);
+        let sub = "";
+        if (pr.status === "error") sub = pr.error || T("api_err");
+        else if (pr.spentMonth != null && pr.limit != null) {
+          sub = `${money(pr.spentMonth)} / ${money(pr.limit)}`;
+        } else if (pr.spentMonth != null) sub = money(pr.spentMonth);
+        else if (pr.balance != null) sub = T("api_balance", money(pr.balance));
+        else sub = T("api_nodata");
+        head.append(mEl("span", "mressub", sub));
+        row.append(head);
+        if (pr.pct != null) {
+          const track = mEl("div", "gbar big");
+          const fill = mEl("i", pr.pct >= 80 ? "gfill warn" : "gfill");
+          fill.style.width = `${Math.max(2, Math.round(pr.pct))}%`;
+          track.append(fill);
+          row.append(track);
+          row.append(mEl("span", "gsub",
+            `${Math.round(pr.pct)}%${pr.limitSource === "manual" ? T("api_budget_tag") : ""}`));
+        } else if (pr.note === "no_limit") {
+          row.append(mEl("span", "gsub gnolimit", T("api_no_limit")));
+        }
+        // 予算の設定（上限がAPIから取れないプロバイダで意味を持つ）
+        if (pr.limitSource !== "api") {
+          const form = mEl("div", "mapibudget");
+          const amt = mEl("input", "minput mnum");
+          amt.type = "number";
+          amt.min = "0";
+          amt.step = "1";
+          amt.placeholder = T("api_budget_ph");
+          if (pr.limitSource === "manual" && pr.limit != null) amt.value = String(pr.limit);
+          const save = mEl("button", "mgo mgosm", T("api_budget_save"));
+          save.type = "button";
+          save.addEventListener("click", async () => {
+            save.disabled = true;
+            try {
+              await budgetApply(pr.id, Number(amt.value) || 0,
+                pr.currency === "CNY" ? "CNY" : "USD");
+              showToast(T("api_budget_saved"));
+              shell.querySelector("#btn-res").click();     // 再読込
+            } catch (err) {
+              save.disabled = false;
+              showToast(err.message, false);
+            }
+          });
+          form.append(amt, save);
+          row.append(form);
+        }
+        sec.append(row);
+      }
+      modal.append(sec);
     }
     if (sb.spend) {
       const total = Math.round((sb.spend.totalJpy || 0) +
@@ -685,6 +849,91 @@ export async function mount(root) {
     form.append(nameIn, amtIn, curSel, kindSel, renewIn, addBtn);
     led.append(form);
     modal.append(led);
+    // 🔑 アカウント連携（R54: 旧UIの連携設定を移植）。Claude/Codex/Gemini は接続状態と
+    // 手順ヒント・key型（OpenAI/X等）は行内フォームで保存（/api/keys/set・値はマスク入力）
+    let ks = null;
+    try {
+      ks = await getKeysStatus();
+    } catch { /* 取得失敗時はセクションごと出さない（嘘の状態を見せない） */ }
+    if (ks?.providers?.length) {
+      const NAME_BY_ID = { openai_key: "OPENAI_API_KEY", x_api: "X_BEARER_TOKEN",
+                           openai_usage: "OPENAI_ADMIN_KEY",
+                           // R65: R63のAPIプロバイダが未登録で接続ボタンが出なかった実バグ修正
+                           openrouter: "OPENROUTER_API_KEY", moonshot: "MOONSHOT_API_KEY",
+                           deepseek: "DEEPSEEK_API_KEY", groq: "GROQ_API_KEY" };
+      const sec = mEl("div", "mkeys");
+      sec.append(mEl("b", "msub", T("keys_head")));
+      for (const pr of ks.providers) {
+        const row = mEl("div", "mkeyrow");
+        row.append(mEl("i", "mkeydot" + (pr.connected ? " on" : "")),
+          mEl("span", "mkeyname", pr.label || pr.id),
+          mEl("i", "mkeyhint",
+            pr.connected ? (pr.masked || T("res_connected")) : (pr.hint || "")));
+        const keyName = NAME_BY_ID[pr.id];
+        if (pr.mode === "key" && keyName) {
+          const btn = mEl("button", "mkeybtn",
+            pr.connected ? T("keys_change") : T("keys_connect"));
+          btn.type = "button";
+          btn.dataset.key = keyName;
+          btn.addEventListener("click", () => {
+            const open = row.querySelector(".mkeyform");
+            if (open) { open.remove(); return; }
+            const kform = mEl("span", "mkeyform");
+            const input = mEl("input", "mkeyin");
+            input.type = "password";
+            input.placeholder = T("keys_ph");
+            input.autocomplete = "off";
+            const save = mEl("button", "mkeysave", T("keys_save"));
+            save.type = "button";
+            save.addEventListener("click", async () => {
+              save.disabled = true;
+              try {
+                await setOfficeKey(keyName, input.value.trim());
+                showToast(T("keys_saved"));
+                shell.querySelector("#btn-res").click();   // connected/masked を反映
+              } catch (err) {
+                save.disabled = false;
+                showToast(err.message, false);
+              }
+            });
+            kform.append(input, save);
+            row.append(kform);
+            input.focus();
+          });
+          row.append(btn);
+          if (pr.connected) {
+            // R65: 解除（value=""で行削除）。↻再送と同じ2クリック制＝誤爆ガード
+            const rv = mEl("button", "mkeyrevoke", T("keys_revoke"));
+            rv.type = "button";
+            let armed = 0;
+            rv.addEventListener("click", async () => {
+              if (!armed) {
+                armed = setTimeout(() => { armed = 0; rv.textContent = T("keys_revoke"); }, 3000);
+                rv.textContent = T("keys_revoke_arm");
+                return;
+              }
+              clearTimeout(armed);
+              rv.disabled = true;
+              try {
+                await setOfficeKey(keyName, "");
+                showToast(T("keys_revoked"));
+                shell.querySelector("#btn-res").click();
+              } catch (err) {
+                rv.disabled = false;
+                showToast(err.message, false);
+              }
+            });
+            row.append(rv);
+          }
+        }
+        sec.append(row);
+      }
+      modal.append(sec);
+    }
+  });
+  // クレジットのゲージをクリック→⚡（アカウント連携・台帳がある画面）を開く（R54ユーザーFB）
+  shell.querySelector("#gauges").addEventListener("click", () => {
+    shell.querySelector("#btn-res").click();
   });
 
   // ── 🧾ライセンス（状態表示＋キー登録） ─────────────────────────────
@@ -768,6 +1017,8 @@ export async function mount(root) {
   });
 
   // render() から参照できるように束ねる（描画は純粋なまま・状態はここに集約）
+  // 描画側（paintLabels）が読む演出状態。純粋なworldに混ぜない
+  shell._fx = { wakeActive: (sess) => now() < (wakeUntil.get(sess) || 0) };
   shell._ops = {
     setTrayActions: (acts) => { trayActions = acts; },
     selectedId: () => composeTarget?.id ?? null,
@@ -817,6 +1068,49 @@ export async function mount(root) {
     row.append(head, track);
     return row;
   };
+  // R55: 旧UIのCodexバー式リッチゲージ（プロバイダ名+planチップ+%大表示+太バー+窓/リセット残）
+  const fmtRemain = (resetsAt, nowEpoch) => {
+    if (!resetsAt || !nowEpoch) return "";
+    const s = Math.max(0, resetsAt - nowEpoch);
+    if (s >= 172800) return T("g_remain_d", Math.round(s / 86400));
+    if (s >= 5400) return T("g_remain_h", Math.round(s / 3600));
+    return T("g_remain_m", Math.max(1, Math.round(s / 60)));
+  };
+  const winLabel = (minutes) => {
+    if (!minutes) return "";
+    if (minutes <= 600) return T("g_win_5h");
+    if (minutes >= 9000) return T("g_win_week");
+    return T("g_win_h", Math.round(minutes / 60));
+  };
+  const provBar = (pct, warn) => {
+    const track = gEl("div", "gbar big");
+    const fill = gEl("i", warn ? "gfill warn" : "gfill");
+    // 3%や0%でも「ゲージが存在する」ことが見えるように最小フィルを敷く
+    fill.style.width = `${Math.max(2, Math.round(Math.min(100, Math.max(0, pct))))}%`;
+    track.append(fill);
+    return track;
+  };
+  const provBlock = (name, plan, pct) => {
+    const box = gEl("div", "gprov");
+    const head = gEl("div", "gprovhead");
+    head.append(gEl("b", "gname", name));
+    if (plan) head.append(gEl("span", "gplan", plan));
+    if (pct !== null) {
+      head.append(gEl("b", `gpct${pct >= 80 ? " gwarn" : ""}`, `${Math.round(pct)}%`));
+    }
+    box.append(head);
+    return box;
+  };
+  // R57: ログイン中アカウントのチップ（emailローカル部・title=フル。ローカル表示専用）。
+  // ヘッダ行は名前+plan+%で幅が尽きる＝チップは専用行に置く（詰め込むと縦書き潰れ・実測1敗）
+  const acctChip = (box, email) => {
+    if (!email) return;
+    const chip = gEl("span", "gacct", String(email).split("@")[0]);
+    chip.title = String(email);
+    const line = gEl("div", "gacctline");
+    line.append(chip);
+    box.append(line);
+  };
   const refreshGauges = async () => {
     if (document.hidden) return;
     // データ到着前は判定できない（初回は apply が起動する）。Pro未解錠
@@ -832,23 +1126,122 @@ export async function mount(root) {
       return;
     }
     const jpy = sb.fx?.jpyPerUsd || 155;
-    // クレジット消費（サブスク枠の使用率＝%）とコスト（¥）は別物なので分けて描く
+    // クレジット消費（サブスク枠の使用率＝%）とコスト（¥）は別物なので分けて描く。
+    // R55: 旧UIのCodexバー式＝プロバイダごとのブロック（planチップ・%大表示・太バー・
+    // 窓ラベル+リセット残時間・secondary窓は2本目）。実データが無い数値は出さない掟のまま
+    // （Claudeのサブスク枠%はAPIが無い＝バー化しない・トークン実測だけを見せる）。
+    const nowEpoch = Number(sb.generatedAt) || built?.generatedAt || 0;
     creditsBody.replaceChildren();
     moneyBody.replaceChildren();
     for (const pr of sb.providers || []) {
       if (pr.kind === "gauge" && pr.status === "ok") {
         const pct = pr.usedPercent ?? 0;
-        creditsBody.append(gaugeRow(pr.label || pr.id, pct / 100,
-          `${Math.round(pct)}%`, pct >= 80));
+        const box = provBlock(pr.label || pr.id, pr.plan || "", pct);
+        acctChip(box, pr.account?.email);
+        box.append(provBar(pct, pct >= 80));
+        const sub = [winLabel(pr.windowMinutes), fmtRemain(pr.resetsAt, nowEpoch)]
+          .filter(Boolean).join(" · ");
+        if (sub) box.append(gEl("span", "gsub", sub));
+        const sec = pr.secondary;
+        if (sec && sec.usedPercent != null) {
+          box.append(provBar(sec.usedPercent, sec.usedPercent >= 80));
+          const sub2 = [winLabel(sec.windowMinutes), fmtRemain(sec.resetsAt, nowEpoch),
+            `${Math.round(sec.usedPercent)}%`].filter(Boolean).join(" · ");
+          box.append(gEl("span", "gsub", sub2));
+        }
+        // R57: 別アカウントの前回確認スナップショット＝2アカウント運用でも両方の残枠が見える
+        for (const ac of (pr.accounts || []).filter((a) => !a.active).slice(0, 2)) {
+          if (ac.usedPercent == null) continue;
+          const bar = provBar(ac.usedPercent, ac.usedPercent >= 80);
+          bar.classList.add("pale");
+          box.append(bar);
+          const who = String(ac.email || ac.id || "?").split("@")[0];
+          const ago = (nowEpoch && ac.seenAt)
+            ? agoStr(Math.max(0, nowEpoch - ac.seenAt), lang()) : "";
+          box.append(gEl("span", "gsub",
+            [who, ago ? `${T("g_prev_seen")} ${ago}` : T("g_prev_seen"),
+             `${Math.round(ac.usedPercent)}%`].join(" · ")));
+        }
+        creditsBody.append(box);
       } else if (pr.kind === "external" && pr.connected && pr.cap) {
-        creditsBody.append(gaugeRow(pr.label, (pr.pct ?? 0) / 100,
-          `${Math.round(pr.pct ?? 0)}%`, (pr.pct ?? 0) >= 80));
+        const pct = pr.pct ?? 0;
+        const box = provBlock(pr.label || pr.id, "", pct);
+        box.append(provBar(pct, pct >= 80));
+        box.append(gEl("span", "gsub",
+          `${fmtTok(pr.used || 0)} / ${fmtTok(pr.cap)}`));
+        creditsBody.append(box);
       } else if (pr.kind === "tokens" && pr.tokens?.byModel) {
+        // Claude: R61=statusLine capture の実測枠%（rate_limits）が新鮮(15分以内)なら
+        // それを主役にし、推定のペースゲージは隠す（実測>推定・両方出すと二重表示）。
+        // 実測が無い/古いときだけ従来の「直近7日の5hピーク比」ペース（R55.1）へ戻す。
+        const sq = pr.subscription;
+        const live = (sq && sq.staleSec != null && sq.staleSec < 900
+          && (sq.fiveHour || sq.sevenDay)) ? sq : null;
+        const pace = !live && pr.pace && pr.pace.pct != null ? pr.pace : null;
+        const headPct = live ? (live.fiveHour?.pct ?? live.sevenDay?.pct)
+          : (pace ? pace.pct : null);
+        const box = provBlock(pr.label || pr.id,
+          live ? T("g_live_chip") : (pace ? T("g_pace_chip") : ""), headPct);
+        acctChip(box, live?.account?.email || pr.account?.email);
+        if (live) {
+          for (const [w, lab] of [[live.fiveHour, T("g_win_5h")],
+            [live.sevenDay, T("g_win_week")]]) {
+            if (!w) continue;
+            box.append(provBar(w.pct, w.pct >= 80));
+            box.append(gEl("span", "gsub",
+              [lab, fmtRemain(w.resetsAt, nowEpoch), `${Math.round(w.pct)}%`]
+                .filter(Boolean).join(" · ")));
+          }
+        } else if (pace) {
+          box.append(provBar(pace.pct, pace.pct >= 90));
+          box.append(gEl("span", "gsub", T("g_pace_sub", fmtTok(pace.peak5h || 0))));
+        }
+        const today = pr.tokens.today?.total || 0;
+        const last5h = pr.tokens.last5h?.total || 0;
+        box.append(gEl("span", "gsub",
+          `${T("g_tok_today", fmtTok(today))} · ${T("g_tok_5h", fmtTok(last5h))}`));
+        // R57: 2アカウント以上を観測している日は、アカウント別の当日消費ミニ行を出す
+        if ((pr.accounts || []).length >= 2) {
+          for (const ac of pr.accounts.slice(0, 3)) {
+            const row2 = gEl("div", `gacctrow${ac.active ? " on" : ""}`);
+            row2.append(gEl("i", "gadot"),
+              gEl("span", "galab", String(ac.email || ac.id || "?").split("@")[0]),
+              gEl("b", "", T("g_tok_today", fmtTok(ac.todayTok || 0))));
+            box.append(row2);
+          }
+        }
+        creditsBody.append(box);
         const usd = Object.values(pr.tokens.byModel).reduce((a, m) => a + (m.usd || 0), 0);
         const row = gEl("div", "ghead");
         row.append(gEl("span", "", T("g_today", pr.label)),
           gEl("b", "", `≈¥${Math.round(usd * jpy).toLocaleString()}`));
         moneyBody.append(row);
+      } else if (pr.kind === "login" && pr.status === "ok") {
+        const box = provBlock(pr.label || pr.id, "", null);
+        box.append(gEl("span", "gsub gok", T("res_login_yes")));
+        creditsBody.append(box);
+      } else if (pr.kind === "api" && pr.status === "ok") {
+        // R63: 上限が判明しているものだけバー。取れないものは金額テキストのみ
+        //（推測の%を作らない＝実測と推定を混ぜない掟の系）
+        const money = (v) => (pr.currency === "CNY" ? `CN¥${v.toFixed(2)}`
+          : pr.currency === "JPY" ? `¥${Math.round(v).toLocaleString()}`
+          : `$${v.toFixed(2)}`);
+        const box = provBlock(pr.label || pr.id,
+          pr.limitSource === "manual" ? T("api_budget_chip") : "",
+          pr.pct != null ? pr.pct : null);
+        if (pr.pct != null) {
+          box.append(provBar(pr.pct, pr.pct >= 80));
+          box.append(gEl("span", "gsub",
+            `${money(pr.spentMonth || 0)} / ${money(pr.limit)}`));
+        } else if (pr.spentMonth != null) {
+          box.append(gEl("span", "gsub", money(pr.spentMonth)));
+          box.append(gEl("span", "gsub gnolimit", T("api_no_limit")));
+        } else if (pr.balance != null) {
+          box.append(gEl("span", "gsub", T("api_balance", money(pr.balance))));
+        } else {
+          box.append(gEl("span", "gsub gnolimit", T("api_no_limit")));
+        }
+        creditsBody.append(box);
       }
     }
     if (sb.spend) {
@@ -897,6 +1290,8 @@ export async function mount(root) {
     stop(); stopLoop(); uninstall();
     window.removeEventListener("resize", onResize);
     window.removeEventListener("keydown", onKey);
+    document.removeEventListener("visibilitychange", onVis);
+    document.title = "AI Office";
     clearTimeout(toastTimer);
     clearInterval(gaugeTimer);
     disarmResend();
@@ -921,7 +1316,8 @@ function paintLabels(shell, scene, w) {
     if (!Number.isFinite(at.left) || !Number.isFinite(at.top)) continue;
     const el = document.createElement("div");
     el.className = `lbl st-${a.state} zone-${a.zone}${a.attention ? " attn" : ""}` +
-      (a.id === shell._traySel ? " sel" : "");
+      (a.id === shell._traySel ? " sel" : "") +
+      (shell._fx?.wakeActive?.(a.session) ? " wake" : "");   // R53.2 動き出しハイライト
     el.dataset.project = a.id;
     const dot = document.createElement("i");
     dot.className = "dot";
@@ -934,8 +1330,15 @@ function paintLabels(shell, scene, w) {
     host.append(el);
     // 足元チップ同士の軽い重なりだけ下へ逃がす（頭上スタックの塔は作らない）
     const r = el.getBoundingClientRect();
+    // R62: 端の席（左壁のソファ等）で名札が画面外へはみ出して名前が切れるのを防ぐ。
+    // チップは translateX(-50%) 基準なので、中心を [半幅, 幅-半幅] へ丸める
+    const half = r.width / 2;
+    const maxL = host.clientWidth - half - 2;
+    const left = maxL > half + 2
+      ? Math.min(Math.max(at.left, half + 2), maxL) : at.left;
+    if (left !== at.left) el.style.left = `${left}px`;
     let top = at.top + 6;
-    const box = () => ({ l: at.left - r.width / 2, r: at.left + r.width / 2,
+    const box = () => ({ l: left - r.width / 2, r: left + r.width / 2,
       t: top, b: top + r.height });
     for (let guard = 0; guard < 6; guard++) {
       const me = box();
@@ -967,10 +1370,12 @@ function applyStaticStrings(shell) {
   shell.querySelector("#greet").textContent = T("office_fallback");
   shell.querySelector("#sub").textContent = T("loading");
   shell.querySelector("#sheetsnd").title = T("snd_title");
+  shell.querySelector("#sheetterm").title = T("term_title");
   shell.querySelector("#composeinput").placeholder = T("compose_ph");
   shell.querySelector("#title-tasks").textContent = T("card_tasks");
   shell.querySelector("#title-hist").textContent = T("card_hist");
   shell.querySelector("#title-agents").textContent = T("card_agents");
+  shell.querySelector("#gauges").title = T("gauges_title");
 }
 
 function render(shell, w) {
@@ -984,6 +1389,8 @@ function render(shell, w) {
   }
   const attn = queue[ti] || null;
   shell._traySel = attn?.id ?? null;           // 足元チップの強調用（paintLabels が読む）
+  // R54-A: タブタイトルに❗件数（別タブ作業中でも視界に入る）
+  document.title = queue.length ? `(${queue.length}❗) AI Office` : "AI Office";
 
   // ── 左: ブランド＋ゾーン概況 ─────────────────────────────────
   shell.querySelector("#brandoffice").textContent = w.officeName || T("office_fallback");
@@ -1067,9 +1474,10 @@ function render(shell, w) {
     head.append(el("i", "adot"), el("b", "aname", a.name || "?"));
     if (a.crew > 1) head.append(el("span", "acrew", `×${a.crew}`));
     if (a.pending) head.append(el("span", "apend", "📨"));   // 投函済み・未配達（inbox待ち）
-    const act = el("div", "aact", a.attention
+    const act = el("div", "aact" +
+      (a.attention && a.approvalMin >= STARVE_MIN ? " starve" : ""), a.attention
       ? (a.question ? `❓ ${a.question}` : `❗ ${T("approval_min", a.approvalMin)}`)
-      : (a.activity || zoneLabel(a.zone)));
+      : (activityGloss(a, w.lang) || zoneLabel(a.zone)));
     if (!a.attention && a.age > 90) {
       act.append(el("i", "aage", ` · ${agoStr(a.age, w.lang)}`));   // 「いつの話か」を常に添える
     }

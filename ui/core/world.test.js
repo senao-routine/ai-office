@@ -3,9 +3,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  DESK_SLOTS, activityText, agoStr, assignSeats, attentionQueue, buildWorld,
-  countByZone, needsAttention, stableIndex, summarizeWorld, topAttention,
-  triageSort, zoneOf,
+  DESK_SLOTS, activityGloss, activityText, agoStr, assignRestSpots, assignSeats, attentionQueue, buildWorld,
+  countByZone, deliveryTransitions, needsAttention, stableIndex, summarizeWorld, tidyActivity,
+  topAttention, triageSort, zoneOf,
 } from "./world.js";
 
 const proj = (over = {}) => ({
@@ -196,4 +196,148 @@ test("summarizeWorld: 本文とパスを持ち出さない（回帰テストの�
 test("summarizeWorld: null 入力は null", () => {
   assert.equal(summarizeWorld(null), null);
   assert.equal(summarizeWorld("nope"), null);
+});
+
+// ── R53: tidyActivity（生ログ断片→人間が読む1行） ────────────────
+test("tidyActivity: 実測の途切れ断片（バッククォート+未閉括弧+パス）を整える", () => {
+  const raw = "報告中 配布手順書をまとめました（`やること/スライドキャスト_配布手順書_2026073";
+  assert.equal(tidyActivity(raw), "報告中 配布手順書をまとめました");
+});
+
+test("tidyActivity: 閉じた括弧・普通の文はそのまま", () => {
+  assert.equal(tidyActivity("実行中 verify.sh（3回目）"), "実行中 verify.sh（3回目）");
+  assert.equal(tidyActivity("Editing the launch checklist"), "Editing the launch checklist");
+});
+
+test("tidyActivity: パスはbasename化・URLは触らない", () => {
+  assert.equal(tidyActivity("編集中 tests/fixtures/world/basic.json"), "編集中 basic.json");
+  assert.equal(tidyActivity("調査中 https://example.com/a/b"), "調査中 https://example.com/a/b");
+});
+
+test("tidyActivity: 60字省略と空白正規化", () => {
+  const long = "実行中 " + "あ".repeat(80);
+  const out = tidyActivity(long);
+  assert.ok([...out].length <= 60);
+  assert.ok(out.endsWith("…"));
+  assert.equal(tidyActivity("  実行中   x  "), "実行中 x");
+});
+
+test("activityText: verb+target が tidy を通る", () => {
+  assert.equal(activityText({ verb: "編集中", target: "`server/office_server.py`" }),
+    "編集中 office_server.py");
+});
+
+// ── R53.2: deliveryTransitions（配達の手応え） ─────────────────
+test("deliveryTransitions: 📨解消=woke・❗解消=answered・新規/継続は無視", () => {
+  const prev = [
+    proj({ session: "s1", pending: true }),
+    proj({ session: "s2", attention: true }),
+    proj({ session: "s3", pending: true }),
+    proj({ session: "s5", attention: true }),
+  ];
+  const next = [
+    proj({ session: "s1", pending: false }),          // woke
+    proj({ session: "s2", attention: false }),        // answered
+    proj({ session: "s3", pending: true }),           // 継続=無視
+    proj({ session: "s4", pending: false }),          // 新規=無視
+  ];                                                  // s5退勤=無視
+  const out = deliveryTransitions(prev, next);
+  assert.deepEqual(out.map((t) => [t.session, t.kind]),
+    [["s1", "woke"], ["s2", "answered"]]);
+  assert.deepEqual(deliveryTransitions(null, next.slice(0, 1)), []);
+  assert.deepEqual(deliveryTransitions(prev, null), []);
+});
+
+test("tidyActivity: 先頭/途中のマークダウン見出し・引用記号を除去（R54実データ）", () => {
+  assert.equal(tidyActivity("指示待ち # 🎬 /work-start「全工程完了」"),
+    "指示待ち 🎬 /work-start「全工程完了」");
+  assert.equal(tidyActivity("> 引用でした"), "引用でした");
+  assert.equal(tidyActivity("C# のコード"), "C# のコード");   // 単語内の#は温存
+});
+
+// ── R59: 休憩スポットの分散割当 ────────────────────────────────
+// spots は本番と同じ構成（lounge3 / sofa2 / bench3）
+const REST_FIXTURE = [
+  { area: "lounge" }, { area: "lounge" }, { area: "lounge" },
+  { area: "sofa" }, { area: "sofa" },
+  { area: "bench" }, { area: "bench" }, { area: "bench" },
+];
+const restAreas = (map, spots = REST_FIXTURE) =>
+  [...map.values()].map((i) => spots[i].area);
+const countBy = (list) => list.reduce((m, k) => ({ ...m, [k]: (m[k] || 0) + 1 }), {});
+
+test("assignRestSpots: 決定論・重複なし・restingだけ・あふれは重なる", () => {
+  const mk = (id, state = "resting") => ({ ...proj({ session: id, state }), id });
+  const agents = [mk("r1"), mk("r2"), mk("r3"), mk("w1", "working")];
+  const a = assignRestSpots(agents, REST_FIXTURE);
+  const b = assignRestSpots(agents, REST_FIXTURE);
+  assert.deepEqual([...a.entries()].sort(), [...b.entries()].sort());   // 決定論
+  assert.equal(a.size, 3, "resting の3体だけ割当");
+  assert.equal(new Set([...a.values()]).size, 3, "スポットが重複しない");
+  assert.equal(a.has("w1"), false);
+  // 容量あふれ（9体>8席）: 9体目も必ずどこかに座る（Mapに載る）
+  const many = Array.from({ length: 9 }, (_, i) => mk(`m${i}`));
+  const c = assignRestSpots(many, REST_FIXTURE);
+  assert.equal(c.size, 9);
+  for (const v of c.values()) assert.ok(v >= 0 && v < REST_FIXTURE.length);
+});
+
+// R62: 「手前のソファに溜まりすぎ」FB＝エリア単位のラウンドロビンで均等に散る
+test("assignRestSpots: 2体なら必ず別エリア・3体なら3エリアに1体ずつ", () => {
+  const mk = (id) => ({ ...proj({ session: id, state: "resting" }), id });
+  for (const ids of [["a1", "a2"], ["zz", "qq"], ["制作本部", "受託案件"]]) {
+    const areas = restAreas(assignRestSpots(ids.map(mk), REST_FIXTURE));
+    assert.equal(new Set(areas).size, 2, `${ids} が同じエリアに固まった: ${areas}`);
+  }
+  const three = restAreas(assignRestSpots(["b1", "b2", "b3"].map(mk), REST_FIXTURE));
+  assert.deepEqual(countBy(three), { lounge: 1, sofa: 1, bench: 1 });
+});
+
+test("assignRestSpots: 6体でも各エリア2体以内（1箇所に溜まらない）", () => {
+  const mk = (id) => ({ ...proj({ session: id, state: "resting" }), id });
+  const six = restAreas(assignRestSpots(
+    ["c1", "c2", "c3", "c4", "c5", "c6"].map(mk), REST_FIXTURE));
+  const n = countBy(six);
+  for (const [area, c] of Object.entries(n)) {
+    assert.ok(c <= 2, `${area} に ${c} 体たまった: ${JSON.stringify(n)}`);
+  }
+  assert.equal(six.length, 6);
+  // 8体=満席でも定員（lounge3/sofa2/bench3）を超えない
+  const eight = restAreas(assignRestSpots(
+    Array.from({ length: 8 }, (_, i) => mk(`d${i}`)), REST_FIXTURE));
+  assert.deepEqual(countBy(eight), { lounge: 3, sofa: 2, bench: 3 });
+});
+
+// ── R60: activityGloss（「今何してます?」の一言要約） ────────────
+test("activityGloss: work.now が最優先（タスク管理の人間語）", () => {
+  const a = proj({ verb: "実行中", target: "verify.sh",
+    work: { now: ["ビジュアル回帰の実行", "次の何か"] } });
+  assert.equal(activityGloss(a), "📋 ビジュアル回帰の実行");
+});
+
+test("activityGloss: verb×対象のカテゴリ判定（ja）", () => {
+  assert.equal(activityGloss(proj({ verb: "実行中", target: "bash verify.sh" })), "🧪 テストを実行中");
+  assert.equal(activityGloss(proj({ verb: "実行中", target: "git push origin master" })), "📦 変更をコミット/反映中");
+  assert.equal(activityGloss(proj({ verb: "実行中", target: "npm install three" })), "🔧 ビルド/セットアップ中");
+  assert.equal(activityGloss(proj({ verb: "実行中", target: "何かのコマンド" })), "⚙️ 処理を実行中");
+  assert.equal(activityGloss(proj({ verb: "編集中", target: "office_server.py" })), "✍️ コードを編集中");
+  assert.equal(activityGloss(proj({ verb: "編集中", target: "README.md" })), "📝 ドキュメントを執筆中");
+  assert.equal(activityGloss(proj({ verb: "調査中", target: "x" })), "🔎 調査・読み込み中");
+  assert.equal(activityGloss(proj({ verb: "報告中", target: "長い報告文…" })), "✅ 結果を報告中");
+  assert.equal(activityGloss(proj({ verb: "指示待ち", target: "" })), "⏳ 次の指示を待っています");
+  assert.equal(activityGloss(proj({ kind: "think", verb: "考え中…", target: "次の一手" })), "🤔 次の一手を考え中");
+  assert.equal(activityGloss(proj({ state: "resting", verb: "休憩中" })), "☕ ひと休み中");
+});
+
+test("activityGloss: en の verb/文言（demo world・lang=en）", () => {
+  assert.equal(activityGloss(proj({ verb: "Running", target: "verify.sh" }), "en"), "🧪 Running tests");
+  assert.equal(activityGloss(proj({ verb: "Editing", target: "scene3d.js" }), "en"), "✍️ Writing code");
+  assert.equal(activityGloss(proj({ verb: "Waiting for input", target: "" }), "en"), "⏳ Waiting for input");
+  assert.equal(activityGloss(proj({ verb: "Thinking", target: "…" }), "en"), "🤔 Thinking it through");
+});
+
+test("activityGloss: 未知パターンは tidy 済みフォールバック・空でも落ちない", () => {
+  assert.equal(activityGloss(proj({ verb: "点検中", target: "`server/x.py`" })), "点検中 x.py");
+  assert.equal(activityGloss(null), "");
+  assert.equal(activityGloss(proj({ verb: "", target: "", state: "working" })), "⚙️ 処理を実行中");
 });

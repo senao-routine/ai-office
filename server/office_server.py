@@ -146,7 +146,7 @@ DEVICES_FILE = _HOME / ".claude" / "office_devices.json"   # P3: スマホ端末
 PORT = 4780
 SHOW_WINDOW = int(os.environ.get("OFFICE_SHOW_WINDOW", 3 * 3600))  # 3時間以内に動いたセッションを「出勤中」として表示（R23.5退勤早期化・verify.shカナリア/works watchdogの窓と同期）
 TAIL_BYTES = 80_000
-TASK_TAIL_BYTES = 2 * 1024 * 1024
+TASK_TAIL_BYTES = 8 * 1024 * 1024   # R64: 初回窓。以降は増分読みなのでコストは初回のみ
 CACHE_SEC = 2.0
 DEFAULT_OFFICE_NAME = "AIオフィス"
 
@@ -600,13 +600,18 @@ def _task_result_text(block):
     return ""
 
 
-def _task_lines(path):
-    """末尾2MBからタスク関連行だけを軽量に拾う。
+# R64: セッションごとの増分読みオフセット {session_key: {"offset": int, "seen": epoch}}。
+# 旧実装は毎回「末尾2MB窓」だけを読むため、長大セッション（実測55MB）ではTaskCreateが
+# 窓外へ流れてタスクが丸ごと消えた。前回読んだ位置から増分だけ処理して恒久追跡する。
+_TASK_OFFSETS = {}
+
+
+def _pick_task_lines(lines):
+    """行リストからタスク関連行だけを軽量に拾う。
 
     TaskCreateのIDは直後のtool_result本文にしか出ないため、TaskCreate行の
     次の物理行も候補に含める。その他の行はjson.loadsしない。
     """
-    lines = tail_lines(path, TASK_TAIL_BYTES)
     if not lines:
         return []
     indexes = set()
@@ -616,6 +621,50 @@ def _task_lines(path):
             if '"TaskCreate"' in line and index + 1 < len(lines):
                 indexes.add(index + 1)
     return [(index, lines[index]) for index in sorted(indexes)]
+
+
+def _task_lines(path, session_key=None, now=None):
+    """タスク関連行の取得。session_key があれば増分読み:
+    初回=末尾TASK_TAIL_BYTES窓・以降=前回オフセットからの新規行のみ。
+    オフセットは「最後に読んだ完全行(\\n終端)の直後」＝書き込み途中の不完全行を跨がない。
+    末尾の完全行がTaskCreateなら、その行頭で止める（対になるtool_resultが未着のため
+    次回まとめて処理する。同一IDの再処理は"set"上書きで冪等）。ファイル縮小はリセット。"""
+    try:
+        size = path.stat().st_size
+    except OSError:
+        return []
+    state = _TASK_OFFSETS.get(session_key) if session_key else None
+    start = None
+    if state and 0 <= state["offset"] <= size:
+        start = state["offset"]
+    if start is None:
+        start = max(0, size - TASK_TAIL_BYTES)
+    if start >= size:
+        if state is not None and now is not None:
+            state["seen"] = now
+        return []
+    try:
+        with open(path, "rb") as f:
+            f.seek(start)
+            data = f.read(size - start)
+    except OSError:
+        return []
+    end_of_last_full = data.rfind(b"\n")
+    if end_of_last_full < 0:
+        return []                      # 完全行がまだ無い＝次回へ持ち越し
+    chunk = data[:end_of_last_full + 1]
+    text = chunk.decode("utf-8", errors="ignore")
+    lines = text.splitlines()
+    if start > 0 and state is None and lines:
+        lines = lines[1:]              # tail窓の先頭は行の途中＝捨てる（従来と同じ）
+    consumed = len(chunk)
+    if lines and '"TaskCreate"' in lines[-1]:
+        consumed -= len(lines[-1].encode("utf-8", errors="ignore")) + 1
+        lines = lines[:-1]
+    if session_key:
+        _TASK_OFFSETS[session_key] = {"offset": start + consumed,
+                                      "seen": now if now is not None else 0.0}
+    return _pick_task_lines(lines)
 
 
 def _fallback_task_id(order, used):
@@ -753,13 +802,20 @@ def _remembered_tasks(session_key, task_lines, now, fallback_time):
             task["status"] = value["status"]
             task["ts"] = value["ts"]
 
+    # R64: 剪定は「完了タスクのみ」60分（作業台の掃除）。pending/in_progress は
+    # 時間で消さない＝タスク操作が1時間止まっただけで進捗表示が全消えした実測バグの修正。
+    # 未完了の無限滞留は TodoWrite の replace とセッション退勤剪定（下）で有界。
     for task_id in [task_id for task_id, task in memory.items()
-                    if now - float(task.get("ts", fallback_time)) > _TASK_WINDOW]:
+                    if task.get("status") == "completed"
+                    and now - float(task.get("ts", fallback_time)) > _TASK_WINDOW]:
         del memory[task_id]
-    for key in [key for key, entries in _TASK_MEMORY.items()
-                if key != session_key and entries
-                and now - max(float(task.get("ts", now)) for task in entries.values()) > _TASK_WINDOW]:
+    # セッション単位の剪定は「最後にスキャンで観測してから SHOW_WINDOW」＝退勤と同期
+    # （タスクtsの新旧で消すと、未完了持ちの静かなセッションが道連れになる）
+    for key in [key for key in list(_TASK_MEMORY)
+                if key != session_key
+                and now - (_TASK_OFFSETS.get(key) or {}).get("seen", 0.0) > SHOW_WINDOW]:
         _TASK_MEMORY.pop(key, None)
+        _TASK_OFFSETS.pop(key, None)
     if not memory:
         _TASK_MEMORY.pop(session_key, None)
         return {}
@@ -796,7 +852,7 @@ def parse_session(path, now):
     mtime = path.stat().st_mtime
     age = now - mtime
     lines = tail_lines(path)
-    task_lines = _task_lines(path)
+    task_lines = _task_lines(path, session_key=str(path), now=now)
     if not lines:
         return None
 
@@ -1316,7 +1372,11 @@ _cache = {"t": 0.0, "data": None}
 _OPENCLAW_CACHE_SEC = 60.0
 _openclaw_cache = {"at": None, "data": None}
 _lock = threading.Lock()
-_KEY_NAMES = frozenset({"OPENAI_API_KEY", "X_BEARER_TOKEN", "OPENAI_ADMIN_KEY"})
+_KEY_NAMES = frozenset({
+    "OPENAI_API_KEY", "X_BEARER_TOKEN", "OPENAI_ADMIN_KEY",
+    # R63: APIプロバイダ統合コスト（保存先・検証は既存経路のまま）
+    "OPENROUTER_API_KEY", "MOONSHOT_API_KEY", "DEEPSEEK_API_KEY", "GROQ_API_KEY",
+})
 _KEY_VALUE = re.compile(r"^[A-Za-z0-9%_\-\.=/+]{20,300}$")
 
 
@@ -1575,14 +1635,42 @@ def keys_status():
             "masked": masked("OPENAI_ADMIN_KEY"),
             "hint": "organization Admin key（sk-admin…）を保存",
         },
+        # R63: APIプロバイダ（消費・残高の自動取得）
+        {
+            "id": "openrouter", "label": "OpenRouter（消費・上限）", "mode": "key",
+            "connected": bool(key_values["OPENROUTER_API_KEY"]),
+            "masked": masked("OPENROUTER_API_KEY"),
+            "hint": "APIキー（sk-or-v1…）を保存＝当月消費とキー上限を取得",
+        },
+        {
+            "id": "moonshot", "label": "Kimi / Moonshot（残高）", "mode": "key",
+            "connected": bool(key_values["MOONSHOT_API_KEY"]),
+            "masked": masked("MOONSHOT_API_KEY"),
+            "hint": "api.moonshot.ai のAPIキーを保存（残高のみ取得可）",
+        },
+        {
+            "id": "deepseek", "label": "DeepSeek（残高）", "mode": "key",
+            "connected": bool(key_values["DEEPSEEK_API_KEY"]),
+            "masked": masked("DEEPSEEK_API_KEY"),
+            "hint": "APIキーを保存（残高のみ取得可）",
+        },
+        {
+            "id": "groq", "label": "Groq（予算のみ）", "mode": "key",
+            "connected": bool(key_values["GROQ_API_KEY"]),
+            "masked": masked("GROQ_API_KEY"),
+            "hint": "消費APIが無いプロバイダ＝手動で予算上限を設定して使う",
+        },
     ]}
 
 
 def set_office_key(name, value):
-    """許可済みのキーを office_secrets へ原子的に保存する。値は応答・ログへ出さない。"""
+    """許可済みのキーを office_secrets へ原子的に保存する。値は応答・ログへ出さない。
+    R65: value="" は解除＝該当行を削除する（存在しないキーの解除は冪等に成功。
+    20文字以上のバリデーションは非空値のみに適用）。"""
     if not isinstance(name, str) or name not in _KEY_NAMES:
         return False, "キー名が不正です"
-    if not isinstance(value, str) or not _KEY_VALUE.fullmatch(value):
+    delete = value == ""
+    if not delete and (not isinstance(value, str) or not _KEY_VALUE.fullmatch(value)):
         return False, "キー値の形式が不正です"
 
     target = _office_secrets_file()
@@ -1594,20 +1682,25 @@ def set_office_key(name, value):
             except FileNotFoundError:
                 lines = []
 
-            replacement = f"{name}={value}"
-            updated = []
-            replaced = False
-            for line in lines:
-                if line.partition("=")[:2] == (name, "="):
-                    if not replaced:
-                        updated.append(replacement)
-                        replaced = True
-                else:
-                    updated.append(line)
-            if not replaced:
-                updated.append(replacement)
+            if delete:
+                updated = [line for line in lines
+                           if line.partition("=")[:2] != (name, "=")]
+            else:
+                replacement = f"{name}={value}"
+                updated = []
+                replaced = False
+                for line in lines:
+                    if line.partition("=")[:2] == (name, "="):
+                        if not replaced:
+                            updated.append(replacement)
+                            replaced = True
+                    else:
+                        updated.append(line)
+                if not replaced:
+                    updated.append(replacement)
 
-            tmp.write_text("\n".join(updated) + "\n", encoding="utf-8")
+            tmp.write_text("\n".join(updated) + ("\n" if updated else ""),
+                           encoding="utf-8")
             os.chmod(tmp, 0o600)
             os.replace(tmp, target)
             os.chmod(target, 0o600)
@@ -1618,7 +1711,8 @@ def set_office_key(name, value):
                 tmp.unlink(missing_ok=True)
             except OSError:
                 pass
-    return True, "保存しました"
+    return True, (L_now("解除しました", "removed") if delete
+                  else L_now("保存しました", "saved"))
 
 
 def office_json():
@@ -2087,6 +2181,154 @@ def launch_claude(path):
         return False
 
 
+# ── R53: ロボ→実ターミナルジャンプ（session → 実プロセス → ホストアプリを前面へ） ──
+# claude CLI プロセスはセッションIDの痕跡を持たない（transcriptのfdも掴まない・実測）。
+# 対応付けは「cwd一致 ＋ プロセス起動時刻とtranscript先頭行時刻の近さ」のヒューリスティック。
+# --resume 再開セッションは時刻が離れるが cwd 一致の最近接へ縮退（同cwd複数でも実用上十分）。
+
+def _claude_procs():
+    """tty付きの claude CLI プロセス一覧 [{pid,tty,started,cwd}]（bg-pty-host等のデーモン除外）。"""
+    try:
+        r = subprocess.run(["ps", "-eo", "pid=,tty=,lstart=,command="],
+                           capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    procs = []
+    for ln in r.stdout.splitlines():
+        parts = ln.split(None, 7)          # pid tty [lstart=5語] command...
+        if len(parts) < 8 or not parts[1].startswith("ttys"):
+            continue
+        cmd = parts[7]
+        base = cmd.split()[0] if cmd else ""
+        if base != "claude" and not base.endswith("/claude"):
+            continue
+        if "bg-pty-host" in cmd or "bg-spare" in cmd:
+            continue
+        try:
+            started = time.mktime(time.strptime(" ".join(parts[2:7]),
+                                                "%a %b %d %H:%M:%S %Y"))
+        except ValueError:
+            started = 0.0
+        cwd = ""
+        try:
+            out = subprocess.run(["lsof", "-a", "-p", parts[0], "-d", "cwd", "-Fn"],
+                                 capture_output=True, text=True, timeout=10).stdout
+            for l2 in out.splitlines():
+                if l2.startswith("n"):
+                    cwd = l2[1:]
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+        procs.append({"pid": parts[0], "tty": parts[1], "started": started, "cwd": cwd})
+    return procs
+
+
+def _match_proc(cwd, first_ts, procs):
+    """cwd一致の中から起動時刻が transcript 先頭に最も近いものを選ぶ（純関数・テスト可能）。"""
+    cand = [p for p in procs if p.get("cwd") and nfc(p["cwd"]) == nfc(cwd or "")]
+    if not cand:
+        return None
+    if first_ts:
+        return min(cand, key=lambda p: abs((p.get("started") or 0) - first_ts))
+    return max(cand, key=lambda p: p.get("started") or 0)
+
+
+def _session_meta(session):
+    """(cwd, transcript先頭行のepoch秒|None) を返す。scanキャッシュ→transcript直読の順。"""
+    cwd = ""
+    data = _cache.get("data") or {}
+    for e in (data.get("employees") or []):
+        if e.get("session") == session:
+            cwd = e.get("cwd") or ""
+            break
+    first_ts = None
+    try:
+        for d in PROJECTS.iterdir():
+            f = d / f"{session}.jsonl"
+            if f.is_file():
+                with f.open(encoding="utf-8", errors="replace") as fh:
+                    for ln in fh:
+                        try:
+                            head = json.loads(ln)
+                        except json.JSONDecodeError:
+                            continue
+                        cwd = cwd or head.get("cwd") or ""
+                        ts = head.get("timestamp")
+                        if isinstance(ts, str):
+                            try:
+                                first_ts = time.mktime(time.strptime(
+                                    ts[:19], "%Y-%m-%dT%H:%M:%S")) - time.timezone
+                            except ValueError:
+                                pass
+                        break
+                break
+    except OSError:
+        pass
+    return cwd, first_ts
+
+
+def _host_app(pid):
+    """親プロセスを辿ってホストアプリ（.appバンドル）のパスを返す（Zed/Terminal/iTerm等）。"""
+    for _ in range(8):
+        try:
+            out = subprocess.run(["ps", "-o", "ppid=,comm=", "-p", str(pid)],
+                                 capture_output=True, text=True, timeout=10).stdout.strip()
+        except (OSError, subprocess.TimeoutExpired):
+            return ""
+        parts = out.split(None, 1)
+        if len(parts) < 2:
+            return ""
+        ppid, comm = parts[0], parts[1]
+        if ".app/" in comm:
+            return comm.split(".app/")[0] + ".app"
+        if ppid in ("0", "1"):
+            return ""
+        pid = ppid
+    return ""
+
+
+def focus_terminal(session):
+    """そのセッションが動いている実ターミナルを前面へ。(ok, message) を返す。
+    Terminal.app はタブ精度（tabのtty一致）・その他のホストアプリはアプリ前面化。
+    OFFICE_FAKE_FOCUS はテスト用マーカー（osascript/psを実行しない）。"""
+    fake = os.environ.get("OFFICE_FAKE_FOCUS")
+    if fake:
+        Path(fake).write_text(json.dumps({"session": session}), encoding="utf-8")
+        return True, "FAKE"
+    cwd, first_ts = _session_meta(session)
+    if not cwd:
+        return False, L_now("このセッションの作業フォルダを特定できません",
+                            "couldn't resolve this session's working directory")
+    proc = _match_proc(cwd, first_ts, _claude_procs())
+    if not proc:
+        return False, L_now("実行中のターミナルが見つかりません（セッション終了済み?）",
+                            "no running terminal found (session may have exited)")
+    app = _host_app(proc["pid"])
+    app_name = Path(app).stem if app else ""
+    try:
+        if app_name == "Terminal":
+            script = ('tell application "Terminal"\n'
+                      '  activate\n'
+                      '  repeat with w in windows\n'
+                      '    repeat with t in tabs of w\n'
+                      f'      if (tty of t) is "/dev/{proc["tty"]}" then\n'
+                      '        set selected of t to true\n'
+                      '        set index of w to 1\n'
+                      '        return "ok"\n'
+                      '      end if\n'
+                      '    end repeat\n'
+                      '  end repeat\n'
+                      'end tell')
+            subprocess.run(["osascript", "-e", script],
+                           capture_output=True, text=True, timeout=15)
+        elif app:
+            subprocess.run(["open", app], capture_output=True, timeout=15)
+        else:
+            return False, L_now("ホストアプリを特定できません", "couldn't find the host app")
+    except (OSError, subprocess.TimeoutExpired):
+        return False, L_now("前面化に失敗しました", "failed to bring the app forward")
+    return True, (app_name or "Terminal")
+
+
 def add_project(path, name, role, gen_sprite=False, launch=False):
     """office_config.json へ登録し、キャラ生成とclaude起動をキックする"""
     if not isinstance(path, str) or not path.strip():
@@ -2495,6 +2737,18 @@ class Handler(BaseHTTPRequestHandler):
         extra = {}
         if self.path.startswith("/api/instruct"):
             ok, msg = post_instruction(data.get("session", ""), data.get("text", ""))
+        elif route == "/api/terminal/focus":
+            # R53: ロボ→実ターミナルジャンプ（loopback+CSRF配下・osascriptはローカル操作のみ）
+            sess = data.get("session", "")
+            if not re.fullmatch(r"[a-zA-Z0-9-]{8,64}", sess or ""):
+                ok, msg = False, "session id が不正です"
+            elif sess.startswith("oc-"):
+                ok, msg = False, L_now("外部エージェントにローカルターミナルはありません",
+                                       "external agents have no local terminal")
+            else:
+                ok, msg = focus_terminal(sess)
+                if ok:
+                    extra = {"app": msg}
         elif route == "/api/layout":
             if "roomPins" in data and "layout" not in data:
                 ok, msg = set_room_pins(data["roomPins"])
@@ -2548,6 +2802,8 @@ class Handler(BaseHTTPRequestHandler):
             ok, msg = status_board.spend_apply(data)
         elif self.path.startswith("/api/status_board/fx"):
             ok, msg = status_board.fx_apply(data)
+        elif self.path.startswith("/api/status_board/budget"):
+            ok, msg = status_board.budget_apply(data)      # R63: 手動予算
         elif self.path.startswith("/api/status_board/ledger"):
             ok, msg = status_board.ledger_apply(data)
         elif self.path.startswith("/api/license/set"):
@@ -2636,7 +2892,7 @@ def notify_mac(title, body):
     try:
         subprocess.run(
             ["osascript", "-e",
-             'display notification "{}" with title "{}"'.format(
+             'display notification "{}" with title "{}" sound name "Glass"'.format(
                  str(body).replace("\\", "").replace('"', "'")[:120],
                  str(title).replace("\\", "").replace('"', "'")[:60])],
             capture_output=True, timeout=10)
@@ -2645,14 +2901,62 @@ def notify_mac(title, body):
 
 
 def attention_diff(prev_ids, roster):
-    """❗（質問/承認まち）のエッジ検出。新規に待ち始めたプロジェクトだけ返す。"""
+    """❗（質問/承認まち）のエッジ検出。新規に待ち始めたプロジェクトだけ
+    [{disp, question, approvalMin}] で返す（R53.2: 通知本文に質問プレビューを載せるため。
+    ローカルMacの通知＝transcript自体が手元にある前提なので本文露出はPWA Pushと別基準）。"""
     cur = {}
     for prj in roster or []:
         if prj.get("question") or (prj.get("approvalMin") or 0) > 0:
-            cur[prj.get("projectId") or prj.get("session") or ""] = \
-                prj.get("disp") or "?"
+            cur[prj.get("projectId") or prj.get("session") or ""] = {
+                "disp": prj.get("disp") or "?",
+                "question": prj.get("question") or "",
+                "approvalMin": prj.get("approvalMin") or 0,
+            }
     new_ids = [pid for pid in cur if pid not in (prev_ids or set())]
     return [cur[pid] for pid in new_ids], set(cur)
+
+
+def _attn_track(seen, roster, now_ts):
+    """❗の滞在時間トラッキング（純関数・R54）。seen={projectId: 初見epoch} を更新し、
+    解消した分の待たせ秒リストを返す。日報の「答えた❗・平均待たせ時間」の材料。"""
+    cur = set()
+    for prj in roster or []:
+        if prj.get("question") or (prj.get("approvalMin") or 0) > 0:
+            cur.add(prj.get("projectId") or prj.get("session") or "")
+    new_seen = {pid: ts for pid, ts in (seen or {}).items() if pid in cur}
+    for pid in cur:
+        new_seen.setdefault(pid, now_ts)
+    resolved = [max(0.0, now_ts - ts) for pid, ts in (seen or {}).items()
+                if pid not in cur]
+    return new_seen, resolved
+
+
+def _append_daily_stats(resolved_secs, day):
+    """DAILY_DIR/<day>.stats.json へ応答実績を積む（best-effort・watcherスレッド専用=競合なし）。"""
+    if not resolved_secs:
+        return
+    p = DAILY_DIR / f"{day}.stats.json"
+    try:
+        d = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+    except (OSError, json.JSONDecodeError):
+        d = {}
+    d["answered"] = (d.get("answered") or 0) + len(resolved_secs)
+    d["totalWaitSec"] = (d.get("totalWaitSec") or 0) + sum(resolved_secs)
+    try:
+        DAILY_DIR.mkdir(parents=True, exist_ok=True)
+        tmp = p.with_name(p.name + ".tmp")
+        tmp.write_text(json.dumps(d), encoding="utf-8")
+        tmp.replace(p)
+    except OSError:
+        pass
+
+
+def _load_daily_stats(day):
+    try:
+        d = json.loads((DAILY_DIR / f"{day}.stats.json").read_text(encoding="utf-8"))
+        return d if isinstance(d, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
 
 
 def build_daily_report(office, date_label):
@@ -2671,21 +2975,38 @@ def build_daily_report(office, date_label):
         lines.append(f"- 最多完了: {top.get('disp')} "
                      f"({top['work']['counts'].get('completed')}件)")
     body = f"完了{done}件 / {len(roster)}プロジェクト稼働"
+    # R54: あなたの応答実績（watcherが計測した❗の解消数と平均待たせ時間）
+    stats = _load_daily_stats(date_label)
+    answered = stats.get("answered") or 0
+    if answered:
+        avg_min = round((stats.get("totalWaitSec") or 0) / answered / 60)
+        lines.append(f"- 答えた❗: {answered} 件（平均待たせ {avg_min}分）")
+        body += f" / ❗応答{answered}件"
     return "🏢 今日のAIオフィス", body, "\n".join(lines) + "\n"
 
 
 def _watch_loop():
     """60秒ごとに❗エッジ検出→通知・18時以降に日報（日1回）。"""
     prev = set()
+    seen = {}      # R54: ❗の滞在時間（projectId→初見epoch）＝日報の応答実績
     while True:
         time.sleep(60)
         try:
             office = office_json()
-            new_disps, prev = attention_diff(prev, office.get("roster"))
-            if new_disps:
-                extra = f" ほか{len(new_disps) - 1}件" if len(new_disps) > 1 else ""
-                notify_mac("❗ AIオフィス",
-                           f"{new_disps[0]} があなたの返事を待っています{extra}")
+            seen, resolved = _attn_track(seen, office.get("roster"), time.time())
+            if resolved:
+                _append_daily_stats(resolved, datetime.now().strftime("%Y-%m-%d"))
+            new_items, prev = attention_diff(prev, office.get("roster"))
+            if new_items:
+                top = new_items[0]
+                extra = (L_now(f" ほか{len(new_items) - 1}件",
+                               f" (+{len(new_items) - 1} more)")
+                         if len(new_items) > 1 else "")
+                # 質問はプレビューを載せる＝通知だけで「何を聞かれているか」が分かる
+                what = (top["question"][:80] if top["question"]
+                        else L_now(f"承認まち {top['approvalMin']}分",
+                                   f"approval wait {top['approvalMin']}m"))
+                notify_mac(f"❗ {top['disp']}{extra}", what)
             now_local = datetime.now()
             if now_local.hour >= DAILY_HOUR:
                 day = now_local.strftime("%Y-%m-%d")

@@ -78,10 +78,102 @@ function fromEmployee(e) {
   return { ...e, projectId: e.session, name: e.dept, crew: 1, sessions: [] };
 }
 
+/**
+ * ターミナルの生ログ断片を「人間が読む1文」へ整える純関数（R53提案#1）。
+ * - マークダウン残骸（バッククォート・強調）を除去
+ * - パスらしきトークンは basename だけに（「やること/…_20260731.md」→ファイル名）
+ * - 閉じられていない開き括弧以降（サーバー側の文字数切りで途切れた断片）をカット
+ * - max 文字で省略（既定60）
+ */
+export function tidyActivity(s, max = 60) {
+  let t = String(s ?? "").replace(/[`*]+/g, "");
+  // 見出し/引用のマークダウン記号（実データで「指示待ち # 🎬 …」が出た＝R54自己レビュー）
+  t = t.replace(/(^|\s)[#>]{1,3}\s+/g, "$1");
+  // パス→basename（スラッシュ区切り2要素以上・URLは触らない）
+  t = t.replace(/(^|[\s（(「\[])((?:[^\s／/（）()「」\[\]]+\/){1,}[^\s（）()「」\[\]]+)/g,
+    (m, pre, path) => path.includes("://") ? m : pre + path.split("/").pop());
+  // 対応の取れない開き括弧＝途切れ断片。最初の「余り開き括弧」の位置で切る
+  for (const [o, c] of [["（", "）"], ["(", ")"], ["「", "」"], ["[", "]"]]) {
+    let depth = 0;
+    let firstOpen = -1;
+    for (let i = 0; i < t.length; i++) {
+      if (t[i] === o) {
+        if (depth === 0) firstOpen = i;
+        depth += 1;
+      } else if (t[i] === c) {
+        depth = Math.max(0, depth - 1);
+        if (depth === 0) firstOpen = -1;
+      }
+    }
+    if (depth > 0 && firstOpen >= 0) t = t.slice(0, firstOpen);
+  }
+  t = t.replace(/\s+/g, " ").trim();
+  if ([...t].length > max) t = [...t].slice(0, max - 1).join("").trimEnd() + "…";
+  return t;
+}
+
 /** 名札の下に出す1行。「何をしているか」が常に見えていること（吹き出しは演出、これは事実）。 */
 export function activityText(p) {
   if (!p) return "";
-  return [p.verb, p.target].filter(Boolean).join(" ").trim();
+  return tidyActivity([p.verb, p.target].filter(Boolean).join(" ").trim());
+}
+
+// ── R60: 「今何してます?」の一言要約（一覧=要約・シート=詳細 の二層化） ──
+// ターミナル語をそのまま貼らず、人間が読むカテゴリ一言に畳む。判定は決定論ルール
+// （LLM呼び出しなし＝プライバシー/速度/決定論の掟）。core層なので文言はlang引数分岐
+//（strings.jsはiso層＝coreからimportできない。agoStrと同じ流儀）。
+const GLOSS = {
+  test: { ja: "🧪 テストを実行中", en: "🧪 Running tests" },
+  ship: { ja: "📦 変更をコミット/反映中", en: "📦 Shipping changes" },
+  build: { ja: "🔧 ビルド/セットアップ中", en: "🔧 Building & setup" },
+  code: { ja: "✍️ コードを編集中", en: "✍️ Writing code" },
+  docs: { ja: "📝 ドキュメントを執筆中", en: "📝 Writing docs" },
+  write: { ja: "📝 文章を執筆中", en: "📝 Writing" },
+  research: { ja: "🔎 調査・読み込み中", en: "🔎 Researching" },
+  think: { ja: "🤔 次の一手を考え中", en: "🤔 Thinking it through" },
+  report: { ja: "✅ 結果を報告中", en: "✅ Reporting results" },
+  run: { ja: "⚙️ 処理を実行中", en: "⚙️ Running a task" },
+  waiting: { ja: "⏳ 次の指示を待っています", en: "⏳ Waiting for input" },
+  resting: { ja: "☕ ひと休み中", en: "☕ Taking a break" },
+};
+const CODE_EXT = /\.(py|js|mjs|ts|tsx|jsx|css|html|sh|json|yml|yaml|toml|swift|rs|go|c|h|cpp)\b/i;
+
+/**
+ * エージェントの「今何してます?」一言。優先順:
+ * ①work.now（タスク管理由来＝既に人間語の作業名）を最優先
+ * ②verb×対象のパターンでカテゴリ判定（ja/enどちらのverbでも判定できる）
+ * ③どれにも当たらなければ tidy 済みの生1行（従来表示）へフォールバック
+ * 生のコマンド/パスはシート（詳細面）だけに出す、が使い分けの掟。
+ */
+export function activityGloss(a, lang = "ja") {
+  if (!a) return "";
+  const L = (key) => (GLOSS[key] ? GLOSS[key][lang === "en" ? "en" : "ja"] : "");
+  const now = Array.isArray(a.work?.now) ? a.work.now.find((s) => s && s.trim()) : "";
+  if (now) return "📋 " + tidyActivity(now, 42);
+  if (a.state === "resting") return L("resting");
+  const verb = String(a.verb || "").trim();
+  const raw = `${verb} ${a.target || ""}`.trim();
+  if (a.kind === "think" || /考え中|Thinking/i.test(verb)) return L("think");
+  if (/指示待ち|Waiting/i.test(verb)) return L("waiting");
+  if (/報告中|Reporting|Replying|応答中/i.test(verb)) return L("report");
+  if (/調査中|Reading|Searching|検索中/i.test(verb)) return L("research");
+  const target = String(a.target || "");
+  if (/実行中|Running/i.test(verb)) {
+    if (/verify|pytest|unittest|node --test|\btest\b|spec|smoke/i.test(target)) return L("test");
+    if (/git |commit|push|merge|rebase|deploy/i.test(target)) return L("ship");
+    if (/npm|pip|install|build|make|brew/i.test(target)) return L("build");
+    return L("run");
+  }
+  if (/編集中|Editing/i.test(verb)) {
+    if (/\.md\b|readme|docs?\//i.test(target)) return L("docs");
+    if (CODE_EXT.test(target)) return L("code");
+    return L("code");
+  }
+  if (/執筆中|Writing/i.test(verb)) {
+    return /\.md\b|readme/i.test(target) ? L("docs") : L("write");
+  }
+  const tidied = tidyActivity(raw, 42);
+  return tidied || (a.state === "working" ? L("run") : L("waiting"));
 }
 
 /** ❗＝承認まち or 未回答の質問。UIの最優先表示の判定はここ1箇所に集約する。 */
@@ -142,6 +234,57 @@ export function assignSeats(agents, slots = DESK_SLOTS) {
   return seats;
 }
 
+/**
+ * R59: 休憩スポットの分散割当。「全員が同じラウンジに溜まる」のを避けるため、
+ * id のハッシュで希望スポットを決め、衝突時だけ線形に空きを探す（assignSeats と同じ流儀・
+ * 乱数も時刻も使わない決定論）。spots は nav.js の REST_SPOTS（area/容量は配列が表す）。
+ * 戻り値: Map(agentId → spots のindex)。あふれたら希望位置に重なって座る（従来より悪化しない）。
+ */
+export function assignRestSpots(agents, spots) {
+  const out = new Map();
+  if (!Array.isArray(spots) || !spots.length) return out;
+  // エリア（=席のグループ）を初出順に組む
+  const areas = [];
+  const areaOf = new Map();
+  spots.forEach((s, i) => {
+    const key = (s && s.area) || "";
+    if (!areaOf.has(key)) { areaOf.set(key, areas.length); areas.push([]); }
+    areas[areaOf.get(key)].push(i);
+  });
+  const taken = new Set();
+  const used = areas.map(() => 0);
+  const resting = (Array.isArray(agents) ? agents : []).filter((a) => zoneOf(a) === "lounge");
+  resting.forEach((a, i) => {
+    const id = a.id || a.session || "";
+    // R62: 「いちばん空いているエリア」を選ぶ＝1箇所に溜まらない（ハッシュ希望席だけだと
+    // 偏りがそのまま固まる＝ユーザーFB「手前のソファに常駐しまくり」の原因）。
+    // 同数タイは (ハッシュ + 並び順) を起点に走査してずらす＝決定論のまま散る。
+    const start = (stableIndex(id, areas.length) + i) % areas.length;
+    let pick = -1;
+    for (let k = 0; k < areas.length; k++) {
+      const ai = (start + k) % areas.length;
+      if (used[ai] >= areas[ai].length) continue;          // 満席のエリアは飛ばす
+      if (pick < 0 || used[ai] < used[pick]) pick = ai;
+    }
+    if (pick < 0) {                                        // 全席満席＝希望位置に重なる
+      out.set(a.id, stableIndex(id, spots.length));
+      return;
+    }
+    const seats = areas[pick];
+    const want = stableIndex(id, seats.length);
+    let idx = -1;
+    for (let k = 0; k < seats.length; k++) {
+      const cand = seats[(want + k) % seats.length];
+      if (!taken.has(cand)) { idx = cand; break; }
+    }
+    if (idx < 0) idx = seats[want];
+    taken.add(idx);
+    used[pick] += 1;
+    out.set(a.id, idx);
+  });
+  return out;
+}
+
 /** 文字列 → [0,n) の安定した整数（FNV-1a）。乱数を使わないので毎回同じ。 */
 export function stableIndex(str, n) {
   if (!n) return 0;
@@ -188,6 +331,28 @@ export function attentionQueue(agents) {
 /** ❗トレイに出す最優先の1件（attentionQueue の先頭）。 */
 export function topAttention(agents) {
   return attentionQueue(agents)[0] || null;
+}
+
+/**
+ * 前回worldとの差分から「配達の手応え」を検出する純関数（R53.2）。
+ * woke     = 📨投函済みが消えた（hookが配達しエージェントが受け取った）
+ * answered = ❗が解消した（回答が実セッションに反映された）
+ * 新規出現エージェントは対象外（初回データで誤発火しない）。
+ */
+export function deliveryTransitions(prevAgents, agents) {
+  const prev = new Map((Array.isArray(prevAgents) ? prevAgents : [])
+    .map((a) => [a.session, a]));
+  const out = [];
+  for (const a of (Array.isArray(agents) ? agents : [])) {
+    const p = prev.get(a.session);
+    if (!p) continue;
+    if (p.pending && !a.pending) {
+      out.push({ session: a.session, name: a.name, kind: "woke" });
+    } else if (p.attention && !a.attention) {
+      out.push({ session: a.session, name: a.name, kind: "answered" });
+    }
+  }
+  return out;
 }
 
 /** 経過秒 → 短い相対表示。DOMにも時刻にも触らない純関数（呼び側が generatedAt 基準で秒を渡す）。 */

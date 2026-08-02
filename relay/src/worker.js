@@ -602,6 +602,84 @@ function assignRooms(employees) {
 // PWA_ASSIGN_ROOMS_END
 const PWA_ASSIGN_ROOMS_SOURCE = assignRooms.toString();
 
+// R65: 「今何してます?」一言要約（R60のPWA追随）。**正本は ui/core/world.js の
+// tidyActivity/activityGloss**＝ロジックを変えるときは両方直す。同期ズレは
+// tests/gloss_parity.mjs（relay_e2e ▶node節）が同一入力→同一出力で機械検知する。
+// PWA_GLOSS_BEGIN
+function tidyActivityPWA(s, max) {
+  max = max || 60;
+  let t = String(s == null ? "" : s).replace(/[`*]+/g, "");
+  t = t.replace(/(^|\s)[#>]{1,3}\s+/g, "$1");
+  t = t.replace(/(^|[\s（(「\[])((?:[^\s／/（）()「」\[\]]+\/){1,}[^\s（）()「」\[\]]+)/g,
+    (m, pre, path) => path.includes("://") ? m : pre + path.split("/").pop());
+  for (const [o, c] of [["（", "）"], ["(", ")"], ["「", "」"], ["[", "]"]]) {
+    let depth = 0;
+    let firstOpen = -1;
+    for (let i = 0; i < t.length; i++) {
+      if (t[i] === o) {
+        if (depth === 0) firstOpen = i;
+        depth += 1;
+      } else if (t[i] === c) {
+        depth = Math.max(0, depth - 1);
+        if (depth === 0) firstOpen = -1;
+      }
+    }
+    if (depth > 0 && firstOpen >= 0) t = t.slice(0, firstOpen);
+  }
+  t = t.replace(/\s+/g, " ").trim();
+  if ([...t].length > max) t = [...t].slice(0, max - 1).join("").trimEnd() + "…";
+  return t;
+}
+
+function activityGlossPWA(a, lang) {
+  if (!a) return "";
+  const GLOSS = {
+    test: { ja: "🧪 テストを実行中", en: "🧪 Running tests" },
+    ship: { ja: "📦 変更をコミット/反映中", en: "📦 Shipping changes" },
+    build: { ja: "🔧 ビルド/セットアップ中", en: "🔧 Building & setup" },
+    code: { ja: "✍️ コードを編集中", en: "✍️ Writing code" },
+    docs: { ja: "📝 ドキュメントを執筆中", en: "📝 Writing docs" },
+    write: { ja: "📝 文章を執筆中", en: "📝 Writing" },
+    research: { ja: "🔎 調査・読み込み中", en: "🔎 Researching" },
+    think: { ja: "🤔 次の一手を考え中", en: "🤔 Thinking it through" },
+    report: { ja: "✅ 結果を報告中", en: "✅ Reporting results" },
+    run: { ja: "⚙️ 処理を実行中", en: "⚙️ Running a task" },
+    waiting: { ja: "⏳ 次の指示を待っています", en: "⏳ Waiting for input" },
+    resting: { ja: "☕ ひと休み中", en: "☕ Taking a break" },
+  };
+  const CODE_EXT = /\.(py|js|mjs|ts|tsx|jsx|css|html|sh|json|yml|yaml|toml|swift|rs|go|c|h|cpp)\b/i;
+  const L = (key) => (GLOSS[key] ? GLOSS[key][lang === "en" ? "en" : "ja"] : "");
+  const now = Array.isArray(a.work && a.work.now)
+    ? a.work.now.find((s) => s && s.trim()) : "";
+  if (now) return "📋 " + tidyActivityPWA(now, 42);
+  if (a.state === "resting") return L("resting");
+  const verb = String(a.verb || "").trim();
+  const raw = (verb + " " + (a.target || "")).trim();
+  if (a.kind === "think" || /考え中|Thinking/i.test(verb)) return L("think");
+  if (/指示待ち|Waiting/i.test(verb)) return L("waiting");
+  if (/報告中|Reporting|Replying|応答中/i.test(verb)) return L("report");
+  if (/調査中|Reading|Searching|検索中/i.test(verb)) return L("research");
+  const target = String(a.target || "");
+  if (/実行中|Running/i.test(verb)) {
+    if (/verify|pytest|unittest|node --test|\btest\b|spec|smoke/i.test(target)) return L("test");
+    if (/git |commit|push|merge|rebase|deploy/i.test(target)) return L("ship");
+    if (/npm|pip|install|build|make|brew/i.test(target)) return L("build");
+    return L("run");
+  }
+  if (/編集中|Editing/i.test(verb)) {
+    if (/\.md\b|readme|docs?\//i.test(target)) return L("docs");
+    if (CODE_EXT.test(target)) return L("code");
+    return L("code");
+  }
+  if (/執筆中|Writing/i.test(verb)) {
+    return /\.md\b|readme/i.test(target) ? L("docs") : L("write");
+  }
+  const tidied = tidyActivityPWA(raw, 42);
+  return tidied || (a.state === "working" ? L("run") : L("waiting"));
+}
+// PWA_GLOSS_END
+const PWA_GLOSS_SOURCE = tidyActivityPWA.toString() + "\n" + activityGlossPWA.toString();
+
 const APP_HTML = "<!doctype html><html lang=ja><head>" +
 '<meta charset=utf-8>' +
 '<meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover">' +
@@ -989,7 +1067,11 @@ const APP_HTML = "<!doctype html><html lang=ja><head>" +
 '<textarea id=freetext rows=2 placeholder="自由に指示（例: キリのいいところでコミットして残タスク報告）"></textarea>' +
 '<button class=g id=sh_send onclick="sendFree()">✍️ この指示を送る</button>' +
 '<button class=sub id=sh_close onclick="closeSheet()">閉じる</button></div></div>' +
-'<script>' + PWA_ASSIGN_ROOMS_SOURCE +
+// ★ __name ガード: wrangler(esbuild)が .toString() 前の関数体へ keep-names ヘルパー
+//   __name(fn,"n") を注入することがあり、ブラウザ側には未定義＝ReferenceErrorで
+//   スクリプト全体が死ぬ（R65で実測）。恒等関数を先に敷いて無害化する。
+'<script>var __name=typeof __name==="function"?__name:function(f){return f};' +
+PWA_ASSIGN_ROOMS_SOURCE + "\n" + PWA_GLOSS_SOURCE +
 // R42.2d-2 言語: office.lang が正本（statusで追随）・localStorageは初回描画用キャッシュ
 'var LANG=(function(){try{return localStorage.getItem("aioffice.lang")==="en"?"en":"ja"}catch(e){return "ja"}})();' +
 'function T(ja,en){return LANG==="en"?en:ja}' +
@@ -1057,18 +1139,18 @@ const APP_HTML = "<!doctype html><html lang=ja><head>" +
 'var ageEl=el("div","age"+((e.age!=null&&e.age<30)?" fresh":""),fmtAge(e.age));ageEl.setAttribute("data-agesess",e.session||"");meta.appendChild(ageEl);card.appendChild(meta);' +
 'var gb=gestureBadge(e,false);if(gb)card.appendChild(el("span","gesture",gb));' +
 'var st=el("div","st");st.appendChild(el("span","dot "+(e.state||""),""));' +
-'st.appendChild(document.createTextNode(" "+(e.verb||"")+(e.target?(" "+e.target):"")));card.appendChild(st);' +
+'st.appendChild(document.createTextNode(" "+activityGlossPWA(e,LANG)));card.appendChild(st);' +
 'if(e.question)card.appendChild(el("div","q","❓ "+e.question));' +
 'var fd=(e.feed||[]).slice(0,3);if(fd.length){var fb=el("div","feed");fd.forEach(function(l){fb.appendChild(el("div","feedline",l))});card.appendChild(fb)}' +
 'card.addEventListener("click",function(){openSheet(e)});list.appendChild(card)})}' +
 'function QUICK(){return [{l:T("✅ 承認して進める","✅ Approve & continue"),s:T("✅ 承認","✅ Approve"),t:T("はい、そのまま進めてください。","Yes, please go ahead as planned."),c:"g"},{l:T("🛑 いったん停止して報告","🛑 Stop and report"),s:T("🛑 停止","🛑 Stop"),t:T("いったん作業を止めて、いまの状況を報告してください。","Please pause the work and report the current status."),c:"r"},{l:T("📝 進捗を1行で報告","📝 One-line progress report"),s:T("📝 報告","📝 Report"),t:T("いまの進捗を1〜2行で報告してください。","Please report your current progress in one or two lines."),c:"sub"}]}' +
-'function sayText(e){e=e||{};var states={working:T("作業中","working"),waiting:T("指示待ち","waiting"),resting:T("休憩中","on break")};var action=[states[e.state]||"",e.verb||"",e.target||""].filter(function(v){return !!v}).join(" ");var s=(e.disp||e.session||T("キャラクター","Agent"))+T("です！"," here! ")+(action?T("いま「"+action+"」です。","Currently: "+action+"."):T("いまの状況を確認中です。","Checking the current status."));if(e.question)s+="\\n❓ "+e.question;if((e.approvalMin||0)>0)s+=T("\\n❗ 承認まちです","\\n❗ Waiting for approval");return s}' +
+'function sayText(e){e=e||{};var action=activityGlossPWA(e,LANG);var s=(e.disp||e.session||T("キャラクター","Agent"))+T("です！"," here! ")+(action?T("いま「"+action+"」です。","Currently: "+action+"."):T("いまの状況を確認中です。","Checking the current status."));if(e.question)s+="\\n❓ "+e.question;if((e.approvalMin||0)>0)s+=T("\\n❗ 承認まちです","\\n❗ Waiting for approval");return s}' +
 'function questionOptionEntries(e){if(!e||!e.question||!Array.isArray(e.questionOptions))return [];return e.questionOptions.slice(0,4).map(function(option){var raw=String((option&&option.label)||"");if(!raw.trim())return null;var recommended=raw.indexOf("(Recommended)")>=0;var clean=raw.replace(/\\s*\\(Recommended\\)\\s*/g," ").replace(/\\s{2,}/g," ").trim()||raw.trim();return {raw:raw,label:(recommended?"⭐ ":"")+clean,desc:String((option&&option.desc)||"")};}).filter(Boolean)}' +
 'function appendQuestionOptions(parent,e,klass){if(!parent)return;questionOptionEntries(e).forEach(function(option){var b=el("button","qopt "+klass);b.type="button";var label=el("span","qopt-label",option.label),desc=el("span","qopt-desc",option.desc);b.appendChild(label);b.appendChild(desc);b.addEventListener("click",function(ev){ev.stopPropagation();send(T("選択肢「"+option.raw+"」でお願いします。","Please go with the option: "+option.raw),e)});parent.appendChild(b)})}' +
 'function appendWorkBlock(parent,work){if(!parent||!work||typeof work!=="object")return;var block=el("div","wk-work");block.appendChild(el("div","wk-title",T("📋 いまの仕事","📋 Current work")));[["now",T("▶ いま","▶ Now")],["next",T("⏭ 次","⏭ Next")],["done",T("✅ 済み","✅ Done")]].forEach(function(pair){var values=Array.isArray(work[pair[0]])?work[pair[0]].filter(function(value){return typeof value==="string"&&value}):[];if(!values.length)return;var row=el("div","wk-row wk-"+pair[0]);row.appendChild(el("span","wk-label",pair[1]));var items=el("div","wk-items");values.forEach(function(value){items.appendChild(el("div","wk-item",value))});row.appendChild(items);block.appendChild(row)});parent.appendChild(block)}' +
 'function openSheet(e){if(e)playSE("select");if(SHSAY_IV){clearInterval(SHSAY_IV);SHSAY_IV=null}var shsay=document.getElementById("shsay");shsay.textContent="";SEL=e;document.querySelectorAll(".sel").forEach(function(n){n.classList.remove("sel")});if(e&&e.session){document.querySelectorAll("[data-sess]").forEach(function(n){if(n.getAttribute("data-sess")===e.session)n.classList.add("sel")})}document.getElementById("shname").textContent=dispCrew(e);' +
 'var sa=document.getElementById("shava");sa.decoding="async";sa.onerror=function(){sa.onerror=null;sa.src=spriteURL("generic_m")};sa.src=spriteURL(spriteBase(e));' +
-'document.getElementById("shwho").textContent=(e.verb||"")+(e.target?(" "+e.target):"")+" ・"+fmtAge(e.age);' +
+'document.getElementById("shwho").textContent=activityGlossPWA(e,LANG)+" ・"+fmtAge(e.age);' +
 'var sht=sayText(e);if(window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches){shsay.textContent=sht}else{var shchars=Array.from(sht),shi=0;SHSAY_IV=setInterval(function(){shsay.appendChild(document.createTextNode(shchars[shi++]));if(shi>=shchars.length){clearInterval(SHSAY_IV);SHSAY_IV=null}},18)}' +
 'var dt=document.getElementById("shdetail");dt.innerHTML="";appendWorkBlock(dt,e.work);' +
 // R51: roster の sessions[] 内訳ミニ行（state/age/❗/📨のドットのみ・本文は構造的に持たない）
@@ -1084,7 +1166,7 @@ const APP_HTML = "<!doctype html><html lang=ja><head>" +
 // 全文ログビューア: 「最近の動き」タップで開く（feed全件+質問+発言を大きな文字で・承認判断の材料）
 'function openLog(){var e=SEL;if(!e)return;document.getElementById("lgname").textContent=(e.disp||e.session);' +
 'var la=document.getElementById("lgava");la.decoding="async";la.onerror=function(){la.onerror=null;la.src=spriteURL("generic_m")};la.src=spriteURL(spriteBase(e));' +
-'document.getElementById("lgwho").textContent=(e.verb||"")+(e.target?(" "+e.target):"")+" ・"+fmtAge(e.age);' +
+'document.getElementById("lgwho").textContent=activityGlossPWA(e,LANG)+" ・"+fmtAge(e.age);' +
 'var b=document.getElementById("lgbody");b.innerHTML="";' +
 'if(e.question){b.appendChild(el("div","lgsec",T("❓ 質問まち","❓ Question waiting")));b.appendChild(el("div","lgline",e.question))}' +
 'var fd=(e.feed||[]);b.appendChild(el("div","lgsec",T("📋 最近の動き 全"+fd.length+"件（新しい順）","📋 Recent activity — all "+fd.length+" (newest first)")));' +
@@ -1141,7 +1223,7 @@ const APP_HTML = "<!doctype html><html lang=ja><head>" +
 'function note(m){var n=document.getElementById("note");if(!n)return;n.textContent=m;var err=m.indexOf("⚠")===0;n.className="show"+(err?" err":"");if(n._t){clearTimeout(n._t);n._t=null}if(m.indexOf(T("送信中","Sending"))<0){n._t=setTimeout(function(){n.className=""},err?4200:5200)}}' +
 'var VIEW=(localStorage.getItem("aioffice.view")||"office");' +
 'var LAST_OFFICE={};var LAST_SIG="",LAST_VIEW="",POLL_IV=null,ATTN_SESSIONS={};' +
-'function sceneSig(emps){return PREF.deptFilter+"|"+emps.map(function(e){return (e.session||"")+"|"+(e.disp||"")+"|"+empDept(e)+"|"+(e.state||"")+"|"+(e.verb||"")+"|"+(e.target||"")+"|"+((e.feed&&e.feed[0])||"")+"|"+(e.question||"")+"|"+(e.pending?1:0)+"|"+(e.minions||0)+"|"+(needsAttn(e)?1:0)+"|"+(e.stuckTool||"")+"|"+(e.approvalMin||0)+"|"+(e.sprite||"")+"|"+(e.projectId||"")+"|"+(e.crew||0)}).join(";")+"|D:"+Object.keys(DELIVERED).join(",")}' +
+'function sceneSig(emps){return PREF.deptFilter+"|"+emps.map(function(e){return (e.session||"")+"|"+(e.disp||"")+"|"+empDept(e)+"|"+(e.state||"")+"|"+(e.verb||"")+"|"+(e.target||"")+"|"+((e.feed&&e.feed[0])||"")+"|"+(e.question||"")+"|"+(e.pending?1:0)+"|"+(e.minions||0)+"|"+(needsAttn(e)?1:0)+"|"+(e.stuckTool||"")+"|"+(e.approvalMin||0)+"|"+(e.sprite||"")+"|"+(e.projectId||"")+"|"+(e.crew||0)+"|"+((e.work&&e.work.now&&e.work.now[0])||"")}).join(";")+"|D:"+Object.keys(DELIVERED).join(",")}' +
 'function needsAttn(e){return (e.approvalMin>0)||!!e.question}' +
 'function attnSessionSet(emps){var set={};(Array.isArray(emps)?emps:[]).forEach(function(e){if(e&&needsAttn(e)){var k=attnKey(e);if(k)set[k]=1}});return set}' +
 'function checkAttnEdge(emps){var next=attnSessionSet(emps),newly=Object.keys(next).filter(function(s){return !ATTN_SESSIONS[s]});ATTN_SESSIONS=next;if(newly.length)playSE("attn")}' +

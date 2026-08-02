@@ -1,17 +1,23 @@
 // 3Dアイソメ・レンダラ本体。world（core が作る純データ）を受け取って絵にする。
 // 契約は mount/update/dispose の3つだけ。
-import { poseFor, seedOf, travel, walkPhaseFor } from "/ui/core/anim.js";
+import {
+  chatPose, chatSpeaker, chibiPose, pathTravel, poseFor, relaxPose, seedOf,
+  thinkingPose, walkPhaseFor,
+} from "/ui/core/anim.js";
+import { IDLE_SPOTS, REST_SPOTS, routePath, walkGraph } from "/ui/core/nav.js";
 import { rand, resetRand } from "/ui/platform/clock.js";
 import * as THREE from "/ui/vendor/three/three.module.min.js";
 import {
-  LAYOUT, buildMonitors, buildOffice, externalAnchors, loungeAnchors,
+  LAYOUT, buildMonitors, buildOffice, chibiSeats, externalAnchors, loungeAnchors,
   BOSS_SEAT, COFFEE_STOP, ENTRANCE, envTexture, floorTexture, keyboardTexture, meetingAnchors, queueAnchors, rugTexture,
   screenTexture, seatAnchors, skyTexture, woodTexture,
 } from "./office.js";
-import { RobotBatch, applyPose, makeSkeleton } from "./robot.js";
-import { stableIndex } from "/ui/core/world.js";
+import { RobotBatch, applyPose, makeChibiSkeleton, makeSkeleton } from "./robot.js";
+import { assignRestSpots, stableIndex } from "/ui/core/world.js";
 
-const CAPACITY = 32;                 // 同時に描けるロボット数の上限
+const CAPACITY = 40;                 // 同時に描けるロボット数の上限（本人32+ボス+会議チビ最大8・R56）
+const CHIBI_MAX = 8;                 // 会議チビロボの総数上限（1卓4体×2卓）
+const CHIBI_WHITE = new THREE.Color(0xffffff);   // チビのアクセント淡色化（lerp先）
 // 胸リングの状態色。HUD側のドットと同じ意味（作業=シアン/待機=琥珀/❗=赤/休憩=灰/外部=青）
 const ACCENTS = {
   attention: new THREE.Color(0xff5a7e),
@@ -346,6 +352,82 @@ export class IsoScene {
       this.attnMarkers.push(sp);
     }
 
+    // 💭マーカー（kind==="think" の頭上・R56）。❗と同じスプライトプールの流儀。
+    // 絵文字フォント依存を避け、雲形＋3点を手で描く（決定論）。
+    const mkThinkTex = () => {
+      const c = document.createElement("canvas");
+      c.width = 128; c.height = 128;
+      const g = c.getContext("2d");
+      const cloud = (fill, stroke) => {
+        g.beginPath();
+        g.ellipse(66, 52, 46, 32, 0, 0, 7);
+        g.fillStyle = fill; g.fill();
+        if (stroke) { g.lineWidth = 6; g.strokeStyle = stroke; g.stroke(); }
+      };
+      cloud("#ffffff", "#8a5cff");
+      for (const [x, r] of [[30, 9], [18, 5]]) {           // 尻尾の小円
+        g.beginPath(); g.arc(x, 96 + (9 - r), r, 0, 7);
+        g.fillStyle = "#ffffff"; g.fill();
+        g.lineWidth = 4; g.strokeStyle = "#8a5cff"; g.stroke();
+      }
+      g.fillStyle = "#6c5cd8";
+      for (const dx of [-18, 0, 18]) {                     // 思考中の「…」
+        g.beginPath(); g.arc(66 + dx, 54, 6.5, 0, 7); g.fill();
+      }
+      const t = new THREE.CanvasTexture(c);
+      t.colorSpace = THREE.SRGBColorSpace;
+      return t;
+    };
+    this.thinkMarkers = [];
+    const thinkMat = new THREE.SpriteMaterial({
+      map: mkThinkTex(), transparent: true, depthTest: false, toneMapped: false });
+    for (let i = 0; i < 6; i++) {
+      const sp = new THREE.Sprite(thinkMat);
+      sp.scale.set(0.58, 0.58, 1);
+      sp.visible = false;
+      sp.renderOrder = 5;
+      this.scene.add(sp);
+      this.thinkMarkers.push(sp);
+    }
+    // 💬 おしゃべりドット（R59・休憩の会話の話し手の頭上）。優先順は ❗ > 💭 > 💬
+    const mkChatTex = () => {
+      const c = document.createElement("canvas");
+      c.width = 128; c.height = 128;
+      const g = c.getContext("2d");
+      g.beginPath();
+      g.ellipse(64, 52, 44, 30, 0, 0, 7);
+      g.fillStyle = "#ffffff"; g.fill();
+      g.lineWidth = 6; g.strokeStyle = "#22a06b"; g.stroke();
+      g.beginPath();                                       // 吹き出しの尻尾
+      g.moveTo(42, 78); g.lineTo(30, 100); g.lineTo(58, 82); g.closePath();
+      g.fillStyle = "#ffffff"; g.fill();
+      g.lineWidth = 4; g.strokeStyle = "#22a06b"; g.stroke();
+      g.fillStyle = "#1c8a5c";
+      for (const dx of [-16, 0, 16]) {                     // 話している「…」
+        g.beginPath(); g.arc(64 + dx, 54, 6, 0, 7); g.fill();
+      }
+      const t = new THREE.CanvasTexture(c);
+      t.colorSpace = THREE.SRGBColorSpace;
+      return t;
+    };
+    this.chatMarkers = [];
+    const chatMat = new THREE.SpriteMaterial({
+      map: mkChatTex(), transparent: true, depthTest: false, toneMapped: false });
+    for (let i = 0; i < 4; i++) {
+      const sp = new THREE.Sprite(chatMat);
+      sp.scale.set(0.5, 0.5, 1);
+      sp.visible = false;
+      sp.renderOrder = 5;
+      this.scene.add(sp);
+      this.chatMarkers.push(sp);
+    }
+    // 会議チビロボ（部下）の骨格プール（メッシュ無し＝スケルトンだけ・遅延生成）
+    this.chibiPool = [];
+    this._chibiSeats = chibiSeats();
+    this._chibiTint = new THREE.Color();
+    // R58: 通路グラフ（机すり抜け根絶）。歩行は必ずこのレーンを経由する
+    this.navGraph = walkGraph();
+
     this.anchors = {
       desk: seatAnchors(),
       meeting: meetingAnchors(),
@@ -416,6 +498,23 @@ export class IsoScene {
       yaw: Math.PI, y: 0, role: "stand" };
   }
 
+  /**
+   * R58: 待機エージェントの生活感。待機（❗なし）のロボは、たまに席を立って
+   * オフィスの立ち寄り先（コーヒー・植物・窓際・ラウンジ口）まで歩き、佇んで戻る。
+   * 240秒周期を7スロットに割り、自分のスロットの34秒窓だけ離席＝
+   * 同時に居なくなるのは高々1スロット分（オフィスが無人化しない）。
+   * 起動40秒はやらない＝固定tのgolden/スクショでは全員が持ち場に居る。
+   */
+  idleLifeFor(agent, t) {
+    if (agent.zone !== "desk" || agent.state !== "waiting"
+      || agent.attention || t < 40) return null;
+    const ph = ((t % 238) + 238) % 238;
+    const slot = stableIndex(agent.id, 7);
+    if (ph < slot * 34 || ph >= slot * 34 + 34) return null;
+    const spot = IDLE_SPOTS[stableIndex(agent.id, IDLE_SPOTS.length)];
+    return { x: spot.x, z: spot.z, yaw: spot.yaw, y: 0, role: "stand" };
+  }
+
   /** ゾーンと席番号から目的地を決める。席が尽きたら床に立たせる（決定論）。 */
   anchorFor(agent, world, index) {
     const list = this.anchors[agent.zone] || this.anchors.desk;
@@ -453,10 +552,22 @@ export class IsoScene {
     const seen = new Set();
     const perZone = {};
 
+    // R59: 休憩スポットの分散割当（決定論）＋エリア別の会話グループ
+    const restAssign = assignRestSpots(world.agents, REST_SPOTS);
+    const restGroups = {};
+    for (const [id, si] of restAssign) {
+      const area = REST_SPOTS[si].area;
+      (restGroups[area] = restGroups[area] || []).push({ id, si });
+    }
+    for (const g of Object.values(restGroups)) g.sort((a, b) => a.si - b.si);
+
     for (const agent of world.agents) {
       seen.add(agent.id);
       const idx = (perZone[agent.zone] = (perZone[agent.zone] ?? -1) + 1);
-      const target = this.excursionFor(agent, t) || this.anchorFor(agent, world, idx);
+      const restIdx = restAssign.get(agent.id);
+      const target = this.excursionFor(agent, t) || this.idleLifeFor(agent, t)
+        || (restIdx !== undefined ? REST_SPOTS[restIdx]
+          : this.anchorFor(agent, world, idx));
 
       let actor = this.actors.get(agent.id);
       if (!actor) {
@@ -464,33 +575,72 @@ export class IsoScene {
         // 2回目以降に現れた社員だけが入口から歩いてくる＝「出勤してきた」が伝わる。
         // ※ frozen（?t=固定）だと時間が進まないので、入口から歩かせると永遠に
         //   入口で固まる（実際にこれで全員が画面外に消えた）。
-        const spawn = this.seeded
-          ? [ENTRANCE.x, ENTRANCE.z]
-          : [target.x, target.z];
+        // R58: 歩行は通路グラフ経由＝机・部屋を突き抜けない（routePath）。
         actor = {
           nodes: makeSkeleton(),
-          from: spawn,
-          to: [target.x, target.z],
+          path: this.seeded
+            ? routePath([ENTRANCE.x, ENTRANCE.z], [target.x, target.z], this.navGraph)
+            : [[target.x, target.z]],
+          dest: [target.x, target.z],
           y: target.y, yaw: target.yaw,
           targetY: target.y, targetYaw: target.yaw,
           startedAt: t, seed: seedOf(agent.id),
         };
         actor.nodes.root.scale.setScalar(1.62);   // 主役は大きめ（部屋拡張で負けない）
         this.actors.set(agent.id, actor);
-      } else if (actor.to[0] !== target.x || actor.to[1] !== target.z) {
-        // 目的地が変わった＝ゾーン移動。いまの位置から歩き直す
-        const cur = travel(actor.from, actor.to, actor.startedAt, t);
-        actor.from = [cur.x, cur.z];
-        actor.to = [target.x, target.z];
+      } else if (actor.dest[0] !== target.x || actor.dest[1] !== target.z) {
+        // 目的地が変わった＝ゾーン移動。いまの位置から通路経由で歩き直す
+        const cur = pathTravel(actor.path, actor.startedAt, t);
+        actor.path = routePath([cur.x, cur.z], [target.x, target.z], this.navGraph);
+        actor.dest = [target.x, target.z];
         actor.startedAt = t;
         actor.targetY = target.y;
         actor.targetYaw = target.yaw;
       }
 
-      const m = travel(actor.from, actor.to, actor.startedAt, t);
-      const walking = m.u < 1 && m.dist > 0.05;
-      const pose = poseFor(agent.zone, t, actor.seed,
-        walking ? walkPhaseFor(m.dist * m.u, actor.seed) : null, target.role || null);
+      const m = pathTravel(actor.path, actor.startedAt, t);
+      const walking = m.u < 1 && m.total > 0.05;
+      actor.walking = walking;                     // 💬マーカーの判定で使う（R59）
+      // R56: 思考中（kind==="think"）は自席で考え込むポーズ（ゾーンの優先は変えない）
+      const thinking = !walking && agent.zone === "desk"
+        && agent.kind === "think" && !target.role;
+      // R59: 休憩の社交。同エリアに2体以上=向かい合っておしゃべり・1体=くつろぎ変奏
+      let pose = null;
+      let chatYaw = null;
+      if (!walking && restIdx !== undefined) {
+        const spot = REST_SPOTS[restIdx];
+        const group = restGroups[spot.area] || [];
+        if (group.length >= 2) {
+          const my = group.findIndex((e) => e.id === agent.id);
+          const speaking = chatSpeaker(t, seedOf(spot.area), group.length) === my;
+          pose = chatPose(t, actor.seed, speaking);
+          // 相手（自分以外の重心）の方を向く＝「会話している」が構図で伝わる
+          let cx = 0;
+          let cz = 0;
+          for (const e of group) {
+            if (e.id === agent.id) continue;
+            cx += REST_SPOTS[e.si].x;
+            cz += REST_SPOTS[e.si].z;
+          }
+          const n1 = group.length - 1;
+          const dx = cx / n1 - spot.x;
+          const dz = cz / n1 - spot.z;
+          // 一列3席（ベンチ）だと中央の人は「相手の重心＝自分の位置」になり向きが壊れる。
+          // 実質ゼロなら席本来の向きのまま会話させる（R62）
+          chatYaw = Math.hypot(dx, dz) > 0.05 ? Math.atan2(dx, dz) : null;
+        } else if (spot.role !== "tablet") {
+          // ソロ: くつろぎ（背もたれ+窓をぼんやり）と タブレット読み はhashで交代
+          pose = stableIndex(agent.id, 2) === 0
+            ? relaxPose(t * 0.8, actor.seed)
+            : poseFor("lounge", t, actor.seed, null, null);
+        }
+      }
+      if (!pose) {
+        pose = thinking
+          ? thinkingPose(t, actor.seed)
+          : poseFor(agent.zone, t, actor.seed,
+            walking ? walkPhaseFor(m.dist, actor.seed) : null, target.role || null);
+      }
       applyPose(actor.nodes, pose);
 
       const SIT_DROP = 0.24;          // 腰が座面に載る高さ（scale 1.62 に合わせ再調整）
@@ -499,7 +649,8 @@ export class IsoScene {
         && (agent.zone === "desk" || agent.zone === "meeting" || agent.zone === "lounge");
       const baseY = walking ? 0 : (actor.targetY ?? actor.y);
       actor.nodes.root.position.set(m.x, baseY - (seated ? SIT_DROP : 0), m.z);
-      actor.nodes.root.rotation.y = walking ? m.yaw : (actor.targetYaw ?? actor.yaw);
+      actor.nodes.root.rotation.y = walking ? m.yaw
+        : (chatYaw ?? actor.targetYaw ?? actor.yaw);
       if (!walking) {
         actor.y = actor.targetY ?? actor.y;
         actor.yaw = actor.targetYaw ?? actor.yaw;
@@ -522,6 +673,39 @@ export class IsoScene {
     this.boss.root.position.set(BOSS_SEAT.x, BOSS_SEAT.baseY - 0.35, BOSS_SEAT.z);
     this.boss.root.rotation.y = 0;
     this.robots.push(this.boss, this.bossAccent);
+
+    // R56: 会議チビロボ＝minions を親と同じ卓の縁に立たせて頷かせる（上限4/卓・8/全体）。
+    // InstancedMesh への行列追加だけ＝drawCalls は増えない。位相は親id+序数で分散。
+    const tableUsed = { meet: 0, meet2: 0 };
+    let chibiN = 0;
+    for (const agent of world.agents) {
+      if (chibiN >= CHIBI_MAX) break;
+      if (agent.zone !== "meeting" || !(agent.minions > 0)) continue;
+      const actor = this.actors.get(agent.id);
+      if (!actor) continue;
+      const table = actor.dest[0] < 0 ? "meet" : "meet2";
+      const seats = this._chibiSeats[table];
+      const count = Math.min(agent.minions, 4);
+      for (let i = 0; i < count && tableUsed[table] < seats.length
+        && chibiN < CHIBI_MAX; i++) {
+        const seat = seats[tableUsed[table]++];
+        let ch = this.chibiPool[chibiN];
+        if (!ch) {
+          // R58: 2頭身のチビ骨格（大きな頭・短い手足）＝「部下のチビ感」はデザインで出す
+          ch = makeChibiSkeleton();
+          ch.root.scale.setScalar(0.95);
+          this.chibiPool[chibiN] = ch;
+        }
+        chibiN += 1;
+        const seed = actor.seed + (i + 1) * 1.9;
+        applyPose(ch, chibiPose(t, seed));       // 頷き＋たまにピョコン跳ね・挙手
+        ch.root.position.set(seat.x, seat.y, seat.z);
+        ch.root.rotation.y = seat.yaw;
+        // アクセントは親の淡色版＝「同じチームの部下」が色で伝わる
+        this._chibiTint.copy(actor.accent || ACCENTS.resting).lerp(CHIBI_WHITE, 0.45);
+        this.robots.push(ch, this._chibiTint);
+      }
+    }
     this.robots.end();
 
     // ❗マーカー: attention のアバター頭上でゆっくり浮く
@@ -537,6 +721,38 @@ export class IsoScene {
       sp.visible = true;
     }
     for (; mi < this.attnMarkers.length; mi++) this.attnMarkers[mi].visible = false;
+
+    // 💭マーカー: 思考中（kind==="think"）の頭上。❗が出ている間は❗を優先
+    let ti = 0;
+    for (const agent of world.agents) {
+      if (ti >= this.thinkMarkers.length) break;
+      if (agent.attention || agent.kind !== "think") continue;
+      const actor = this.actors.get(agent.id);
+      if (!actor) continue;
+      const sp = this.thinkMarkers[ti++];
+      const pos = actor.nodes.root.position;
+      sp.position.set(pos.x + 0.30,
+        pos.y + 2.62 + Math.sin(t * 1.6 + actor.seed) * 0.06, pos.z);
+      sp.visible = true;
+    }
+    for (; ti < this.thinkMarkers.length; ti++) this.thinkMarkers[ti].visible = false;
+
+    // 💬マーカー: 休憩の会話グループの「いま話している人」の頭上（❗>💭>💬）
+    let ci = 0;
+    for (const [area, group] of Object.entries(restGroups)) {
+      if (ci >= this.chatMarkers.length || group.length < 2) continue;
+      const sIdx = chatSpeaker(t, seedOf(area), group.length);
+      const speakerId = group[sIdx]?.id;
+      const agent = world.agents.find((a) => a.id === speakerId);
+      const actor = this.actors.get(speakerId);
+      if (!agent || !actor || actor.walking || agent.attention || agent.kind === "think") continue;
+      const sp = this.chatMarkers[ci++];
+      const pos = actor.nodes.root.position;
+      sp.position.set(pos.x + 0.26,
+        pos.y + 2.45 + Math.sin(t * 1.9 + actor.seed) * 0.05, pos.z);
+      sp.visible = true;
+    }
+    for (; ci < this.chatMarkers.length; ci++) this.chatMarkers[ci].visible = false;
     this.seeded = true;            // 次に現れた社員からは入口から歩かせる
     this.renderer.render(this.scene, this.camera);
   }
@@ -582,7 +798,10 @@ export class IsoScene {
 
   labelAnchorFor(agent, world, index) {
     // 名札は足元の下（頭上の大きな札はオフィスを隠す＝ユーザーFBで変更）
-    const a = this.anchorFor(agent, world, index);
+    // R59: 休憩の分散割当がある社員は、ロボ本体と同じ休憩スポットを指す
+    // （assignRestSpots は純関数＝update() と同じ入力から同じ席が出る）
+    const ri = assignRestSpots(world.agents, REST_SPOTS).get(agent.id);
+    const a = ri !== undefined ? REST_SPOTS[ri] : this.anchorFor(agent, world, index);
     return this.project(a.x, Math.max(0, (a.y || 0) - 0.02), a.z);
   }
 
@@ -594,6 +813,7 @@ export class IsoScene {
       geometries: info.memory.geometries,
       textures: info.memory.textures,
       robots: this.actors.size,
+      chibis: this.chibiPool.length,
     };
   }
 

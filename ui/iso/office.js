@@ -25,36 +25,14 @@
 //   4. 立てる板は upright()（Y回転だけだと平置きになる）。
 //   5. すべて buildStaticBatches で畳む＝何個置いても drawCalls はマテリアル数まで。
 import * as THREE from "/ui/vendor/three/three.module.min.js";
+import { LAYOUT, PODS, WALL } from "/ui/core/nav.js";
 import { buildStaticBatches } from "./merge.js";
 
 // ── レイアウト定数 ─────────────────────────────────────────────
-export const LAYOUT = Object.freeze({
-  floor: { w: 28.8, d: 19.0, z: -0.6 },
-  deskZone: { x: -0.6, z: 0.35, w: 15.8, d: 11.4, lift: 0.12 },
-  meetZone: { x: -9.2, z: -7.7, w: 7.2, d: 4.4, lift: 0.22 },
-  stageZone: { x: -12.55, z: 0.1, w: 2.9, d: 3.4, lift: 0.12 },   // ソファコーナー（旧小会議室）
-  meet2Zone: { x: 11.3, z: 2.3, w: 4.8, d: 3.8, lift: 0.22 },     // 第2会議室（右中・入替でこちらへ）
-  loungeZone: { x: 9.7, z: 6.3, w: 7.0, d: 4.0, lift: 0.12 },
-  serverZone: { x: 10.2, z: -9.25 },
-  queueZone: { x: -2.2, z: 6.0 },
-});
-
-/** 壁の位置（床から導出）。壁に付く什器は必ずここから座標を決める。 */
-export const WALL = Object.freeze({
-  left: -LAYOUT.floor.w / 2,                    // -11.7
-  right: LAYOUT.floor.w / 2,                    //  11.7
-  back: LAYOUT.floor.z - LAYOUT.floor.d / 2,    //  -8.4
-  front: LAYOUT.floor.z + LAYOUT.floor.d / 2,   //   7.2
-});
-
-/** 机の島 3列×2行（島1つ=対面2席）。順序= core の席インデックス。
- *  島の間隔を広くとる＝「広いオフィス」は間隔で見せる。 */
-// 通路は広く（列ピッチ4.35m・行ピッチ4.6m＝島の間に実効1.2m超の歩行帯。
-// 参考画像の「机の間をロボットが歩ける」ゆとりの再現）
-const PODS = [
-  [-6.05, -2.35], [-0.6, -2.35], [4.85, -2.35],
-  [-6.05, 3.05], [-0.6, 3.05], [4.85, 3.05],
-];
+// R58: LAYOUT/WALL/PODS の正本は ui/core/nav.js（歩行ナビの障害物矩形と
+// 描画物を同じ数字から導出する＝二重管理でズレると机すり抜けが再発する）。
+// ここは互換のため再エクスポートする。
+export { LAYOUT, WALL };
 
 export function seatAnchors() {
   const out = [];
@@ -102,6 +80,28 @@ export function loungeAnchors() {
 export function queueAnchors() {
   const q = LAYOUT.queueZone;
   return [0, 1, 2, 3].map((i) => ({ x: q.x + 1.1 * i, z: q.z, yaw: 0, y: 0 }));
+}
+
+/** R56: 会議チビロボ（部下）の立ち位置。親アンカーが使わない卓の縁に置く。
+ *  座標は各会議卓（meet=4.2×1.6 / meet2=3.0×1.35）の縁からの相対で決め、
+ *  最終位置は __debugScene.project のスクショ照準で確認する（暗算しない型）。 */
+export function chibiSeats() {
+  const m = LAYOUT.meetZone;
+  const n = LAYOUT.meet2Zone;
+  return {
+    meet: [
+      { x: m.x - 2.55, z: m.z - 0.2, yaw: Math.PI / 2, y: m.lift },   // 西端→東向き
+      { x: m.x + 2.55, z: m.z - 0.2, yaw: -Math.PI / 2, y: m.lift },  // 東端→西向き
+      { x: m.x - 0.6, z: m.z - 1.2, yaw: 0, y: m.lift },              // 北側の空き
+      { x: m.x + 2.2, z: m.z + 1.15, yaw: Math.PI, y: m.lift },       // 南側東の空き
+    ],
+    meet2: [
+      { x: n.x - 1.85, z: n.z, yaw: Math.PI / 2, y: n.lift },
+      { x: n.x + 1.7, z: n.z, yaw: -Math.PI / 2, y: n.lift },
+      { x: n.x + 0.85, z: n.z - 1.25, yaw: 0, y: n.lift },
+      { x: n.x + 1.5, z: n.z + 1.25, yaw: Math.PI, y: n.lift },
+    ],
+  };
 }
 
 /** コーヒーバー前の立ち位置（所作エンジン用・バー位置と一緒に動く）。 */

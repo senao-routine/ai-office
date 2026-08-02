@@ -43,6 +43,15 @@ export const getStatusBoard = (signal) => api("/api/status_board", { signal });
 export const postInstruction = (session, text) =>
   api("/api/instruct", { method: "POST", body: { session, text } });
 
+/** R53: そのセッションが動いている実ターミナル（ホストアプリ）を前面へ。 */
+export const focusTerminal = (session) =>
+  api("/api/terminal/focus", { method: "POST", body: { session } });
+
+/** R54: アカウント連携（🔑）。status はローカルUI専用（masked以外の秘密値は来ない）。 */
+export const getKeysStatus = () => api("/api/keys/status");
+export const setOfficeKey = (name, value) =>
+  api("/api/keys/set", { method: "POST", body: { name, value } });
+
 /** ➕新プロジェクト（P1）: フォルダ選択（ネイティブダイアログ・最大300秒）→登録。 */
 export const pickProjectFolder = () =>
   api("/api/project/pick", { method: "POST", body: {} });
@@ -52,6 +61,10 @@ export const newProject = (path, name, { genSprite = true, launch = true } = {})
 /** 💳実支出台帳（R50提案3で新UIへ移植）: upsert/delete。形は status_board.spend_apply が正本。 */
 export const spendApply = (body) =>
   api("/api/status_board/spend", { method: "POST", body });
+
+/** R63: APIプロバイダの手動予算（上限が取れないプロバイダ用・amount=0で解除）。 */
+export const budgetApply = (provider, amount, currency = "USD") =>
+  api("/api/status_board/budget", { method: "POST", body: { provider, amount, currency } });
 
 /** 🧾ライセンス（R42.2）: 状態と登録（文字列はJSONとして受理・nullで解除）。 */
 export const licenseStatus = () => api("/api/license/status");

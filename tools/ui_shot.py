@@ -50,10 +50,10 @@ def free_port():
         return s.getsockname()[1]
 
 
-def start_server(port):
+def start_server(port, extra_env=None):
     """静的ファイル配信のためだけにサーバーを立てる。API は fixture で差し替えるので
-    実データには一切依存しない。"""
-    env = {**os.environ, "OFFICE_HOME": str(ROOT / ".ui_shot_home")}
+    実データには一切依存しない。extra_env はスモーク側の FAKE 注入口（R53）。"""
+    env = {**os.environ, "OFFICE_HOME": str(ROOT / ".ui_shot_home"), **(extra_env or {})}
     (ROOT / ".ui_shot_home").mkdir(exist_ok=True)
     proc = subprocess.Popen(
         [sys.executable, str(ROOT / "server" / "office_server.py"), "--port", str(port)],

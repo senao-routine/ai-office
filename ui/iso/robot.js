@@ -104,6 +104,30 @@ export function makeSkeleton() {
   return nodes;
 }
 
+/**
+ * 🧒 チビロボ骨格（R58・会議の部下）。同じ部品ジオメトリを使い、
+ * ノードのスケールだけで「2頭身」を作る（InstancedMesh の行列に乗るので追加コスト無し）:
+ *   頭グループ(neck)を1.5倍 ＝ 頭・バイザー・目・耳・アンテナが一緒に大きくなる
+ *   腕脚(shoulder/hipJoint)を0.72倍 ＝ ずんぐり短い手足
+ *   胴まわりを0.8倍 ＝ 小さな体に大きな頭が乗る（かわいさの本体は比率）
+ * 立位の腰高は脚が縮んだぶん低い＝ポーズ側は anim.js の chibiPose（CHIBI_HIP_Y）を使うこと。
+ */
+export function makeChibiSkeleton() {
+  const nodes = makeSkeleton();
+  nodes.neck.scale.setScalar(1.5);
+  nodes.neck.position.y = 0.30;                 // 大きな頭を胴に少し埋める（幼児体型）
+  for (const arm of nodes.arms) arm.shoulder.scale.setScalar(0.72);
+  for (const leg of nodes.legs) leg.hipJoint.scale.setScalar(0.72);
+  nodes.torso.scale.set(0.82, 0.66, 0.82);
+  nodes.pelvis.scale.setScalar(0.82);
+  nodes.collar.scale.setScalar(0.88);
+  nodes.collar.position.y = 0.21;
+  nodes.chest.scale.setScalar(0.85);
+  nodes.chest.position.y = 0.10;
+  nodes.chest.position.z = 0.155;
+  return nodes;
+}
+
 function attach(parent, x, y, z, rx = 0, ry = 0, rz = 0) {
   const o = new THREE.Object3D();
   o.position.set(x, y, z);

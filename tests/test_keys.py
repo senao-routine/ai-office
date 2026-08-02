@@ -70,7 +70,7 @@ class KeysApiTest(unittest.TestCase):
         code = int(head.split(b"\r\n", 1)[0].split()[1])
         return code, json.loads(response_body.decode("utf-8"))
 
-    def test_status_reports_six_providers_without_exposing_key(self):
+    def test_status_reports_all_providers_without_exposing_key(self):
         self.office.PROJECTS.mkdir(parents=True)
         codex_auth = self.home / ".codex" / "auth.json"
         codex_auth.parent.mkdir(parents=True)
@@ -86,9 +86,11 @@ class KeysApiTest(unittest.TestCase):
         providers = body["providers"]
         self.assertEqual(
             [provider["id"] for provider in providers],
-            ["claude", "codex", "gemini", "openai_key", "x_api", "openai_usage"],
+            # R63: APIプロバイダ4件を末尾に追加（既存6件の順序は不変＝UIの並びを固定）
+            ["claude", "codex", "gemini", "openai_key", "x_api", "openai_usage",
+             "openrouter", "moonshot", "deepseek", "groq"],
         )
-        self.assertEqual(len(providers), 6)
+        self.assertEqual(len(providers), 10)
         by_id = {provider["id"]: provider for provider in providers}
         self.assertTrue(by_id["claude"]["connected"])
         self.assertTrue(by_id["codex"]["connected"])
@@ -185,6 +187,32 @@ class KeysApiTest(unittest.TestCase):
                         "POST", "/api/keys/set", {"name": name, "value": value})
                     self.assertEqual(code, 400)
                     self.assertFalse(body["ok"])
+
+    def test_delete_removes_only_named_line_and_is_idempotent(self):
+        """R65: value="" は解除＝該当行のみ削除・他行温存・未登録の解除も冪等に成功。"""
+        key = "sk-or-v1-DeleteMe_abcdefghijklmnopqrstuv"
+        self.secrets_file.parent.mkdir(parents=True, exist_ok=True)
+        self.secrets_file.write_text(
+            f"OTHER=preserve\nOPENROUTER_API_KEY={key}\nTRAIL=keep\n", encoding="utf-8")
+        self.secrets_file.chmod(0o600)
+
+        code, body = self.request_json(
+            "POST", "/api/keys/set", {"name": "OPENROUTER_API_KEY", "value": ""})
+        self.assertEqual(code, 200)
+        self.assertEqual(body, {"ok": True})
+        self.assertEqual(self.secrets_file.read_text(encoding="utf-8").splitlines(),
+                         ["OTHER=preserve", "TRAIL=keep"])          # 他行温存
+        self.assertEqual(stat.S_IMODE(self.secrets_file.stat().st_mode), 0o600)
+
+        # 冪等: 既に無いキーの解除も成功
+        code, body = self.request_json(
+            "POST", "/api/keys/set", {"name": "OPENROUTER_API_KEY", "value": ""})
+        self.assertEqual(code, 200)
+        self.assertTrue(body["ok"])
+        # 未知nameの解除は従来どおり拒否
+        code, body = self.request_json(
+            "POST", "/api/keys/set", {"name": "EVIL_KEY", "value": ""})
+        self.assertEqual(code, 400)
 
 
 if __name__ == "__main__":

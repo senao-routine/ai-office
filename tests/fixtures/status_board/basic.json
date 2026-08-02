@@ -1,0 +1,162 @@
+{
+ "generatedAt": 1754000000,
+ "refreshing": false,
+ "fx": {
+  "jpyPerUsd": 155
+ },
+ "providers": [
+  {
+   "id": "claude",
+   "label": "Claude Code",
+   "kind": "tokens",
+   "status": "ok",
+   "tokens": {
+    "today": {
+     "total": 89400000
+    },
+    "last5h": {
+     "total": 98300000
+    },
+    "byModel": {
+     "claude-fable-5": {
+      "usd": 21.2
+     },
+     "claude-opus-5": {
+      "usd": 20.4
+     }
+    }
+   },
+   "pace": {
+    "pct": 57.3,
+    "peak5h": 171500000
+   },
+   "account": {
+    "email": "main-dev@example.com",
+    "tier": "max"
+   },
+   "accounts": [
+    {
+     "id": "acc-1",
+     "email": "main-dev@example.com",
+     "todayTok": 89400000,
+     "active": true
+    },
+    {
+     "id": "acc-2",
+     "email": "sub-dev@example.com",
+     "todayTok": 12300000,
+     "active": false
+    }
+   ],
+   "subscription": {
+    "fiveHour": {
+     "pct": 42.0,
+     "resetsAt": 1754007200
+    },
+    "sevenDay": {
+     "pct": 61.0,
+     "resetsAt": 1754259200
+    },
+    "staleSec": 120,
+    "account": {
+     "id": "acct-main",
+     "email": "main-dev@example.com"
+    }
+   }
+  },
+  {
+   "id": "codex",
+   "label": "Codex",
+   "kind": "gauge",
+   "status": "ok",
+   "plan": "pro",
+   "usedPercent": 3.0,
+   "resetsAt": 1754432000,
+   "windowMinutes": 10080,
+   "secondary": {
+    "usedPercent": 86.0,
+    "resetsAt": 1754003600,
+    "windowMinutes": 300
+   },
+   "account": {
+    "id": "cx-1",
+    "email": "main-dev@example.com"
+   },
+   "accounts": [
+    {
+     "id": "cx-1",
+     "email": "main-dev@example.com",
+     "usedPercent": 3.0,
+     "resetsAt": 1754432000,
+     "seenAt": 1754000000,
+     "active": true
+    },
+    {
+     "id": "cx-2",
+     "email": "sub-dev@example.com",
+     "usedPercent": 41.0,
+     "resetsAt": null,
+     "seenAt": 1753992800,
+     "active": false
+    }
+   ]
+  },
+  {
+   "id": "gemini",
+   "label": "Gemini",
+   "kind": "login",
+   "status": "ok"
+  },
+  {
+   "id": "xapi",
+   "label": "X API",
+   "kind": "external",
+   "connected": true,
+   "pct": 0.0,
+   "cap": 2000000,
+   "used": 0
+  },
+  {
+   "id": "openai",
+   "label": "OpenAI",
+   "kind": "external",
+   "connected": false
+  },
+  {
+   "id": "openrouter",
+   "label": "OpenRouter",
+   "kind": "api",
+   "connected": true,
+   "currency": "USD",
+   "spentMonth": 3.42,
+   "balance": null,
+   "limit": 10.0,
+   "limitSource": "api",
+   "pct": 34.2,
+   "note": "",
+   "status": "ok",
+   "error": null
+  },
+  {
+   "id": "groq",
+   "label": "Groq",
+   "kind": "api",
+   "connected": true,
+   "currency": "USD",
+   "spentMonth": null,
+   "balance": null,
+   "limit": null,
+   "limitSource": null,
+   "pct": null,
+   "note": "no_limit",
+   "status": "ok",
+   "error": null,
+   "noApi": true
+  }
+ ],
+ "spend": {
+  "totalJpy": 96098,
+  "totalUsd": 0,
+  "items": []
+ }
+}

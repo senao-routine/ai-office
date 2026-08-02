@@ -207,6 +207,53 @@ def main():
             else:
                 print("  ✗ 💳台帳の削除が反映されない")
                 ng += 1
+
+            # (4c) 🔑アカウント連携（R54-F）: 接続→キー保存が office_secrets 実ファイルへ
+            page.wait_for_selector('.modal .mkeybtn[data-key="OPENAI_API_KEY"]', timeout=8000)
+            page.click('.modal .mkeybtn[data-key="OPENAI_API_KEY"]')
+            page.wait_for_selector(".modal .mkeyin", timeout=4000)
+            test_key = "sk-office-smoke-" + "a" * 24
+            page.fill(".modal .mkeyin", test_key)
+            page.click(".modal .mkeysave")
+            page.wait_for_timeout(1200)
+            secrets_file = home / ".claude" / "office_secrets"
+            if (secrets_file.exists()
+                    and f"OPENAI_API_KEY={test_key}" in secrets_file.read_text(encoding="utf-8")):
+                print("  ✓ 🔑連携: キー保存が office_secrets(600) に反映")
+            else:
+                print(f"  ✗ 🔑キーが保存されない: {secrets_file}")
+                ng += 1
+            # 再描画後は connected（緑ドット+masked表示）へ
+            page.wait_for_selector(".modal .mkeys", timeout=8000)
+            dot_on = page.eval_on_selector_all(
+                ".modal .mkeyrow",
+                "els => els.some(r => r.querySelector('.mkeydot.on') &&"
+                " r.textContent.includes('OpenAI API'))")
+            if dot_on:
+                print("  ✓ 🔑連携: 保存後に接続済み表示へ更新")
+            else:
+                print("  ✗ 🔑接続済み表示にならない")
+                ng += 1
+
+            # (4d) R65 🔑解除: 2クリック制（1クリック目=アームのみ）→実ファイルから行が消える
+            row_sel = ('.modal .mkeyrow:has(.mkeybtn[data-key="OPENAI_API_KEY"])'
+                       ' .mkeyrevoke')
+            page.wait_for_selector(row_sel, timeout=8000)
+            page.click(row_sel)
+            page.wait_for_timeout(300)
+            if f"OPENAI_API_KEY={test_key}" in secrets_file.read_text(encoding="utf-8"):
+                print("  ✓ 🔑解除: 1クリック目はアームのみ（誤爆ガード）")
+            else:
+                print("  ✗ 🔑解除が1クリックで発動した")
+                ng += 1
+            page.click(row_sel)
+            page.wait_for_timeout(1200)
+            body_txt = secrets_file.read_text(encoding="utf-8") if secrets_file.exists() else ""
+            if f"OPENAI_API_KEY={test_key}" not in body_txt:
+                print("  ✓ 🔑解除: 2クリック目で office_secrets から行が消えた")
+            else:
+                print(f"  ✗ 🔑解除が反映されない: {body_txt[:80]}")
+                ng += 1
             page.keyboard.press("Escape")
 
             real = [e for e in errors if "Failed to load resource" not in e]

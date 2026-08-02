@@ -24,3 +24,5 @@ CleanShot*.png
 
 # 個人設定はローカルのみ（出荷は office_config.example.json・2026-07-31 提案2a）
 office_config.json
+# セッション作業中の一時スプライト（ユーザーファイル・リポ対象外）
+plant_sprite_pixelart.png

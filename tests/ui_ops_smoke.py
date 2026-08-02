@@ -41,7 +41,9 @@ def main():
 
     shutil.rmtree(INBOX, ignore_errors=True)
     port = free_port()
-    proc = start_server(port)
+    focus_marker = ROOT / ".ui_shot_home" / "focus.marker"
+    focus_marker.unlink(missing_ok=True)
+    proc = start_server(port, extra_env={"OFFICE_FAKE_FOCUS": str(focus_marker)})
     ng = 0
     errors = []
     try:
@@ -53,6 +55,10 @@ def main():
                     if m.type == "error" else None)
             page.route("**/api/office*", lambda route: route.fulfill(
                 status=200, content_type="application/json; charset=utf-8", body=payload))
+            sb_payload = (ROOT / "tests" / "fixtures" / "status_board" / "basic.json"
+                          ).read_text(encoding="utf-8")
+            page.route("**/api/status_board*", lambda route: route.fulfill(
+                status=200, content_type="application/json; charset=utf-8", body=sb_payload))
             page.goto(f"http://127.0.0.1:{port}/?ui=iso&t=3.2&seed=11")
             page.wait_for_function("window.__office && window.__office.ready", timeout=30000)
             page.wait_for_timeout(300)
@@ -134,6 +140,18 @@ def main():
             page.keyboard.press("Escape")
             page.wait_for_timeout(200)
 
+            # (3a2) R53 🖥ターミナルジャンプ: シートのボタン → /api/terminal/focus（FAKEマーカー実証明）
+            page.click(f'.arow[data-session="{target_session}"]')
+            page.wait_for_selector("#sheet:not([hidden])", timeout=3000)
+            page.click("#sheetterm")
+            if wait_file(focus_marker) and target_session in focus_marker.read_text(encoding="utf-8"):
+                print("  ✓ 🖥 ターミナルジャンプ: シートボタン → focus API（マーカー実証明）")
+            else:
+                print(f"  ✗ 🖥 focus API が呼ばれない: {focus_marker}")
+                ng += 1
+            page.keyboard.press("Escape")
+            page.wait_for_timeout(200)
+
             # (3b) ❗トレイの複数件トリアージ: (1/2)表示＋Jで次の❗へ巡回（Kで戻る）
             tray_txt = page.eval_on_selector("#attn", "el => el.textContent")
             if "（1/2）" in tray_txt or "(1/2)" in tray_txt:
@@ -189,6 +207,47 @@ def main():
                 print("  ✓ 再送2クリック目で inbox 投函")
             else:
                 print("  ✗ 再送2クリック目が投函されない")
+                ng += 1
+
+            # (3e) R55 リッチゲージ: fixture status_board で Codex 2段バー・リセット残・
+            #      planチップ・Claude tok行・Gemini接続行が描画される（SwiftShaderは遅い＝長めに待つ）
+            page.wait_for_function(
+                "document.querySelectorAll('#gcreditbody .gprov').length >= 4", timeout=60000)
+            gtxt = page.eval_on_selector("#gcreditbody", "el => el.innerText")
+            gbars = page.eval_on_selector_all("#gcreditbody .gbar", "els => els.length")
+            # "PRO" は .gplan の text-transform:uppercase 後の innerText
+            checks = [("Codex", "Codex"), ("PRO", "PRO"), ("3%", "3%"),
+                      ("リセット残", "リセットまであと"), ("Claude tok", "tok"),
+                      ("Gemini接続", "Gemini"),
+                      # R61: 実測subscriptionが新鮮なら実測チップ+5h/週の2本バー・
+                      #      推定ペースは隠れる（fixtureはpaceも持つ＝優先の証明）
+                      ("Claude実測チップ", "実測"), ("実測5h枠", "5時間枠"),
+                      ("実測週枠", "週間枠"), ("実測5h%", "42%"), ("実測週%", "61%"),
+                      ("アカウントチップ", "main-dev"), ("2アカウント行", "sub-dev"),
+                      ("別アカ前回確認", "前回確認"),
+                      # R63: 上限ありは金額バー・上限なしは「未設定」を明示（嘘の%を作らない）
+                      ("APIプロバイダ名", "OpenRouter"), ("上限ありの金額", "$3.42 / $10.00"),
+                      ("上限なしの注記", "上限が設定されていません")]
+            miss = [name for name, frag in checks if frag not in gtxt]
+            if "ペース" in gtxt:
+                miss.append("推定ペースが実測と二重表示")
+            if not miss and gbars >= 7:
+                print(f"  ✓ R55/R61/R63 リッチゲージ（bar {gbars}本・実測5h+週/tok/アカウント別/API上限）")
+            else:
+                print(f"  ✗ R55 ゲージ描画不足: miss={miss} bars={gbars} txt={gtxt[:120]!r}")
+                ng += 1
+            # (3e2) R55.1 レイアウト収まり: ゲージが伸びてもサイドバーが画面からはみ出さず、
+            #       最下部の管理ボタンが可視のまま（実際に⚡が見切れた回帰＝要素スクショでは
+            #       検出できない種類の崩れなので、矩形とscrollHeightで機械検査する）
+            fit = page.evaluate(
+                "() => { const side = document.querySelector('.side');"
+                " const lic = document.querySelector('#btn-license').getBoundingClientRect();"
+                " return { over: side.scrollHeight - side.clientHeight,"
+                "   licOk: lic.height > 0 && lic.bottom <= window.innerHeight }; }")
+            if fit["over"] <= 1 and fit["licOk"]:
+                print("  ✓ R55.1 サイドバー収まり（はみ出しゼロ・管理ボタン可視）")
+            else:
+                print(f"  ✗ サイドバーがはみ出している: {fit}")
                 ng += 1
 
             real = [e for e in errors if "Failed to load resource" not in e]

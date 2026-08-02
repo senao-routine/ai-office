@@ -80,3 +80,50 @@ class HookWireTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class StatuslineWireTest(unittest.TestCase):
+    """R61: --statusline 配線（capture ラッパー・既存コマンドのファイル退避・冪等）。"""
+
+    def setUp(self):
+        self.home = Path(tempfile.mkdtemp(prefix="slwire_"))
+        self.settings = self.home / ".claude" / "settings.json"
+        self.passthrough = self.home / ".claude" / "office_usage" / "passthrough.cmd"
+
+    def _cmd(self):
+        return json.loads(self.settings.read_text(encoding="utf-8"))["statusLine"]["command"]
+
+    def test_wire_creates_and_is_idempotent(self):
+        r1 = run_install(self.home, "--statusline")
+        self.assertEqual(r1.returncode, 0, r1.stderr)
+        self.assertIn("office-statusline-capture", self._cmd())
+        self.assertFalse(self.passthrough.exists())      # 既存コマンド無し=退避も無し
+        # capture スクリプト本体も配布されている
+        self.assertTrue((self.home / ".claude" / "hooks" /
+                         "office-statusline-capture.sh").exists())
+        r2 = run_install(self.home, "--statusline")
+        self.assertIn("配線済み", r2.stdout)             # 冪等
+        self.assertIn("office-statusline-capture", self._cmd())
+
+    def test_existing_command_is_preserved_as_passthrough(self):
+        self.settings.parent.mkdir(parents=True)
+        prev = "bash -c 'echo my fancy statusline'"
+        self.settings.write_text(json.dumps({
+            "model": "opusplan",
+            "statusLine": {"type": "command", "command": prev}}), encoding="utf-8")
+        r = run_install(self.home, "--statusline")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.passthrough.read_text(encoding="utf-8"), prev)   # 退避
+        self.assertEqual(self.passthrough.stat().st_mode & 0o777, 0o600)
+        self.assertIn("office-statusline-capture", self._cmd())               # 差し替え
+        data = json.loads(self.settings.read_text(encoding="utf-8"))
+        self.assertEqual(data["model"], "opusplan")                            # 他キー温存
+        backups = list(self.settings.parent.glob("settings.json.bak-*"))
+        self.assertEqual(len(backups), 1)
+
+    def test_broken_settings_refuses(self):
+        self.settings.parent.mkdir(parents=True)
+        self.settings.write_text("{broken", encoding="utf-8")
+        r = run_install(self.home, "--statusline")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertEqual(self.settings.read_text(encoding="utf-8"), "{broken")

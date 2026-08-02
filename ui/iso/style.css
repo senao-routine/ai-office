@@ -87,7 +87,7 @@
 .ui-iso .side {
   padding: 18px 16px;
   display: flex; flex-direction: column; gap: 16px;
-  min-height: 0;
+  min-height: 0; overflow: hidden;   /* 子のはみ出しはゲージの内部スクロールで吸収する */
 }
 .ui-iso .brand { display: flex; align-items: center; gap: 10px; }
 .ui-iso .brand .mark {
@@ -123,8 +123,13 @@
 }
 
 .ui-iso .spacer { flex: 1; }
-/* ── 経費ゲージ（枠線つき2カード＝「クレジット%」と「¥」を混ぜない） ── */
-.ui-iso .gauges { display: flex; flex-direction: column; gap: 10px; }
+/* ── 経費ゲージ（枠線つき2カード＝「クレジット%」と「¥」を混ぜない） ──
+   R55.1: 中身が増えても下の管理ボタンを画面外へ押し出さない＝ゲージ側が内部スクロール
+   （実際にR55で⚡等が見切れた。回帰ピン= ui_ops_smoke のサイドバー収まり検査） */
+.ui-iso .gauges {
+  display: flex; flex-direction: column; gap: 10px;
+  min-height: 0; overflow-y: auto; flex: 0 1 auto;
+}
 .ui-iso .gauges[hidden] { display: none; }   /* 明示displayはhidden属性に勝つ（1敗） */
 .ui-iso .gcard {
   border: 1px solid var(--iso-hairline); border-radius: 12px;
@@ -147,6 +152,39 @@
 }
 .ui-iso .gfill { display: block; height: 100%; border-radius: 999px; background: var(--iso-accent); }
 .ui-iso .gfill.warn { background: #d05050; }
+
+/* R55: 旧Codexバー式のプロバイダブロック（planチップ・%大表示・太バー・窓/リセット残） */
+.ui-iso .gprov {
+  display: flex; flex-direction: column; gap: 3px;
+  padding: 6px 0; border-top: 1px solid rgba(96, 82, 170, .1);
+}
+.ui-iso .gprov:first-child { border-top: 0; padding-top: 1px; }
+.ui-iso .gprovhead { display: flex; align-items: baseline; gap: 6px; }
+.ui-iso .gname { font-size: 12px; font-weight: 800; color: var(--iso-ink); white-space: nowrap; }
+.ui-iso .gplan {
+  font-size: 9.5px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--iso-accent); background: rgba(124, 92, 255, .1);
+  border-radius: 999px; padding: 1px 7px; white-space: nowrap;
+}
+.ui-iso .gacctline { display: flex; }
+.ui-iso .gpct { margin-left: auto; font-size: 15px; font-weight: 800; color: var(--iso-ink); }
+.ui-iso .gpct.gwarn { color: #b03a3a; }
+.ui-iso .gbar.big { height: 10px; background: rgba(124, 92, 255, .14); }
+.ui-iso .gsub { font-size: 10.5px; color: var(--iso-ink-soft); }
+.ui-iso .gsub.gok { color: var(--iso-ok); font-weight: 700; }
+
+/* R57: アカウント別表示（チップ=ログイン中・淡色バー=別アカウントの前回確認値） */
+.ui-iso .gacct {
+  font-size: 9.5px; font-weight: 700; color: var(--iso-ink-soft);
+  background: rgba(96, 82, 170, .08); border-radius: 999px; padding: 1px 7px;
+  max-width: 92px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ui-iso .gbar.pale { opacity: .45; }
+.ui-iso .gacctrow { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--iso-ink-soft); }
+.ui-iso .gacctrow .gadot { width: 6px; height: 6px; border-radius: 999px; background: #c9c6dd; flex: none; }
+.ui-iso .gacctrow.on .gadot { background: var(--iso-ok); }
+.ui-iso .gacctrow .galab { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ui-iso .gacctrow b { font-weight: 700; color: var(--iso-ink); }
 .ui-iso .admin { display: flex; flex-direction: column; gap: 8px; }
 .ui-iso .abtn {
   font: inherit; font-size: 12.5px; font-weight: 700; text-align: left;
@@ -443,6 +481,13 @@
 .ui-iso .lbl.zone-external .dot { background: var(--iso-accent-2); }
 .ui-iso .lbl.attn { border-color: var(--iso-alert); background: rgba(255, 244, 246, .95); }
 .ui-iso .lbl.attn b { color: #a3274e; }
+/* R53.2: 指示を受け取って動き出した直後の数秒ハイライト（keyframe不使用＝golden安全） */
+.ui-iso .lbl.wake {
+  border-color: var(--iso-ok); background: rgba(238, 252, 244, .97);
+  box-shadow: 0 4px 14px rgba(34, 197, 94, .35);
+}
+/* 承認まちが飢餓閾値(15分)を超えた行は時間を強調（待たせている自覚を促す） */
+.ui-iso .aact.starve { color: #b03a3a; font-weight: 700; }
 .ui-iso .lbl.sel { outline: 2px solid var(--iso-accent); outline-offset: 1px; }
 .ui-iso .lbl.hov { outline: 2px solid rgba(124, 92, 255, .5); outline-offset: 1px; }
 
@@ -486,6 +531,7 @@
 .ui-iso .sheethead b { font-size: 14px; font-weight: 800; }
 .ui-iso .sheettools { display: flex; gap: 4px; }
 .ui-iso .sheetsnd { font: inherit; font-size: 12px; background: transparent; border: 0; cursor: pointer; padding: 4px; }
+.ui-iso .sheetterm { font: inherit; font-size: 12px; background: transparent; border: 0; cursor: pointer; padding: 4px; }
 .ui-iso .sheetclose {
   font: inherit; font-size: 12px; color: var(--iso-ink-soft);
   background: transparent; border: 0; cursor: pointer; padding: 4px;
@@ -506,14 +552,63 @@
 .ui-iso .sheetsub { font-size: 11px; font-weight: 800; color: var(--iso-ink-soft); margin-top: 4px; }
 .ui-iso .sheetline { font-size: 11.5px; color: var(--iso-ink); line-height: 1.55; }
 .ui-iso .sheetline.feed { color: var(--iso-ink-soft); }
-.ui-iso .sheetquick { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
-.ui-iso .qchip {
-  font: inherit; font-size: 11.5px; font-weight: 700;
-  background: rgba(124, 92, 255, .09); color: #4f3fa8;
-  border: 1px solid rgba(124, 92, 255, .25); border-radius: 999px;
-  padding: 5px 11px; cursor: pointer;
+
+/* R54-D: シート本文のグループカード（ラベル列＋内容列の整列・hairline枠のみ） */
+.ui-iso .sheetsec {
+  border: 1px solid var(--iso-hairline); border-radius: 11px;
+  background: rgba(255, 255, 255, .66); padding: 9px 10px;
+  display: flex; flex-direction: column; gap: 6px;
 }
-.ui-iso .qchip:hover { background: rgba(124, 92, 255, .16); }
+.ui-iso .sheetsec-head {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 10.5px; font-weight: 800; letter-spacing: .04em; color: var(--iso-ink-soft);
+}
+.ui-iso .seccount {
+  font-style: normal; font-size: 9.5px; font-weight: 800; color: var(--iso-ink-soft);
+  background: rgba(124, 92, 255, .1); border-radius: 999px; padding: 1px 7px;
+}
+.ui-iso .workgrid {
+  display: grid; grid-template-columns: 44px minmax(0, 1fr);
+  column-gap: 8px; row-gap: 4px; align-items: baseline;
+}
+.ui-iso .workgrid .wl {
+  font-style: normal; font-size: 10px; font-weight: 800;
+  color: var(--iso-ink-soft); white-space: nowrap;
+}
+.ui-iso .workgrid .wv { font-size: 11.5px; line-height: 1.5; color: var(--iso-ink); }
+.ui-iso .workgrid .wv.strong { font-weight: 800; }
+.ui-iso .feedlist {
+  max-height: 132px; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.ui-iso .feedline.say { color: #4f3fa8; }
+
+/* R54-E: 定型ボード（compose直上に常設＝本文がスクロールしても動かない返信の一箇所） */
+.ui-iso .quickdock:empty { display: none; }
+.ui-iso .quickboard {
+  border: 1px solid rgba(124, 92, 255, .28); border-radius: 12px;
+  background: rgba(248, 246, 255, .92); padding: 9px 10px;
+  display: flex; flex-direction: column; gap: 7px;
+}
+.ui-iso .qb-head {
+  font-size: 10.5px; font-weight: 800; letter-spacing: .04em; color: #4f3fa8;
+}
+.ui-iso .qb-answers { display: flex; flex-direction: column; gap: 5px; }
+.ui-iso .qb-answers .sheetopt { min-height: 34px; }
+.ui-iso .sheetquick { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.ui-iso .qchip {
+  display: flex; align-items: center; gap: 6px; min-height: 36px;
+  font: inherit; font-size: 11.5px; font-weight: 700; text-align: left;
+  background: rgba(255, 255, 255, .9); color: #4f3fa8;
+  border: 1px solid rgba(124, 92, 255, .25); border-radius: 9px;
+  padding: 5px 9px; cursor: pointer; overflow: hidden;
+}
+.ui-iso .qchip:hover {
+  background: #fff; border-color: rgba(124, 92, 255, .5);
+  box-shadow: 0 3px 10px rgba(124, 92, 255, .18);
+}
+.ui-iso .qchip .qicon { font-style: normal; font-size: 12px; flex: none; }
+.ui-iso .qchip span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ui-iso .compose {
   display: flex; align-items: center;
   border-top: 1px solid rgba(96, 82, 170, .12); padding-top: 10px;
@@ -535,3 +630,60 @@
 }
 .ui-iso .toast.err { background: #b03a3a; box-shadow: 0 10px 26px rgba(120, 30, 30, .35); }
 .ui-iso .toast[hidden] { display: none; }
+
+/* R54-F: 🔑 アカウント連携（⚡モーダル内・旧UIの連携設定を移植） */
+.ui-iso .mkeys { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+.ui-iso .mkeyrow {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  border: 1px solid var(--iso-hairline); border-radius: 10px;
+  background: rgba(255, 255, 255, .66); padding: 7px 10px;
+}
+.ui-iso .mkeydot {
+  width: 8px; height: 8px; border-radius: 999px; flex: none;
+  background: #c9c6dd; font-style: normal;
+}
+.ui-iso .mkeydot.on { background: var(--iso-ok); }
+.ui-iso .mkeyname { font-size: 12px; font-weight: 700; color: var(--iso-ink); }
+.ui-iso .mkeyhint {
+  font-style: normal; font-size: 10.5px; color: var(--iso-ink-soft);
+  flex: 1; min-width: 8em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ui-iso .mkeybtn {
+  font: inherit; font-size: 11px; font-weight: 700; color: #4f3fa8;
+  background: rgba(124, 92, 255, .09); border: 1px solid rgba(124, 92, 255, .25);
+  border-radius: 8px; padding: 4px 10px; cursor: pointer;
+}
+.ui-iso .mkeybtn:hover { background: rgba(124, 92, 255, .16); }
+.ui-iso .mkeyrevoke {
+  font: inherit; font-size: 10.5px; color: #b03a3a; background: transparent;
+  border: 0; cursor: pointer; padding: 3px 4px; text-decoration: underline;
+  text-underline-offset: 2px; white-space: nowrap;
+}
+.ui-iso .mkeyrevoke:disabled { opacity: .5; cursor: default; }
+.ui-iso .mkeyform { display: flex; gap: 6px; width: 100%; }
+.ui-iso .mkeyin {
+  flex: 1; min-width: 0; font: inherit; font-size: 12px;
+  border: 1px solid var(--iso-hairline); border-radius: 8px; padding: 6px 9px;
+}
+.ui-iso .mkeyin:focus { border-color: var(--iso-accent); outline: none; }
+.ui-iso .mkeysave {
+  font: inherit; font-size: 11.5px; font-weight: 700; color: #fff;
+  background: var(--iso-accent); border: 0; border-radius: 8px;
+  padding: 6px 13px; cursor: pointer;
+}
+.ui-iso .mkeysave:disabled { opacity: .5; }
+
+/* R54: クレジットゲージはクリックで⚡（連携・台帳）へ */
+.ui-iso .gauges { cursor: pointer; }
+
+/* R63: 🔌 APIプロバイダ統合コスト（⚡モーダル内セクション＋サイドバー注記） */
+.ui-iso .mapis { display: flex; flex-direction: column; gap: 8px; }
+.ui-iso .mapi {
+  display: flex; flex-direction: column; gap: 5px;
+  padding: 8px 10px; border: 1px solid var(--iso-hairline); border-radius: 10px;
+  background: rgba(255, 255, 255, .6);
+}
+.ui-iso .mapibudget { display: flex; gap: 6px; align-items: center; }
+.ui-iso .mapibudget .mnum { flex: 1; min-width: 0; }
+.ui-iso .mgo.mgosm { padding: 6px 12px; font-size: 11.5px; flex: none; }
+.ui-iso .gsub.gnolimit { color: var(--iso-warn); font-weight: 700; }

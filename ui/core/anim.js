@@ -80,6 +80,25 @@ export function typingPose(t, seed = 0) {
   return pose;
 }
 
+/** 🤔 自席で考え込む（R56・kind==="think"）。
+ *  片手を顎へ・うつむき気味・ゆっくり左右に揺れる＝「思考中」が遠目にも伝わる。 */
+export function thinkingPose(t, seed = 0) {
+  const sway = Math.sin(t * 0.5 + seed);
+  return {
+    hipY: RIG.sitHipY,
+    hipYaw: Math.sin(t * 0.3 + seed) * 0.05,
+    hipRoll: 0,
+    headYaw: 0.14 + sway * 0.10,                              // ゆっくり左右へ
+    headPitch: 0.24 + Math.sin(t * 0.9 + seed) * 0.03,        // うつむき気味
+    legs: [-1, 1].map((side) => ({ side, hip: -1.42, knee: 1.36 })),
+    arms: [
+      // 左手を顎へ（肘を深く曲げて手が顔の高さへ来る）・右手は机に置く
+      { side: -1, shoulder: -0.86 + Math.sin(t * 0.7 + seed) * 0.03, elbow: -1.98 },
+      { side: 1, shoulder: -0.30, elbow: -0.55 },
+    ],
+  };
+}
+
 /** 会議で座って聞く・頷く。 */
 export function seatedPose(t, seed = 0) {
   return {
@@ -187,6 +206,128 @@ export function travel(from, to, startedAt, t, speed = RIG.speed) {
 /** 歩行位相は「進んだ距離」から決める。速度が変わっても足が滑らない。 */
 export function walkPhaseFor(distanceTravelled, seed = 0) {
   return distanceTravelled * RIG.cadence + seed * TAU;
+}
+
+/**
+ * 折れ線経路の移動（R58・通路ルーティング用）。path=[[x,z],...] を等速でたどる。
+ * 戻り値: {x,z,u,yaw,dist,total}。dist=進んだ距離（歩行位相に使う）・u=0..1。
+ * 経路が1点なら即到着（u=1）＝frozen 初回描画の「その場に居る」を壊さない。
+ */
+export function pathTravel(path, startedAt, t, speed = RIG.speed) {
+  if (!Array.isArray(path) || path.length === 0) {
+    return { x: 0, z: 0, u: 1, yaw: 0, dist: 0, total: 0 };
+  }
+  const segs = [];
+  let total = 0;
+  for (let i = 1; i < path.length; i++) {
+    const dx = path[i][0] - path[i - 1][0];
+    const dz = path[i][1] - path[i - 1][1];
+    const len = Math.hypot(dx, dz);
+    if (len < 1e-9) continue;
+    segs.push({ a: path[i - 1], b: path[i], len, dx, dz });
+    total += len;
+  }
+  const last = path[path.length - 1];
+  if (total < 1e-9) {
+    return { x: last[0], z: last[1], u: 1, yaw: 0, dist: 0, total: 0 };
+  }
+  const walked = Math.max(0, (t - startedAt) * speed);
+  const dist = Math.min(walked, total);
+  const u = dist / total;
+  let acc = 0;
+  for (const s of segs) {
+    if (dist <= acc + s.len || s === segs[segs.length - 1]) {
+      const k = Math.min(1, Math.max(0, (dist - acc) / s.len));
+      return {
+        x: s.a[0] + s.dx * k,
+        z: s.a[1] + s.dz * k,
+        u, dist, total,
+        yaw: Math.atan2(s.dx, s.dz),
+      };
+    }
+    acc += s.len;
+  }
+  return { x: last[0], z: last[1], u: 1, yaw: 0, dist: total, total };
+}
+
+/** チビロボ（会議の部下）の体格。脚が短いので腰も低い。 */
+export const CHIBI_HIP_Y = 0.41;
+
+/**
+ * 🧒 会議チビロボの所作（R58）。頷き＋呼吸を基本に、23秒周期で
+ * 「ピョコンと跳ねる」「挙手する」を織り込む（seedで位相分散＝一斉にやらない）。
+ */
+export function chibiPose(t, seed = 0) {
+  const pose = {
+    hipY: CHIBI_HIP_Y + Math.sin(t * 1.1 + seed) * 0.012,
+    hipYaw: Math.sin(t * 0.3 + seed) * 0.05,
+    hipRoll: 0,
+    headYaw: Math.sin(t * 0.5 + seed) * 0.10,
+    headPitch: 0.12 + Math.sin(t * 1.7 + seed) * 0.11,        // ゆっくり頷く
+    legs: [-1, 1].map((side) => ({ side, hip: side * 0.05, knee: 0.04 })),
+    arms: [-1, 1].map((side) => ({
+      side,
+      shoulder: 0.05 + Math.sin(t * 0.9 + seed + side) * 0.04,
+      elbow: -0.30,
+    })),
+  };
+  const cyc = (((t + seed * 9) % 23) + 23) % 23;
+  if (cyc < 0.9) {
+    // ピョコン（放物線1回・着地で終わる）
+    const k = Math.sin((cyc / 0.9) * Math.PI);
+    pose.hipY += k * 0.15;
+    pose.legs.forEach((l) => { l.knee = 0.04 + k * 0.5; });
+  } else if (cyc >= 11 && cyc < 13.2) {
+    // 挙手（入り0.4秒・戻り0.4秒をなめらかに）
+    const k = smoothstep(11, 11.4, cyc) * smoothstep(13.2, 12.8, cyc);
+    const arm = pose.arms[1];
+    arm.shoulder = arm.shoulder + (-2.6 - arm.shoulder) * k;
+    arm.elbow = arm.elbow + (-0.10 - arm.elbow) * k;
+  }
+  return pose;
+}
+
+/**
+ * 💬 休憩中のおしゃべり（R59）。座って相手の方を向き、話し手は身振り・
+ * 聞き手は相槌の小頷き。speaking の交代は chatSpeaker が決める（決定論）。
+ */
+export function chatPose(t, seed = 0, speaking = false) {
+  const pose = {
+    hipY: RIG.sitHipY,
+    hipYaw: Math.sin(t * 0.25 + seed) * 0.04,
+    hipRoll: 0,
+    headYaw: Math.sin(t * 0.6 + seed) * 0.08,
+    headPitch: 0.10 + Math.sin(t * 2.1 + seed) * 0.07,     // 聞き手=相槌の小頷き
+    legs: [-1, 1].map((side) => ({ side, hip: -1.42, knee: 1.36 })),
+    arms: [-1, 1].map((side) => ({ side, shoulder: -0.28, elbow: -0.50 })),
+  };
+  if (speaking) {
+    pose.headYaw = Math.sin(t * 1.3 + seed) * 0.14;        // 話し手=頭がよく動く
+    pose.headPitch = -0.02 + Math.sin(t * 1.8 + seed) * 0.04;
+    pose.arms[1].shoulder = -0.90 + Math.sin(t * 2.6 + seed) * 0.28;   // 片手で身振り
+    pose.arms[1].elbow = -1.10 + Math.sin(t * 3.4 + seed) * 0.22;
+  }
+  return pose;
+}
+
+/** 会話グループの「いま話している人」のindex（6秒交代・seedで組ごとに位相分散）。 */
+export function chatSpeaker(t, seed = 0, n = 2) {
+  if (!(n > 0)) return 0;
+  const idx = Math.floor((((t + seed * 5) % (6 * n)) + 6 * n) % (6 * n) / 6);
+  return idx % n;
+}
+
+/** 🛋 ひとり休憩＝背にもたれ脚を投げ出し、窓の方をぼんやり眺める（R59）。 */
+export function relaxPose(t, seed = 0) {
+  return {
+    hipY: RIG.sitHipY,
+    hipYaw: 0,
+    hipRoll: 0,
+    headYaw: 0.35 + Math.sin(t * 0.22 + seed) * 0.15,
+    headPitch: -0.14 + Math.sin(t * 0.5 + seed) * 0.03,
+    legs: [-1, 1].map((side) => ({ side, hip: -1.15, knee: 0.85 })),
+    arms: [-1, 1].map((side) => ({ side, shoulder: 0.30, elbow: -0.18 })),
+  };
 }
 
 /** 個体ごとの位相差。全員が同じタイミングで動くと機械的に見えるのでズラす。 */

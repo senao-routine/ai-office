@@ -17,6 +17,8 @@ SECRET="00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff"
 # JS↔Python 署名パリティ＋APP_HTML canonical 検査（node のみ・node_modules不要＝クローン直後でも走る）
 if command -v node >/dev/null 2>&1; then
   node tests/js_sign_kat.mjs && ok "JS署名KAT一致 (canonical相互運用)" || ng "JS署名KAT不一致"
+  # R65: PWAへ移植した gloss が正本 ui/core/world.js と同一出力（片方だけ直すと落ちる）
+  node tests/gloss_parity.mjs >/dev/null 2>&1 && ok "R65 gloss parity (PWA↔core 同一出力)" || ng "R65 gloss parity 不一致 (node tests/gloss_parity.mjs で詳細)"
   # P7: Web Push暗号KAT（RFC8291 Appendix A公式ベクタ＋VAPID自己検証・wrangler不要）
   node tests/webpush_kat.mjs >/dev/null 2>&1 && ok "Web Push KAT (RFC8291ベクタ+VAPID)" || ng "Web Push KAT失敗 (node tests/webpush_kat.mjs で詳細)"
   # R5: Cloudflare依存を読み込まず、worker.js から純関数だけを抽出して購読フィルタを固定。

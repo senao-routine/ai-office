@@ -6,6 +6,7 @@
 Cloudflare relay への漏洩を防ぐため、必ず独立ルートで提供する。
 Claude のトランスクリプトは読み取り専用であり、このモジュールから書き込まない。
 """
+import base64
 import copy
 import fcntl
 import hashlib
@@ -27,6 +28,13 @@ PROJECTS = _HOME / ".claude" / "projects"
 CODEX_SESSIONS = _HOME / ".codex" / "sessions"
 GEMINI_DIR = _HOME / ".gemini"
 LEDGER_FILE = _HOME / ".claude" / "office_resources.json"
+# R57: アカウント別消費の帳簿（600・ローカル表示専用＝status boardはoffice_json非搭載で中継に流れない）
+ACCOUNT_USAGE_FILE = _HOME / ".claude" / "office_account_usage.json"
+CLAUDE_CONFIG_FILE = _HOME / ".claude.json"
+CODEX_AUTH_FILE = _HOME / ".codex" / "auth.json"
+# R61: statusLine capture hook（hooks/office-statusline-capture.sh）が落とす実測枠%
+USAGE_DIR = _HOME / ".claude" / "office_usage"
+SUBSCRIPTION_STALE_SECONDS = 900
 
 CACHE_TTL = 60.0
 FIVE_HOURS = 5 * 3600
@@ -597,6 +605,8 @@ def _collect_claude(now):
             "label": "Claude Code",
             "kind": "tokens",
             "status": "ok",
+            "pace": _claude_pace(last_five.get("total") or 0, now),
+            "subscription": _claude_subscription(now),
             "tokens": {
                 "today": dict(_SCAN["today"]),
                 "last5h": last_five,
@@ -609,6 +619,80 @@ def _collect_claude(now):
             "sourceMtime": source_mtime,
             "error": None,
         }
+
+
+CLAUDE_PEAK_FILE = _HOME / ".claude" / "office_claude_peak.json"
+
+
+def _claude_pace(last5h_total, now):
+    """Claudeの「ペース」ゲージ（R55.1）。サブスク枠%の公式APIが存在しないため、
+    嘘の枠%は作らず「直近7日で観測した5h合計の最大値」を基準にした相対値を返す。
+    基準ファイルはbest-effort（壊れていても本流を殺さない）。初日はピーク=現在値=100%。"""
+    days = {}
+    try:
+        d = json.loads(CLAUDE_PEAK_FILE.read_text(encoding="utf-8"))
+        if isinstance(d, dict) and isinstance(d.get("days"), dict):
+            days = {k: int(v) for k, v in d["days"].items()
+                    if isinstance(k, str) and isinstance(v, (int, float))}
+    except (OSError, json.JSONDecodeError, ValueError):
+        days = {}
+    today = time.strftime("%Y-%m-%d", time.localtime(now))
+    days[today] = max(int(days.get(today) or 0), int(last5h_total or 0))
+    days = dict(sorted(days.items())[-7:])          # 直近7日分だけ保持（文字列日付=辞書順で足りる）
+    try:
+        CLAUDE_PEAK_FILE.parent.mkdir(parents=True, exist_ok=True)
+        tmp = CLAUDE_PEAK_FILE.with_name(CLAUDE_PEAK_FILE.name + ".tmp")
+        tmp.write_text(json.dumps({"days": days}), encoding="utf-8")
+        tmp.replace(CLAUDE_PEAK_FILE)
+    except OSError:
+        pass
+    peak = max(days.values() or [0])
+    if peak <= 0:
+        return None
+    return {"pct": round(min(100.0, last5h_total / peak * 100), 1), "peak5h": peak}
+
+
+def _claude_subscription(now):
+    """R61: statusLine capture の実測枠%（office_usage/current.json）。
+
+    Claude Code が statusLine stdin へ渡す rate_limits（Pro/Maxサブスクの
+    used_percentage・resets_at）を capture hook が記録したもの＝唯一の公式実測。
+    無い/壊れている/形が合わない → None（UIは従来のペース推定へフォールバック）。
+    staleSec を必ず載せ、鮮度判定はUI側（嘘メトリクス禁止＝古い実測を新品と偽らない）。
+    """
+    try:
+        d = json.loads((USAGE_DIR / "current.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, ValueError):
+        return None
+    if not isinstance(d, dict):
+        return None
+    captured = d.get("capturedAt")
+    rl = d.get("rateLimits")
+    if not isinstance(captured, (int, float)) or isinstance(captured, bool) \
+            or not isinstance(rl, dict):
+        return None
+
+    def win(key):
+        w = rl.get(key)
+        if not isinstance(w, dict):
+            return None
+        pct = w.get("used_percentage")
+        if not isinstance(pct, (int, float)) or isinstance(pct, bool):
+            return None
+        resets = w.get("resets_at")
+        return {"pct": round(max(0.0, min(100.0, float(pct))), 1),
+                "resetsAt": int(resets) if isinstance(resets, (int, float))
+                and not isinstance(resets, bool) else None}
+
+    five, week = win("five_hour"), win("seven_day")
+    if five is None and week is None:
+        return None
+    account = None
+    acct = d.get("account")
+    if isinstance(acct, dict) and acct.get("id"):
+        account = {"id": str(acct["id"])[:12], "email": str(acct.get("email") or "")}
+    return {"fiveHour": five, "sevenDay": week,
+            "staleSec": max(0, int(now - captured)), "account": account}
 
 
 def collect_claude(now):
@@ -1318,6 +1402,417 @@ def _external_provider(provider_id, label, payload):
     }
 
 
+# ── R63: APIプロバイダ統合コスト ────────────────────────────────
+# 「上限を決めているものは残量ゲージ・上限が無いものは消費額＋未設定の明示」を
+# 1画面に集約する。各社の取得可否は調査で確定済み（下表・出典はdocs/api-credits.md）。
+#   OpenRouter : GET /api/v1/key       → 当月消費・キー上限（null=無制限）
+#   Moonshot   : GET /v1/users/me/balance → 残高のみ（消費・上限APIなし）
+#   DeepSeek   : GET /user/balance     → 残高のみ（値は文字列・CNYのことあり）
+#   Groq       : 残高/消費APIは存在しない（実測404）＝手動予算のみ
+# 掟: 推測レートを作らない（円換算はUSDだけ）。上限が取れない＝pctを出さない。
+
+API_PROVIDERS = (
+    {"id": "openrouter", "label": "OpenRouter", "key": "OPENROUTER_API_KEY"},
+    {"id": "moonshot", "label": "Kimi (Moonshot)", "key": "MOONSHOT_API_KEY"},
+    {"id": "deepseek", "label": "DeepSeek", "key": "DEEPSEEK_API_KEY"},
+    {"id": "groq", "label": "Groq", "key": "GROQ_API_KEY"},
+)
+API_PROVIDER_IDS = frozenset(p["id"] for p in API_PROVIDERS)
+_BUDGET_CURRENCIES = frozenset(("USD", "CNY", "JPY"))
+MAX_BUDGET_AMOUNT = 1_000_000
+
+
+def _api_float(value, field):
+    """数値or数値文字列 → float（DeepSeekは残高を文字列で返す）。負値・NaNは弾く。"""
+    if isinstance(value, str):
+        try:
+            value = float(value.strip())
+        except ValueError:
+            raise ValueError(f"{field} is invalid") from None
+    if not _valid_number(value) or value < 0:
+        raise ValueError(f"{field} is invalid")
+    return float(value)
+
+
+def _api_optional_float(value, field):
+    """null許容の数値（OpenRouterのlimitはnull=無制限＝0と混同しない）。"""
+    if value is None:
+        return None
+    return _api_float(value, field)
+
+
+def fetch_openrouter(secret):
+    """GET /api/v1/key（通常の推論キーで読める。data.limitはnull=無制限）。"""
+    payload = _fetch_json(
+        "https://openrouter.ai/api/v1/key",
+        {"Authorization": f"Bearer {secret}"},
+        timeout=6,
+    )
+    if isinstance(payload, dict) and payload.get("error"):
+        return {"error": _external_error(payload)}
+    data = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(data, dict):
+        return {"error": "invalid response"}
+    try:
+        spent = _api_float(data.get("usage_monthly", data.get("usage", 0)), "usage_monthly")
+        byok = _api_optional_float(data.get("byok_usage_monthly"), "byok_usage_monthly")
+        limit = _api_optional_float(data.get("limit"), "limit")
+        remaining = _api_optional_float(data.get("limit_remaining"), "limit_remaining")
+    except (TypeError, ValueError, OverflowError):
+        return {"error": "invalid response"}
+    reset = data.get("limit_reset")
+    return {
+        "currency": "USD",
+        "spentMonth": spent,
+        "limit": limit,
+        "limitSource": "api" if limit is not None else None,
+        "remaining": remaining,
+        "limitReset": reset if isinstance(reset, str) else None,
+        "byokMonth": byok,
+        "freeTier": bool(data.get("is_free_tier")),
+    }
+
+
+def fetch_moonshot(secret):
+    """GET /v1/users/me/balance（国際版=USD。残高のみ・消費/上限APIは無い）。"""
+    payload = _fetch_json(
+        "https://api.moonshot.ai/v1/users/me/balance",
+        {"Authorization": f"Bearer {secret}"},
+        timeout=6,
+    )
+    if isinstance(payload, dict) and payload.get("error"):
+        return {"error": _external_error(payload)}
+    data = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(data, dict):
+        return {"error": "invalid response"}
+    try:
+        balance = _api_float(data.get("available_balance"), "available_balance")
+    except (TypeError, ValueError, OverflowError):
+        return {"error": "invalid response"}
+    return {"currency": "USD", "balance": balance, "spentMonth": None, "limit": None}
+
+
+def fetch_deepseek(secret):
+    """GET /user/balance（値は文字列・通貨はCNYのこともある＝currencyをそのまま運ぶ）。"""
+    payload = _fetch_json(
+        "https://api.deepseek.com/user/balance",
+        {"Authorization": f"Bearer {secret}"},
+        timeout=6,
+    )
+    if isinstance(payload, dict) and payload.get("error"):
+        return {"error": _external_error(payload)}
+    infos = payload.get("balance_infos") if isinstance(payload, dict) else None
+    if not isinstance(infos, list) or not infos or not isinstance(infos[0], dict):
+        return {"error": "invalid response"}
+    info = infos[0]
+    try:
+        balance = _api_float(info.get("total_balance"), "total_balance")
+    except (TypeError, ValueError, OverflowError):
+        return {"error": "invalid response"}
+    currency = info.get("currency")
+    return {
+        "currency": currency if currency in ("USD", "CNY") else "USD",
+        "balance": balance,
+        "spentMonth": None,
+        "limit": None,
+    }
+
+
+def fetch_groq(_secret):
+    """Groqは残高/消費APIが存在しない（実測404）。手動予算だけを表示する。"""
+    return {"currency": "USD", "spentMonth": None, "balance": None, "limit": None,
+            "noApi": True}
+
+
+_API_FETCHERS = {
+    "openrouter": fetch_openrouter,
+    "moonshot": fetch_moonshot,
+    "deepseek": fetch_deepseek,
+    "groq": fetch_groq,
+}
+
+
+def _budget_for(ledger, provider_id):
+    """台帳の手動予算 {amount, currency, period}。無い/壊れ→None。"""
+    budgets = ledger.get("budgets") if isinstance(ledger, dict) else None
+    if not isinstance(budgets, dict):
+        return None
+    entry = budgets.get(provider_id)
+    if not isinstance(entry, dict):
+        return None
+    try:
+        amount = _api_float(entry.get("amount"), "amount")
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if amount <= 0:
+        return None
+    currency = entry.get("currency")
+    return {
+        "amount": amount,
+        "currency": currency if currency in _BUDGET_CURRENCIES else "USD",
+        "period": "monthly",
+    }
+
+
+def _api_provider_entry(spec, payload, budget):
+    """外部レスポンス＋手動予算 → UIが読む1プロバイダ分の形へ正規化する。"""
+    entry = {
+        "id": spec["id"],
+        "label": spec["label"],
+        "kind": "api",
+        "connected": bool(payload.get("connected")),
+        "currency": payload.get("currency") or "USD",
+        "spentMonth": None,
+        "balance": None,
+        "limit": None,
+        "limitSource": None,
+        "pct": None,
+        "note": "",
+        "status": "ok",
+        "error": None,
+    }
+    if not entry["connected"]:
+        entry["status"] = "disconnected"
+        return entry
+    if payload.get("error"):
+        entry["status"] = "error"
+        entry["error"] = payload["error"]
+        return entry
+    for field in ("spentMonth", "balance", "remaining", "limitReset", "byokMonth", "freeTier"):
+        if field in payload:
+            entry[field] = payload[field]
+    limit = payload.get("limit")
+    if limit is not None:
+        entry["limit"] = limit
+        entry["limitSource"] = "api"
+    elif budget:
+        # API側に上限が無い（=無制限 or 上限APIなし）ときだけ手動予算を使う
+        entry["limit"] = budget["amount"]
+        entry["limitSource"] = "manual"
+        entry["budgetCurrency"] = budget["currency"]
+    spent = entry.get("spentMonth")
+    if entry["limit"] and isinstance(spent, (int, float)):
+        entry["pct"] = round(min(100.0, max(0.0, spent / entry["limit"] * 100)), 1)
+    elif entry["limit"] is None:
+        # ユーザー要望そのもの: 上限が無いものは「未設定」と明示して消費額だけ出す
+        entry["note"] = "no_limit"
+    if payload.get("noApi"):
+        entry["note"] = "no_limit" if entry["limit"] is None else entry["note"]
+        entry["noApi"] = True
+    return entry
+
+
+def collect_api_providers(now, fetch_external=True):
+    """APIプロバイダ（OpenRouter/Kimi/DeepSeek/Groq）の消費・残高・上限。
+    キー未登録のプロバイダは一切リクエストしない（=providerごと出さない）。"""
+    now = _now_value(now)
+    try:
+        ledger = _read_ledger()
+    except Exception:
+        ledger = {}
+    out = []
+    for spec in API_PROVIDERS:
+        secret, _mtime = _secret_value(spec["key"])
+        if not secret:
+            continue                      # 未登録＝叩かない・出さない
+        fetcher = _API_FETCHERS[spec["id"]]
+        if fetch_external:
+            payload = _external_result(spec["id"], spec["key"], now, fetcher)
+        else:
+            payload = _external_cached(spec["id"], spec["key"], now)
+        out.append(_api_provider_entry(spec, payload, _budget_for(ledger, spec["id"])))
+    return out
+
+
+def budget_apply(data):
+    """手動予算（上限が取れないプロバイダ用）をflock下でRMWする。
+    amount<=0 は「削除」＝上限未設定へ戻す。"""
+    if not isinstance(data, dict):
+        return False, "request must be an object"
+    provider = data.get("provider")
+    if not isinstance(provider, str) or provider not in API_PROVIDER_IDS:
+        return False, "provider が不正です"
+    amount = data.get("amount")
+    remove = amount in (None, "", 0, 0.0)
+    if not remove:
+        try:
+            amount = _api_float(amount, "amount")
+        except (TypeError, ValueError, OverflowError):
+            return False, "金額が不正です"
+        if amount <= 0 or amount > MAX_BUDGET_AMOUNT:
+            return False, f"金額は 0 〜 {MAX_BUDGET_AMOUNT} の範囲で指定してください"
+    currency = data.get("currency", "USD")
+    if not isinstance(currency, str) or currency not in _BUDGET_CURRENCIES:
+        return False, "通貨が不正です"
+    try:
+        with _LOCK:
+            with _file_flock(LEDGER_FILE):
+                ledger = _read_ledger()
+                updated = dict(ledger)
+                updated["version"] = 1
+                budgets = dict(updated.get("budgets") or {})
+                if remove:
+                    budgets.pop(provider, None)
+                else:
+                    budgets[provider] = {
+                        "amount": float(amount),
+                        "currency": currency,
+                        "period": "monthly",
+                    }
+                updated["budgets"] = budgets
+                updated["entries"] = list(ledger.get("entries", []))
+                updated["spend"] = list(ledger.get("spend", []))
+                _write_ledger(updated)
+                _invalidate_cache_locked()
+        return True, "removed" if remove else "updated"
+    except (OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
+        return False, _error_text(exc)
+
+
+# ── R57: アカウント別クレジット消費 ──────────────────────────────
+# Claude Codeユーザーは2アカウント運用が珍しくない。ログイン代行はせず、
+# ログイン済みアカウントの識別子をローカル設定から読み、消費をアカウント別に帳簿づける。
+# email はローカル表示専用（status board は office_json に載らない＝中継へ流れない掟）。
+
+def _claude_account():
+    """ログイン中の Claude Code アカウント {id, email, tier}。無い/壊れ→None。"""
+    try:
+        d = json.loads(CLAUDE_CONFIG_FILE.read_text(encoding="utf-8"))
+        oa = d.get("oauthAccount") if isinstance(d, dict) else None
+        if not isinstance(oa, dict):
+            return None
+        acc_id = oa.get("accountUuid")
+        if not isinstance(acc_id, str) or not acc_id:
+            return None
+        email = oa.get("emailAddress") if isinstance(oa.get("emailAddress"), str) else ""
+        tier = oa.get("userRateLimitTier") if isinstance(oa.get("userRateLimitTier"), str) else ""
+        return {"id": acc_id, "email": email, "tier": tier}
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def _codex_account():
+    """ログイン中の Codex アカウント {id, email}。id_token の payload は表示用に
+    base64 デコードのみ（署名検証はしない・access_token 等の秘匿値は読まない/書かない）。"""
+    try:
+        d = json.loads(CODEX_AUTH_FILE.read_text(encoding="utf-8"))
+        tok = d.get("tokens") if isinstance(d, dict) else None
+        if not isinstance(tok, dict):
+            return None
+        acc_id = tok.get("account_id")
+        if not isinstance(acc_id, str) or not acc_id:
+            return None
+        email = ""
+        idt = tok.get("id_token")
+        if isinstance(idt, str) and idt.count(".") >= 2:
+            try:
+                seg = idt.split(".")[1]
+                payload = json.loads(base64.urlsafe_b64decode(
+                    seg + "=" * (-len(seg) % 4)).decode("utf-8", "replace"))
+                if isinstance(payload, dict) and isinstance(payload.get("email"), str):
+                    email = payload["email"]
+            except (ValueError, json.JSONDecodeError):
+                pass
+        return {"id": acc_id, "email": email}
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def _attribute_delta(ledger, account_id, date_label, today_total):
+    """Claude当日合計の増分をアクティブアカウントの当日バケットへ帳簿づけする純関数
+    （入力 ledger は変更しない）。増分= 同日なら max(0, today−lastSeen.total)
+    （巻き戻りは0扱い）・日替わりなら today 全量。日次バケットは8日で剪定。"""
+    src = ledger if isinstance(ledger, dict) else {}
+    cl = src.get("claude") if isinstance(src.get("claude"), dict) else {}
+    last = cl.get("lastSeen") if isinstance(cl.get("lastSeen"), dict) else {}
+    days = cl.get("days") if isinstance(cl.get("days"), dict) else {}
+    total = max(0, int(today_total or 0))
+    if last.get("date") == date_label:
+        delta = max(0, total - int(last.get("total") or 0))
+    else:
+        delta = total
+    new_days = {d: dict(v) for d, v in days.items() if isinstance(v, dict)}
+    if account_id and delta > 0:
+        bucket = new_days.setdefault(date_label, {})
+        bucket[account_id] = int(bucket.get(account_id) or 0) + delta
+    new_days = dict(sorted(new_days.items())[-8:])
+    out = dict(src)
+    out["claude"] = {"lastSeen": {"date": date_label, "total": total}, "days": new_days}
+    return out
+
+
+def _load_account_usage():
+    try:
+        d = json.loads(ACCOUNT_USAGE_FILE.read_text(encoding="utf-8"))
+        return d if isinstance(d, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _save_account_usage(d):
+    try:
+        ACCOUNT_USAGE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        tmp = ACCOUNT_USAGE_FILE.with_name(ACCOUNT_USAGE_FILE.name + ".tmp")
+        tmp.write_text(json.dumps(d, ensure_ascii=False), encoding="utf-8")
+        tmp.replace(ACCOUNT_USAGE_FILE)
+        os.chmod(ACCOUNT_USAGE_FILE, 0o600)
+    except OSError:
+        pass
+
+
+def _apply_accounts(providers, now):
+    """claude/codex provider にアカウント情報を添え、消費をアカウント別に帳簿づける。
+    全て best-effort（auth/帳簿の失敗で board を壊さない）。"""
+    ledger = _load_account_usage()
+    changed = False
+    date_label = time.strftime("%Y-%m-%d", time.localtime(now))
+    cl_acct = _claude_account()
+    cx_acct = _codex_account()
+    for pr in providers:
+        if pr.get("id") == "claude" and pr.get("status") == "ok":
+            today_total = ((pr.get("tokens") or {}).get("today") or {}).get("total") or 0
+            ledger = _attribute_delta(
+                ledger, cl_acct["id"] if cl_acct else None, date_label, today_total)
+            changed = True
+            emails = ledger.setdefault("claudeEmails", {})
+            if cl_acct:
+                if cl_acct["email"]:
+                    emails[cl_acct["id"]] = cl_acct["email"]
+                pr["account"] = {"email": cl_acct["email"], "tier": cl_acct["tier"]}
+            bucket = ((ledger.get("claude") or {}).get("days") or {}).get(date_label) or {}
+            accounts = [{"id": aid, "email": emails.get(aid, ""), "todayTok": int(tok),
+                         "active": bool(cl_acct and aid == cl_acct["id"])}
+                        for aid, tok in sorted(bucket.items(), key=lambda kv: -kv[1])
+                        if isinstance(tok, (int, float))]
+            if accounts:
+                pr["accounts"] = accounts
+        elif pr.get("id") == "codex" and pr.get("status") in ("ok", "stale") and pr.get("resetsAt"):
+            snaps = ledger.setdefault("codexAccounts", {})
+            if cx_acct:
+                snaps[cx_acct["id"]] = {
+                    "email": cx_acct["email"],
+                    "usedPercent": pr.get("usedPercent"),
+                    "secondary": pr.get("secondary"),
+                    "resetsAt": pr.get("resetsAt"),
+                    "plan": pr.get("plan"),
+                    "seenAt": int(now),
+                }
+                changed = True
+                pr["account"] = {"id": cx_acct["id"], "email": cx_acct["email"]}
+            accounts = [{"id": aid, "email": (s or {}).get("email") or "",
+                         "usedPercent": (s or {}).get("usedPercent"),
+                         "resetsAt": (s or {}).get("resetsAt"),
+                         "seenAt": (s or {}).get("seenAt"),
+                         "active": bool(cx_acct and aid == cx_acct["id"])}
+                        for aid, s in snaps.items() if isinstance(s, dict)]
+            accounts.sort(key=lambda a: (not a["active"], -(a["seenAt"] or 0)))
+            if accounts:
+                pr["accounts"] = accounts
+    if changed:
+        _save_account_usage(ledger)
+    return providers
+
+
 def _build_board(now, fetch_external=True):
     providers = [
         _safe_provider(collect_claude, _claude_unavailable, now),
@@ -1335,6 +1830,11 @@ def _build_board(now, fetch_external=True):
         _external_provider("openai", "OpenAI", openai),
     ])
     try:
+        # R63: APIプロバイダ（キー登録済みのものだけ・失敗しても本流を壊さない）
+        providers.extend(collect_api_providers(now, fetch_external=fetch_external))
+    except Exception:
+        pass
+    try:
         providers.extend(collect_ledger(now))
     except Exception:
         # 台帳は0件以上の可変 provider なので、壊れていても固定3 provider を生かす。
@@ -1347,6 +1847,10 @@ def _build_board(now, fetch_external=True):
         # spendはローカル手入力の補助表示。壊れていても他のproviderを落とさない。
         spend = {"items": [], "totalJpy": 0, "totalUsd": 0}
         fx = {"jpyPerUsd": DEFAULT_JPY_PER_USD}
+    try:
+        _apply_accounts(providers, now)     # R57: アカウント表示は添え物＝boardを壊さない
+    except Exception:
+        pass
     return {"generatedAt": now, "providers": providers, "spend": spend, "fx": fx}
 
 
@@ -1376,7 +1880,9 @@ def _refresh_cache(now, version):
 
 
 def _external_needs_refresh(now):
-    for name, key_name in (("xapi", "X_BEARER_TOKEN"), ("openai", "OPENAI_ADMIN_KEY")):
+    targets = [("xapi", "X_BEARER_TOKEN"), ("openai", "OPENAI_ADMIN_KEY")]
+    targets.extend((spec["id"], spec["key"]) for spec in API_PROVIDERS)   # R63
+    for name, key_name in targets:
         secret, source_mtime = _secret_value(key_name)
         if not secret:
             continue

@@ -1,8 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  RIG, TAU, idlePose, poseFor, seatedPose, seedOf, smoothstep, travel,
-  typingPose, walkPhaseFor, walkPose,
+  CHIBI_HIP_Y, RIG, TAU, chatPose, chatSpeaker, chibiPose, idlePose, pathTravel, poseFor, relaxPose, seatedPose, seedOf, smoothstep, thinkingPose, travel, typingPose, walkPhaseFor, walkPose,
 } from "./anim.js";
 
 const ALL_POSES = [walkPose(1.1), typingPose(3.2), seatedPose(3.2), idlePose(3.2)];
@@ -154,4 +153,85 @@ test("smoothstep: 端で 0/1・範囲外でも飽和", () => {
   assert.equal(smoothstep(0, 1, 5), 1);
   assert.equal(smoothstep(0, 1, 0.5), 0.5);
   assert.equal(smoothstep(1, 1, 2), 1);          // 0除算しない
+});
+
+// ── R56: thinkingPose（考え込む所作） ─────────────────────────
+test("thinkingPose: 決定論・着席・片手が顎（肘の深い曲げ）・ゆっくり揺れる", () => {
+  const a = thinkingPose(3.2, 1.0);
+  const b = thinkingPose(3.2, 1.0);
+  assert.deepEqual(a, b, "同じt・seedなら同じポーズ（golden前提）");
+  assert.equal(a.hipY, RIG.sitHipY, "着席の腰高");
+  assert.ok(a.headPitch > 0.15, "うつむき気味");
+  assert.ok(a.arms[0].elbow < -1.5, "顎の手＝肘が深く曲がる");
+  assert.ok(a.arms[0].elbow < a.arms[1].elbow, "顎の手はもう片方より深く曲がる");
+  const c = thinkingPose(6.0, 1.0);
+  assert.notEqual(a.headYaw, c.headYaw, "tで揺れる（静止画ではない）");
+});
+
+// ── R58: pathTravel（折れ線移動）と chibiPose（2頭身の所作） ─────────
+test("pathTravel: 折れ線を等速でたどり、distが単調に増える", () => {
+  const path = [[0, 0], [4, 0], [4, 3]];          // 総距離7
+  const a = pathTravel(path, 0, 1, 1);            // 1秒後=1m地点
+  assert.ok(Math.abs(a.x - 1) < 1e-9 && Math.abs(a.z) < 1e-9);
+  assert.ok(a.u > 0 && a.u < 1);
+  const b = pathTravel(path, 0, 5, 1);            // 5m=角を曲がって(4,1)
+  assert.ok(Math.abs(b.x - 4) < 1e-9 && Math.abs(b.z - 1) < 1e-9);
+  assert.ok(Math.abs(b.yaw) < 1e-9 || b.yaw !== a.yaw, "セグメントでyawが変わる");
+  const c = pathTravel(path, 0, 100, 1);
+  assert.equal(c.u, 1);
+  assert.ok(Math.abs(c.x - 4) < 1e-9 && Math.abs(c.z - 3) < 1e-9);
+  assert.equal(c.total, 7);
+});
+
+test("pathTravel: 1点経路は即到着（frozen初回描画の掟）・空でも落ちない", () => {
+  const p = pathTravel([[2, 5]], 0, 0);
+  assert.deepEqual([p.x, p.z, p.u], [2, 5, 1]);
+  assert.equal(pathTravel([], 0, 10).u, 1);
+  assert.equal(pathTravel(null, 0, 10).u, 1);
+});
+
+test("chibiPose: 決定論・腰は低い・跳ね/挙手の窓が存在する", () => {
+  const a = chibiPose(5, 1);
+  const b = chibiPose(5, 1);
+  assert.deepEqual(a, b, "同じt+seed→同じポーズ");
+  assert.ok(Math.abs(a.hipY - CHIBI_HIP_Y) < 0.2, "腰高はチビ基準");
+  // 跳ね窓（cyc<0.9）: seed=0, t=0.45 → 空中
+  const hop = chibiPose(0.45, 0);
+  assert.ok(hop.hipY > CHIBI_HIP_Y + 0.05, "跳ねで腰が上がる");
+  // 挙手窓（cyc 11..13.2）: seed=0, t=12.1 → 右肩が大きく上がる
+  const raise = chibiPose(12.1, 0);
+  assert.ok(raise.arms[1].shoulder < -2.0, `挙手 shoulder=${raise.arms[1].shoulder}`);
+  // 窓の外は通常の頷き
+  const calm = chibiPose(6, 0);
+  assert.ok(calm.arms[1].shoulder > -1 && calm.hipY < CHIBI_HIP_Y + 0.05);
+});
+
+// ── R59: おしゃべり・くつろぎ ─────────────────────────────────
+test("chatSpeaker: 6秒交代で全員に回る・決定論・範囲内", () => {
+  assert.equal(chatSpeaker(1, 0, 2), chatSpeaker(1, 0, 2));
+  const seen = new Set();
+  for (let t = 0; t < 12; t += 1) seen.add(chatSpeaker(t, 0, 2));
+  assert.deepEqual([...seen].sort(), [0, 1], "2人とも話す番が来る");
+  assert.notEqual(chatSpeaker(0, 0, 2), chatSpeaker(6.5, 0, 2), "6秒で交代");
+  for (let t = 0; t < 30; t += 2.5) {
+    const i = chatSpeaker(t, 1.2, 3);
+    assert.ok(i >= 0 && i < 3);
+  }
+  assert.equal(chatSpeaker(5, 0, 0), 0);
+});
+
+test("chatPose: 話し手は身振り（腕が上がる）・聞き手は静か・純関数", () => {
+  const listen = chatPose(2.0, 0.5, false);
+  const speak = chatPose(2.0, 0.5, true);
+  assert.ok(speak.arms[1].shoulder < listen.arms[1].shoulder - 0.3,
+    "話し手の腕が聞き手より上がっている");
+  assert.deepEqual(chatPose(2.0, 0.5, true), speak, "同じ入力→同じポーズ");
+  assert.equal(listen.hipY, RIG.sitHipY, "着席");
+});
+
+test("relaxPose: 着席・脚を投げ出す・頭は上向き寄り", () => {
+  const p = relaxPose(1.0, 0.3);
+  assert.equal(p.hipY, RIG.sitHipY);
+  assert.ok(p.legs[0].knee < 1.0, "膝が伸び気味（投げ出し）");
+  assert.ok(p.headPitch < 0, "視線が上向き");
 });
