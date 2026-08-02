@@ -34,7 +34,9 @@ const DEMO = new URLSearchParams(
 
 export async function mount(root) {
   root.replaceChildren();
-  root.className = "ui-iso";
+  // R67: ?t=固定（回帰スクショ）では全 transition を無効化＝入場フェード込みでも
+  // golden ビット一致（監査で実証済みの方式）。通常時だけ動きが付く
+  root.className = frozen ? "ui-iso no-anim" : "ui-iso";
 
   const shell = document.createElement("div");
   shell.className = "shell";
@@ -67,6 +69,7 @@ export async function mount(root) {
       <header class="head">
         <h1 id="greet"></h1>
         <p class="sub" id="sub"></p>
+        <i class="freshness" id="freshness" hidden></i>
       </header>
       <section class="stage" id="stage">
         <div class="viewport" id="viewport"></div>
@@ -131,10 +134,21 @@ export async function mount(root) {
 
   let world = null;
   let built = null;
+  let freshShown = -1;
+  const freshEl = shell.querySelector("#freshness");
   const draw = (t) => {
     if (!built) return;
     scene.update(built, t);
     paintLabels(shell, scene, built);
+    // R67: 「今更新された」の可視化。frozen では非表示＝golden 撮り直し不要
+    if (!frozen && lastDataMono !== null) {
+      const s = Math.max(0, Math.round(t - lastDataMono));
+      if (s !== freshShown) {
+        freshShown = s;
+        freshEl.textContent = T("updated_ago", s);
+        freshEl.hidden = false;
+      }
+    }
   };
   const apply = (office) => {
     world = office;
@@ -177,18 +191,39 @@ export async function mount(root) {
   const recentSends = new Map();     // session -> mono秒（このUIから最近投函した相手だけ手応えを出す）
   const wakeUntil = new Map();       // session -> mono秒（足元チップの動き出しハイライト期限）
   const toastEl = shell.querySelector("#toast");
-  let toastTimer = 0;
+  // R67: トーストは直近2件の縦スタック（連続送信で前のメッセージが無告知で消えるのを根絶）。
+  // #toast コンテナの hidden は ops_smoke の判定面なので維持（子0件のときだけ true）
   const showToast = (msg, ok = true) => {
-    toastEl.textContent = msg;
-    toastEl.classList.toggle("err", !ok);
+    const t = document.createElement("div");
+    t.className = `tmsg${ok ? "" : " err"}`;
+    t.textContent = msg;
+    toastEl.append(t);
+    while (toastEl.children.length > 2) toastEl.firstChild.remove();
     toastEl.hidden = false;
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => { toastEl.hidden = true; }, 2600);
+    requestAnimationFrame(() => t.classList.add("show"));
+    setTimeout(() => {
+      t.remove();
+      if (!toastEl.children.length) toastEl.hidden = true;
+    }, 2600);
+  };
+  // R67: 送信中のUI状態（無反応の800msを可視化・入力とボタンを塞ぐ）
+  const sendingUi = (on) => {
+    composeInput.disabled = on;
+    composeInput.placeholder = on ? T("sending") : T("compose_ph");
+    for (const b of shell.querySelectorAll("#quickdock button, #attn button")) {
+      b.disabled = on;
+    }
   };
   const send = async (session, name, text, attnKey = "") => {
-    if (DEMO) { showToast(T("demo_no_send")); return; }
-    if (sending || !session || !text) return;
+    if (DEMO) { showToast(T("demo_no_send")); return false; }
+    if (!session || !text) return false;
+    if (sending) {
+      // R67: 飛行中の2通目はサイレント破棄せず「送信中」を知らせる（実測: network到達1件で黙殺していた）
+      showToast(T("sending_busy"), false);
+      return false;
+    }
     sending = true;
+    sendingUi(true);
     try {
       await postInstruction(session, text);
       showToast(T("deliver_ok", name));
@@ -199,10 +234,13 @@ export async function mount(root) {
         answered.set(session, attnKey);
         if (built) render(shell, built);
       }
+      return true;
     } catch (err) {
       showToast(T("deliver_fail", err.message), false);
+      return false;
     } finally {
       sending = false;
+      sendingUi(false);
     }
   };
   const sheetEl = shell.querySelector("#sheet");
@@ -307,7 +345,9 @@ export async function mount(root) {
     }
     // 🕑 最近の動き: 件数バッジ＋独立スクロール・💬発言は色分け
     if ((agent.feed || []).length) {
-      const feed = agent.feed.slice(-8);
+      // R67: サーバーの feed は newest-first。slice(-8) は古い8件＝最新2行を
+      // 取りこぼしていた実測バグ。先頭8件（新しい順のまま上から）へ修正
+      const feed = agent.feed.slice(0, 8);
       const sec = sEl("div", "sheetsec");
       const head = sEl("b", "sheetsec-head", T("recent_moves"));
       head.append(sEl("i", "seccount", String(feed.length)));
@@ -336,9 +376,9 @@ export async function mount(root) {
       for (const o of opts) {
         const b = sEl("button", "sheetopt", o.label);
         b.type = "button";
-        b.addEventListener("click", () => {
-          send(agent.session, agent.name, o.text, attnKeyFor(agent));
-          closeCompose();
+        b.addEventListener("click", async () => {
+          // R67: 成功時のみクローズ（失敗トーストの裏でシートが消える混乱を防ぐ）
+          if (await send(agent.session, agent.name, o.text, attnKeyFor(agent))) closeCompose();
         });
         answers.append(b);
       }
@@ -352,9 +392,8 @@ export async function mount(root) {
       b.title = q;                       // 狭幅で省略された全文はツールチップで
       b.append(sEl("i", "qicon", QUICK_ICONS[i] || "・"), sEl("span", "", q));
       // 内訳で宛先を切り替えた後は QUICK もその宛先へ（❗回答ボタンは代表=❗保持者のまま）
-      b.addEventListener("click", () => {
-        send(composeTarget?.session || agent.session, agent.name, q);
-        closeCompose();
+      b.addEventListener("click", async () => {
+        if (await send(composeTarget?.session || agent.session, agent.name, q)) closeCompose();
       });
       quick.append(b);
     });
@@ -362,11 +401,15 @@ export async function mount(root) {
     dock.append(board);
     paintTarget(agent);
     sheetEl.hidden = false;
+    // R67: 開きだけ .show 2段階でフェードイン（hidden の即時性は維持＝スモーク互換・
+    // frozen は .no-anim で transition:none＝golden 非干渉）
+    requestAnimationFrame(() => sheetEl.classList.add("show"));
     composeInput.focus();
     if (built) render(shell, built);            // 選択ハイライトを反映
   };
   const closeCompose = () => {
     composeTarget = null;
+    sheetEl.classList.remove("show");
     sheetEl.hidden = true;
     composeInput.value = "";
     shell.querySelector("#quickdock").replaceChildren();
@@ -392,10 +435,12 @@ export async function mount(root) {
     if (composeTarget) jumpTerminal(composeTarget.session, composeTarget.name);
   });
   shell.querySelector("#sheetclose").addEventListener("click", closeCompose);
-  composeInput.addEventListener("keydown", (e) => {
+  composeInput.addEventListener("keydown", async (e) => {
     if (e.key === "Enter" && composeInput.value.trim() && composeTarget) {
-      send(composeTarget.session, composeTarget.name, composeInput.value.trim());
-      closeCompose();
+      // R67: 送信成功時のみクローズ＝失敗しても本文が残る（従来は入力全喪失の実バグ）
+      if (await send(composeTarget.session, composeTarget.name, composeInput.value.trim())) {
+        closeCompose();
+      }
     } else if (e.key === "Escape") {
       closeCompose();
     }
@@ -473,30 +518,37 @@ export async function mount(root) {
     const rect = viewportEl.getBoundingClientRect();
     return { x: e.clientX - rect.left, y: e.clientY - rect.top };
   };
+  // R67: click は 250ms 遅延実行し、dblclick で取り消す（従来は dblclick の1打目で
+  // シートが必ず開いてしまいターミナルジャンプと競合していた）
+  let clickTimer = 0;
   viewportEl.addEventListener("click", (e) => {
     const { x, y } = stagePoint(e);
-    const p2 = scene.projectBoss?.();
-    if (p2 && Math.hypot(x - p2.left, y - p2.top) <= 52) {
-      modal.replaceChildren(mEl("b", "mtitle", T("boss_title")),
-        mEl("p", "mnote", T("boss_note")));
-      for (const a of built?.agents || []) {
-        const row = mEl("button", "mpick", "");
-        row.type = "button";
-        const dot = mEl("i", `sq-ish st-${a.state}`);
-        row.append(dot, mEl("b", "", a.crew > 1 ? `${a.name} ×${a.crew}` : a.name),
-          mEl("span", "", activityGloss(a, lang())));
-        row.addEventListener("click", () => { closeModal(); openCompose(a); });
-        modal.append(row);
+    clearTimeout(clickTimer);
+    clickTimer = setTimeout(() => {
+      const p2 = scene.projectBoss?.();
+      if (p2 && Math.hypot(x - p2.left, y - p2.top) <= 52) {
+        modal.replaceChildren(mEl("b", "mtitle", T("boss_title")),
+          mEl("p", "mnote", T("boss_note")));
+        for (const a of built?.agents || []) {
+          const row = mEl("button", "mpick", "");
+          row.type = "button";
+          const dot = mEl("i", `sq-ish st-${a.state}`);
+          row.append(dot, mEl("b", "", a.crew > 1 ? `${a.name} ×${a.crew}` : a.name),
+            mEl("span", "", activityGloss(a, lang())));
+          row.addEventListener("click", () => { closeModal(); openCompose(a); });
+          modal.append(row);
+        }
+        openModal();
+        return;
       }
-      openModal();
-      return;
-    }
-    const id = scene.pickAgent?.(x, y);
-    const a = id && (built?.agents || []).find((q) => q.id === id);
-    if (a) openCompose(a);
+      const id = scene.pickAgent?.(x, y);
+      const a = id && (built?.agents || []).find((q) => q.id === id);
+      if (a) openCompose(a);
+    }, 250);
   });
   // R53: ロボをダブルクリック → そのセッションの実ターミナルを前面へ（見る→実物の輪）
   viewportEl.addEventListener("dblclick", (e) => {
+    clearTimeout(clickTimer);                 // R67: シングルクリック側を無効化
     const { x, y } = stagePoint(e);
     const id = scene.pickAgent?.(x, y);
     const a = id && (built?.agents || []).find((q) => q.id === id);
@@ -513,17 +565,23 @@ export async function mount(root) {
     const overBoss = Boolean(boss && Math.hypot(x - boss.left, y - boss.top) <= 52);
     const id = overBoss ? null : scene.pickAgent?.(x, y);
     viewportEl.style.cursor = (overBoss || id) ? "pointer" : "";
-    for (const chip of shell.querySelectorAll("#labels .lbl.hov")) chip.classList.remove("hov");
-    if (id) {
-      shell.querySelector(`#labels .lbl[data-project="${CSS.escape(id)}"]`)?.classList.add("hov");
-    }
+    // R67: 直接 .hov を付けても毎フレームの paintLabels に消されて一度も見えていなかった
+    // （実測）。描画状態 hoverId に記録し、paintLabels が毎フレーム反映する（wakeと同じ型）
+    shell._fx.hoverId = id || null;
   });
   // ── 管理フロー: ➕新プロジェクト / 📱スマホ連携（旧UIから移植） ──────
   const modalWrap = shell.querySelector("#modalwrap");
   const modal = shell.querySelector("#modal");
-  const closeModal = () => { modalWrap.hidden = true; modal.replaceChildren(); };
+  const closeModal = () => {
+    modalWrap.classList.remove("show");
+    modalWrap.hidden = true;
+    modal.replaceChildren();
+  };
   modalWrap.addEventListener("click", (e) => { if (e.target === modalWrap) closeModal(); });
-  const openModal = () => { modalWrap.hidden = false; };
+  const openModal = () => {
+    modalWrap.hidden = false;
+    requestAnimationFrame(() => modalWrap.classList.add("show"));   // R67: 開きのフェード
+  };
   const mEl = (tag, cls, text) => {
     const n = document.createElement(tag);
     if (cls) n.className = cls;
@@ -1052,7 +1110,7 @@ export async function mount(root) {
 
   // render() から参照できるように束ねる（描画は純粋なまま・状態はここに集約）
   // 描画側（paintLabels）が読む演出状態。純粋なworldに混ぜない
-  shell._fx = { wakeActive: (sess) => now() < (wakeUntil.get(sess) || 0) };
+  shell._fx = { wakeActive: (sess) => now() < (wakeUntil.get(sess) || 0), hoverId: null };
   shell._ops = {
     setTrayActions: (acts) => { trayActions = acts; },
     selectedId: () => composeTarget?.id ?? null,
@@ -1339,41 +1397,58 @@ export async function mount(root) {
  * clamp を解消の後に掛けると押し戻して再び重なる（実際に踏んだ）。
  */
 function paintLabels(shell, scene, w) {
+  // R67: 毎フレームの replaceChildren 全再生成をやめキー付き再利用へ。
+  // 従来は mousemove が付けた .hov が1フレームで消され3Dホバーが一度も機能していなかった
+  // （実測）。幅/高さ測定もテキスト変化時だけに（毎フレームの全chip getBoundingClientRect 削減）
   const host = shell.querySelector("#labels");
-  host.replaceChildren();
+  const oldChips = new Map([...host.children].map((n) => [n.dataset.project, n]));
   const perZone = {};
   const placed = [];
+  let count = 0;
   for (const a of w.agents) {
     const idx = (perZone[a.zone] = (perZone[a.zone] ?? -1) + 1);
-    if (placed.length >= 10) break;
+    if (count >= 10) break;
     const at = scene.labelAnchorFor(a, w, idx);
     if (!Number.isFinite(at.left) || !Number.isFinite(at.top)) continue;
-    const el = document.createElement("div");
-    el.className = `lbl st-${a.state} zone-${a.zone}${a.attention ? " attn" : ""}` +
+    count += 1;
+    let chip = oldChips.get(a.id);
+    if (!chip) {
+      chip = document.createElement("div");
+      chip.dataset.project = a.id;
+      const dot = document.createElement("i");
+      dot.className = "dot";
+      chip.append(dot, document.createElement("b"));
+      host.append(chip);
+    }
+    oldChips.delete(a.id);
+    const cls = `lbl st-${a.state} zone-${a.zone}${a.attention ? " attn" : ""}` +
       (a.id === shell._traySel ? " sel" : "") +
-      (shell._fx?.wakeActive?.(a.session) ? " wake" : "");   // R53.2 動き出しハイライト
-    el.dataset.project = a.id;
-    const dot = document.createElement("i");
-    dot.className = "dot";
-    const name = document.createElement("b");
-    name.textContent = (a.attention ? "❗" : a.pending ? "📨" : "") +
+      (shell._fx?.wakeActive?.(a.session) ? " wake" : "") +   // R53.2 動き出しハイライト
+      (shell._fx?.hoverId === a.id ? " hov" : "");            // R67 3Dホバー（描画状態から反映）
+    if (chip.className !== cls) chip.className = cls;
+    const nameEl = chip.lastElementChild;
+    const txt = (a.attention ? "❗" : a.pending ? "📨" : "") +
       (a.crew > 1 ? `${a.name} ×${a.crew}` : a.name);
-    el.append(dot, name);
-    el.style.left = `${at.left}px`;
-    el.style.top = `${at.top + 6}px`;
-    host.append(el);
-    // 足元チップ同士の軽い重なりだけ下へ逃がす（頭上スタックの塔は作らない）
-    const r = el.getBoundingClientRect();
+    if (nameEl.textContent !== txt) {
+      nameEl.textContent = txt;
+      chip.dataset.w = "";                                    // テキスト変化＝寸法キャッシュ無効化
+    }
+    if (!chip.dataset.w) {
+      const r = chip.getBoundingClientRect();
+      chip.dataset.w = String(r.width || 60);
+      chip.dataset.h = String(r.height || 22);
+    }
+    const cw = parseFloat(chip.dataset.w) || 60;
+    const ch = parseFloat(chip.dataset.h) || 22;
     // R62: 端の席（左壁のソファ等）で名札が画面外へはみ出して名前が切れるのを防ぐ。
     // チップは translateX(-50%) 基準なので、中心を [半幅, 幅-半幅] へ丸める
-    const half = r.width / 2;
+    const half = cw / 2;
     const maxL = host.clientWidth - half - 2;
     const left = maxL > half + 2
       ? Math.min(Math.max(at.left, half + 2), maxL) : at.left;
-    if (left !== at.left) el.style.left = `${left}px`;
+    // 足元チップ同士の軽い重なりだけ下へ逃がす（頭上スタックの塔は作らない）
     let top = at.top + 6;
-    const box = () => ({ l: left - r.width / 2, r: left + r.width / 2,
-      t: top, b: top + r.height });
+    const box = () => ({ l: left - half, r: left + half, t: top, b: top + ch });
     for (let guard = 0; guard < 6; guard++) {
       const me = box();
       const hit = placed.find((q) =>
@@ -1381,9 +1456,13 @@ function paintLabels(shell, scene, w) {
       if (!hit) break;
       top = hit.b + 3;
     }
-    el.style.top = `${top}px`;
+    const leftPx = `${left}px`;
+    const topPx = `${top}px`;
+    if (chip.style.left !== leftPx) chip.style.left = leftPx;
+    if (chip.style.top !== topPx) chip.style.top = topPx;
     placed.push(box());
   }
+  for (const leftover of oldChips.values()) leftover.remove();
 }
 
 function el(tag, cls, text) {
@@ -1496,40 +1575,81 @@ function render(shell, w) {
   shell._ops?.setTrayActions(acts);
 
   // ── 右: エージェント一覧（概況タイルは左ゾーンと重複のため撤去=ユーザーFB） ──
+  // R67: 3秒毎の replaceChildren 全捨てをやめキー付き差分更新へ。
+  // 従来はクリック瞬間に .arow が detach されて空振りしていた（Playwright実測30sタイムアウト）。
+  // 既存ノードを再利用し、変化した部分だけ書き換える（変化行は .fresh で300msハイライト）
   const agents = shell.querySelector("#agents");
-  agents.replaceChildren();
   const selectedId = shell._ops?.selectedId();
+  agents.querySelector(".onboard")?.remove();
+  const oldRows = new Map([...agents.children]
+    .filter((n) => n.classList.contains("arow"))
+    .map((n) => [n.dataset.project, n]));
+  const buildRow = () => {
+    const row = el("div", "arow");
+    const head = el("div", "arowhead");
+    head.append(el("i", "adot"), el("b", "aname"), el("span", "acrew"),
+      el("span", "apend", "📨"));
+    const act = el("div", "aact");
+    act.append(el("span", "atext"), el("i", "aage"));
+    const prog = el("div", "aprog");
+    const track = el("div", "abar");
+    track.append(el("i", "afill"));
+    prog.append(track, el("span", "apct"));
+    row.append(head, act, prog);
+    return row;
+  };
+  const setText = (node, text) => {
+    if (node.textContent !== text) { node.textContent = text; return true; }
+    return false;
+  };
+  let cursor = agents.firstElementChild;
   for (const a of w.agents) {
-    const row = el("div", `arow st-${a.state} zone-${a.zone}${a.id === selectedId ? " sel" : ""}`);
+    let row = oldRows.get(a.id);
+    const isNew = !row;
+    if (!row) row = buildRow();
+    oldRows.delete(a.id);
+    if (cursor === row) {
+      cursor = cursor.nextElementSibling;
+    } else {
+      agents.insertBefore(row, cursor);       // 既存ノードの移動＝同一性維持（detachしない）
+    }
     row.dataset.session = a.session;
     row.dataset.project = a.id;
     row.dataset.zone = a.zone;
-    const head = el("div", "arowhead");
-    head.append(el("i", "adot"), el("b", "aname", a.name || "?"));
-    if (a.crew > 1) head.append(el("span", "acrew", `×${a.crew}`));
-    if (a.pending) head.append(el("span", "apend", "📨"));   // 投函済み・未配達（inbox待ち）
-    const act = el("div", "aact" +
-      (a.attention && a.approvalMin >= STARVE_MIN ? " starve" : ""), a.attention
+    const cls = `arow st-${a.state} zone-${a.zone}${a.id === selectedId ? " sel" : ""}`;
+    if (row.className.replace(" fresh", "") !== cls) row.className = cls;
+    let changed = setText(row.querySelector(".aname"), a.name || "?");
+    const crewEl = row.querySelector(".acrew");
+    crewEl.hidden = !(a.crew > 1);
+    if (a.crew > 1) changed = setText(crewEl, `×${a.crew}`) || changed;
+    row.querySelector(".apend").hidden = !a.pending;
+    const act = row.querySelector(".aact");
+    const actCls = "aact" + (a.attention && a.approvalMin >= STARVE_MIN ? " starve" : "");
+    if (act.className !== actCls) act.className = actCls;
+    changed = setText(act.querySelector(".atext"), a.attention
       ? (a.question ? `❓ ${a.question}` : `❗ ${T("approval_min", a.approvalMin)}`)
-      : (activityGloss(a, w.lang) || zoneLabel(a.zone)));
-    if (!a.attention && a.age > 90) {
-      act.append(el("i", "aage", ` · ${agoStr(a.age, w.lang)}`));   // 「いつの話か」を常に添える
-    }
-    row.append(head, act);
+      : (activityGloss(a, w.lang) || zoneLabel(a.zone))) || changed;
+    const ageEl = act.querySelector(".aage");
+    ageEl.hidden = !(!a.attention && a.age > 90);
+    if (!ageEl.hidden) setText(ageEl, ` · ${agoStr(a.age, w.lang)}`);
     const c = a.work?.counts || {};
     const done = Number(c.completed) || 0;
     const total = done + (Number(c.in_progress ?? c.inProgress) || 0) + (Number(c.pending) || 0);
+    const prog = row.querySelector(".aprog");
+    prog.hidden = !(total > 0);
     if (total > 0) {
-      const prog = el("div", "aprog");
-      const track = el("div", "abar");
-      const fill = el("i", "afill");
-      fill.style.width = `${Math.round(done / total * 100)}%`;
-      track.append(fill);
-      prog.append(track, el("span", "apct", `${done}/${total}`));
-      row.append(prog);
+      const width = `${Math.round(done / total * 100)}%`;
+      const fill = prog.querySelector(".afill");
+      if (fill.style.width !== width) fill.style.width = width;   // .3s transitionで滑らかに
+      setText(prog.querySelector(".apct"), `${done}/${total}`);
     }
-    agents.append(row);
+    // 変化した既存行に一瞬のハイライト（frozenは.no-animで無効＝golden非干渉）
+    if (changed && !isNew && !frozen) {
+      row.classList.add("fresh");
+      setTimeout(() => row.classList.remove("fresh"), 400);
+    }
   }
+  for (const leftover of oldRows.values()) leftover.remove();
   if (!w.agents.length) {
     // 空オフィス: 次の一歩を必ず示す（美しい無人オフィスで放置しない＝初回体験の断線対策）
     const card = el("div", "onboard");
@@ -1549,7 +1669,10 @@ function render(shell, w) {
   renderDonut(shell, w.tasks);
   const hist = shell.querySelector("#hist");
   hist.replaceChildren();
-  for (const h of (w.history || []).slice(0, 4)) {
+  // R67: 4件目は全解像度でカード高さから完全にはみ出て不可視だった（実測）＝
+  // 見える3件＋「他N件」注記に正直化
+  const histItems = (w.history || []).slice(0, 3);
+  for (const h of histItems) {
     const row = el("div", "hrow");
     const resend = el("button", "hresend", "↻");
     resend.type = "button";
@@ -1566,6 +1689,9 @@ function render(shell, w) {
       el("i", h.pending ? "hp wait" : "hp done", h.pending ? T("hist_wait") : T("hist_done")),
       resend);
     hist.append(row);
+  }
+  if ((w.history || []).length > 3) {
+    hist.append(el("div", "hmore", T("hist_more", w.history.length - 3)));
   }
   if (!hist.children.length) hist.append(el("div", "hempty", T("hist_empty")));
 }

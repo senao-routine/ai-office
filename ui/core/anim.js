@@ -290,8 +290,12 @@ export function chibiPose(t, seed = 0) {
 /**
  * 💬 休憩中のおしゃべり（R59）。座って相手の方を向き、話し手は身振り・
  * 聞き手は相槌の小頷き。speaking の交代は chatSpeaker が決める（決定論）。
+ * R68: speaking は連続係数 k∈0..1 も受ける（交代境界のクロスフェード用。
+ * boolean は従来互換＝true→1/false→0）。
  */
 export function chatPose(t, seed = 0, speaking = false) {
+  const k = typeof speaking === "number"
+    ? Math.min(1, Math.max(0, speaking)) : (speaking ? 1 : 0);
   const pose = {
     hipY: RIG.sitHipY,
     hipYaw: Math.sin(t * 0.25 + seed) * 0.04,
@@ -301,11 +305,15 @@ export function chatPose(t, seed = 0, speaking = false) {
     legs: [-1, 1].map((side) => ({ side, hip: -1.42, knee: 1.36 })),
     arms: [-1, 1].map((side) => ({ side, shoulder: -0.28, elbow: -0.50 })),
   };
-  if (speaking) {
-    pose.headYaw = Math.sin(t * 1.3 + seed) * 0.14;        // 話し手=頭がよく動く
-    pose.headPitch = -0.02 + Math.sin(t * 1.8 + seed) * 0.04;
-    pose.arms[1].shoulder = -0.90 + Math.sin(t * 2.6 + seed) * 0.28;   // 片手で身振り
-    pose.arms[1].elbow = -1.10 + Math.sin(t * 3.4 + seed) * 0.22;
+  if (k > 0) {
+    // 話し手成分を k でブレンド（k=1 が従来の speaking ポーズと一致）
+    const sHeadYaw = Math.sin(t * 1.3 + seed) * 0.14;
+    const sHeadPitch = -0.02 + Math.sin(t * 1.8 + seed) * 0.04;
+    pose.headYaw = pose.headYaw + (sHeadYaw - pose.headYaw) * k;
+    pose.headPitch = pose.headPitch + (sHeadPitch - pose.headPitch) * k;
+    const a = pose.arms[1];
+    a.shoulder = a.shoulder + ((-0.90 + Math.sin(t * 2.6 + seed) * 0.28) - a.shoulder) * k;
+    a.elbow = a.elbow + ((-1.10 + Math.sin(t * 3.4 + seed) * 0.22) - a.elbow) * k;
   }
   return pose;
 }
@@ -315,6 +323,49 @@ export function chatSpeaker(t, seed = 0, n = 2) {
   if (!(n > 0)) return 0;
   const idx = Math.floor((((t + seed * 5) % (6 * n)) + 6 * n) % (6 * n) / 6);
   return idx % n;
+}
+
+/**
+ * R68: 会話交代のクロスフェード係数。myIndex の「話し手らしさ」k∈0..1 を返す。
+ * 交代直後0.4秒で新しい話し手が立ち上がり、直前の話し手が同じ窓で降りる＝
+ * ポーズ/💬マーカーがワープせず滑らかに入れ替わる。chatSpeaker と同じ時割りの純関数。
+ */
+export function chatBlend(t, seed = 0, n = 2, myIndex = 0) {
+  if (!(n > 0)) return 0;
+  const cur = chatSpeaker(t, seed, n);
+  const prev = (cur - 1 + n) % n;
+  const phase = (((t + seed * 5) % 6) + 6) % 6;      // 現在の6秒区間内の経過
+  const rise = smoothstep(0, 0.4, phase);
+  if (myIndex === cur) return rise;
+  if (myIndex === prev && n > 1) return 1 - rise;
+  return 0;
+}
+
+/**
+ * R68: 2つのポーズの線形補間（座↔立などの状態遷移を滑らかにする）。
+ * k=0 で a・k=1 で b。両ポーズは同じ構造（legs/arms 各2・同じside順）である前提。
+ */
+export function mixPose(a, b, k) {
+  if (k >= 1 || !a) return b;
+  if (k <= 0) return a;
+  const lerp = (x, y) => x + (y - x) * k;
+  return {
+    hipY: lerp(a.hipY, b.hipY),
+    hipYaw: lerp(a.hipYaw, b.hipYaw),
+    hipRoll: lerp(a.hipRoll, b.hipRoll),
+    headYaw: lerp(a.headYaw, b.headYaw),
+    headPitch: lerp(a.headPitch, b.headPitch),
+    legs: b.legs.map((l, i) => ({
+      side: l.side,
+      hip: lerp(a.legs[i]?.hip ?? l.hip, l.hip),
+      knee: lerp(a.legs[i]?.knee ?? l.knee, l.knee),
+    })),
+    arms: b.arms.map((m, i) => ({
+      side: m.side,
+      shoulder: lerp(a.arms[i]?.shoulder ?? m.shoulder, m.shoulder),
+      elbow: lerp(a.arms[i]?.elbow ?? m.elbow, m.elbow),
+    })),
+  };
 }
 
 /** 🛋 ひとり休憩＝背にもたれ脚を投げ出し、窓の方をぼんやり眺める（R59）。 */

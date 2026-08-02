@@ -100,6 +100,29 @@ export function walkGraph() {
   return { nodes, edges };
 }
 
+/**
+ * R68: 掃除ロボの巡回路（通路グラフのノード座標を辿るループ・最後の点=最初の点）。
+ * 北通路→右縦→南通路→左縦→北通路 の外周まわり。障害物と交差しないことを
+ * nav.test がピンする（歩行者と同じレーン＝机をすり抜けない）。
+ */
+export const CLEANER_ROUTE = Object.freeze([
+  [XL, ZN], [XA, ZN], [XB, ZN], [XD, ZN], [XC, ZN],   // 北通路を東へ
+  [XC, ZM], [XB, ZM], [XB, ZS], [5.9, ZS],            // 行間→南通路を東へ
+  [XB, ZS], [XA, ZS], [XL, ZS], [XL, 7.6],            // 南通路を西へ→エントランス前
+  [XL, ZM], [XL, ZN],                                 // 左通路を北へ戻る（ループ）
+]);
+
+/**
+ * R68: ボスの見回り路（壇前→北通路を往復→壇前・一本道の折れ線）。
+ * 全区間が既存の北通路レーン(z=-5.0)上＝障害物交差0は nav.test がピン。
+ * 先頭/末尾の壇アプローチ（boss矩形へ入る区間）だけは例外扱い。
+ */
+export const BOSS_WALK = Object.freeze([
+  [-0.6, -8.85 + 2.2], [-0.6, ZN],              // 壇の前へ降りる
+  [XA, ZN], [XB, ZN], [-0.6, ZN],               // 北通路を往復
+  [-0.6, -8.85 + 2.2],                          // 壇へ戻る
+]);
+
 /** 待機エージェントの立ち寄り先（開けた床の上＝障害物矩形の外。nav.test がピン）。 */
 export const IDLE_SPOTS = Object.freeze([
   { x: 4.65, z: -8.25, yaw: Math.PI, why: "coffee" },      // コーヒーバー

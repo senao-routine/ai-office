@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  CHIBI_HIP_Y, RIG, TAU, chatPose, chatSpeaker, chibiPose, idlePose, pathTravel, poseFor, relaxPose, seatedPose, seedOf, smoothstep, thinkingPose, travel, typingPose, walkPhaseFor, walkPose,
+  CHIBI_HIP_Y, RIG, TAU, chatBlend, chatPose, chatSpeaker, chibiPose, mixPose, idlePose, pathTravel, poseFor, relaxPose, seatedPose, seedOf, smoothstep, thinkingPose, travel, typingPose, walkPhaseFor, walkPose,
 } from "./anim.js";
 
 const ALL_POSES = [walkPose(1.1), typingPose(3.2), seatedPose(3.2), idlePose(3.2)];
@@ -234,4 +234,46 @@ test("relaxPose: 着席・脚を投げ出す・頭は上向き寄り", () => {
   assert.equal(p.hipY, RIG.sitHipY);
   assert.ok(p.legs[0].knee < 1.0, "膝が伸び気味（投げ出し）");
   assert.ok(p.headPitch < 0, "視線が上向き");
+});
+
+// ── R68: 状態遷移の補間（座↔立スナップ根絶の数学） ─────────────────
+test("mixPose: k=0で前ポーズ・k=1で次ポーズ・中間は線形", () => {
+  const a = typingPose(1.0, 0);          // 着席（hipY=sitHipY）
+  const b = walkPose(0.5);               // 歩行（hipY≈hipY+bounce）
+  assert.deepEqual(mixPose(a, b, 0), a);
+  assert.deepEqual(mixPose(a, b, 1), b);
+  const mid = mixPose(a, b, 0.5);
+  assert.ok(Math.abs(mid.hipY - (a.hipY + b.hipY) / 2) < 1e-9);
+  assert.ok(Math.abs(mid.arms[0].shoulder
+    - (a.arms[0].shoulder + b.arms[0].shoulder) / 2) < 1e-9);
+  assert.equal(mid.legs.length, 2);
+  assert.equal(mid.legs[0].side, b.legs[0].side);
+});
+
+test("mixPose: 前ポーズ無し(null)は次ポーズをそのまま返す（初回シード=-∞の経路）", () => {
+  const b = seatedPose(2.0, 1);
+  assert.deepEqual(mixPose(null, b, 0.3), b);
+});
+
+test("chatBlend: 交代境界で新話者が0.4秒かけて立ち上がり・前話者が同時に降りる", () => {
+  const seed = 0;
+  const n = 2;
+  // seed=0: 区間[0,6)=話者0・[6,12)=話者1。境界 t=6 の直後を検査
+  assert.equal(chatSpeaker(5.9, seed, n), 0);
+  assert.equal(chatSpeaker(6.1, seed, n), 1);
+  assert.ok(chatBlend(6.05, seed, n, 1) > 0 && chatBlend(6.05, seed, n, 1) < 1);  // 立ち上がり中
+  assert.ok(chatBlend(6.05, seed, n, 0) > 0 && chatBlend(6.05, seed, n, 0) < 1);  // 降り中
+  assert.ok(Math.abs(chatBlend(6.05, seed, n, 0) + chatBlend(6.05, seed, n, 1) - 1) < 1e-9);
+  assert.equal(chatBlend(8.0, seed, n, 1), 1);   // 区間の中盤は完全に話し手
+  assert.equal(chatBlend(8.0, seed, n, 0), 0);
+});
+
+test("chatPose: k=1がspeaking=true・k=0がfalseと一致（後方互換）", () => {
+  assert.deepEqual(chatPose(2.5, 1.1, 1), chatPose(2.5, 1.1, true));
+  assert.deepEqual(chatPose(2.5, 1.1, 0), chatPose(2.5, 1.1, false));
+  // 中間kは両者の間
+  const k5 = chatPose(2.5, 1.1, 0.5);
+  const off = chatPose(2.5, 1.1, false);
+  const on = chatPose(2.5, 1.1, true);
+  assert.ok(Math.abs(k5.arms[1].shoulder - (off.arms[1].shoulder + on.arms[1].shoulder) / 2) < 1e-9);
 });

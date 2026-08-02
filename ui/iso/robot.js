@@ -10,6 +10,7 @@
 //   描画は「部品ごとに1つの InstancedMesh」へ世界行列を書き込む。
 //   → ロボットが何体いても drawCalls は部品数（約17）で頭打ちになる。
 import * as THREE from "/ui/vendor/three/three.module.min.js";
+import { mergeGeometries } from "./merge.js";
 
 const PARTS = [
   "head", "visor", "eye", "ear", "antStem", "antTip", "collar", "chest",
@@ -126,6 +127,32 @@ export function makeChibiSkeleton() {
   nodes.chest.position.y = 0.10;
   nodes.chest.position.z = 0.155;
   return nodes;
+}
+
+/**
+ * 🧹 掃除ロボ（R68・アンビエント役者）。ルンバ風の円盤＋ドーム＋センサー柱を
+ * dark 1メッシュに統合（+1 drawCall）し、前部ライトの eye 材で +1＝計2ドロー。
+ * 骨格は不要（回転なし・pathTravel の位置と首振りだけ）。
+ */
+export function makeCleanerBot(materials) {
+  const group = new THREE.Group();
+  const bake = (g, x, y, z) => { g.translate(x, y, z); return g; };
+  const body = mergeGeometries([
+    bake(new THREE.CylinderGeometry(0.30, 0.33, 0.13, 28), 0, 0.075, 0),
+    bake(new THREE.SphereGeometry(0.16, 24, 14, 0, Math.PI * 2, 0, Math.PI / 2),
+      0, 0.13, 0),
+    bake(new THREE.CylinderGeometry(0.016, 0.016, 0.14, 8), 0, 0.30, -0.04),
+    bake(new THREE.SphereGeometry(0.035, 12, 8), 0, 0.38, -0.04),
+  ]);
+  const bodyMesh = new THREE.Mesh(body, materials.shell);
+  bodyMesh.castShadow = true;
+  group.add(bodyMesh);
+  const light = new THREE.Mesh(new THREE.SphereGeometry(0.045, 12, 8), materials.eye);
+  light.position.set(0, 0.12, 0.27);            // 前部のセンサーライト
+  group.add(light);
+  // dark 等倍だと床の影に溶けて見えない（実測）。白シェル＋1.35倍で「居る」と分かる大きさに
+  group.scale.setScalar(1.35);
+  return group;
 }
 
 function attach(parent, x, y, z, rx = 0, ry = 0, rz = 0) {

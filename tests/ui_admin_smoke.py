@@ -183,6 +183,24 @@ def main():
                 print(f"  ✗ ⚡リソース表示が想定外: {res_text[:100]}")
                 ng += 1
 
+            # (4a2) R67 モーダル切断の回帰ピン: 内容が縦に伸びても最下部要素へ
+            #       スクロールで到達でき、実クリック標的になる（従来: overflow切断で🔑下部が操作不能）
+            fit = page.evaluate(
+                "() => { const m = document.querySelector('.modal');"
+                "  const last = m.lastElementChild;"
+                "  m.scrollTop = m.scrollHeight;"
+                "  const r = last.getBoundingClientRect();"
+                "  const mr = m.getBoundingClientRect();"
+                "  return { inFrame: r.bottom <= mr.bottom + 2,"
+                "    onScreen: r.bottom <= innerHeight && r.height > 0,"
+                "    scrolled: m.scrollTop > 0 || m.scrollHeight <= m.clientHeight }; }")
+            if fit["inFrame"] and fit["onScreen"] and fit["scrolled"]:
+                print("  ✓ R67 ⚡モーダル: 内部スクロールで最下部まで到達（切断なし）")
+            else:
+                print(f"  ✗ モーダル下部が切断されている: {fit}")
+                ng += 1
+            page.evaluate("document.querySelector('.modal').scrollTop = 0")
+
             # (4b) 💳台帳CRUD（R50提案3で新UIへ移植）: 追加→実ファイル→一覧→削除まで
             ledger_file = home / ".claude" / "office_resources.json"
             page.fill(".modal .mledname-in", "スモーク台帳サブスク")

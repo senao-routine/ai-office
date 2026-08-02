@@ -1,18 +1,23 @@
 // 3Dアイソメ・レンダラ本体。world（core が作る純データ）を受け取って絵にする。
 // 契約は mount/update/dispose の3つだけ。
 import {
-  chatPose, chatSpeaker, chibiPose, pathTravel, poseFor, relaxPose, seedOf,
-  thinkingPose, walkPhaseFor,
+  chatBlend, chatPose, chatSpeaker, chibiPose, mixPose, pathTravel, poseFor,
+  relaxPose, seedOf, smoothstep, thinkingPose, walkPhaseFor, walkPose,
 } from "/ui/core/anim.js";
-import { IDLE_SPOTS, REST_SPOTS, routePath, walkGraph } from "/ui/core/nav.js";
-import { rand, resetRand } from "/ui/platform/clock.js";
+import {
+  BOSS_WALK, CLEANER_ROUTE, IDLE_SPOTS, REST_SPOTS, routePath, walkGraph,
+} from "/ui/core/nav.js";
+import { frozen, rand, resetRand } from "/ui/platform/clock.js";
 import * as THREE from "/ui/vendor/three/three.module.min.js";
 import {
   LAYOUT, buildMonitors, buildOffice, chibiSeats, externalAnchors, loungeAnchors,
-  BOSS_SEAT, COFFEE_STOP, ENTRANCE, envTexture, floorTexture, keyboardTexture, meetingAnchors, queueAnchors, rugTexture,
-  screenTexture, seatAnchors, skyTexture, woodTexture,
+  BOSS_SEAT, COFFEE_STOP, ENTRANCE, HOLO_PANELS, envTexture, floorTexture,
+  keyboardTexture, meetingAnchors, queueAnchors, rugTexture,
+  screenTexture, seatAnchors, skyTexture, slab, woodTexture,
 } from "./office.js";
-import { RobotBatch, applyPose, makeChibiSkeleton, makeSkeleton } from "./robot.js";
+import {
+  RobotBatch, applyPose, makeChibiSkeleton, makeCleanerBot, makeSkeleton,
+} from "./robot.js";
 import { assignRestSpots, stableIndex } from "/ui/core/world.js";
 
 const CAPACITY = 40;                 // 同時に描けるロボット数の上限（本人32+ボス+会議チビ最大8・R56）
@@ -288,9 +293,13 @@ export class IsoScene {
 
     resetRand();                       // 配置の乱数は毎回同じ（決定論）
     // 画面は自発光。MeshStandard だとライティング次第で沈むので Basic（常に一定）。
-    this.screenMats = ["code", "chart", "dash", "term"].map((k, i) =>
-      new THREE.MeshBasicMaterial({ map: screenTexture(k, 3 + i * 7),
-        toneMapped: false, side: THREE.DoubleSide }));
+    // R68: wrapT=Repeat で UV スクロール（update が offset.y を t の関数で流す）
+    this.screenMats = ["code", "chart", "dash", "term"].map((k, i) => {
+      const map = screenTexture(k, 3 + i * 7);
+      map.wrapS = THREE.RepeatWrapping;
+      map.wrapT = THREE.RepeatWrapping;
+      return new THREE.MeshBasicMaterial({ map, toneMapped: false, side: THREE.DoubleSide });
+    });
 
     // 画面マテリアルを materials へ入れてバッチに乗せる（12枚が4ドローで済む）
     this.screenMats.forEach((m, i) => { this.materials[`screen${i}`] = m; });
@@ -312,9 +321,11 @@ export class IsoScene {
       });
     }
     this._swapTex("/ui/iso/tex/screen_code.webp", (t) => {
+      t.wrapS = THREE.RepeatWrapping; t.wrapT = THREE.RepeatWrapping;   // スクロール継続
       this.screenMats[0].map = t; this.screenMats[0].needsUpdate = true;
     });
     this._swapTex("/ui/iso/tex/screen_dash.webp", (t) => {
+      t.wrapS = THREE.RepeatWrapping; t.wrapT = THREE.RepeatWrapping;
       this.screenMats[2].map = t; this.screenMats[2].needsUpdate = true;
     });
 
@@ -428,6 +439,57 @@ export class IsoScene {
     // R58: 通路グラフ（机すり抜け根絶）。歩行は必ずこのレーンを経由する
     this.navGraph = walkGraph();
 
+    // ── R68: 生命感の描画状態（すべて「初回=-∞」＝frozen では遷移完了状態で描く） ──
+    // ✓マーカー（❗解消の瞬間・0.6秒だけ頭上に出す）
+    const mkDoneTex = () => {
+      const c = document.createElement("canvas");
+      c.width = 128; c.height = 128;
+      const g = c.getContext("2d");
+      g.beginPath(); g.arc(64, 64, 54, 0, 7);
+      g.fillStyle = "#22a06b"; g.fill();
+      g.lineWidth = 8; g.strokeStyle = "#ffffff"; g.stroke();
+      g.lineWidth = 13; g.lineCap = "round";
+      g.beginPath(); g.moveTo(38, 66); g.lineTo(56, 86); g.lineTo(92, 44); g.stroke();
+      const t = new THREE.CanvasTexture(c);
+      t.colorSpace = THREE.SRGBColorSpace;
+      return t;
+    };
+    this.doneMarkers = [];
+    const doneMat = new THREE.SpriteMaterial({
+      map: mkDoneTex(), transparent: true, depthTest: false, toneMapped: false });
+    for (let i = 0; i < 4; i++) {
+      const sp = new THREE.Sprite(doneMat);
+      sp.visible = false;
+      sp.renderOrder = 5;
+      this.scene.add(sp);
+      this.doneMarkers.push(sp);
+    }
+    this.markerSince = new Map();      // "attn:<id>"等 → 初認識t（ポップイン用）
+    this.attnResolved = new Map();     // id → {at, x, y, z}（✓演出）
+    this.chibiSeen = new Map();        // "table:idx" → 初認識t（登場バウンス）
+    this.chibiGone = new Map();        // "table:idx" → {at, seat, seed, tint}（解散シュリンク）
+
+    // ホログラム（静的バッチから独立＝回転＋脈動できる。HOLO_PANELS が配置の正本）
+    this.holoPanels = HOLO_PANELS.map(([hx, hy, hz, hw, ry]) => {
+      const mesh = new THREE.Mesh(slab(hw, 0.035, hw * 0.62, 0.07), this.materials.holo);
+      mesh.position.set(hx, hy, hz);
+      mesh.rotation.y = ry;
+      mesh.userData.baseYaw = ry;
+      this.scene.add(mesh);
+      return mesh;
+    });
+
+    // 🧹 掃除ロボ（t>=30 で通路を永久巡回・golden の t=3.2 では非表示）
+    this.cleaner = makeCleanerBot(this.materials);
+    this.cleaner.visible = false;
+    this.scene.add(this.cleaner);
+    this._cleanerTotal = 0;
+    for (let i = 1; i < CLEANER_ROUTE.length; i++) {
+      this._cleanerTotal += Math.hypot(
+        CLEANER_ROUTE[i][0] - CLEANER_ROUTE[i - 1][0],
+        CLEANER_ROUTE[i][1] - CLEANER_ROUTE[i - 1][1]);
+    }
+
     this.anchors = {
       desk: seatAnchors(),
       meeting: meetingAnchors(),
@@ -477,10 +539,18 @@ export class IsoScene {
     // 画面の下端には HUD カードが浮くので、下側にだけ少し余分を見せて
     // シーンの主役（ロボット）がカードの裏に沈まないようにする（?pad= で調整可）。
     const BOT_PAD = this.botPad ?? 0.05;
-    this.camera.left = cx - view * aspect;
-    this.camera.right = cx + view * aspect;
-    this.camera.top = cy + view;
-    this.camera.bottom = cy - view * (1 + BOT_PAD * 2);
+    // R68: フレームの基準を保存（update のカメラ呼吸ドリフトはこの基準に対する
+    // 微オフセット＝frozen では常にゼロで golden 完全不変）
+    this._frame = {
+      left: cx - view * aspect,
+      right: cx + view * aspect,
+      top: cy + view,
+      bottom: cy - view * (1 + BOT_PAD * 2),
+    };
+    this.camera.left = this._frame.left;
+    this.camera.right = this._frame.right;
+    this.camera.top = this._frame.top;
+    this.camera.bottom = this._frame.bottom;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(w, h, false);
   }
@@ -490,7 +560,8 @@ export class IsoScene {
    * 起動30秒はやらない＝固定tのスクショ/goldenでは全員が持ち場に居る。
    */
   excursionFor(agent, t) {
-    if (agent.zone !== "desk" || agent.state !== "working" || t < 30) return null;
+    // ガードは15秒（R68: 開幕の一番見られる時間帯に誰も動かない空白を短縮。golden=t3.2は不変）
+    if (agent.zone !== "desk" || agent.state !== "working" || t < 15) return null;
     const ph = (((t + seedOf(agent.id) * 40) % 260) + 260) % 260;
     if (ph >= 26) return null;
     const slot = stableIndex(agent.id, 3);
@@ -507,12 +578,47 @@ export class IsoScene {
    */
   idleLifeFor(agent, t) {
     if (agent.zone !== "desk" || agent.state !== "waiting"
-      || agent.attention || t < 40) return null;
+      || agent.attention || t < 15) return null;
     const ph = ((t % 238) + 238) % 238;
     const slot = stableIndex(agent.id, 7);
     if (ph < slot * 34 || ph >= slot * 34 + 34) return null;
     const spot = IDLE_SPOTS[stableIndex(agent.id, IDLE_SPOTS.length)];
     return { x: spot.x, z: spot.z, yaw: spot.yaw, y: 0, role: "stand" };
+  }
+
+  /**
+   * R68: 表示値の遷移トラック。target が変わったら「いまの表示値」を起点に
+   * dur 秒の smoothstep で追従する（座↔立の沈み・段差・向きのスナップ解消）。
+   * 初回は at=-Infinity＝遷移完了状態で始まる → frozen(?t=固定) の golden 不変。
+   */
+  _track(actor, key, target, t, dur = 0.45, angular = false) {
+    let tr = actor[key];
+    if (!tr) {
+      tr = actor[key] = { from: target, to: target, at: -Infinity };
+    }
+    if (tr.to !== target) {
+      const k = smoothstep(0, dur, t - tr.at);
+      let delta = tr.to - tr.from;
+      if (angular) delta = Math.atan2(Math.sin(delta), Math.cos(delta));
+      tr.from = tr.from + delta * k;             // 現在の表示値から繋ぐ（跳ばない）
+      tr.to = target;
+      tr.at = t;
+    }
+    const k = smoothstep(0, dur, t - tr.at);
+    let delta = tr.to - tr.from;
+    if (angular) delta = Math.atan2(Math.sin(delta), Math.cos(delta));
+    return tr.from + delta * k;
+  }
+
+  /** R68: マーカーのポップイン倍率（初回=-∞ → 常に1＝frozen golden 不変）。 */
+  _popScale(key, t) {
+    let since = this.markerSince.get(key);
+    if (since === undefined) {
+      since = this.seeded ? t : -Infinity;
+      this.markerSince.set(key, since);
+    }
+    const dt = t - since;
+    return smoothstep(0, 0.35, dt) * (1 + 0.18 * Math.sin(Math.min(dt / 0.6, 1) * Math.PI));
   }
 
   /** ゾーンと席番号から目的地を決める。席が尽きたら床に立たせる（決定論）。 */
@@ -549,6 +655,47 @@ export class IsoScene {
       this._w = cw; this._h = ch;
       this.resize();
     }
+
+    // ── R68: 環境に t を流す（全て t の純関数＝同じ t なら同じ絵・決定論のまま） ──
+    // ①スクリーン: UVスクロールでコード/ログが流れる（webpデカール差し替え後もループ）
+    this.screenMats.forEach((m, i) => {
+      if (m.map) m.map.offset.y = -(((t * 0.045 + i * 0.17) % 1 + 1) % 1);
+    });
+    // ②ネオン/ランプ/画面グローの呼吸（2系統の位相差で交互に息づく）
+    const M = this.materials;
+    M.neon.emissiveIntensity = 6.0 + Math.sin(t * 0.9) * 0.35;
+    M.neonC.emissiveIntensity = 5.2 + Math.sin(t * 0.9 + Math.PI / 2) * 0.30;
+    M.lampWarm.emissiveIntensity = 2.8 + Math.sin(t * 1.3) * 0.12;
+    M.screenGlow.emissiveIntensity = 2.0 + Math.sin(t * 0.7 + 1.1) * 0.15;
+    M.stage.emissiveIntensity = 0.55 + Math.sin(t * 0.5 + 2.3) * 0.06;
+    // ③ホログラム: ゆっくり自転＋脈動（静的バッチ外の個別メッシュ・+3ドロー）
+    M.holo.emissiveIntensity = 1.9 + Math.sin(t * 1.1) * 0.25;
+    this.holoPanels.forEach((mesh, i) => {
+      mesh.rotation.y = mesh.userData.baseYaw + t * 0.15 + i * 0.9;
+    });
+    // ④カメラの呼吸ドリフト（非frozen限定＝goldenは完全不変。振幅は視野の約1%）
+    if (this._frame) {
+      const dx = frozen ? 0 : Math.sin(t * 0.045) * this.view * 0.012;
+      const dy = frozen ? 0 : Math.sin(t * 0.031 + 1.7) * this.view * 0.007;
+      this.camera.left = this._frame.left + dx;
+      this.camera.right = this._frame.right + dx;
+      this.camera.top = this._frame.top + dy;
+      this.camera.bottom = this._frame.bottom + dy;
+      this.camera.updateProjectionMatrix();
+    }
+    // ⑤🧹掃除ロボ: t>=30 で通路を永久巡回（golden t=3.2 は非表示・首振りで掃除感）
+    if (t < 30) {
+      this.cleaner.visible = false;
+    } else {
+      this.cleaner.visible = true;
+      const speed = 0.55;
+      const period = this._cleanerTotal / speed;
+      const ct = (((t - 30) % period) + period) % period;
+      const cm = pathTravel(CLEANER_ROUTE, 0, ct, speed);
+      this.cleaner.position.set(cm.x, 0, cm.z);
+      this.cleaner.rotation.y = cm.yaw + Math.sin(t * 2.6) * 0.10;
+    }
+
     const seen = new Set();
     const perZone = {};
 
@@ -606,14 +753,17 @@ export class IsoScene {
         && agent.kind === "think" && !target.role;
       // R59: 休憩の社交。同エリアに2体以上=向かい合っておしゃべり・1体=くつろぎ変奏
       let pose = null;
+      let poseKind = "";                           // R68: 遷移検出用のポーズ種別キー
       let chatYaw = null;
       if (!walking && restIdx !== undefined) {
         const spot = REST_SPOTS[restIdx];
         const group = restGroups[spot.area] || [];
         if (group.length >= 2) {
           const my = group.findIndex((e) => e.id === agent.id);
-          const speaking = chatSpeaker(t, seedOf(spot.area), group.length) === my;
-          pose = chatPose(t, actor.seed, speaking);
+          // R68: 交代境界±0.4秒のクロスフェード（話し手成分が連続値で入れ替わる）
+          const k = chatBlend(t, seedOf(spot.area), group.length, my);
+          pose = chatPose(t, actor.seed, k);
+          poseKind = "chat";
           // 相手（自分以外の重心）の方を向く＝「会話している」が構図で伝わる
           let cx = 0;
           let cz = 0;
@@ -630,9 +780,11 @@ export class IsoScene {
           chatYaw = Math.hypot(dx, dz) > 0.05 ? Math.atan2(dx, dz) : null;
         } else if (spot.role !== "tablet") {
           // ソロ: くつろぎ（背もたれ+窓をぼんやり）と タブレット読み はhashで交代
-          pose = stableIndex(agent.id, 2) === 0
+          const solo = stableIndex(agent.id, 2) === 0;
+          pose = solo
             ? relaxPose(t * 0.8, actor.seed)
             : poseFor("lounge", t, actor.seed, null, null);
+          poseKind = solo ? "relax" : "loungeTab";
         }
       }
       if (!pose) {
@@ -640,26 +792,82 @@ export class IsoScene {
           ? thinkingPose(t, actor.seed)
           : poseFor(agent.zone, t, actor.seed,
             walking ? walkPhaseFor(m.dist, actor.seed) : null, target.role || null);
+        poseKind = thinking ? "think"
+          : (walking ? "walk" : `${agent.zone}:${target.role || ""}`);
       }
-      applyPose(actor.nodes, pose);
+      // R68: ポーズ種別が変わったら 0.45秒かけて前のポーズから補間（座↔立のスナップ根絶）。
+      // 初回は poseChangedAt=-Infinity ＝補間完了状態 → frozen の golden 不変。
+      if (actor.poseKind !== poseKind) {
+        actor.poseFrom = actor.lastPose || null;
+        actor.poseChangedAt = actor.poseKind === undefined ? -Infinity : t;
+        actor.poseKind = poseKind;
+      }
+      const blended = mixPose(actor.poseFrom, pose,
+        smoothstep(0, 0.45, t - (actor.poseChangedAt ?? -Infinity)));
+      actor.lastPose = blended;
+      applyPose(actor.nodes, blended);
 
       const SIT_DROP = 0.24;          // 腰が座面に載る高さ（scale 1.62 に合わせ再調整）
       const standingRole = target.role === "present" || target.role === "stand";
       const seated = !walking && !standingRole
         && (agent.zone === "desk" || agent.zone === "meeting" || agent.zone === "lounge");
       const baseY = walking ? 0 : (actor.targetY ?? actor.y);
-      actor.nodes.root.position.set(m.x, baseY - (seated ? SIT_DROP : 0), m.z);
-      actor.nodes.root.rotation.y = walking ? m.yaw
-        : (chatYaw ?? actor.targetYaw ?? actor.yaw);
+      // R68: 表示y/表示yawは遷移トラック経由（段差・着席の沈み・向き直りが滑らかに繋がる）
+      const dispY = this._track(actor, "trY", baseY - (seated ? SIT_DROP : 0), t);
+      const rawYaw = walking ? m.yaw : (chatYaw ?? actor.targetYaw ?? actor.yaw);
+      const dispYaw = walking ? rawYaw
+        : this._track(actor, "trYaw", rawYaw, t, 0.45, true);
+      if (walking && actor.trYaw) { actor.trYaw.from = m.yaw; actor.trYaw.to = m.yaw; }
+      actor.nodes.root.position.set(m.x, dispY, m.z);
+      actor.nodes.root.rotation.y = dispYaw;
       if (!walking) {
         actor.y = actor.targetY ?? actor.y;
         actor.yaw = actor.targetYaw ?? actor.yaw;
       }
-      actor.accent = accentFor(agent);
+      // R68: 胸リングの状態色は 0.4秒で補間（❗発生/解消の瞬間色が跳ばない）
+      const targetAccent = accentFor(agent);
+      if (!actor.accentCur) {
+        actor.accentCur = targetAccent.clone();
+        actor.accentFrom = targetAccent.clone();
+        actor.accentTo = targetAccent;
+        actor.accentAt = -Infinity;
+      } else if (actor.accentTo !== targetAccent) {
+        actor.accentFrom.copy(actor.accentCur);
+        actor.accentTo = targetAccent;
+        actor.accentAt = t;
+      }
+      actor.accentCur.copy(actor.accentFrom)
+        .lerp(actor.accentTo, smoothstep(0, 0.4, t - (actor.accentAt ?? -Infinity)));
+      actor.accent = actor.accentCur;
     }
 
-    for (const id of [...this.actors.keys()]) {
-      if (!seen.has(id)) this.actors.delete(id);      // 退勤
+    // R68: 退勤＝即消滅ではなく、入口まで歩いて退場してから消える（出勤と対称）
+    for (const [id, actor] of [...this.actors]) {
+      if (seen.has(id)) { actor.leavingAt = null; continue; }
+      if (!this.seeded) { this.actors.delete(id); continue; }   // 初回シードは従来どおり
+      if (!actor.leavingAt) {
+        const cur = pathTravel(actor.path, actor.startedAt, t);
+        actor.leavingAt = t;
+        actor.path = routePath([cur.x, cur.z], [ENTRANCE.x, ENTRANCE.z], this.navGraph);
+        actor.dest = [ENTRANCE.x, ENTRANCE.z];
+        actor.startedAt = t;
+        actor.poseKind = "walk";       // 座り姿勢からの立ち上がりも mixPose で繋ぐ
+        actor.poseFrom = actor.lastPose || null;
+        actor.poseChangedAt = t;
+      }
+      const m = pathTravel(actor.path, actor.startedAt, t);
+      if (m.u >= 1 || t - actor.leavingAt > 20) {   // 到着（保険=20秒）で退場完了
+        this.actors.delete(id);
+        continue;
+      }
+      const blended = mixPose(actor.poseFrom,
+        walkPose(walkPhaseFor(m.dist, actor.seed)),
+        smoothstep(0, 0.45, t - actor.poseChangedAt));
+      actor.lastPose = blended;
+      applyPose(actor.nodes, blended);
+      const dispY = this._track(actor, "trY", 0, t);
+      actor.nodes.root.position.set(m.x, dispY, m.z);
+      actor.nodes.root.rotation.y = m.yaw;
     }
 
     this.robots.begin();
@@ -668,16 +876,48 @@ export class IsoScene {
       if (n++ >= CAPACITY) break;
       this.robots.push(actor.nodes, actor.accent || null);
     }
-    // ボスは常に自席で悠然と頷く（seed固定・slow）
-    applyPose(this.boss, poseFor("meeting", t * 0.55, 7.7));
-    this.boss.root.position.set(BOSS_SEAT.x, BOSS_SEAT.baseY - 0.35, BOSS_SEAT.z);
-    this.boss.root.rotation.y = 0;
+    // ボス: 普段は壇上で悠然と頷き、300秒周期で20秒だけ北通路を見回る（R68・t>=30）。
+    // 巡回路は BOSS_WALK（既存レーン上＝交差0を nav.test がピン）。壇との段差は
+    // 経路の始端/終端で滑らかに昇降する。
+    let bossWalking = false;
+    const bph = ((t % 300) + 300) % 300;
+    if (t >= 30 && bph < 20) {
+      const route = [[BOSS_SEAT.x, BOSS_SEAT.z], ...BOSS_WALK, [BOSS_SEAT.x, BOSS_SEAT.z]];
+      const bm = pathTravel(route, 0, bph, 1.15);
+      if (bm.u < 1) {
+        bossWalking = true;
+        applyPose(this.boss, walkPose(walkPhaseFor(bm.dist, 7.7)));
+        const lift = BOSS_SEAT.baseY - 0.35;
+        const y = lift * (1 - smoothstep(0.02, 0.10, bm.u))
+          + lift * smoothstep(0.90, 0.98, bm.u);
+        this.boss.root.position.set(bm.x, y, bm.z);
+        this.boss.root.rotation.y = bm.yaw;
+      }
+    }
+    if (!bossWalking) {
+      applyPose(this.boss, poseFor("meeting", t * 0.55, 7.7));
+      this.boss.root.position.set(BOSS_SEAT.x, BOSS_SEAT.baseY - 0.35, BOSS_SEAT.z);
+      this.boss.root.rotation.y = 0;
+    }
     this.robots.push(this.boss, this.bossAccent);
 
     // R56: 会議チビロボ＝minions を親と同じ卓の縁に立たせて頷かせる（上限4/卓・8/全体）。
     // InstancedMesh への行列追加だけ＝drawCalls は増えない。位相は親id+序数で分散。
+    // R68: 登場は床から「ぴょこん」と生え（popScale）、解散は0.3秒のシュリンクで消える。
     const tableUsed = { meet: 0, meet2: 0 };
+    const chibiKeys = new Set();
     let chibiN = 0;
+    const borrowChibi = () => {
+      let ch = this.chibiPool[chibiN];
+      if (!ch) {
+        // R58: 2頭身のチビ骨格（大きな頭・短い手足）＝「部下のチビ感」はデザインで出す
+        ch = makeChibiSkeleton();
+        this.chibiPool[chibiN] = ch;
+      }
+      chibiN += 1;
+      return ch;
+    };
+    this._chibiMeta = this._chibiMeta || new Map();
     for (const agent of world.agents) {
       if (chibiN >= CHIBI_MAX) break;
       if (agent.zone !== "meeting" || !(agent.minions > 0)) continue;
@@ -689,56 +929,110 @@ export class IsoScene {
       for (let i = 0; i < count && tableUsed[table] < seats.length
         && chibiN < CHIBI_MAX; i++) {
         const seat = seats[tableUsed[table]++];
-        let ch = this.chibiPool[chibiN];
-        if (!ch) {
-          // R58: 2頭身のチビ骨格（大きな頭・短い手足）＝「部下のチビ感」はデザインで出す
-          ch = makeChibiSkeleton();
-          ch.root.scale.setScalar(0.95);
-          this.chibiPool[chibiN] = ch;
-        }
-        chibiN += 1;
+        const key = `chibi:${table}:${tableUsed[table] - 1}`;
+        chibiKeys.add(key);
+        const ch = borrowChibi();
         const seed = actor.seed + (i + 1) * 1.9;
         applyPose(ch, chibiPose(t, seed));       // 頷き＋たまにピョコン跳ね・挙手
+        ch.root.scale.setScalar(0.95 * Math.max(0.001, this._popScale(key, t)));
         ch.root.position.set(seat.x, seat.y, seat.z);
         ch.root.rotation.y = seat.yaw;
         // アクセントは親の淡色版＝「同じチームの部下」が色で伝わる
         this._chibiTint.copy(actor.accent || ACCENTS.resting).lerp(CHIBI_WHITE, 0.45);
+        this._chibiMeta.set(key, { seat, seed, tint: this._chibiTint.clone() });
         this.robots.push(ch, this._chibiTint);
       }
     }
+    // 解散したチビ（前フレームまで居た席）は0.3秒縮んで消える
+    for (const key of [...this.markerSince.keys()]) {
+      if (!key.startsWith("chibi:") || chibiKeys.has(key)) continue;
+      this.markerSince.delete(key);
+      const meta = this._chibiMeta.get(key);
+      if (meta && this.seeded) this.chibiGone.set(key, { ...meta, at: t });
+      this._chibiMeta.delete(key);
+    }
+    for (const [key, gone] of [...this.chibiGone]) {
+      const k = 1 - smoothstep(0, 0.3, t - gone.at);
+      if (k <= 0 || chibiN >= CHIBI_MAX) { this.chibiGone.delete(key); continue; }
+      const ch = borrowChibi();
+      applyPose(ch, chibiPose(t, gone.seed));
+      ch.root.scale.setScalar(0.95 * Math.max(0.001, k));
+      ch.root.position.set(gone.seat.x, gone.seat.y, gone.seat.z);
+      ch.root.rotation.y = gone.seat.yaw;
+      this.robots.push(ch, gone.tint);
+    }
     this.robots.end();
 
-    // ❗マーカー: attention のアバター頭上でゆっくり浮く
+    // ❗マーカー: attention のアバター頭上でゆっくり浮く（R68: ポンと弾んで出る）
     let mi = 0;
+    const attnNow = new Set();
     for (const agent of world.agents) {
       if (mi >= this.attnMarkers.length) break;
       if (!agent.attention) continue;
+      attnNow.add(agent.id);
       const actor = this.actors.get(agent.id);
       if (!actor) continue;
       const sp = this.attnMarkers[mi++];
       const pos = actor.nodes.root.position;
+      const s = 0.62 * this._popScale(`attn:${agent.id}`, t);
+      sp.scale.set(Math.max(0.001, s), Math.max(0.001, s), 1);
       sp.position.set(pos.x, pos.y + 2.55 + Math.sin(t * 2.2 + actor.seed) * 0.07, pos.z);
       sp.visible = true;
     }
     for (; mi < this.attnMarkers.length; mi++) this.attnMarkers[mi].visible = false;
+    // R68: ❗解消の瞬間（worldに居るのに attention でなくなった）＝0.6秒だけ緑✓
+    for (const key of [...this.markerSince.keys()]) {
+      if (!key.startsWith("attn:")) continue;
+      const id = key.slice(5);
+      if (attnNow.has(id)) continue;
+      this.markerSince.delete(key);
+      const actor = this.actors.get(id);
+      const inWorld = world.agents.some((a) => a.id === id);
+      if (actor && inWorld && this.seeded) this.attnResolved.set(id, { at: t });
+    }
+    let di = 0;
+    for (const [id, res] of [...this.attnResolved]) {
+      const dt = t - res.at;
+      const actor = this.actors.get(id);
+      if (dt > 0.6 || !actor || di >= this.doneMarkers.length) {
+        this.attnResolved.delete(id);
+        continue;
+      }
+      const sp = this.doneMarkers[di++];
+      const pos = actor.nodes.root.position;
+      const s = 0.60 * smoothstep(0, 0.15, dt) * (1 - smoothstep(0.42, 0.6, dt));
+      sp.scale.set(Math.max(0.001, s), Math.max(0.001, s), 1);
+      sp.position.set(pos.x, pos.y + 2.55 + dt * 0.5, pos.z);   // ふわっと昇って消える
+      sp.visible = true;
+    }
+    for (; di < this.doneMarkers.length; di++) this.doneMarkers[di].visible = false;
 
     // 💭マーカー: 思考中（kind==="think"）の頭上。❗が出ている間は❗を優先
     let ti = 0;
+    const thinkNow = new Set();
     for (const agent of world.agents) {
       if (ti >= this.thinkMarkers.length) break;
       if (agent.attention || agent.kind !== "think") continue;
       const actor = this.actors.get(agent.id);
       if (!actor) continue;
+      thinkNow.add(agent.id);
       const sp = this.thinkMarkers[ti++];
       const pos = actor.nodes.root.position;
+      const s = 0.58 * this._popScale(`think:${agent.id}`, t);
+      sp.scale.set(Math.max(0.001, s), Math.max(0.001, s), 1);
       sp.position.set(pos.x + 0.30,
         pos.y + 2.62 + Math.sin(t * 1.6 + actor.seed) * 0.06, pos.z);
       sp.visible = true;
     }
     for (; ti < this.thinkMarkers.length; ti++) this.thinkMarkers[ti].visible = false;
+    for (const key of [...this.markerSince.keys()]) {
+      if (key.startsWith("think:") && !thinkNow.has(key.slice(6))) this.markerSince.delete(key);
+    }
 
-    // 💬マーカー: 休憩の会話グループの「いま話している人」の頭上（❗>💭>💬）
+    // 💬マーカー: 休憩の会話グループの「いま話している人」の頭上（❗>💭>💬）。
+    // R68: キーに話者idを含める＝交代のたび新キーでポップイン（ワープでなく弾んで出る）
     let ci = 0;
+    const chatNow = new Set();
     for (const [area, group] of Object.entries(restGroups)) {
       if (ci >= this.chatMarkers.length || group.length < 2) continue;
       const sIdx = chatSpeaker(t, seedOf(area), group.length);
@@ -746,13 +1040,20 @@ export class IsoScene {
       const agent = world.agents.find((a) => a.id === speakerId);
       const actor = this.actors.get(speakerId);
       if (!agent || !actor || actor.walking || agent.attention || agent.kind === "think") continue;
+      const key = `chat:${area}:${speakerId}`;
+      chatNow.add(key);
       const sp = this.chatMarkers[ci++];
       const pos = actor.nodes.root.position;
+      const s = 0.5 * this._popScale(key, t);
+      sp.scale.set(Math.max(0.001, s), Math.max(0.001, s), 1);
       sp.position.set(pos.x + 0.26,
         pos.y + 2.45 + Math.sin(t * 1.9 + actor.seed) * 0.05, pos.z);
       sp.visible = true;
     }
     for (; ci < this.chatMarkers.length; ci++) this.chatMarkers[ci].visible = false;
+    for (const key of [...this.markerSince.keys()]) {
+      if (key.startsWith("chat:") && !chatNow.has(key)) this.markerSince.delete(key);
+    }
     this.seeded = true;            // 次に現れた社員からは入口から歩かせる
     this.renderer.render(this.scene, this.camera);
   }

@@ -4,8 +4,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  IDLE_SPOTS, LAYOUT, PODS, REST_SPOTS, WALL, obstacleRects, routePath,
-  segIntersectsRect, walkGraph,
+  BOSS_WALK, CLEANER_ROUTE, IDLE_SPOTS, LAYOUT, PODS, REST_SPOTS, WALL,
+  obstacleRects, routePath, segIntersectsRect, walkGraph,
 } from "./nav.js";
 
 test("segIntersectsRect: 交差・内包・非交差・掠め", () => {
@@ -147,5 +147,33 @@ test("R62: bench席は実在のソファ座面の上（宙に座らせない機�
   const zs = bench.map((s) => s.z).sort((a, b) => a - b);
   for (let i = 1; i < zs.length; i++) {
     assert.ok(zs[i] - zs[i - 1] >= 0.9, `bench席が近すぎる: ${zs}`);
+  }
+});
+
+// ── R68: アンビエント役者の巡回路も歩行者と同じ掟（障害物と交差しない） ──
+test("R68: 掃除ロボの巡回路は全障害物と交差しない・ループしている", () => {
+  const rects = obstacleRects();
+  for (let i = 1; i < CLEANER_ROUTE.length; i++) {
+    const [ax, az] = CLEANER_ROUTE[i - 1];
+    const [bx, bz] = CLEANER_ROUTE[i];
+    for (const r of rects) {
+      assert.equal(segIntersectsRect(ax, az, bx, bz, r), false,
+        `掃除ロボ区間${i}(${ax},${az})→(${bx},${bz}) が ${r.id} を横切る`);
+    }
+  }
+  // ループ（最後の点=最初の点）＝永久巡回で終端ワープしない
+  assert.deepEqual(CLEANER_ROUTE[0], CLEANER_ROUTE[CLEANER_ROUTE.length - 1]);
+});
+
+test("R68: ボスの見回り路は北通路レーン上（壇アプローチの先頭/末尾以外は交差0）", () => {
+  const rects = obstacleRects();
+  // 先頭と末尾の区間は壇（boss矩形）へ入るアプローチ＝例外。中間は交差0を強制
+  for (let i = 2; i < BOSS_WALK.length - 1; i++) {
+    const [ax, az] = BOSS_WALK[i - 1];
+    const [bx, bz] = BOSS_WALK[i];
+    for (const r of rects) {
+      assert.equal(segIntersectsRect(ax, az, bx, bz, r), false,
+        `ボス見回り区間${i}(${ax},${az})→(${bx},${bz}) が ${r.id} を横切る`);
+    }
   }
 });

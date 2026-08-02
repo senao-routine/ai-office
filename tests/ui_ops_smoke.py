@@ -250,12 +250,72 @@ def main():
                 print(f"  ✗ サイドバーがはみ出している: {fit}")
                 ng += 1
 
+            # (3f) R67 送信失敗で本文が残る（従来: 失敗トーストの裏で入力全喪失の実バグ）
+            page.route("**/api/instruct", lambda route: route.fulfill(
+                status=500, content_type="application/json; charset=utf-8",
+                body='{"ok": false, "error": "synthetic failure"}'))
+            page.click(f'.arow[data-session="{target_session}"]')
+            page.wait_for_selector("#sheet:not([hidden])", timeout=3000)
+            page.fill("#composeinput", "失敗しても消えない本文")
+            page.keyboard.press("Enter")
+            page.wait_for_timeout(600)
+            kept = page.eval_on_selector("#composeinput", "el => el.value")
+            sheet_open2 = page.eval_on_selector("#sheet", "el => !el.hidden")
+            if kept == "失敗しても消えない本文" and sheet_open2:
+                print("  ✓ R67 送信失敗: 本文が残りシートも開いたまま（再送できる）")
+            else:
+                print(f"  ✗ 失敗で本文が消えた: kept={kept!r} open={sheet_open2}")
+                ng += 1
+            page.unroute("**/api/instruct")
+
+            # (3g) R67 送信中UI: 飛行中は入力とボタンが塞がる（無反応800msの可視化）
+            # 応答を保留したまま検査し、後から fulfill（route内sleepはsyncスレッドを
+            # 塞ぎ、検査時点で送信が完了してしまう＝保留方式が正）
+            held = []
+            page.route("**/api/instruct", lambda route: held.append(route))
+            page.fill("#composeinput", "送信中UIの検証")
+            page.keyboard.press("Enter")
+            page.wait_for_timeout(250)
+            busy = page.evaluate(
+                "() => ({ dis: document.querySelector('#composeinput').disabled,"
+                "  ph: document.querySelector('#composeinput').placeholder })")
+            if busy["dis"] and "送信中" in busy["ph"]:
+                print("  ✓ R67 送信中: 入力disabled＋「送信中…」表示")
+            else:
+                print(f"  ✗ 送信中UIが出ない: {busy}")
+                ng += 1
+            for r in held:
+                r.fulfill(status=200, content_type="application/json; charset=utf-8",
+                          body='{"ok": true}')
+            page.wait_for_timeout(400)
+            page.unroute("**/api/instruct")
+            page.keyboard.press("Escape")
+            page.wait_for_timeout(200)
+
             real = [e for e in errors if "Failed to load resource" not in e]
             if real:
                 print(f"  ✗ JSエラー: {real[:3]}")
                 ng += 1
             else:
                 print("  ✓ console error 0")
+
+            # (3h) R67 差分更新: live mode で3秒ポーリングをまたいでも .arow が
+            #      同一ノードのまま（従来: 毎回 replaceChildren でクリックが detach 空振り）
+            page3 = browser.new_page(viewport=VIEWPORT, device_scale_factor=1)
+            page3.route("**/api/office*", lambda route: route.fulfill(
+                status=200, content_type="application/json; charset=utf-8", body=payload))
+            page3.goto(f"http://127.0.0.1:{port}/?ui=iso&seed=11")
+            page3.wait_for_function("window.__office && window.__office.ready", timeout=60000)
+            page3.wait_for_selector(".arow", timeout=10000)
+            handle = page3.query_selector(f'.arow[data-session="{target_session}"]')
+            page3.wait_for_timeout(3600)          # ポーリング1周以上またぐ
+            alive = handle.evaluate("el => el.isConnected") if handle else False
+            if alive:
+                print("  ✓ R67 差分更新: ポーリング後も .arow が同一ノード（detach空振りの根絶）")
+            else:
+                print("  ✗ .arow がポーリングで作り直されている")
+                ng += 1
+            page3.close()
 
             # (4) オフライン表示: /api/office が2回連続で落ちたら .ui-iso.offline＋バナー
             #     （クラス付与先とCSSセレクタの食い違いでサイレント故障していた回帰ピン。

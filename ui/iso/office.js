@@ -382,6 +382,14 @@ function boardTexture() {
   return t;
 }
 
+// R68: ホログラムパネルの配置正本 [x, y, z, 幅, yaw]。
+// 本体は scene3d が個別メッシュ（回転＋脈動）・ネオン縁は buildOffice の静的バッチ。
+export const HOLO_PANELS = Object.freeze([
+  [-0.6, 2.05, -2.6, 1.05, 0.45],
+  [LAYOUT.meetZone.x + 1.0, 2.3, LAYOUT.meetZone.z + 0.4, 1.3, 0.35],
+  [WALL.right - 1.6, 2.35, -2.6, 0.95, -1.1],
+]);
+
 // ── ジオメトリと行列のヘルパ ────────────────────────────────────
 const slabCache = new Map();
 /** 角丸スラブ。※UVはメートル単位＝テクスチャを貼る面には使わない（床は例外）。 */
@@ -679,12 +687,9 @@ export function buildOffice(materials, rand) {
     matrix: at(-0.6, 0.27, W.back + 2.0) });
 
   // ── ホログラム（作業机の上に浮く半透明パネル） ─────────────────────
-  for (const [hx, hy, hz, hw, ry] of [
-    [-0.6, 2.05, -2.6, 1.05, 0.45],
-    [m.x + 1.0, 2.3, m.z + 0.4, 1.3, 0.35],
-    [W.right - 1.6, 2.35, -2.6, 0.95, -1.1],
-  ]) {
-    put(slab(hw, 0.035, hw * 0.62, 0.07), "holo", hx, hy, hz, ry);
+  // R68: パネル本体は静的バッチから外し scene3d が個別メッシュで持つ
+  // （update() で回転＋脈動させるため。HOLO_PANELS が正本）。ネオン縁は静的のまま。
+  for (const [hx, hy, hz, hw, ry] of HOLO_PANELS) {
     put(slab(hw * 0.94, 0.045, 0.04, 0.02), "neonC", hx, hy - 0.02, hz, ry);
   }
 
