@@ -78,6 +78,10 @@ def main():
             for btn, label in (("#btn-license", "🧾"), ("#btn-res", "⚡")):
                 page.click(btn)
                 page.wait_for_selector(".modal .mtitle", timeout=8000)
+                if btn == "#btn-res":
+                    # R66: 🔑セクションは非同期描画＝待たずにスキャンすると検査から漏れる
+                    # （実際にサーバー由来の日本語hintが素通りしていた検査の穴）
+                    page.wait_for_selector(".modal .mkeys .mkeyrow", timeout=8000)
                 page.wait_for_timeout(600)          # 非同期の読み込み文言差し替えを待つ
                 mtext = page.eval_on_selector(".modal", "el => el.innerText")
                 mh = find_ja(mtext)

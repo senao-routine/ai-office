@@ -633,11 +633,27 @@
 
 /* R54-F: 🔑 アカウント連携（⚡モーダル内・旧UIの連携設定を移植） */
 .ui-iso .mkeys { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+/* R66: 方式別グループ（🅰自動/🅱APIキー）＝「どう繋ぐか」を構造で見せる */
+.ui-iso .mkeygrp { display: flex; flex-direction: column; gap: 6px; }
+.ui-iso .mkeygrp + .mkeygrp { margin-top: 8px; }
+.ui-iso .mkeygrph { font-size: 11.5px; font-weight: 800; color: var(--iso-ink); }
+.ui-iso .mkeygrpsub { margin: 0; font-size: 10.5px; color: var(--iso-ink-soft); line-height: 1.5; }
+.ui-iso .mkeyauto {
+  font-size: 9.5px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--iso-ok); background: rgba(34, 197, 94, .1);
+  border-radius: 999px; padding: 1px 7px; white-space: nowrap;
+}
+.ui-iso .mkeymask {
+  font-style: normal; font-size: 10.5px; color: var(--iso-ink-soft);
+  font-family: ui-monospace, monospace;
+}
 .ui-iso .mkeyrow {
-  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  display: flex; flex-direction: column; gap: 3px;
   border: 1px solid var(--iso-hairline); border-radius: 10px;
   background: rgba(255, 255, 255, .66); padding: 7px 10px;
 }
+.ui-iso .mkeyhead { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ui-iso .mkeyhead .mkeybtn { margin-left: auto; }
 .ui-iso .mkeydot {
   width: 8px; height: 8px; border-radius: 999px; flex: none;
   background: #c9c6dd; font-style: normal;
@@ -646,7 +662,7 @@
 .ui-iso .mkeyname { font-size: 12px; font-weight: 700; color: var(--iso-ink); }
 .ui-iso .mkeyhint {
   font-style: normal; font-size: 10.5px; color: var(--iso-ink-soft);
-  flex: 1; min-width: 8em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  padding-left: 16px; line-height: 1.5;   /* R66: ガイドは2行目（ドット分だけ字下げ） */
 }
 .ui-iso .mkeybtn {
   font: inherit; font-size: 11px; font-weight: 700; color: #4f3fa8;

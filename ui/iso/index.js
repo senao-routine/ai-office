@@ -651,6 +651,118 @@ export async function mount(root) {
   // ── ⚡リソース（status_board 読み取りビュー） ─────────────────────
   const fmtTok = (v) => v >= 1e9 ? `${(v / 1e9).toFixed(1)}B` :
     v >= 1e6 ? `${(v / 1e6).toFixed(1)}M` : v >= 1e3 ? `${(v / 1e3).toFixed(1)}K` : String(v);
+  // R66: 🔑連携はPro未解錠(403)でも使えるべき＝status_board失敗時にも単独描画できる関数
+  const renderKeysSection = async (sb) => {
+    // 🔑 アカウント連携（R54: 旧UIの連携設定を移植）。Claude/Codex/Gemini は接続状態と
+    // 手順ヒント・key型（OpenAI/X等）は行内フォームで保存（/api/keys/set・値はマスク入力）
+    let ks = null;
+    try {
+      ks = await getKeysStatus();
+    } catch { /* 取得失敗時はセクションごと出さない（嘘の状態を見せない） */ }
+    if (ks?.providers?.length) {
+      const NAME_BY_ID = { openai_key: "OPENAI_API_KEY", x_api: "X_BEARER_TOKEN",
+                           openai_usage: "OPENAI_ADMIN_KEY",
+                           // R65: R63のAPIプロバイダが未登録で接続ボタンが出なかった実バグ修正
+                           openrouter: "OPENROUTER_API_KEY", moonshot: "MOONSHOT_API_KEY",
+                           deepseek: "DEEPSEEK_API_KEY", groq: "GROQ_API_KEY" };
+      // R66: 「いま: <アカウント>」ガイド用（statusBoardは既に取得済み=追加fetchしない）
+      const acctEmail = (id) => {
+        const em = (sb?.providers || []).find((p2) => p2.id === id)?.account?.email || "";
+        return em ? em.split("@")[0] : "";
+      };
+      const sec = mEl("div", "mkeys");
+      sec.append(mEl("b", "msub", T("keys_head")));
+      // R66ユーザーFB「接続方法が分かりづらい」: 方式別2グループ＝
+      // 🅰 自動（ターミナルでログインするだけ・キー入力UIを出さない） / 🅱 APIキーを貼る
+      const grpA = mEl("div", "mkeygrp");
+      grpA.append(mEl("b", "mkeygrph", T("keys_grp_auto")),
+        mEl("p", "mkeygrpsub", T("keys_grp_auto_sub")));
+      const grpB = mEl("div", "mkeygrp");
+      grpB.append(mEl("b", "mkeygrph", T("keys_grp_key")),
+        mEl("p", "mkeygrpsub", T("keys_grp_key_sub")));
+      for (const pr of ks.providers) {
+        const row = mEl("div", "mkeyrow");
+        const head = mEl("div", "mkeyhead");
+        head.append(mEl("i", "mkeydot" + (pr.connected ? " on" : "")),
+          mEl("span", "mkeyname", pr.label || pr.id));
+        const keyName = NAME_BY_ID[pr.id];
+        if (pr.mode !== "key") {
+          // 🅰: バッジ「自動」＋ガイド1行（Claude/Codexは今のアカウントも見せる）
+          head.append(mEl("span", "mkeyauto", T("keys_badge_auto")));
+          const email = (pr.id === "claude" || pr.id === "codex") ? acctEmail(pr.id) : "";
+          const guide = (pr.hint || "") +
+            (pr.connected && email ? `（${T("keys_now", email)}）` : "");
+          row.append(head, mEl("i", "mkeyhint", guide));
+          grpA.append(row);
+          continue;
+        }
+        if (pr.connected && pr.masked) head.append(mEl("i", "mkeymask", pr.masked));
+        // ガイド行: 何が取れるか＋未接続なら発行場所（URL文字列表示のみ）
+        const guideParts = [pr.hint || ""];
+        if (!pr.connected && pr.getFrom) guideParts.push(T("keys_getfrom", pr.getFrom));
+        if (keyName) {
+          const btn = mEl("button", "mkeybtn",
+            pr.connected ? T("keys_change") : T("keys_connect"));
+          btn.type = "button";
+          btn.dataset.key = keyName;
+          btn.addEventListener("click", () => {
+            const open = row.querySelector(".mkeyform");
+            if (open) { open.remove(); return; }
+            const kform = mEl("span", "mkeyform");
+            const input = mEl("input", "mkeyin");
+            input.type = "password";
+            input.placeholder = pr.ph || T("keys_ph");   // R66: キー形式の例（sk-or-v1-…等）
+            input.autocomplete = "off";
+            const save = mEl("button", "mkeysave", T("keys_save"));
+            save.type = "button";
+            save.addEventListener("click", async () => {
+              save.disabled = true;
+              try {
+                await setOfficeKey(keyName, input.value.trim());
+                showToast(T("keys_saved"));
+                shell.querySelector("#btn-res").click();   // connected/masked を反映
+              } catch (err) {
+                save.disabled = false;
+                showToast(err.message, false);
+              }
+            });
+            kform.append(input, save);
+            row.append(kform);
+            input.focus();
+          });
+          head.append(btn);
+          if (pr.connected) {
+            // R65: 解除（value=""で行削除）。↻再送と同じ2クリック制＝誤爆ガード
+            const rv = mEl("button", "mkeyrevoke", T("keys_revoke"));
+            rv.type = "button";
+            let armed = 0;
+            rv.addEventListener("click", async () => {
+              if (!armed) {
+                armed = setTimeout(() => { armed = 0; rv.textContent = T("keys_revoke"); }, 3000);
+                rv.textContent = T("keys_revoke_arm");
+                return;
+              }
+              clearTimeout(armed);
+              rv.disabled = true;
+              try {
+                await setOfficeKey(keyName, "");
+                showToast(T("keys_revoked"));
+                shell.querySelector("#btn-res").click();
+              } catch (err) {
+                rv.disabled = false;
+                showToast(err.message, false);
+              }
+            });
+            head.append(rv);
+          }
+        }
+        row.append(head, mEl("i", "mkeyhint", guideParts.filter(Boolean).join(" · ")));
+        grpB.append(row);
+      }
+      sec.append(grpA, grpB);
+      modal.append(sec);
+    }
+  };
   shell.querySelector("#btn-res").addEventListener("click", async () => {
     modal.replaceChildren(mEl("b", "mtitle", T("btn_res")),
       mEl("p", "mnote", T("loading")));
@@ -659,8 +771,10 @@ export async function mount(root) {
     try {
       sb = await getStatusBoard();
     } catch (err) {
+      // R66: Pro未解錠(403)等でも🔑アカウント連携には到達できる（キャラ生成キー等は無料機能）
       modal.replaceChildren(mEl("b", "mtitle", T("btn_res")),
         mEl("p", "mnote merr", err.message));
+      await renderKeysSection(null);
       return;
     }
     modal.replaceChildren(mEl("b", "mtitle", T("btn_res")),
@@ -849,87 +963,7 @@ export async function mount(root) {
     form.append(nameIn, amtIn, curSel, kindSel, renewIn, addBtn);
     led.append(form);
     modal.append(led);
-    // 🔑 アカウント連携（R54: 旧UIの連携設定を移植）。Claude/Codex/Gemini は接続状態と
-    // 手順ヒント・key型（OpenAI/X等）は行内フォームで保存（/api/keys/set・値はマスク入力）
-    let ks = null;
-    try {
-      ks = await getKeysStatus();
-    } catch { /* 取得失敗時はセクションごと出さない（嘘の状態を見せない） */ }
-    if (ks?.providers?.length) {
-      const NAME_BY_ID = { openai_key: "OPENAI_API_KEY", x_api: "X_BEARER_TOKEN",
-                           openai_usage: "OPENAI_ADMIN_KEY",
-                           // R65: R63のAPIプロバイダが未登録で接続ボタンが出なかった実バグ修正
-                           openrouter: "OPENROUTER_API_KEY", moonshot: "MOONSHOT_API_KEY",
-                           deepseek: "DEEPSEEK_API_KEY", groq: "GROQ_API_KEY" };
-      const sec = mEl("div", "mkeys");
-      sec.append(mEl("b", "msub", T("keys_head")));
-      for (const pr of ks.providers) {
-        const row = mEl("div", "mkeyrow");
-        row.append(mEl("i", "mkeydot" + (pr.connected ? " on" : "")),
-          mEl("span", "mkeyname", pr.label || pr.id),
-          mEl("i", "mkeyhint",
-            pr.connected ? (pr.masked || T("res_connected")) : (pr.hint || "")));
-        const keyName = NAME_BY_ID[pr.id];
-        if (pr.mode === "key" && keyName) {
-          const btn = mEl("button", "mkeybtn",
-            pr.connected ? T("keys_change") : T("keys_connect"));
-          btn.type = "button";
-          btn.dataset.key = keyName;
-          btn.addEventListener("click", () => {
-            const open = row.querySelector(".mkeyform");
-            if (open) { open.remove(); return; }
-            const kform = mEl("span", "mkeyform");
-            const input = mEl("input", "mkeyin");
-            input.type = "password";
-            input.placeholder = T("keys_ph");
-            input.autocomplete = "off";
-            const save = mEl("button", "mkeysave", T("keys_save"));
-            save.type = "button";
-            save.addEventListener("click", async () => {
-              save.disabled = true;
-              try {
-                await setOfficeKey(keyName, input.value.trim());
-                showToast(T("keys_saved"));
-                shell.querySelector("#btn-res").click();   // connected/masked を反映
-              } catch (err) {
-                save.disabled = false;
-                showToast(err.message, false);
-              }
-            });
-            kform.append(input, save);
-            row.append(kform);
-            input.focus();
-          });
-          row.append(btn);
-          if (pr.connected) {
-            // R65: 解除（value=""で行削除）。↻再送と同じ2クリック制＝誤爆ガード
-            const rv = mEl("button", "mkeyrevoke", T("keys_revoke"));
-            rv.type = "button";
-            let armed = 0;
-            rv.addEventListener("click", async () => {
-              if (!armed) {
-                armed = setTimeout(() => { armed = 0; rv.textContent = T("keys_revoke"); }, 3000);
-                rv.textContent = T("keys_revoke_arm");
-                return;
-              }
-              clearTimeout(armed);
-              rv.disabled = true;
-              try {
-                await setOfficeKey(keyName, "");
-                showToast(T("keys_revoked"));
-                shell.querySelector("#btn-res").click();
-              } catch (err) {
-                rv.disabled = false;
-                showToast(err.message, false);
-              }
-            });
-            row.append(rv);
-          }
-        }
-        sec.append(row);
-      }
-      modal.append(sec);
-    }
+    await renderKeysSection(sb);
   });
   // クレジットのゲージをクリック→⚡（アカウント連携・台帳がある画面）を開く（R54ユーザーFB）
   shell.querySelector("#gauges").addEventListener("click", () => {

@@ -32,6 +32,8 @@ def main():
     tmp = pathlib.Path(tempfile.mkdtemp(prefix="ui_admin_"))
     home = tmp / "home"
     (home / ".claude").mkdir(parents=True)
+    # R66: projects在=Claude Code接続済み→🔑🅰の「/login で切替」ガイドが出る状態を作る
+    (home / ".claude" / "projects").mkdir()
     pick_dir = tmp / "新規プロジェクト"
     pick_dir.mkdir()
     config = tmp / "office_config.json"
@@ -206,6 +208,36 @@ def main():
                 print("  ✓ 💳台帳: 削除が実ファイルに反映")
             else:
                 print("  ✗ 💳台帳の削除が反映されない")
+                ng += 1
+
+            # (4b2) R66 🔑グループ構造: 🅰自動（キー入力UIなし・Claudeの/loginガイド）／
+            #       🅱APIキー（キー形式プレースホルダ・発行場所）＝「接続方法が分からない」FBのピン
+            page.wait_for_selector(".modal .mkeygrp", timeout=8000)
+            grp = page.evaluate(
+                "() => { const gs = [...document.querySelectorAll('.modal .mkeygrp')];"
+                " const a = gs[0]; const b = gs[1];"
+                " return { n: gs.length,"
+                "   aHasClaude: !!a && a.textContent.includes('Claude Code'),"
+                "   aNoKeyBtn: !!a && !a.querySelector('.mkeybtn'),"
+                "   aLoginGuide: !!a && a.textContent.includes('/login'),"
+                "   bHasOpenrouter: !!b && b.textContent.includes('OpenRouter'),"
+                "   bGetFrom: !!b && b.textContent.includes('openrouter.ai/settings/keys') }; }")
+            if (grp["n"] == 2 and grp["aHasClaude"] and grp["aNoKeyBtn"]
+                    and grp["aLoginGuide"] and grp["bHasOpenrouter"] and grp["bGetFrom"]):
+                print("  ✓ 🔑グループ: 🅰自動（/loginガイド・キーUIなし）/🅱キー（発行場所）")
+            else:
+                print(f"  ✗ 🔑グループ構造が想定外: {grp}")
+                ng += 1
+            ph = page.evaluate(
+                "() => { const btn = document.querySelector("
+                "'.modal .mkeybtn[data-key=\"OPENROUTER_API_KEY\"]');"
+                " if (!btn) return ''; btn.click();"
+                " const inp = btn.closest('.mkeyrow').querySelector('.mkeyin');"
+                " const v = inp ? inp.placeholder : ''; btn.click(); return v; }")
+            if "sk-or-v1" in ph:
+                print("  ✓ 🔑キー形式プレースホルダ（sk-or-v1-…）")
+            else:
+                print(f"  ✗ プレースホルダが出ない: {ph!r}")
                 ng += 1
 
             # (4c) 🔑アカウント連携（R54-F）: 接続→キー保存が office_secrets 実ファイルへ
