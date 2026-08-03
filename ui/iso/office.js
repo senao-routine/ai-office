@@ -74,10 +74,13 @@ export function meetingAnchorsByRoom() {
       { x: k.x + 0.35, z: k.z - 0.95, yaw: 0, y: k.lift },
     ],
     meet4: [
-      // R73.1: 長卓は縦置き（長辺=z）。席は卓の西2＋東1＝卓を挟んで向かい合う
-      { x: q4.x - 1.15, z: q4.z - 0.6, yaw: Math.PI / 2, y: q4.lift },
-      { x: q4.x - 1.15, z: q4.z + 0.6, yaw: Math.PI / 2, y: q4.lift },
-      { x: q4.x + 1.15, z: q4.z, yaw: -Math.PI / 2, y: q4.lift },
+      // R73.2: 縦長卓を挟んで西2＋東2、南の短辺に議長1（＝白板に正対する）。
+      // 長卓の長辺が奥行き方向＝ユーザー指定の「縦」。
+      { x: q4.x - 1.35, z: q4.z - 0.65, yaw: Math.PI / 2, y: q4.lift },
+      { x: q4.x - 1.35, z: q4.z + 0.75, yaw: Math.PI / 2, y: q4.lift },
+      { x: q4.x + 1.35, z: q4.z - 0.65, yaw: -Math.PI / 2, y: q4.lift },
+      { x: q4.x + 1.35, z: q4.z + 0.75, yaw: -Math.PI / 2, y: q4.lift },
+      { x: q4.x, z: q4.z + 1.7, yaw: Math.PI, y: q4.lift },
     ],
   };
 }
@@ -141,10 +144,10 @@ export function chibiSeats() {
     meet4: (() => {
       const q = LAYOUT.meet4Zone;
       return [
-        { x: q.x, z: q.z - 1.25, yaw: 0, y: q.lift },              // 北端→南向き（卓の短辺）
-        { x: q.x, z: q.z + 1.25, yaw: Math.PI, y: q.lift },        // 南端→北向き
-        { x: q.x - 1.15, z: q.z - 1.15, yaw: Math.PI / 2, y: q.lift },
-        { x: q.x + 1.15, z: q.z + 1.15, yaw: -Math.PI / 2, y: q.lift },
+        { x: q.x - 1.35, z: q.z + 1.55, yaw: Math.PI / 2, y: q.lift },   // 卓の南寄り・西
+        { x: q.x + 1.35, z: q.z + 1.55, yaw: -Math.PI / 2, y: q.lift },  // 卓の南寄り・東
+        { x: q.x - 0.8, z: q.z - 1.6, yaw: 0, y: q.lift },               // 白板前（北）
+        { x: q.x + 0.8, z: q.z - 1.6, yaw: 0, y: q.lift },
       ];
     })(),
   };
@@ -676,18 +679,24 @@ export function buildOffice(materials, rand) {
   // ── 第4会議室（R73・右奥＝奥壁サーバー帯の手前の空床。ユーザー要望「右奥にもう一つ」） ──
   // ガラスは西面＋北面（＝カメラから見て奥側）。南＝入口の開口・東＝外部コンソール側は開ける
   // ＝俯瞰で中が見える（meet3と同じ文法）。
-  // R73.1: 長卓は縦置き（長辺=z）。ユーザー赤枠の見本どおり、卓の長辺が奥行き方向を向く。
+  // R73.2: ラック直下から手前の空床へ移設し、第1/第2会議室と同じ文法で組み直す
+  // （ラグ→縦長卓→脚→紙とマグ→椅子は meetingAnchors 側→ガラス2面→白板→植物→影）。
   const q4 = L.meet4Zone;
-  put(slab(2.2, 0.012, 2.4, 0.35), "rugB", q4.x, q4.lift + 0.005, q4.z);
-  put(slab(1.2, 0.12, 2.4, 0.30), "wood2", q4.x, q4.lift + 0.80, q4.z);       // 長卓（縦）
-  put(slab(0.85, 0.6, 0.40, 0.11), "white", q4.x, q4.lift + 0.42, q4.z);      // 卓脚
-  put(slab(0.26, 0.03, 0.36, 0.02), "paper", q4.x + 0.06, q4.lift + 0.98, q4.z - 0.55);
-  put(slab(0.12, 0.15, 0.12, 0.04), "mugB", q4.x - 0.18, q4.lift + 1.0, q4.z + 0.7);
-  glassWall(P, 2.8, q4.x - 1.65, q4.z, Math.PI / 2, 2.35);                    // 西面
-  glassWall(P, 3.4, q4.x, q4.z - 1.4, 0, 2.35);                               // 北面
-  put(slab(0.34, 0.35, 0.34, 0.08), "white", q4.x + 1.35, q4.lift + 0.18, q4.z - 1.05);
-  put(slab(0.4, 0.5, 0.4, 0.16), "plant", q4.x + 1.35, q4.lift + 0.6, q4.z - 1.05);
-  P.push({ geometry: flat(3.8, 3.2), material: "shadow",
+  put(slab(3.0, 0.012, 3.3, 0.45), "rugB", q4.x, q4.lift + 0.005, q4.z);
+  put(slab(1.5, 0.12, 2.7, 0.32), "wood2", q4.x, q4.lift + 0.88, q4.z + 0.05);  // 縦の長卓
+  put(slab(0.5, 0.62, 1.9, 0.12), "white", q4.x, q4.lift + 0.50, q4.z + 0.05);  // 卓脚
+  put(slab(0.3, 0.03, 0.4, 0.02), "paper", q4.x + 0.1, q4.lift + 1.06, q4.z + 0.5);
+  put(slab(0.12, 0.15, 0.12, 0.04), "mugB", q4.x - 0.3, q4.lift + 1.08, q4.z - 0.5);
+  put(slab(0.34, 0.02, 0.24, 0.02), "dark", q4.x + 0.15, q4.lift + 1.06, q4.z - 0.85);
+  glassWall(P, 3.9, q4.x - 2.0, q4.z, Math.PI / 2, 2.35);                       // 西面（全長）
+  glassWall(P, 4.0, q4.x, q4.z - 1.95, 0, 2.35);                                // 北面（全長）
+  // 自立白板（北端・室内側。中身は buildMonitors がプレーンで貼る文法に合わせた受けのみ）
+  put(slab(0.10, 1.3, 0.10, 0.03), "steel", q4.x - 0.95, q4.lift + 0.85, q4.z - 1.78);
+  put(slab(0.10, 1.3, 0.10, 0.03), "steel", q4.x + 0.95, q4.lift + 0.85, q4.z - 1.78);
+  put(slab(2.0, 0.08, 0.14, 0.05), "white", q4.x, q4.lift + 1.52, q4.z - 1.78);
+  put(slab(0.36, 0.36, 0.36, 0.08), "white", q4.x + 1.62, q4.lift + 0.18, q4.z + 1.6);
+  put(slab(0.44, 0.55, 0.44, 0.18), "plant", q4.x + 1.62, q4.lift + 0.62, q4.z + 1.6);
+  P.push({ geometry: flat(4.6, 4.3), material: "shadow",
     matrix: at(q4.x, q4.lift + 0.005, q4.z) });
 
   // ── ラウンジ（右前・L字ソファ＋プーフ） ──────────────────────────

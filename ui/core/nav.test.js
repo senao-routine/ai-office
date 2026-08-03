@@ -237,10 +237,11 @@ test("R73: 第4会議室=障害物登録・全席が部屋の内側・北通路�
   const obstacles = obstacleRects();
   assert.ok(obstacles.some((r) => r.id === "meet4"), "meet4 が障害物に登録されている");
   // 会議席（iso 層の meetingAnchorsByRoom と同式・長卓の南2席＋北1席）
-  // R73.1: 長卓は縦置き＝席は卓の西2＋東1（iso 層の meetingAnchorsByRoom と同式）
+  // R73.2: 縦長卓を挟んで西2＋東2＋南の議長1（iso 層の meetingAnchorsByRoom と同式）
   const seats = [
-    { x: q.x - 1.15, z: q.z - 0.6 }, { x: q.x - 1.15, z: q.z + 0.6 },
-    { x: q.x + 1.15, z: q.z },
+    { x: q.x - 1.35, z: q.z - 0.65 }, { x: q.x - 1.35, z: q.z + 0.75 },
+    { x: q.x + 1.35, z: q.z - 0.65 }, { x: q.x + 1.35, z: q.z + 0.75 },
+    { x: q.x, z: q.z + 1.7 },
   ];
   const entrance = { x: -8.3, z: WALL.front - 0.85 };
   for (const s of seats) {
@@ -255,10 +256,13 @@ test("R73: 第4会議室=障害物登録・全席が部屋の内側・北通路�
       }
     }
   }
-  // 右奥の空床の条件: サーバーラック帯（北）と北通路 ZN=-5.0（南）の両方に触れない。
-  // ここが崩れると「部屋が通路を塞ぐ／ラックにめり込む」が静かに再発する
+  // R73.2: 移設後の成立条件（崩れると「棚裏の机」や「通路封鎖」が静かに再発する）
+  //   ①北通路 ZN=-5.0 より南＝通路を塞がない ②机の島の東端(x=7.3)に触れない
+  //   ③外部コンソールの立ち位置(x=13.05)との間に通路を残す ④第2会議室と重ならない
   const room = obstacles.find((r) => r.id === "meet4");
-  const server = obstacles.find((r) => r.id === "server");
-  assert.ok(room.z1 > server.z2, "meet4 がサーバーラック帯に食い込んでいる");
-  assert.ok(room.z2 < -5.0, "meet4 が北通路(z=-5.0)を塞いでいる");
+  const meet2 = obstacles.find((r) => r.id === "meet2");
+  assert.ok(room.z1 > -5.0, "meet4 が北通路(z=-5.0)に掛かっている");
+  assert.ok(room.x1 > 7.3, "meet4 が机の島に食い込んでいる");
+  assert.ok(room.x2 < 12.6, "meet4 が外部コンソールの通路を潰している");
+  assert.ok(room.z2 < meet2.z1, "meet4 が第2会議室と重なっている");
 });
