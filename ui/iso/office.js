@@ -74,10 +74,10 @@ export function meetingAnchorsByRoom() {
       { x: k.x + 0.35, z: k.z - 0.95, yaw: 0, y: k.lift },
     ],
     meet4: [
-      // R73: 第4会議室（右奥）: 長卓の南側2席＋北側1席
-      { x: q4.x - 0.85, z: q4.z + 1.0, yaw: Math.PI, y: q4.lift },
-      { x: q4.x + 0.85, z: q4.z + 1.0, yaw: Math.PI, y: q4.lift },
-      { x: q4.x, z: q4.z - 1.0, yaw: 0, y: q4.lift },
+      // R73.1: 長卓は縦置き（長辺=z）。席は卓の西2＋東1＝卓を挟んで向かい合う
+      { x: q4.x - 1.15, z: q4.z - 0.6, yaw: Math.PI / 2, y: q4.lift },
+      { x: q4.x - 1.15, z: q4.z + 0.6, yaw: Math.PI / 2, y: q4.lift },
+      { x: q4.x + 1.15, z: q4.z, yaw: -Math.PI / 2, y: q4.lift },
     ],
   };
 }
@@ -141,10 +141,10 @@ export function chibiSeats() {
     meet4: (() => {
       const q = LAYOUT.meet4Zone;
       return [
-        { x: q.x - 1.75, z: q.z, yaw: Math.PI / 2, y: q.lift },   // 西端→東向き
-        { x: q.x + 1.75, z: q.z, yaw: -Math.PI / 2, y: q.lift },  // 東端→西向き
-        { x: q.x - 0.85, z: q.z - 1.0, yaw: 0, y: q.lift },
-        { x: q.x + 0.85, z: q.z - 1.0, yaw: 0, y: q.lift },
+        { x: q.x, z: q.z - 1.25, yaw: 0, y: q.lift },              // 北端→南向き（卓の短辺）
+        { x: q.x, z: q.z + 1.25, yaw: Math.PI, y: q.lift },        // 南端→北向き
+        { x: q.x - 1.15, z: q.z - 1.15, yaw: Math.PI / 2, y: q.lift },
+        { x: q.x + 1.15, z: q.z + 1.15, yaw: -Math.PI / 2, y: q.lift },
       ];
     })(),
   };
@@ -676,17 +676,18 @@ export function buildOffice(materials, rand) {
   // ── 第4会議室（R73・右奥＝奥壁サーバー帯の手前の空床。ユーザー要望「右奥にもう一つ」） ──
   // ガラスは西面＋北面（＝カメラから見て奥側）。南＝入口の開口・東＝外部コンソール側は開ける
   // ＝俯瞰で中が見える（meet3と同じ文法）。
+  // R73.1: 長卓は縦置き（長辺=z）。ユーザー赤枠の見本どおり、卓の長辺が奥行き方向を向く。
   const q4 = L.meet4Zone;
-  put(slab(3.4, 0.012, 2.0, 0.35), "rugB", q4.x, q4.lift + 0.005, q4.z);
-  put(slab(2.6, 0.12, 1.2, 0.30), "wood2", q4.x, q4.lift + 0.80, q4.z);       // 長卓
-  put(slab(0.40, 0.6, 0.85, 0.11), "white", q4.x, q4.lift + 0.42, q4.z);      // 卓脚
-  put(slab(0.36, 0.03, 0.26, 0.02), "paper", q4.x - 0.55, q4.lift + 0.98, q4.z + 0.08);
-  put(slab(0.12, 0.15, 0.12, 0.04), "mugB", q4.x + 0.75, q4.lift + 1.0, q4.z - 0.18);
-  glassWall(P, 2.6, q4.x - 2.15, q4.z, Math.PI / 2, 2.35);                    // 西面
-  glassWall(P, 4.4, q4.x, q4.z - 1.3, 0, 2.35);                               // 北面
-  put(slab(0.34, 0.35, 0.34, 0.08), "white", q4.x + 1.75, q4.lift + 0.18, q4.z - 0.95);
-  put(slab(0.4, 0.5, 0.4, 0.16), "plant", q4.x + 1.75, q4.lift + 0.6, q4.z - 0.95);
-  P.push({ geometry: flat(4.8, 3.0), material: "shadow",
+  put(slab(2.2, 0.012, 2.4, 0.35), "rugB", q4.x, q4.lift + 0.005, q4.z);
+  put(slab(1.2, 0.12, 2.4, 0.30), "wood2", q4.x, q4.lift + 0.80, q4.z);       // 長卓（縦）
+  put(slab(0.85, 0.6, 0.40, 0.11), "white", q4.x, q4.lift + 0.42, q4.z);      // 卓脚
+  put(slab(0.26, 0.03, 0.36, 0.02), "paper", q4.x + 0.06, q4.lift + 0.98, q4.z - 0.55);
+  put(slab(0.12, 0.15, 0.12, 0.04), "mugB", q4.x - 0.18, q4.lift + 1.0, q4.z + 0.7);
+  glassWall(P, 2.8, q4.x - 1.65, q4.z, Math.PI / 2, 2.35);                    // 西面
+  glassWall(P, 3.4, q4.x, q4.z - 1.4, 0, 2.35);                               // 北面
+  put(slab(0.34, 0.35, 0.34, 0.08), "white", q4.x + 1.35, q4.lift + 0.18, q4.z - 1.05);
+  put(slab(0.4, 0.5, 0.4, 0.16), "plant", q4.x + 1.35, q4.lift + 0.6, q4.z - 1.05);
+  P.push({ geometry: flat(3.8, 3.2), material: "shadow",
     matrix: at(q4.x, q4.lift + 0.005, q4.z) });
 
   // ── ラウンジ（右前・L字ソファ＋プーフ） ──────────────────────────

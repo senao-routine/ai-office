@@ -237,9 +237,10 @@ test("R73: 第4会議室=障害物登録・全席が部屋の内側・北通路�
   const obstacles = obstacleRects();
   assert.ok(obstacles.some((r) => r.id === "meet4"), "meet4 が障害物に登録されている");
   // 会議席（iso 層の meetingAnchorsByRoom と同式・長卓の南2席＋北1席）
+  // R73.1: 長卓は縦置き＝席は卓の西2＋東1（iso 層の meetingAnchorsByRoom と同式）
   const seats = [
-    { x: q.x - 0.85, z: q.z + 1.0 }, { x: q.x + 0.85, z: q.z + 1.0 },
-    { x: q.x, z: q.z - 1.0 },
+    { x: q.x - 1.15, z: q.z - 0.6 }, { x: q.x - 1.15, z: q.z + 0.6 },
+    { x: q.x + 1.15, z: q.z },
   ];
   const entrance = { x: -8.3, z: WALL.front - 0.85 };
   for (const s of seats) {
