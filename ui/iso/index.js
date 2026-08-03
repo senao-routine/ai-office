@@ -717,6 +717,12 @@ export async function mount(root) {
   shell.querySelector("#btn-pair").addEventListener("click", renderPairPanel);
 
   // ── ⚡リソース（status_board 読み取りビュー） ─────────────────────
+  // R72: 課金方式の正本はサーバー（status_board の billing）。ただし app/ 未更新など
+  // 版ズレで billing 欠落のときにグループが空になると「全部消えた」ように見えるので、
+  // kind から同じ規則で補う（旧server後方互換の掟＝サーバー正本＋クライアント補完）。
+  const BILLING_FALLBACK = { tokens: "subscription", gauge: "subscription",
+    login: "subscription", external: "apikey", api: "apikey", ledger: "manual" };
+  const billingOf = (pr) => pr?.billing || BILLING_FALLBACK[pr?.kind] || "";
   const fmtTok = (v) => v >= 1e9 ? `${(v / 1e9).toFixed(1)}B` :
     v >= 1e6 ? `${(v / 1e6).toFixed(1)}M` : v >= 1e3 ? `${(v / 1e3).toFixed(1)}K` : String(v);
   // R66: 🔑連携はPro未解錠(403)でも使えるべき＝status_board失敗時にも単独描画できる関数
@@ -849,8 +855,16 @@ export async function mount(root) {
     modal.replaceChildren(mEl("b", "mtitle", T("btn_res")),
       mEl("p", "mnote", T("res_note")));
     const jpy = sb.fx?.jpyPerUsd || 155;
-    for (const pr of sb.providers || []) {
-      if (pr.kind === "api") continue;        // R63: APIプロバイダは専用セクションへ
+    // R72: 「定額のサブスク枠」と「APIキーの従量課金」を混ぜて並べると、どれが
+    // 使い放題でどれが使うほど請求されるのか読めない（ユーザーFB）。billing（サーバー正本）で
+    // 2グループに割り、見出しに課金の性質を1行で書く。
+    const usdJpy = (v) => `$${v.toFixed(2)} ≈ ¥${Math.round(v * jpy).toLocaleString()}`;
+    const subs = (sb.providers || []).filter((p) => billingOf(p) === "subscription");
+    if (subs.length) {
+      modal.append(mEl("b", "msub", T("res_grp_sub")),
+        mEl("p", "mnote", T("res_grp_sub_note")));
+    }
+    for (const pr of subs) {
       const row = mEl("div", "mres");
       const head = mEl("div", "mreshead");
       head.append(mEl("b", "", pr.label || pr.id));
@@ -868,10 +882,6 @@ export async function mount(root) {
         }
       } else if (pr.kind === "login") {
         sub = pr.loggedIn ? T("res_login_yes") : T("res_login_no");
-      } else if (pr.kind === "external") {
-        sub = pr.connected
-          ? (pr.cap ? `${fmtTok(pr.used || 0)} / ${fmtTok(pr.cap)}` : T("res_connected"))
-          : T("res_notconnected");
       }
       head.append(mEl("span", "mressub", sub));
       row.append(head);
@@ -880,14 +890,40 @@ export async function mount(root) {
     // ── R63: 🔌 APIプロバイダ（消費・残高・上限を1箇所に集約） ──────────
     // 上限が判明しているものだけバー。取れないものは「上限が設定されていません」と
     // 明示して消費/残高だけ出す（嘘の%を作らない掟）。予算はその場で設定できる。
-    const apis = (sb.providers || []).filter((p) => p.kind === "api");
+    // R72: external（X API / OpenAI 管理キー）も課金方式は同じ従量なので同じ節に入れる。
+    // 旧実装では OpenAI は上の一覧で「接続済み」としか出ず、取得済みの当月額が
+    // どこにも出ていなかった（＝キーを入れたのに認識されていないように見える実UX欠陥）。
+    const apis = (sb.providers || []).filter((p) => billingOf(p) === "apikey");
     if (apis.length) {
       const sec = mEl("div", "mapis");
-      sec.append(mEl("b", "msub", T("api_head")));
+      sec.append(mEl("b", "msub", T("api_head")), mEl("p", "mnote", T("res_grp_api_note")));
       for (const pr of apis) {
         const row = mEl("div", "mapi");
         const head = mEl("div", "mreshead");
         head.append(mEl("b", "", pr.label || pr.id));
+        if (pr.kind === "external") {
+          let sub;
+          if (!pr.connected) sub = T("res_nokey");
+          else if (pr.cap) sub = `${fmtTok(pr.used || 0)} / ${fmtTok(pr.cap)}`;
+          else if (pr.monthUsd != null) {
+            sub = pr.sinceDay
+              ? T("res_month_since", usdJpy(pr.monthUsd), pr.sinceDay)
+              : T("res_month", usdJpy(pr.monthUsd));
+          } else sub = T("res_connected");
+          head.append(mEl("span", "mressub", sub));
+          row.append(head);
+          if (pr.connected && pr.pct != null && pr.cap) {
+            const track = mEl("div", "gbar big");
+            const fill = mEl("i", pr.pct >= 80 ? "gfill warn" : "gfill");
+            fill.style.width = `${Math.max(2, Math.round(pr.pct))}%`;
+            track.append(fill);
+            row.append(track);
+          } else if (pr.connected && pr.monthUsd != null) {
+            row.append(mEl("span", "gsub gnolimit", T("api_no_limit")));
+          }
+          sec.append(row);
+          continue;
+        }
         const money = (v) => (pr.currency === "CNY" ? `CN¥${v.toFixed(2)}`
           : pr.currency === "JPY" ? `¥${Math.round(v).toLocaleString()}`
           : `$${v.toFixed(2)}`);
@@ -1232,6 +1268,7 @@ export async function mount(root) {
       return;
     }
     const jpy = sb.fx?.jpyPerUsd || 155;
+    const usdJpy = (v) => `$${v.toFixed(2)} ≈ ¥${Math.round(v * jpy).toLocaleString()}`;
     // クレジット消費（サブスク枠の使用率＝%）とコスト（¥）は別物なので分けて描く。
     // R55: 旧UIのCodexバー式＝プロバイダごとのブロック（planチップ・%大表示・太バー・
     // 窓ラベル+リセット残時間・secondary窓は2本目）。実データが無い数値は出さない掟のまま
@@ -1239,7 +1276,7 @@ export async function mount(root) {
     const nowEpoch = Number(sb.generatedAt) || built?.generatedAt || 0;
     creditsBody.replaceChildren();
     moneyBody.replaceChildren();
-    for (const pr of sb.providers || []) {
+    const renderProv = (pr) => {
       if (pr.kind === "gauge" && pr.status === "ok") {
         const pct = pr.usedPercent ?? 0;
         const box = provBlock(pr.label || pr.id, pr.plan || "", pct);
@@ -1276,8 +1313,21 @@ export async function mount(root) {
         box.append(gEl("span", "gsub",
           `${fmtTok(pr.used || 0)} / ${fmtTok(pr.cap)}`));
         creditsBody.append(box);
+      } else if (pr.kind === "external" && pr.connected && pr.monthUsd != null) {
+        // R72: 枠(cap)を持たない従量プロバイダ（OpenAI 管理キー）。旧実装は cap 必須の
+        // 分岐しか無く、当月額を取得できていてもドロワーから丸ごと消えていた。
+        const box = provBlock(pr.label || pr.id, "", null);
+        box.append(gEl("span", "gsub",
+          `${pr.sinceDay ? T("res_month_since", usdJpy(pr.monthUsd), pr.sinceDay)
+            : T("res_month", usdJpy(pr.monthUsd))}`));
+        box.append(gEl("span", "gsub gnolimit", T("api_no_limit")));
+        creditsBody.append(box);
+        const mrow = gEl("div", "ghead");
+        mrow.append(gEl("span", "", T("g_month", pr.label || pr.id)),
+          gEl("b", "", `≈¥${Math.round(pr.monthUsd * jpy).toLocaleString()}`));
+        moneyBody.append(mrow);
       } else if (pr.kind === "tokens" && pr.tokens?.byModel) {
-        if (built?.features?.claudeSessions === false) continue;   // openclaw版=Claude面を出さない
+        if (built?.features?.claudeSessions === false) return;   // openclaw版=Claude面を出さない
         // Claude: R61=statusLine capture の実測枠%（rate_limits）が新鮮(15分以内)なら
         // それを主役にし、推定のペースゲージは隠す（実測>推定・両方出すと二重表示）。
         // 実測が無い/古いときだけ従来の「直近7日の5hピーク比」ペース（R55.1）へ戻す。
@@ -1324,8 +1374,11 @@ export async function mount(root) {
           gEl("b", "", `≈¥${Math.round(usd * jpy).toLocaleString()}`));
         moneyBody.append(row);
       } else if (pr.kind === "login" && pr.status === "ok") {
+        // R72: loggedIn を見ずに常に「ログイン済み」と出していた（未ログインでも
+        // 繋がって見える誤報＝モーダル側の表示とも食い違っていた）
         const box = provBlock(pr.label || pr.id, "", null);
-        box.append(gEl("span", "gsub gok", T("res_login_yes")));
+        box.append(gEl("span", pr.loggedIn ? "gsub gok" : "gsub",
+          pr.loggedIn ? T("res_login_yes") : T("res_login_no")));
         creditsBody.append(box);
       } else if (pr.kind === "api" && pr.status === "ok") {
         // R63: 上限が判明しているものだけバー。取れないものは金額テキストのみ
@@ -1350,6 +1403,15 @@ export async function mount(root) {
         }
         creditsBody.append(box);
       }
+    };
+    // R72: 定額サブスクの枠と、APIキーの従量課金を見出しで分ける（ユーザーFB
+    // 「サブスクプランなのかAPIキー消費なのか分かるようにしてほしい」）。
+    const byBilling = (b) => (sb.providers || []).filter((p) => billingOf(p) === b);
+    for (const [billing, head] of [["subscription", "res_grp_sub"], ["apikey", "api_head"]]) {
+      const group = byBilling(billing);
+      if (!group.length) continue;
+      creditsBody.append(gEl("div", "gbillhead", T(head)));
+      group.forEach(renderProv);
     }
     if (sb.spend) {
       const total = Math.round((sb.spend.totalJpy || 0) + (sb.spend.totalUsd || 0) * jpy);
@@ -1391,6 +1453,8 @@ export async function mount(root) {
       // テストのクリック照準（座標の暗算をしない掟）。契約外＝ui_contract は比較しない
       agentPoint: (id) => scene.projectAgent(id),
       bossPoint: () => scene.projectBoss(),
+      // 間取りの実測用（R73）。床座標→画面座標＝候補地が本当に空床かをレンダに投影して確かめる
+      worldPoint: (x, y, z) => scene.project(x, y, z),
     },
   });
   return () => {

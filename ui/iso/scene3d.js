@@ -21,7 +21,7 @@ import {
 import { assignMeetingRooms, assignRestSpots, stableIndex } from "/ui/core/world.js";
 
 const CAPACITY = 40;                 // 同時に描けるロボット数の上限（本人32+ボス+会議チビ最大8・R56）
-const CHIBI_MAX = 8;                 // 会議チビロボの総数上限（1卓4体×2卓）
+const CHIBI_MAX = 8;                 // 会議チビロボの総数上限（席は4室×4だが描画予算で全体8体）
 const CHIBI_WHITE = new THREE.Color(0xffffff);   // チビのアクセント淡色化（lerp先）
 // 胸リングの状態色。HUD側のドットと同じ意味（作業=シアン/待機=琥珀/❗=赤/休憩=灰/外部=青）
 const ACCENTS = {
@@ -960,7 +960,7 @@ export class IsoScene {
     // R56: 会議チビロボ＝minions を親と同じ卓の縁に立たせて頷かせる（上限4/卓・8/全体）。
     // InstancedMesh への行列追加だけ＝drawCalls は増えない。位相は親id+序数で分散。
     // R68: 登場は床から「ぴょこん」と生え（popScale）、解散は0.3秒のシュリンクで消える。
-    const tableUsed = { meet: 0, meet2: 0, meet3: 0 };   // R70: 3室
+    const tableUsed = { meet: 0, meet2: 0, meet3: 0, meet4: 0 };   // R73: 4室
     const chibiKeys = new Set();
     let chibiN = 0;
     const borrowChibi = () => {

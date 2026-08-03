@@ -896,6 +896,37 @@ class SpendApiTest(unittest.TestCase):
         self.assertFalse(body["ok"])
 
 
+class BillingClassificationTest(unittest.TestCase):
+    """R72: 「定額サブスク枠」と「APIキー従量」の区別はサーバーが正本を出す。
+    UI はこの billing でグループ分けするだけ＝分類が画面ごとにズレない。"""
+
+    def setUp(self):
+        self.sb = _exec_module(ROOT / "server" / "status_board.py", "sb_billing")
+
+    def test_billing_is_derived_from_kind(self):
+        providers = [{"kind": k} for k in
+                     ("tokens", "gauge", "login", "external", "api", "ledger")]
+        self.sb._apply_billing(providers)
+        self.assertEqual([p["billing"] for p in providers],
+                         ["subscription", "subscription", "subscription",
+                          "apikey", "apikey", "manual"])
+
+    def test_unknown_kind_is_left_unclassified(self):
+        # 嘘のグループを作らない（未知kindは無印のまま＝UIはどちらの節にも出さない）
+        providers = [{"kind": "brand-new"}, {"kind": None}, "not-a-dict"]
+        self.sb._apply_billing(providers)
+        self.assertNotIn("billing", providers[0])
+        self.assertNotIn("billing", providers[1])
+
+    def test_board_tags_every_known_provider(self):
+        board = self.sb._build_board(NOW, fetch_external=False)
+        kinds = {p.get("kind") for p in board["providers"]}
+        self.assertTrue({"tokens", "gauge", "login", "external"} <= kinds)
+        for pr in board["providers"]:
+            if pr.get("kind") in self.sb._BILLING_BY_KIND:
+                self.assertIn("billing", pr, pr.get("id"))
+
+
 class PrivacyIsolationRegressionTest(unittest.TestCase):
     def test_office_json_and_relay_push_exclude_resource_board(self):
         env = dict(os.environ)

@@ -1813,6 +1813,29 @@ def _apply_accounts(providers, now):
     return providers
 
 
+# R72: 「定額サブスクの枠を使っているのか／APIキーで従量課金しているのか」は
+# ユーザーが最初に知りたい区別なので、kind から機械的に導ける正本をサーバーが持つ。
+# UI はこの billing でグループ分けするだけ（分類ロジックを画面側に散らさない）。
+_BILLING_BY_KIND = {
+    "tokens": "subscription",   # Claude Code（サブスク枠＋トークン実測）
+    "gauge": "subscription",    # Codex（プラン枠%）
+    "login": "subscription",    # Gemini CLI（ログイン＝プラン枠）
+    "external": "apikey",       # X API / OpenAI（管理キーで従量）
+    "api": "apikey",            # R63 の OpenRouter/Kimi/DeepSeek/Groq
+    "ledger": "manual",         # 手動台帳の固定費
+}
+
+
+def _apply_billing(providers):
+    """各providerに課金方式を付ける（未知kindは分類しない＝嘘のグループを作らない）。"""
+    for pr in providers:
+        if not isinstance(pr, dict):
+            continue
+        billing = _BILLING_BY_KIND.get(pr.get("kind"))
+        if billing:
+            pr.setdefault("billing", billing)
+
+
 def _build_board(now, fetch_external=True):
     providers = [
         _safe_provider(collect_claude, _claude_unavailable, now),
@@ -1851,6 +1874,7 @@ def _build_board(now, fetch_external=True):
         _apply_accounts(providers, now)     # R57: アカウント表示は添え物＝boardを壊さない
     except Exception:
         pass
+    _apply_billing(providers)
     return {"generatedAt": now, "providers": providers, "spend": spend, "fx": fx}
 
 

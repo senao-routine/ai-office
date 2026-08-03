@@ -717,6 +717,14 @@
 .ui-iso .mapibudget .mnum { flex: 1; min-width: 0; }
 .ui-iso .mgo.mgosm { padding: 6px 12px; font-size: 11.5px; flex: none; }
 .ui-iso .gsub.gnolimit { color: var(--iso-warn); font-weight: 700; }
+/* R72: 課金方式の見出し（定額サブスク／APIキー従量）。装飾バーは使わず
+   hairline と字間で段差を作る（AI臭い色付きアクセントバー禁止の方針） */
+.ui-iso .gbillhead {
+  margin: 10px 0 2px; padding-top: 8px; font-size: 10.5px; font-weight: 800;
+  letter-spacing: .06em; color: var(--iso-ink-soft);
+  border-top: 1px solid var(--iso-hairline);
+}
+.ui-iso .gbillhead:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
 
 /* ── R67: マイクロインタラクション基盤 ─────────────────────────────
    掟の運用: hover/active限定の transition は golden とビット一致（監査で実証）。

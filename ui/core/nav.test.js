@@ -231,3 +231,33 @@ test("R70: 第3会議室=障害物登録・全席が部屋の内側・南口ノ�
   const lounge = obstacles.find((r) => r.id === "lounge");
   assert.ok(lounge.z2 < 8.45, "ラウンジが南辺通路を塞いでいる");
 });
+
+test("R73: 第4会議室=障害物登録・全席が部屋の内側・北通路を塞がない・経路が交差0", () => {
+  const q = LAYOUT.meet4Zone;
+  const obstacles = obstacleRects();
+  assert.ok(obstacles.some((r) => r.id === "meet4"), "meet4 が障害物に登録されている");
+  // 会議席（iso 層の meetingAnchorsByRoom と同式・長卓の南2席＋北1席）
+  const seats = [
+    { x: q.x - 0.85, z: q.z + 1.0 }, { x: q.x + 0.85, z: q.z + 1.0 },
+    { x: q.x, z: q.z - 1.0 },
+  ];
+  const entrance = { x: -8.3, z: WALL.front - 0.85 };
+  for (const s of seats) {
+    assert.ok(Math.abs(s.x - q.x) <= q.w / 2 && Math.abs(s.z - q.z) <= q.d / 2,
+      `meet4席(${s.x},${s.z})が部屋の外`);
+    const path = routePath(entrance, s);
+    for (let i = 0; i + 1 < path.length - 1; i++) {
+      for (const r of obstacles) {
+        if (r.id === "meet4") continue;               // 目的の部屋自身へは入ってよい
+        assert.ok(!segIntersectsRect(path[i].x, path[i].z, path[i + 1].x, path[i + 1].z, r),
+          `entrance→meet4席 が ${r.id} と交差`);
+      }
+    }
+  }
+  // 右奥の空床の条件: サーバーラック帯（北）と北通路 ZN=-5.0（南）の両方に触れない。
+  // ここが崩れると「部屋が通路を塞ぐ／ラックにめり込む」が静かに再発する
+  const room = obstacles.find((r) => r.id === "meet4");
+  const server = obstacles.find((r) => r.id === "server");
+  assert.ok(room.z1 > server.z2, "meet4 がサーバーラック帯に食い込んでいる");
+  assert.ok(room.z2 < -5.0, "meet4 が北通路(z=-5.0)を塞いでいる");
+});

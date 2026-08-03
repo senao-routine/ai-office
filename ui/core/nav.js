@@ -21,6 +21,9 @@ export const LAYOUT = Object.freeze({
   // 位置はオーバーレイ投影で実測確定（scratchpad/r70_overlay.png・候補A=空床/候補B=タッチダウン干渉）
   loungeZone: { x: 8.75, z: 6.25, w: 5.0, d: 3.4, lift: 0.12 },
   meet3Zone: { x: 13.05, z: 6.45, w: 2.7, d: 3.1, lift: 0.22 },   // 第3会議室（小・右手前）
+  // R73: 第4会議室（右奥）＝奥壁のサーバーラック帯（z<=-8.6）と机の島（x<=6.35）の
+  // 間に残っていた空床。北通路 ZN=-5.0 の north 側に収める（通路を塞がない）。
+  meet4Zone: { x: 10.5, z: -7.0, w: 4.4, d: 2.6, lift: 0.22 },    // 第4会議室（右奥）
   serverZone: { x: 10.2, z: -9.25 },
   queueZone: { x: -2.2, z: 6.0 },
 });
@@ -58,6 +61,7 @@ export function obstacleRects() {
   zone("meet", LAYOUT.meetZone);
   zone("meet2", LAYOUT.meet2Zone);
   zone("meet3", LAYOUT.meet3Zone);
+  zone("meet4", LAYOUT.meet4Zone);
   zone("stage", LAYOUT.stageZone);
   zone("lounge", LAYOUT.loungeZone);
   // ボス壇（5.4×3.5・奥中央）とサーバーラック帯（北壁東側）・タッチダウン・外部コンソール
