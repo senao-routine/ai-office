@@ -22,6 +22,9 @@ import { assignMeetingRooms, assignRestSpots, stableIndex } from "/ui/core/world
 
 const CAPACITY = 40;                 // 同時に描けるロボット数の上限（本人32+ボス+会議チビ最大8・R56）
 const CHIBI_MAX = 8;                 // 会議チビロボの総数上限（席は4室×4だが描画予算で全体8体）
+// R74: 会議に使うのは主要3室（第1/第2/第4）。2席しかない第3会議室は**予備**＝
+// 主要3室が満席のときだけ開く（ユーザー仕様「合計3つの会議室が使われる」）。
+const RESERVE_ROOMS = ["meet3"];
 const CHIBI_WHITE = new THREE.Color(0xffffff);   // チビのアクセント淡色化（lerp先）
 // 胸リングの状態色。HUD側のドットと同じ意味（作業=シアン/待機=琥珀/❗=赤/休憩=灰/外部=青）
 const ACCENTS = {
@@ -647,7 +650,7 @@ export class IsoScene {
     if (this._meetAssignWorld !== world) {
       const caps = {};
       for (const [k, v] of Object.entries(this._meetingRooms)) caps[k] = v.length;
-      this._meetAssign = assignMeetingRooms(world.agents, caps);
+      this._meetAssign = assignMeetingRooms(world.agents, caps, RESERVE_ROOMS);
       this._meetAssignWorld = world;
     }
     return this._meetAssign;

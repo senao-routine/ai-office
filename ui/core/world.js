@@ -242,30 +242,42 @@ export function assignSeats(agents, slots = DESK_SLOTS) {
  * 戻り値: Map(agentId → spots のindex)。あふれたら希望位置に重なって座る（従来より悪化しない）。
  */
 /**
- * R70: 会議の3室分散。複数プロジェクトが同時に会議中のとき meet/meet2/meet3 へ
+ * R70: 会議の部屋分散。複数プロジェクトが同時に会議中のとき
  * 「いちばん空いている部屋」を選んで散らす（assignRestSpots と同じ流儀・決定論）。
  * rooms = {meet: 席数, meet2: 席数, ...}（office.js の meetingAnchorsByRoom から導出）。
+ *
+ * R74: reserve = 予備室のキー配列。**主要室を先に全部使い切ってから**でないと
+ * 選ばれない（ユーザー仕様「会議に使われるのは3室」＝2席しかない第3会議室は予備）。
+ * これが無いと4室へ散らばり、主要室が空いているのに小部屋へ入る絵になる。
+ *
  * 戻り値: Map(agentId → {room, seat})。seat は部屋内の席index（あふれは最終席に重なる）。
  */
-export function assignMeetingRooms(agents, rooms) {
+export function assignMeetingRooms(agents, rooms, reserve) {
   const out = new Map();
   const keys = Object.keys(rooms || {});
   if (!keys.length) return out;
-  const used = keys.map(() => 0);
+  const late = new Set(Array.isArray(reserve) ? reserve : []);
+  // 段= [主要室, 予備室]。空の段は作らない（全部予備指定なら予備だけの1段になる）
+  const tiers = [keys.filter((k) => !late.has(k)), keys.filter((k) => late.has(k))]
+    .filter((t) => t.length);
+  const used = new Map(keys.map((k) => [k, 0]));
   const meeting = (Array.isArray(agents) ? agents : []).filter((a) => zoneOf(a) === "meeting");
   meeting.forEach((a, i) => {
     const id = a.id || a.session || "";
-    const start = (stableIndex(id, keys.length) + i) % keys.length;
-    let pick = -1;
-    for (let step = 0; step < keys.length; step++) {
-      const cand = (start + step) % keys.length;
-      if (used[cand] >= rooms[keys[cand]]) continue;  // 満席
-      if (pick < 0 || used[cand] < used[pick]) pick = cand;  // 最空き（タイ=start起点順）
+    let pick = null;
+    for (const tier of tiers) {
+      const start = (stableIndex(id, tier.length) + i) % tier.length;
+      for (let step = 0; step < tier.length; step++) {
+        const cand = tier[(start + step) % tier.length];
+        if (used.get(cand) >= rooms[cand]) continue;            // 満席
+        if (pick === null || used.get(cand) < used.get(pick)) pick = cand;  // 最空き
+      }
+      if (pick !== null) break;                                 // 上の段で決まれば下は見ない
     }
-    if (pick < 0) pick = start;                       // 全室満席→希望部屋に重なる（悪化させない）
-    const seat = Math.min(used[pick], rooms[keys[pick]] - 1);
-    used[pick] += 1;
-    out.set(a.id, { room: keys[pick], seat });
+    if (pick === null) pick = keys[stableIndex(id, keys.length)]; // 全室満席→重ねる（悪化させない）
+    const seat = Math.min(used.get(pick), rooms[pick] - 1);
+    used.set(pick, used.get(pick) + 1);
+    out.set(a.id, { room: pick, seat });
   });
   return out;
 }

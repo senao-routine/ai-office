@@ -266,3 +266,20 @@ test("R73: 第4会議室=障害物登録・全席が部屋の内側・北通路�
   assert.ok(room.x2 < 12.6, "meet4 が外部コンソールの通路を潰している");
   assert.ok(room.z2 < meet2.z1, "meet4 が第2会議室と重なっている");
 });
+
+test("R74: 右手前の通路幅＝第2↔第3・ラウンジ↔第3が人ひとり分より広い", () => {
+  // ユーザーFB「幅間が狭い」。0.70m/0.45m はロボの幅とほぼ同じで通れない見た目だった。
+  // 通路として成立する下限を 0.9m と決めて機械固定する（部屋を足すたびに潰れるため）。
+  const MIN = 0.9;
+  const rect = (z) => ({ x1: z.x - z.w / 2, x2: z.x + z.w / 2,
+    z1: z.z - z.d / 2, z2: z.z + z.d / 2 });
+  const m2 = rect(LAYOUT.meet2Zone);
+  const m3 = rect(LAYOUT.meet3Zone);
+  const lg = rect(LAYOUT.loungeZone);
+  assert.ok(m3.z1 - m2.z2 >= MIN,
+    `第2↔第3の通路が狭い: ${(m3.z1 - m2.z2).toFixed(2)}m`);
+  assert.ok(m3.x1 - lg.x2 >= MIN,
+    `ラウンジ↔第3の通路が狭い: ${(m3.x1 - lg.x2).toFixed(2)}m`);
+  // 南辺通路（z=8.45・R70で新設）を第3会議室が塞いでいない
+  assert.ok(m3.z2 < 8.45, "第3会議室が南辺通路に掛かっている");
+});

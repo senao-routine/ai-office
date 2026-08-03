@@ -371,3 +371,25 @@ test("assignMeetingRooms: 最空き部屋へ分散・決定論・満席あふれ
   assert.equal(assignMeetingRooms(null, caps).size, 0);
   assert.equal(assignMeetingRooms([mk("a")], {}).size, 0);
 });
+
+test("R74: 会議は主要3室を先に使い、予備室(第3)は満席のときだけ開く", () => {
+  const mk = (id) => ({ ...proj({ session: id, minions: 2 }), id });   // R70テストと同式
+  const caps = { meet: 5, meet2: 3, meet3: 2, meet4: 5 };
+  const RESERVE = ["meet3"];
+  // 3件の会議 → 主要3室が1つずつ埋まる（予備の第3は使わない＝ユーザー仕様）
+  const three = assignMeetingRooms([mk("a"), mk("b"), mk("c")], caps, RESERVE);
+  const rooms = [...three.values()].map((v) => v.room);
+  assert.deepEqual([...new Set(rooms)].sort(), ["meet", "meet2", "meet4"]);
+  assert.equal(rooms.filter((r) => r === "meet3").length, 0);
+  // 主要3室=13席が満席になって初めて予備が開く
+  const many = assignMeetingRooms(
+    Array.from({ length: 15 }, (_, i) => mk(`p${i}`)), caps, RESERVE);
+  const used = [...many.values()].map((v) => v.room);
+  assert.equal(used.filter((r) => r === "meet3").length, 2, "予備室が満席後に開いていない");
+  // 決定論（同じ入力→同じ割当）
+  const again = assignMeetingRooms([mk("a"), mk("b"), mk("c")], caps, RESERVE);
+  assert.deepEqual([...again.entries()], [...three.entries()]);
+  // reserve 省略時は従来どおり全室が対象（後方互換）
+  const noReserve = assignMeetingRooms([mk("a"), mk("b"), mk("c"), mk("d")], caps);
+  assert.equal(noReserve.size, 4);
+});

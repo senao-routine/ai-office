@@ -649,15 +649,15 @@ export function buildOffice(materials, rand) {
   put(slab(0.42, 0.6, 0.95, 0.12), "white", n2.x, n2.lift + 0.42, n2.z);
   put(slab(0.4, 0.03, 0.28, 0.02), "paper", n2.x - 0.6, n2.lift + 0.98, n2.z + 0.1);
   put(slab(0.12, 0.15, 0.12, 0.04), "mugB", n2.x + 0.85, n2.lift + 1.0, n2.z - 0.2);
-  // ガラス（西面＋北面はドアギャップ付き2枚）
-  glassWall(P, 3.8, n2.x - 2.45, n2.z, Math.PI / 2, 2.35);
-  glassWall(P, 2.0, n2.x - 1.4, n2.z - 1.95, 0, 2.35);
-  glassWall(P, 1.3, n2.x + 1.8, n2.z - 1.95, 0, 2.35);
+  // ガラス（西面＋北面はドアギャップ付き2枚）※長さ/位置は R74 の浅い部屋(d=3.2)に追随
+  glassWall(P, 3.2, n2.x - 2.45, n2.z, Math.PI / 2, 2.35);
+  glassWall(P, 2.0, n2.x - 1.4, n2.z - 1.65, 0, 2.35);
+  glassWall(P, 1.3, n2.x + 1.8, n2.z - 1.65, 0, 2.35);
   // 自立白板（東縁・板面は buildMonitors が貼る）
   put(slab(0.10, 1.3, 0.10, 0.03), "steel", n2.x + 2.2, n2.lift + 0.85, n2.z - 0.85);
   put(slab(0.10, 1.3, 0.10, 0.03), "steel", n2.x + 2.2, n2.lift + 0.85, n2.z + 0.85);
   put(slab(0.14, 0.08, 2.0, 0.05), "white", n2.x + 2.2, n2.lift + 1.52, n2.z);
-  P.push({ geometry: flat(5.6, 4.6), material: "shadow",
+  P.push({ geometry: flat(5.6, 4.0), material: "shadow",
     matrix: at(n2.x, n2.lift + 0.005, n2.z) });
 
   // ── 第3会議室（R70・小・右手前＝ラウンジ東の空床。位置はオーバーレイ実測で確定） ──
@@ -667,13 +667,13 @@ export function buildOffice(materials, rand) {
   put(slab(0.36, 0.6, 0.7, 0.10), "white", k3.x, k3.lift + 0.42, k3.z);      // 卓脚
   put(slab(0.34, 0.03, 0.24, 0.02), "paper", k3.x - 0.35, k3.lift + 0.98, k3.z + 0.05);
   put(slab(0.12, 0.15, 0.12, 0.04), "mugB", k3.x + 0.5, k3.lift + 1.0, k3.z - 0.15);
-  // ガラス（西面＋北面・南=開口が入口・東=外壁ガラスに任せる）
-  glassWall(P, 2.6, k3.x - 1.3, k3.z + 0.2, Math.PI / 2, 2.35);
-  glassWall(P, 2.4, k3.x - 0.1, k3.z - 1.5, 0, 2.35);
+  // ガラス（西面＋北面・南=開口が入口・東=外壁ガラスに任せる）※R74 の寸法(2.5×2.7)に追随
+  glassWall(P, 2.5, k3.x - 1.2, k3.z, Math.PI / 2, 2.35);
+  glassWall(P, 2.3, k3.x, k3.z - 1.3, 0, 2.35);
   // 観葉植物（北東の角）
-  put(slab(0.34, 0.35, 0.34, 0.08), "white", k3.x + 0.95, k3.lift + 0.18, k3.z - 1.15);
-  put(slab(0.4, 0.5, 0.4, 0.16), "plant", k3.x + 0.95, k3.lift + 0.6, k3.z - 1.15);
-  P.push({ geometry: flat(3.1, 3.4), material: "shadow",
+  put(slab(0.34, 0.35, 0.34, 0.08), "white", k3.x + 0.85, k3.lift + 0.18, k3.z - 1.0);
+  put(slab(0.4, 0.5, 0.4, 0.16), "plant", k3.x + 0.85, k3.lift + 0.6, k3.z - 1.0);
+  P.push({ geometry: flat(2.9, 3.0), material: "shadow",
     matrix: at(k3.x, k3.lift + 0.005, k3.z) });
 
   // ── 第4会議室（R73・右奥＝奥壁サーバー帯の手前の空床。ユーザー要望「右奥にもう一つ」） ──
