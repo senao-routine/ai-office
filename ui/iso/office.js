@@ -162,10 +162,14 @@ export const ENTRANCE = Object.freeze({ x: -8.3, z: WALL.front - 0.85 });
 /** ボスの席（椅子の座面位置・ボスロボが常駐する）。 */
 export const BOSS_SEAT = Object.freeze({ x: -0.6, z: WALL.back + 1.25, baseY: 0.26 });
 
-/** OpenClaw 等の外部社員＝右壁のコンソール席（壁に向かって立つ）。 */
+/** OpenClaw 等の外部社員＝右壁のコンソール席（カウンターに向かって立つ）。
+ *  R75: 席を3→5へ。②openclaw版は**全社員が外部**なので3席だと4人目から重なる
+ *  （カウンター5.1mに1.15m間隔で5人＝端まで使い切る）。 */
 export function externalAnchors() {
-  return [0, 1, 2].map((i) => ({
-    x: WALL.right - 1.35, z: -4.4 + i * 1.8, yaw: Math.PI / 2, y: 0,
+  return [0, 1, 2, 3, 4].map((i) => ({
+    // 旧 -1.35 はカウンター(x13.0-13.7)と壁面スクリーンの陰で頭しか見えなかった。
+    // 0.65m 手前（西）へ出して上半身が出る＝「カウンターに立つ」絵にする。
+    x: WALL.right - 2.0, z: -4.4 + i * 1.15, yaw: Math.PI / 2, y: 0,
   }));
 }
 

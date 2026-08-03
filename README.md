@@ -88,14 +88,20 @@ Security model: the relay carries a transport token only and **cannot forge inst
 |---|---|---|
 | **Free** | $0 | The full local office — live 3D visualization, instruct from the desktop UI, demo mode, MCP |
 | **Pro** | $12.99 one-time | Phone PWA delivery, push notifications, cost dashboard |
+| **OpenClaw** | $0 | For OpenClaw users: your agents work in a dark-themed office as red lobster bots, phone PWA and push included |
 | **Hybrid** | $29 one-time | Pro + external agents (OpenClaw nodes) working in the same office |
 
 Offline license file. No subscription, no account, no telemetry. Purchase links are coming at launch — **Watch this repo** for the release.
+
+The OpenClaw edition is **not a trial and does not expire** — start it with
+`bash macapp/install.sh --edition openclaw` (or set `"edition": "openclaw"` in
+`office_config.json`). It runs without Claude Code.
 
 ## Requirements
 
 - macOS (Apple Silicon or Intel), Python 3.9+ (the system `python3` works)
 - [Claude Code](https://claude.com/claude-code) — the office visualizes its local sessions
+  (not required for the OpenClaw edition, which shows agents from your OpenClaw machine instead)
 - UI language: English / Japanese (auto-detected from your locale; set `"lang"` in `office_config.json` to pin)
 
 ## 日本語ドキュメント

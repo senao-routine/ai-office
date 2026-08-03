@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  CHIBI_HIP_Y, RIG, TAU, chatBlend, chatPose, chatSpeaker, chibiPose, mixPose, idlePose, pathTravel, poseFor, relaxPose, seatedPose, seedOf, smoothstep, thinkingPose, travel, typingPose, walkPhaseFor, walkPose,
+  CHIBI_HIP_Y, RIG, TAU, chatBlend, chatPose, chatSpeaker, chibiPose, consolePose, mixPose, idlePose, pathTravel, poseFor, relaxPose, seatedPose, seedOf, smoothstep, thinkingPose, travel, typingPose, walkPhaseFor, walkPose,
 } from "./anim.js";
 
 const ALL_POSES = [walkPose(1.1), typingPose(3.2), seatedPose(3.2), idlePose(3.2)];
@@ -90,6 +90,21 @@ test("poseFor: ゾーンからポーズが決まる（場所＝状態）", () =>
   assert.deepEqual(poseFor("queue", 3.2, 0), idlePose(3.2, 0));
   // 歩行位相が渡されたらゾーンより優先（移動中）
   assert.deepEqual(poseFor("desk", 3.2, 0, 1.1), walkPose(1.1));
+});
+
+test("R75: 外部(OpenClaw)社員はカウンター操作の姿勢＝腕が前に上がる", () => {
+  // 立ち姿(idle)だと腕が体側に降り、カウンター天面(0.92m)の陰に手が完全に隠れて
+  // 「ハサミ」も「何をしているか」も見えなかった実測の回帰ピン。
+  assert.deepEqual(poseFor("external", 3.2, 0), consolePose(3.2, 0));
+  const pose = consolePose(3.2, 0);
+  for (const arm of pose.arms) {
+    assert.ok(arm.shoulder < -0.6, `腕が前に上がっていない: ${arm.shoulder}`);
+  }
+  assert.ok(pose.headPitch > 0, "手元を見ていない");
+  // 立位のまま（座り込まない）＝腰高は idle と同水準
+  assert.ok(Math.abs(pose.hipY - idlePose(3.2, 0).hipY) < 0.05);
+  // 決定論
+  assert.deepEqual(consolePose(3.2, 0), consolePose(3.2, 0));
 });
 
 test("poseFor は決定論（同じ t/seed なら必ず同じ）", () => {

@@ -134,6 +134,30 @@ export function idlePose(t, seed = 0) {
   };
 }
 
+/**
+ * R75: 外部（OpenClaw）社員＝カウンターに手を置いてコンソールを操作する立ち姿。
+ * idlePose だと腕が体側に降り、カウンター（天面0.92m）の陰に手が完全に隠れて
+ * 「何をしているか」も「ハサミ（ロブスターbotの識別点）」も見えなかった。
+ * 腕を前へ上げて天面に載せる＝立ち姿のまま手元が見える。
+ */
+export function consolePose(t, seed = 0) {
+  const breathe = Math.sin(t * 0.9 + seed) * 0.010;
+  return {
+    hipY: RIG.hipY + breathe,
+    hipYaw: Math.sin(t * 0.19 + seed) * 0.04,
+    hipRoll: 0,
+    headYaw: Math.sin(t * 0.27 + seed) * 0.10,
+    headPitch: 0.12,                                   // 手元（カウンター）を見る
+    legs: [-1, 1].map((side) => ({ side, hip: side * 0.05, knee: 0.03 })),
+    arms: [-1, 1].map((side, i) => ({
+      side,
+      // 前へ上げて天面に載せる。指先（ハサミ）は小さく動かして操作感を出す
+      shoulder: -0.92 + Math.sin(t * 1.6 + i * 1.3 + seed) * 0.03,
+      elbow: -0.52 + Math.sin(t * 4.2 + i * 2.1 + seed) * 0.10,
+    })),
+  };
+}
+
 /** 立って白板を指して発表する（参考画像の左中央のロボット）。 */
 export function presentPose(t, seed = 0) {
   const sway = Math.sin(t * 0.8 + seed) * 0.09;
@@ -178,7 +202,7 @@ export function poseFor(zone, t, seed = 0, walkPhase = null, role = null) {
     case "meeting": return seatedPose(t, seed);
     case "lounge": return tabletPose(t * 0.7, seed + 1.7);
     case "queue": return idlePose(t, seed);
-    case "external": return idlePose(t * 1.2, seed + 0.9);   // コンソールの前に立つ
+    case "external": return consolePose(t, seed);            // カウンターに手を置いて操作
     default: return typingPose(t, seed);
   }
 }

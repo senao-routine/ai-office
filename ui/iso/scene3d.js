@@ -16,7 +16,7 @@ import {
   screenTexture, seatAnchors, skyTexture, slab, woodTexture,
 } from "./office.js";
 import {
-  RobotBatch, applyPose, makeChibiSkeleton, makeCleanerBot, makeSkeleton,
+  LOBSTER_TINT, RobotBatch, applyPose, makeChibiSkeleton, makeCleanerBot, makeSkeleton,
 } from "./robot.js";
 import { assignMeetingRooms, assignRestSpots, stableIndex } from "/ui/core/world.js";
 
@@ -793,6 +793,14 @@ export class IsoScene {
           startedAt: t, seed: seedOf(agent.id),
         };
         actor.nodes.root.scale.setScalar(1.62);   // 主役は大きめ（部屋拡張で負けない）
+        // R75: 外部(OpenClaw)社員はロブスターbot＝殻を赤く・手をハサミに・触角を伸ばす。
+        // 比率（かわいさの本体）は変えず、識別できる特徴だけ足す。
+        actor.lobster = Boolean(agent.external);
+        if (actor.lobster) {
+          actor.nodes.antStem.scale.set(1, 2.2, 1);
+          actor.nodes.antStem.position.y += 0.06;
+          actor.nodes.antTip.position.y += 0.19;
+        }
         this.actors.set(agent.id, actor);
       } else if (actor.dest[0] !== target.x || actor.dest[1] !== target.z) {
         // 目的地が変わった＝ゾーン移動。いまの位置から通路経由で歩き直す
@@ -933,7 +941,8 @@ export class IsoScene {
     let n = 0;
     for (const actor of this.actors.values()) {
       if (n++ >= CAPACITY) break;
-      this.robots.push(actor.nodes, actor.accent || null);
+      this.robots.push(actor.nodes, actor.accent || null,
+        actor.lobster ? LOBSTER_TINT : null);
     }
     // ボス: 普段は壇上で悠然と頷き、300秒周期で20秒だけ北通路を見回る（R68・t>=30）。
     // 巡回路は BOSS_WALK（既存レーン上＝交差0を nav.test がピン）。壇との段差は

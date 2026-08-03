@@ -15,7 +15,19 @@ import { mergeGeometries } from "./merge.js";
 const PARTS = [
   "head", "visor", "eye", "ear", "antStem", "antTip", "collar", "chest",
   "torso", "pelvis", "upper", "fore", "hand", "thigh", "shin", "foot",
+  "claw",
 ];
+
+/** R75: ロブスターbot（OpenClaw社員）の見た目＝殻の色。
+ *  ②openclaw無料版の顔なので、キャラの比率（かわいさの本体）は一切変えず
+ *  「色・ハサミ・触角」だけで別種に見せる。 */
+export const LOBSTER_TINT = new THREE.Color(0.95, 0.16, 0.11);
+const WHITE = new THREE.Color(1, 1, 1);
+/** 殻の色を差し替える部品（目・バイザー・靴は共通のまま＝表情と接地感を壊さない）。 */
+const TINT_PARTS = new Set([
+  "head", "ear", "collar", "torso", "pelvis", "upper", "fore", "hand",
+  "thigh", "shin", "antStem", "claw",
+]);
 
 /** 部品のジオメトリ。全ロボットで共有する（1つだけ作る）。 */
 export function buildPartGeometries() {
@@ -40,7 +52,25 @@ export function buildPartGeometries() {
     thigh: new THREE.CapsuleGeometry(0.080, 0.10, 6, 18),
     shin: new THREE.CapsuleGeometry(0.070, 0.10, 6, 18),
     foot: new THREE.BoxGeometry(0.15, 0.08, 0.22),
+    claw: clawGeometry(),
   };
+}
+
+/** R75: ハサミ（手の代わり）。付け根の球＋開いた2本の爪を1ジオメトリへ統合＝
+ *  何体いても InstancedMesh 1つ（drawCalls +1）で済む。 */
+function clawGeometry() {
+  const parts = [];
+  const base = new THREE.SphereGeometry(0.072, 16, 12);
+  base.scale(1, 0.9, 1.15);
+  parts.push(base);
+  for (const s of [-1, 1]) {
+    const prong = new THREE.CapsuleGeometry(0.030, 0.115, 4, 10);
+    prong.rotateX(-Math.PI / 2);                 // 前方（-z）へ倒す
+    prong.rotateY(s * 0.30);                     // 上下の爪をV字に開く
+    prong.translate(s * 0.030, s * 0.024, -0.105);
+    parts.push(prong);
+  }
+  return mergeGeometries(parts);
 }
 
 /**
@@ -196,9 +226,11 @@ export class RobotBatch {
       antStem: "shell", antTip: "accent", collar: "white", chest: "accent",
       torso: "shell", pelvis: "shell", upper: "white", fore: "shell",
       hand: "white", thigh: "shell", shin: "white", foot: "dark",
+      claw: "shell",
     };
     this.perBody = {
       eye: 2, ear: 2, upper: 2, fore: 2, hand: 2, thigh: 2, shin: 2, foot: 2,
+      claw: 2,
     };
     for (const part of PARTS) {
       const n = capacity * (this.perBody[part] || 1);
@@ -219,8 +251,10 @@ export class RobotBatch {
   }
 
   /** 1体ぶんの世界行列を各 InstancedMesh へ書き込む。
-   *  accent は胸リング・アンテナ先端のインスタンスカラー（HUDの状態ドットと同じ意味色）。 */
-  push(nodes, accent = null) {
+   *  accent は胸リング・アンテナ先端のインスタンスカラー（HUDの状態ドットと同じ意味色）。
+   *  R75: tint を渡すと殻の色をインスタンス単位で差し替え、手をハサミに替える
+   *  （＝ロブスターbot。マテリアルもバッチも増やさないので drawCalls はハサミの+1だけ）。 */
+  push(nodes, accent = null, tint = null) {
     nodes.root.updateMatrixWorld(true);
     const put = (part, obj) => {
       const i = this.counts[part];
@@ -228,6 +262,9 @@ export class RobotBatch {
       this.meshes[part].setMatrixAt(i, obj.matrixWorld);
       if (accent && (part === "chest" || part === "antTip")) {
         this.meshes[part].setColorAt(i, accent);
+      } else if (TINT_PARTS.has(part)) {
+        // 通常ロボは白(1,1,1)を明示的に書く＝前フレームの色が残らない
+        this.meshes[part].setColorAt(i, tint || WHITE);
       }
       this.counts[part] = i + 1;
     };
@@ -240,7 +277,7 @@ export class RobotBatch {
     for (const arm of nodes.arms) {
       put("upper", arm.upper);
       put("fore", arm.fore);
-      put("hand", arm.hand);
+      put(tint ? "claw" : "hand", arm.hand);
     }
     for (const leg of nodes.legs) {
       put("thigh", leg.thigh);
