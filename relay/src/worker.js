@@ -1011,6 +1011,12 @@ const APP_HTML = "<!doctype html><html lang=ja><head>" +
 '.openclawstage .server{height:38px;width:auto;z-index:2;image-rendering:pixelated;filter:drop-shadow(0 2px 4px rgba(102,210,255,.25))}' +
 '.openclawstage .ocbot{position:absolute;left:20px;bottom:2px;height:34px;width:auto;z-index:3;pointer-events:none;image-rendering:pixelated;filter:drop-shadow(0 2px 0 rgba(0,0,0,.24));animation:ocpatrol 18s ease-in-out infinite}' +
 '.openclawstage .ocbot2{animation-duration:26s;animation-delay:-8s}' +
+// R76: OpenClaw室に実メンバーを出す（旧: 常に「未接続」＋巡回ロボだけの飾りだった）
+'.openclawstage .ocmem{position:relative;display:flex;flex-direction:column;align-items:center;gap:2px;z-index:4;background:none;border:0;padding:0 2px;cursor:pointer;font:inherit}' +
+'.openclawstage .ocmem img{height:36px;width:auto;image-rendering:pixelated;filter:drop-shadow(0 2px 0 rgba(0,0,0,.24))}' +
+'.openclawstage .ocmem .ocname{max-width:96px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:9.5px;font-weight:800;color:#e8edf0;background:rgba(25,31,35,.92);border:1px solid rgba(183,216,232,.35);border-radius:999px;padding:1px 6px}' +
+'.openclawstage .ocmem .ocst{position:absolute;top:-3px;right:0;font-size:11px;line-height:1}' +
+'.openclawstage .ocmem.sel .ocname{border-color:#ffd479;background:rgba(60,48,20,.95)}' +
 '@keyframes lbreath{0%,100%{transform:translateY(0)}50%{transform:translateY(-2px)}}' +
 '@keyframes bob{0%,100%{transform:translateX(-50%) translateY(0)}50%{transform:translateX(-50%) translateY(-2px)}}' +
 '@keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}' +
@@ -1181,7 +1187,7 @@ PWA_ASSIGN_ROOMS_SOURCE + "\n" + PWA_GLOSS_SOURCE +
 'var NTOG_STATE=false;' +
 'function applyLangChrome(){document.documentElement.lang=LANG;function st(id,ja,en){var n=document.getElementById(id);if(n)n.textContent=T(ja,en)}' +
 // OpenClaw帯はmapShellで一度だけ生成される＝言語切替時にここで再適用（生成前はopenclawZone側のT()が効く）
-'st("ocz_lb","🤖 OpenClaw室","🤖 OpenClaw Room");st("ocz_pill","未接続（拡張準備中）","Not connected (expansion coming soon)");' +
+'st("ocz_lb","🤖 OpenClaw室","🤖 OpenClaw Room");if(typeof paintOpenclaw==="function")paintOpenclaw(LAST_OFFICE);' +
 'st("banner","⚠️ オフライン・再接続中…","⚠️ Offline — reconnecting…");st("tb_office_lb","オフィス","Office");st("tb_list_lb","リスト","List");st("tb_set_lb","設定","Settings");' +
 'st("st_title","⚙️ 設定","⚙️ Settings");st("st_th_lb","🎨 テーマ","🎨 Theme");st("st_th_hint","配色を切り替えます","Switch the color scheme");st("sg_th_c","クラシック","Classic");st("sg_th_d","ダーク","Dark");' +
 'st("st_fs_lb","🔎 文字サイズ","🔎 Text size");st("sg_fs_s","標準","Normal");st("sg_fs_b","大きめ","Large");st("st_wk_lb","🚶 歩行アニメ","🚶 Walk animation");st("st_wk_hint","マップ内の歩行移動","Characters walk around the map");' +
@@ -1239,7 +1245,7 @@ PWA_ASSIGN_ROOMS_SOURCE + "\n" + PWA_GLOSS_SOURCE +
 // トリアージ順: ❗要対応 → 📨保留 → 🟢作業中 → 🟡待機 → 💤休憩（同ランクはsession安定順）
 'function rankEmp(e){return needsAttn(e)?0:isPend(e)?1:e.state==="working"?2:e.state==="waiting"?3:4}' +
 'function triageSort(a,b){var r=rankEmp(a)-rankEmp(b);return r!==0?r:stateSort(a,b)}' +
-'function openclawZone(){var z=el("div","openclaw");var head=el("div","openclawhead");var zl=el("span","zonepill",T("🤖 OpenClaw室","🤖 OpenClaw Room"));zl.id="ocz_lb";head.appendChild(zl);var op=el("span","ocpill",T("未接続（拡張準備中）","Not connected (expansion coming soon)"));op.id="ocz_pill";head.appendChild(op);z.appendChild(head);var st=el("div","openclawstage");["a","b","c"].forEach(function(){st.appendChild(sceneImg("crt","furn2_crt_station",""))});st.appendChild(sceneImg("server","furn2_server_led",""));function addBot(cls){var bot=sceneImg("ocbot "+cls,"agent_bot","");bot.onerror=function(){bot.remove()};st.appendChild(bot)}addBot("ocbot1");addBot("ocbot2");z.appendChild(st);return z}' +
+'function openclawZone(){var z=el("div","openclaw");var head=el("div","openclawhead");var zl=el("span","zonepill",T("🤖 OpenClaw室","🤖 OpenClaw Room"));zl.id="ocz_lb";head.appendChild(zl);var op=el("span","ocpill",T("未接続（拡張準備中）","Not connected (expansion coming soon)"));op.id="ocz_pill";head.appendChild(op);z.appendChild(head);var st=el("div","openclawstage");["a","b","c"].forEach(function(){var c=sceneImg("crt","furn2_crt_station","");c.setAttribute("data-furn","crt");st.appendChild(c)});var sv=sceneImg("server","furn2_server_led","");sv.setAttribute("data-furn","server");st.appendChild(sv);function addBot(cls){var bot=sceneImg("ocbot "+cls,"agent_bot","");bot.setAttribute("data-decor","1");bot.onerror=function(){bot.remove()};st.appendChild(bot)}addBot("ocbot1");addBot("ocbot2");z.appendChild(st);return z}' +
 /* マップの静的シェルは初回だけ生成し、以後はpill/机/キャラの差分だけを更新する。 */
 'function mapScale(){var f=document.getElementById("mapframe"),m=document.getElementById("map");if(!f||!m)return;var w=f.clientWidth||window.innerWidth||374;var s=w/374;m.style.setProperty("--map-scale",String(s));m.style.transform="scale("+s+")";f.style.height=(470*s)+"px"}' +
 'function mapPill(text,cls){return el("span","zonepill"+(cls?" "+cls:""),text)}' +
@@ -1275,7 +1281,32 @@ PWA_ASSIGN_ROOMS_SOURCE + "\n" + PWA_GLOSS_SOURCE +
 'var chip=document.getElementById("mainOverflow");if(lay.desks.length>8){chip.textContent=T("＋","+")+(lay.desks.length-8)+T("名","");chip.classList.add("on");chip.style.left="292px";chip.style.top="300px"}else{chip.classList.remove("on")}var lchip=document.getElementById("loungeOverflow");if(lay.rest.length>2){lchip.textContent=T("💤＋","💤+")+(lay.rest.length-2)+T("名","");lchip.classList.add("on");lchip.style.left="74px";lchip.style.top="438px"}else{lchip.classList.remove("on")}' +
 'placements.forEach(function(pos,i){var k=keyOf(pos.e,i),rec=MCHARS.get(k);want[k]=1;if(!rec){rec=mapChar(pos.e,pos.x,pos.y,pos.zone,i);if(!(window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches)){rec.y=470;rec.root.style.top="470px"}}setMchar(rec,pos.e,pos.x,pos.y,pos.zone)});' +
 'MCHARS.forEach(function(rec,k){if(!want[k]){if(rec.root.parentNode)rec.root.parentNode.removeChild(rec.root);if(rec.moveTimer)clearTimeout(rec.moveTimer);MCHARS.delete(k)}});updateDeskState(deskPeople);updateAttnCards(emps);mapScale();if(!emps.length){if(!document.getElementById("mapEmpty")){var empty=el("div","empty",T("🌙 いま出勤中の社員はいません","🌙 No one is in the office right now"));empty.id="mapEmpty";document.getElementById("room").appendChild(empty)}}else{var old=document.getElementById("mapEmpty");if(old)old.remove()}}' +
-'function renderScene(office){var room=document.getElementById("room");if(room)room.querySelectorAll(".empty").forEach(function(n){n.remove()});if(!document.getElementById("map"))mapShell();var oc=room?room.querySelector(".openclaw"):null;if(oc)oc.style.display=featOn("openclaw")?"":"none";updateMapScene(office)}' +
+// R76: OpenClaw室のデータ駆動。実メンバーが居ればロブスターbotを並べて名前・状態を出し、
+// タップで通常の社員と同じシート（＝oc-宛の指示もそのまま送れる）。0名のときだけ巡回ロボの飾り。
+'function paintOpenclaw(office){var z=document.querySelector(".openclaw");if(!z)return;'+
+'var stage=z.querySelector(".openclawstage"),pill=document.getElementById("ocz_pill");'+
+'var ex=(officeAgents(office)||[]).filter(function(e){return e&&e.external});'+
+'if(pill)pill.textContent=ex.length?(ex.length+T("名 接続中"," connected")):T("未接続","Not connected");'+
+'stage.querySelectorAll("[data-decor]").forEach(function(n){n.style.display=ex.length?"none":""});'+
+// 帯の横幅(約366px)は有限。人が増えたら家具の側が譲る＝はみ出さない
+'var sv=stage.querySelector(\'[data-furn="server"]\');if(sv)sv.style.display=ex.length>=2?"none":"";'+
+'var crts=stage.querySelectorAll(\'[data-furn="crt"]\');'+
+'var keep=Math.max(0,3-Math.max(0,ex.length-1));'+
+'for(var ci=0;ci<crts.length;ci++)crts[ci].style.display=ci<keep?"":"none";'+
+// 既存ノードは属性走査で引く（セレクタ組み立て＝エスケープ事故の温床なので使わない）
+'var have={};stage.querySelectorAll(".ocmem").forEach(function(n){have[n.getAttribute("data-sess")||""]=n});'+
+'var seen={};ex.slice(0,4).forEach(function(e){var key=e.session||e.disp||"";seen[key]=1;'+
+'var b=have[key];'+
+'if(!b){b=el("button","ocmem");b.type="button";b.setAttribute("data-sess",key);'+
+'var img=document.createElement("img");img.className="ocavatar";img.decoding="async";'+
+'img.onerror=function(){img.onerror=null;img.src=spriteURL("generic_m")};b.appendChild(img);'+
+'b.appendChild(el("span","ocname",""));b.appendChild(el("span","ocst",""));stage.appendChild(b)}'+
+'var im=b.querySelector("img"),src=spriteURL(spriteBase(e));if(im.getAttribute("src")!==src)im.src=src;'+
+'im.alt=dispCrew(e)||key;b.querySelector(".ocname").textContent=dispCrew(e)||key;'+
+'b.querySelector(".ocst").textContent=needsAttn(e)?"❗":e.state==="resting"?"💤":e.state==="working"?"⌨":"";'+
+'b.title=(e.verb||"");b.onclick=function(){openSheet(e)}});'+
+'stage.querySelectorAll(".ocmem").forEach(function(n){if(!seen[n.getAttribute("data-sess")])n.remove()})}'+
+'function renderScene(office){var room=document.getElementById("room");if(room)room.querySelectorAll(".empty").forEach(function(n){n.remove()});if(!document.getElementById("map"))mapShell();var oc=room?room.querySelector(".openclaw"):null;if(oc)oc.style.display=featOn("openclaw")?"":"none";updateMapScene(office);paintOpenclaw(office)}' +
 'window.addEventListener("resize",function(){mapScale()});' +
 // 歩行キャラ(固定通路): 稼働/待機の社員が全員(最大6)同時に歩く。速度=活動の鮮度
 //   (age 0秒→8秒で横断/10分以上→24秒でのんびり)。⚡=30秒以内に動いた社員。

@@ -319,7 +319,7 @@ CODE=$(curl -s -o /dev/null -w "%{http_code}" "$B/push/vapid" -H "Authorization:
 [ "$CODE" = "403" ] && ok "P7 POSTトークンは /push/* 不可 (403)" || ng "P7 POSTトークンが /push/vapid に通った ($CODE)"
 # ❗遷移トリガ: 承認まち社員入りstatusをpush→200＋（到達不能endpointへの送信失敗でも）購読が残る
 R=$(curl -s -X POST "$B/status" -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"office":{"employees":[{"session":"e2e-attn-0001","disp":"E2E検証部","state":"working","verb":"検証中","question":"どの案で進めますか?","questionOptions":[{"label":"案A (Recommended)","desc":"推奨案"},{"label":"案B","desc":"別案"},{"label":"案C","desc":"保留案"}]}]}}')
+  -d '{"office":{"employees":[{"session":"e2e-attn-0001","disp":"E2E検証部","state":"working","verb":"検証中","question":"どの案で進めますか?","questionOptions":[{"label":"案A (Recommended)","desc":"推奨案"},{"label":"案B","desc":"別案"},{"label":"案C","desc":"保留案"}]},{"session":"oc-e2e","disp":"OpenClaw","dept":"OpenClaw","state":"working","verb":"replying","external":"openclaw","sprite":"/assets/agent_bot.png"}]}}')
 echo "$R" | grep -q '"ok":true' && ok "P7 ❗入りstatus push 生存 (通知は非同期)" || ng "P7 ❗status pushで死んだ: $R"
 
 # status push済みの社員がスマホPWAに描画され、社員タップ→シートまで通ることを確認。

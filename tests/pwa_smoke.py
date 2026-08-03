@@ -63,6 +63,17 @@ def main(argv):
                 assert page.locator(".tabbar").is_visible(), ".tabbar が非表示"
                 assert page.locator("#room").is_visible(), "officeビュー(#room) が非表示"
 
+                # R76: OpenClaw室は実データ駆動（旧＝常に「未接続（拡張準備中）」の飾り）。
+                # /status に external 社員が居るなら人数ピルと実メンバーが出ること。
+                band = page.locator(".openclaw")
+                assert band.count() == 1, "OpenClaw帯が無い"
+                pill = page.locator("#ocz_pill").inner_text()
+                members = page.locator(".openclaw .ocmem").count()
+                assert members >= 1, f"OpenClaw実メンバーが描画されていない (pill={pill!r})"
+                assert "接続中" in pill or "connected" in pill, f"人数ピルが未接続のまま: {pill!r}"
+                names = page.locator(".openclaw .ocmem .ocname").all_inner_texts()
+                assert any(n.strip() for n in names), "メンバー名が空"
+
                 audio_initial_probe = page.evaluate(
                     """() => ({
                         ctx:window.__pwaAudio ? __pwaAudio.ctx : 'missing',
@@ -116,11 +127,15 @@ def main(argv):
                 page.locator("#setwrap .sheet button.sub").click()
 
                 employee_nodes = page.locator("#map .mchar")
+                # R76: 外部(OpenClaw)社員はマップではなく OpenClaw室の帯に出る＝マップの
+                # 期待値は「外部を除いた社員数」。ここを全社員数にすると帯の実装が入った
+                # 瞬間に嘘の不一致で落ちる。
                 seed_count = page.evaluate(
                     """() => {
                         const raw = localStorage.getItem('aioffice.lastOffice');
                         const office = raw ? JSON.parse(raw) : {};
-                        return Array.isArray(office.employees) ? office.employees.length : 0;
+                        const all = Array.isArray(office.employees) ? office.employees : [];
+                        return all.filter((e) => e && !e.external).length;
                     }"""
                 )
                 assert seed_count >= 1, "seed社員が取得できません"
