@@ -326,8 +326,11 @@ echo "$R" | grep -q '"ok":true' && ok "P7 ❗入りstatus push 生存 (通知は
 PWA_PY="${VENV_PY:-}"
 if [ -n "$PWA_PY" ] && [ -x "$PWA_PY" ] && "$PWA_PY" -c 'import playwright' >/dev/null 2>&1; then
   mkdir -p tests/artifacts
+  # R77: 既定は3D経路（pwa3d_smoke）・2Dへの退避経路は pwa_smoke が担当（/ui/**を落として検査）
+  "$PWA_PY" tests/pwa3d_smoke.py "$B" "$DID" "$SECRET" "$TOKEN" tests/artifacts/pwa3d_smoke.png \
+    || ng "PWA 3Dスモーク失敗"
   "$PWA_PY" tests/pwa_smoke.py "$B" "$DID" "$SECRET" "$TOKEN" tests/artifacts/pwa_smoke.png \
-    || ng "PWAスモーク失敗"
+    || ng "PWAスモーク(2D退避)失敗"
 else
   echo "  - Playwright無し→PWAスモーク省略"
 fi

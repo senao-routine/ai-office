@@ -501,6 +501,8 @@ export class IsoScene {
       queue: queueAnchors(),
       external: externalAnchors(),
     };
+    this.viewScale = 1;
+    this.fitMode = "contain";
     this.resize();
   }
 
@@ -509,6 +511,14 @@ export class IsoScene {
    * 収めたい範囲の8隅をカメラ空間へ投影し、それが必ず入る最小の画角にする。
    * 手で VIEW を決めると窓の比率が変わるたびに床が余る／見切れるので、計算で出す。
    */
+  /** R77: カメラの寄り（1=全景フィット・小さいほど寄る）。縦長画面向け。 */
+  setViewScale(k, fitMode) {
+    const v = Number(k);
+    this.viewScale = Number.isFinite(v) && v > 0.2 ? Math.min(1, v) : 1;
+    if (fitMode) this.fitMode = fitMode;
+    this.resize();
+  }
+
   resize() {
     const w = Math.max(1, this.container.clientWidth);
     const h = Math.max(1, this.container.clientHeight);
@@ -538,7 +548,15 @@ export class IsoScene {
     // 小さいほどズームイン＝端が切れる。参考画像は部屋の角がフレーム外へ
     // 切れるほど寄っている（余白の方が什器の見切れより悪い）。
     const MARGIN = 0.86;
-    const view = Math.max(hy, hx / aspect) * MARGIN;
+    // R77: 既定は contain（全景が入る＝デスクトップ従来どおり・golden不変）。
+    // スマホの縦長では contain だと上下が大きく余りロボットが豆粒になるので、
+    // balanced（contain と cover の中間）を選べるようにした。cover は左右が切れる。
+    const contain = Math.max(hy, hx / aspect);
+    const cover = Math.min(hy, hx / aspect);
+    const base = this.fitMode === "cover" ? cover
+      : this.fitMode === "balanced" ? (contain + cover) / 2
+      : contain;
+    const view = base * MARGIN * (this.viewScale || 1);
     this.view = view;
     // 画面の下端には HUD カードが浮くので、下側にだけ少し余分を見せて
     // シーンの主役（ロボット）がカードの裏に沈まないようにする（?pad= で調整可）。

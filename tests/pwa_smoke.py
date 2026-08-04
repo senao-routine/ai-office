@@ -23,6 +23,13 @@ def main(argv):
 
     base_url, device_id, secret, token, out = argv[1:]
     cred = {"d": device_id, "s": secret, "t": token, "e": 0}
+    # R77: 3D退避の発火条件として /ui/** を意図的に落とすので、その読込失敗だけは想定内。
+    # それ以外の console error は従来どおり1件でも不合格（嘘greenを作らない）。
+    _EXPECTED = ("net::ERR_FAILED", "Failed to load resource")
+
+    def _unexpected(msgs):
+        return [m for m in msgs if not any(x in m for x in _EXPECTED)]
+
     console_errors = []
     page_errors = []
     instruct_requests = []
@@ -53,10 +60,14 @@ def main(argv):
                     + json.dumps(cred_json, ensure_ascii=False)
                     + ");"
                 )
+                # R77: PWAの既定は3Dオフィス。このスモークは**3Dが使えない端末**
+                # （WebGL不可・モジュール取得失敗）で2Dマップへ退避する経路を守る担当。
+                # /ui/** を落とすと boot3d が読めず renderScene が2D側へフォールバックする。
+                page.route("**/ui/**", lambda route: route.abort())
                 page.goto(base_url.rstrip("/") + "/app", wait_until="domcontentloaded")
                 page.wait_for_timeout(4000)
 
-                assert not console_errors, (
+                assert not _unexpected(console_errors), (
                     "console error: " + "; ".join(console_errors[:5])
                 )
                 assert not page_errors, "page error: " + "; ".join(page_errors[:5])
@@ -308,7 +319,7 @@ def main(argv):
                     "document.querySelector('#attncards .attnsent').textContent.includes('送信済み')",
                     timeout=5000,
                 )
-                assert not console_errors, (
+                assert not _unexpected(console_errors), (
                     "console error: " + "; ".join(console_errors[:5])
                 )
                 assert not page_errors, "page error: " + "; ".join(page_errors[:5])
@@ -320,7 +331,7 @@ def main(argv):
                         break
                     page.wait_for_timeout(100)
                 assert page.locator("#shsay").inner_text().strip(), "#shsay が空"
-                assert not console_errors, (
+                assert not _unexpected(console_errors), (
                     "console error: " + "; ".join(console_errors[:5])
                 )
                 assert not page_errors, "page error: " + "; ".join(page_errors[:5])
@@ -410,7 +421,7 @@ def main(argv):
                 for area, values in sheet_texts.items():
                     bad = [v for v in values if jp_re.search(v)]
                     assert not bad, f"EN検査: シート{area} に日本語が残存: {bad!r}"
-                assert not console_errors, (
+                assert not _unexpected(console_errors), (
                     "EN検査 console error: " + "; ".join(console_errors[:5])
                 )
                 assert not page_errors, (

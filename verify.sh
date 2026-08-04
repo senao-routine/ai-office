@@ -128,6 +128,15 @@ if set(actual) != set(expected) or any(actual[key] != value for key, value in ex
     sys.exit(1)
 EOF
 fi
+# R77: PWAの3Dシーン用ESM同梱物も同じ掟（未生成/未追跡ならクリーンcloneのdeployが死ぬ）
+if python3 tools/gen_pwa_modules.py --check >/dev/null 2>&1; then
+  ok "modules_data.js が ui/ と一致 (PWA 3Dシーン)"
+else
+  ng "modules_data.js ドリフト/未生成 → python3 tools/gen_pwa_modules.py で再生成しコミット"
+fi
+git ls-files --error-unmatch relay/src/modules_data.js >/dev/null 2>&1 \
+  && ok "modules_data.js git追跡済み" \
+  || ng "modules_data.js が未追跡 → git add relay/src/modules_data.js"
 git ls-files --error-unmatch relay/src/sprites_data.js >/dev/null 2>&1 \
   && ok "sprites_data.js git追跡済み (クリーンcloneでdeploy可)" \
   || ng "sprites_data.js が未追跡=クリーンcloneでwrangler deploy失敗 → git add を"

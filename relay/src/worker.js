@@ -28,6 +28,7 @@
 // Mac1台=1 Room（getByName("mac")）。P2は共有トークン認証。P3でQRペアリング＋HMAC署名へ。
 import { DurableObject } from "cloudflare:workers";
 import { SPRITES, SPRITE_MIME } from "./sprites_data.js";   // PWAオフィス絵用の本物キャラ立ち絵（自動生成）
+import { ASSETS, MODULES } from "./modules_data.js";   // R77: PWAの3Dシーン用ESM（自動生成・/ui/... の同じパスで返す）
 import { b64u, jwkToRawPub, sendWebPush } from "./webpush.js";   // P7: Web Push（暗号は全部Worker側＝Mac側stdlib不変）
 
 // PWA歩行絵の収録状況はバンドル時に一度だけ索引化する。テーマ派生(__入り)や
@@ -325,6 +326,25 @@ export default {
     }
     // PWAオフィス絵のキャラ立ち絵（非秘密・無認証）。名前は SPRITES マップの索引のみに使う＝
     // パストラバーサル不能。exact一致は長期immutable、未同梱テーマ/P1カスタム絵は短期キャッシュでフォールバック。
+    // R77: PWAの3Dシーン用ESM（非秘密・無認証）。MODULES マップの索引のみ＝パストラバーサル不能。
+    // デスクトップと同じ import 指定子("/ui/...")をそのまま解決させるため、**同じパス**で返す。
+    if (method === "GET" && path.startsWith("/ui/")) {
+      const IMMUTABLE = "public, max-age=31536000, immutable";
+      const src = (Object.prototype.hasOwnProperty.call(MODULES, path) && MODULES[path]) || "";
+      if (src) {
+        return new Response(src, {
+          headers: { "Content-Type": "text/javascript; charset=utf-8", "Cache-Control": IMMUTABLE },
+        });
+      }
+      // 3Dシーンが URL で読むテクスチャ（importでは辿れないので別マップ）
+      const asset = (Object.prototype.hasOwnProperty.call(ASSETS, path) && ASSETS[path]) || null;
+      if (asset) {
+        return new Response(spriteBytes(asset[1]), {
+          headers: { "Content-Type": asset[0], "Cache-Control": IMMUTABLE },
+        });
+      }
+      return new Response("not found", { status: 404 });
+    }
     if (method === "GET" && path.startsWith("/app/sprite/")) {
       let name = "";
       try { name = decodeURIComponent(path.slice("/app/sprite/".length)).replace(/\.png$/i, ""); }
@@ -1012,6 +1032,15 @@ const APP_HTML = "<!doctype html><html lang=ja><head>" +
 '.openclawstage .ocbot{position:absolute;left:20px;bottom:2px;height:34px;width:auto;z-index:3;pointer-events:none;image-rendering:pixelated;filter:drop-shadow(0 2px 0 rgba(0,0,0,.24));animation:ocpatrol 18s ease-in-out infinite}' +
 '.openclawstage .ocbot2{animation-duration:26s;animation-delay:-8s}' +
 // R76: OpenClaw室に実メンバーを出す（旧: 常に「未接続」＋巡回ロボだけの飾りだった）
+// R77: 3Dオフィスの器（スマホ）。canvasは幅いっぱい・高さは画面の55%＝❗カードと両立
+'#scene3dwrap{position:relative;margin:2px 10px 6px;border-radius:14px;overflow:hidden;background:linear-gradient(180deg,#e9ecf6,#dfe3f0);box-shadow:0 2px 10px rgba(52,44,32,.18)}' +
+// 高さは「幅とほぼ同じ」＝balancedフィットの実描画に合わせる（55vhだと下に余白が出る）
+'#scene3d{width:100%;height:min(52vh,calc(100vw - 20px));min-height:280px;max-height:520px;display:block}' +
+'#scene3d canvas{width:100%!important;height:100%!important;display:block;touch-action:manipulation}' +
+'#plates{position:absolute;inset:0;pointer-events:none}' +
+'#plates .plate{position:absolute;transform:translate(-50%,-100%);pointer-events:auto;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:800 11px/1.2 inherit;color:#2b2f3a;background:rgba(255,255,255,.94);border:1px solid rgba(70,60,90,.22);border-radius:999px;padding:3px 9px;box-shadow:0 2px 6px rgba(40,34,60,.20)}' +
+'#plates .plate.attn{color:#7c1d1d;background:#ffe9e6;border-color:#e5a49c}' +
+'#plates .plate.sel{border-color:#5f9b78;box-shadow:0 0 0 2px rgba(95,155,120,.35)}' +
 '.openclawstage .ocmem{position:relative;display:flex;flex-direction:column;align-items:center;gap:2px;z-index:4;background:none;border:0;padding:0 2px;cursor:pointer;font:inherit}' +
 '.openclawstage .ocmem img{height:36px;width:auto;image-rendering:pixelated;filter:drop-shadow(0 2px 0 rgba(0,0,0,.24))}' +
 '.openclawstage .ocmem .ocname{max-width:96px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:9.5px;font-weight:800;color:#e8edf0;background:rgba(25,31,35,.92);border:1px solid rgba(183,216,232,.35);border-radius:999px;padding:1px 6px}' +
@@ -1306,7 +1335,25 @@ PWA_ASSIGN_ROOMS_SOURCE + "\n" + PWA_GLOSS_SOURCE +
 'b.querySelector(".ocst").textContent=needsAttn(e)?"❗":e.state==="resting"?"💤":e.state==="working"?"⌨":"";'+
 'b.title=(e.verb||"");b.onclick=function(){openSheet(e)}});'+
 'stage.querySelectorAll(".ocmem").forEach(function(n){if(!seen[n.getAttribute("data-sess")])n.remove()})}'+
-'function renderScene(office){var room=document.getElementById("room");if(room)room.querySelectorAll(".empty").forEach(function(n){n.remove()});if(!document.getElementById("map"))mapShell();var oc=room?room.querySelector(".openclaw"):null;if(oc)oc.style.display=featOn("openclaw")?"":"none";updateMapScene(office);paintOpenclaw(office)}' +
+// R77: スマホも3Dオフィス（デスクトップと同じ IsoScene）。3Dが起動していない
+// 端末（WebGL不可・モジュール未取得）では従来の2Dマップへ自動で退避する。
+// R77: 3Dの器。#attncards（❗トリアージ）は据え置き＝スマホの主目的を落とさない。
+'function sceneShell3D(){var room=document.getElementById("room");if(!room)return null;'+
+'if(!document.getElementById("attncards")){var cards=el("section",null);cards.id="attncards";cards.setAttribute("aria-live","polite");room.appendChild(cards)}'+
+'var wrap=el("div",null);wrap.id="scene3dwrap";var host=el("div",null);host.id="scene3d";var plates=el("div",null);plates.id="plates";wrap.appendChild(host);wrap.appendChild(plates);room.appendChild(wrap);'+
+'host.addEventListener("click",function(ev){if(!window.__scene3d)return;var r=host.getBoundingClientRect();var id=window.__scene3d.pick(ev.clientX-r.left,ev.clientY-r.top);if(!id)return;var e=empOfAgent(id);if(e)openSheet(e)});'+
+'var s=document.createElement("script");s.type="module";s.src="/ui/pwa/boot3d.js";s.onerror=function(){if(!document.getElementById("map"))mapShell()};document.body.appendChild(s);return host}'+
+// シーンのagent(id=projectId or session) から /status の社員を引く単一の対応点
+'function empOfAgent(id){if(!window.__scene3d)return null;var ags=window.__scene3d.agents()||[];var ag=null;for(var i=0;i<ags.length;i++)if(ags[i].id===id){ag=ags[i];break}var sess=ag?ag.session:id;var list=officeAgents(LAST_OFFICE)||[];for(var j=0;j<list.length;j++)if(list[j]&&list[j].session===sess)return list[j];return null}'+
+// 名札は「❗のある社員」と「選択中」だけ＝390pxで9枚出すと重なって読めない
+'function paintPlates(){var layer=document.getElementById("plates");if(!layer||!window.__scene3d)return;var ags=window.__scene3d.agents()||[];var seen={};for(var i=0;i<ags.length;i++){(function(a){var e=empOfAgent(a.id);var attn=e?needsAttn(e):false;var sel=!!(SEL&&e&&SEL.session===e.session);if(!attn&&!sel)return;var p=window.__scene3d.project(a.id);if(!p)return;seen[a.id]=1;var n=null,all=layer.querySelectorAll(".plate");for(var k=0;k<all.length;k++)if(all[k].getAttribute("data-plate")===a.id){n=all[k];break}if(!n){n=el("button","plate");n.type="button";n.setAttribute("data-plate",a.id);n.addEventListener("click",function(){var cur=empOfAgent(a.id);if(cur)openSheet(cur)});layer.appendChild(n)}n.className="plate"+(attn?" attn":"")+(sel?" sel":"");n.textContent=(attn?"❗ ":"")+(e?dispCrew(e):a.name||a.id);n.style.left=Math.round(p.left)+"px";n.style.top=Math.round(p.top-30)+"px"})(ags[i])}var nodes=layer.querySelectorAll(".plate");for(var q=nodes.length-1;q>=0;q--)if(!seen[nodes[q].getAttribute("data-plate")])nodes[q].remove()}'+
+'window.__paintPlates=paintPlates;'+
+// 3Dモジュールは非同期で載る。載った瞬間に**シーンだけ**描き直す。
+// ここで dispatch()（全再描画）を呼ぶと、設定シート等の開いているDOMが差し替わり
+// 直前のクリックが detach 空振りになる（R67でデスクトップが踏んだのと同じ罠）。
+'document.addEventListener("scene3d-ready",function(){if(LAST_OFFICE&&VIEW==="office")renderScene(LAST_OFFICE)});'+
+'function renderScene(office){var room=document.getElementById("room");if(room)room.querySelectorAll(".empty").forEach(function(n){n.remove()});if(!document.getElementById("scene3d"))sceneShell3D();if(window.__scene3d&&window.__scene3d.ready){window.__scene3d.apply(office);paintPlates();var m=document.getElementById("mapframe");if(m)m.style.display="none";var oc0=room?room.querySelector(".openclaw"):null;if(oc0)oc0.style.display="none";return}'+
+'if(!document.getElementById("map"))mapShell();var oc=room?room.querySelector(".openclaw"):null;if(oc)oc.style.display=featOn("openclaw")?"":"none";updateMapScene(office);paintOpenclaw(office)}' +
 'window.addEventListener("resize",function(){mapScale()});' +
 // 歩行キャラ(固定通路): 稼働/待機の社員が全員(最大6)同時に歩く。速度=活動の鮮度
 //   (age 0秒→8秒で横断/10分以上→24秒でのんびり)。⚡=30秒以内に動いた社員。
