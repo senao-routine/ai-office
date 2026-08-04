@@ -566,8 +566,8 @@ const MANIFEST = JSON.stringify({
   short_name: "AI Office",
   start_url: "/app",
   display: "standalone",
-  background_color: "#241f18",
-  theme_color: "#241f18",
+  background_color: "#23213a",
+  theme_color: "#23213a",
   icons: [{
     src: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23241f18'/%3E%3Ctext y='74' x='50' font-size='64' text-anchor='middle'%3E%F0%9F%8F%A2%3C/text%3E%3C/svg%3E",
     sizes: "any", type: "image/svg+xml",
@@ -706,23 +706,26 @@ const APP_HTML = "<!doctype html><html lang=ja><head>" +
 '<meta name=apple-mobile-web-app-capable content=yes>' +
 '<meta name=apple-mobile-web-app-status-bar-style content=default>' +
 '<meta name=apple-mobile-web-app-title content="AI Office">' +
-'<meta name=theme-color content="#fffdf8">' +
+'<meta name=theme-color content="rgba(255,255,255,.86)">' +
 '<link rel=manifest href="/app/manifest.webmanifest">' +
 '<link rel=apple-touch-icon href="data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 100 100\'%3E%3Crect width=\'100\' height=\'100\' fill=\'%23241f18\'/%3E%3Ctext y=\'74\' x=\'50\' font-size=\'64\' text-anchor=\'middle\'%3E%F0%9F%8F%A2%3C/text%3E%3C/svg%3E">' +
 '<title>AI Office</title>' +
 '<style>' +
 '*{box-sizing:border-box;margin:0;padding:0}' +
-':root{--wood:#e5c49a;--ink:#241f18;--paper:#fffdf8;--line:#e2d9c6;--sage:#5f9b78;--sage-d:#3f6d4f;--sage-l:#7fd8a4;--amber:#b9791a;--alert:#c05a5a;--danger:#8e4438;--muted:#6b6252;--sh:rgba(58,53,44,.16)}' +
+// R78: スマホのクロームをデスクトップのガラスHUDと同じ言語へ（3Dシーンにベージュのチップが乗る不一致の解消）。
+// 変数名は据え置き＝既存ルールが自動追随。意味色（承認=緑/保留=琥珀/危険=赤）は保持し、
+// 中立面と選択状態だけを紫青の寒色系へ寄せる（ui/iso/style.css の :root と同値）。
+':root{--wood:#e7e8f8;--ink:#23213a;--paper:rgba(255,255,255,.82);--paper-solid:#ffffff;--line:rgba(96,82,170,.14);--accent:#7c5cff;--accent-2:#4f8dff;--sage:#22c55e;--sage-d:#15803d;--sage-l:#86efac;--amber:#f5a524;--alert:#e0538a;--danger:#b4436b;--muted:#6c6890;--sh:rgba(64,52,140,.14)}' +
 '@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}' +
-'body{background:#f6f2e9;color:#241f18;font-family:-apple-system,"Hiragino Sans",system-ui,sans-serif;font-size:16px;padding:0 0 calc(78px + env(safe-area-inset-bottom));-webkit-tap-highlight-color:transparent}' +
+'body{background:radial-gradient(90% 60% at 18% 4%,rgba(124,92,255,.14) 0%,rgba(124,92,255,0) 55%),radial-gradient(80% 50% at 88% 92%,rgba(79,141,255,.12) 0%,rgba(79,141,255,0) 58%),linear-gradient(165deg,#fbfaff 0%,#f1f0fc 52%,#e7e8f8 100%);background-attachment:fixed;color:var(--ink);font-family:-apple-system,"Hiragino Sans",system-ui,sans-serif;font-size:16px;padding:0 0 calc(78px + env(safe-area-inset-bottom));-webkit-tap-highlight-color:transparent}' +
 'main{padding:0;max-width:640px;margin:0 auto}' +
-'.card{position:relative;background:#fffdf8;border:1px solid #e2d9c6;border-radius:12px;padding:12px 14px;margin-bottom:10px;box-shadow:0 1px 2px rgba(40,32,18,.06)}' +
+'.card{position:relative;background:rgba(255,255,255,.86);border:1px solid rgba(96,82,170,.14);border-radius:12px;padding:12px 14px;margin-bottom:10px;box-shadow:0 1px 2px rgba(40,32,18,.06)}' +
 '.card:active{background:#f6e7cd}' +
 '.card.alert{border-color:#c05a5a;background:#fbf1dd}' +
 '.card.pend{border-color:#b9791a;background:#fbf6ea}' +
 '.card .nm{font-weight:800;font-size:15px}' +
-'.card .st{font-size:13px;color:#5c5346;margin-top:3px;display:flex;align-items:center;gap:6px}' +
-'.dot{width:9px;height:9px;border-radius:50%;flex:none;background:#8a7f6d}' +
+'.card .st{font-size:13px;color:#4a4670;margin-top:3px;display:flex;align-items:center;gap:6px}' +
+'.dot{width:9px;height:9px;border-radius:50%;flex:none;background:#6c6890}' +
 '.dot.working{background:#5f9b78}.dot.waiting{background:#c99a3e}.dot.resting{background:#b0a693}' +
 '.card .q{font-size:12.5px;color:#8a5a10;margin-top:5px}' +
 '.card .meta{display:flex;align-items:center;gap:9px}' +
@@ -733,36 +736,36 @@ const APP_HTML = "<!doctype html><html lang=ja><head>" +
 /* R51: 配達往復チップ（📨 queued → ✓ delivered）と roster セッション内訳行 */
 '.dchip{flex:none;font-size:10px;font-weight:800;color:#8a5a10;background:#fbf6ea;border:1px solid #e2d0a8;border-radius:999px;padding:2px 7px;white-space:nowrap}' +
 '.dchip.ok{color:#2f6f68;background:#eef5ef;border-color:#cfe3d4}' +
-'body.th-dark .dchip{background:#2e2718;border-color:#6b5a40;color:#e8bd69}' +
+'body.th-dark .dchip{background:#2e2718;border-color:#514d78;color:#e8bd69}' +
 'body.th-dark .dchip.ok{color:#9ee6bb;background:#22301f;border-color:#3f6d4f}' +
 '.sessrows{display:flex;flex-direction:column;gap:4px;margin:2px 0 6px}' +
-'.sessrow{display:flex;align-items:center;gap:7px;font-size:12px;color:#5c5346;font-weight:700}' +
+'.sessrow{display:flex;align-items:center;gap:7px;font-size:12px;color:#4a4670;font-weight:700}' +
 '.sessrow .sessid{font-family:ui-monospace,Menlo,monospace;font-size:11px;color:#6b6252}' +
-'body.th-dark .sessrow{color:#cfc3a6}body.th-dark .sessrow .sessid{color:#a99a7d}' +
-'.feed{margin-top:7px;border-top:1px dashed #ece3d0;padding-top:6px;display:flex;flex-direction:column;gap:2px}' +
+'body.th-dark .sessrow{color:rgba(96,82,170,.22)}body.th-dark .sessrow .sessid{color:#8f8ab5}' +
+'.feed{margin-top:7px;border-top:1px dashed rgba(96,82,170,.10);padding-top:6px;display:flex;flex-direction:column;gap:2px}' +
 '.feedline{font-size:12px;color:#6b6252;line-height:1.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}' +
-'.sheet .sec{font-size:11px;font-weight:800;color:#8a7f6d;letter-spacing:.04em;margin:13px 0 5px}' +
-'.sheet .wk-work{border-top:1px dashed #ece3d0;padding:8px 0 3px}' +
+'.sheet .sec{font-size:11px;font-weight:800;color:#6c6890;letter-spacing:.04em;margin:13px 0 5px}' +
+'.sheet .wk-work{border-top:1px dashed rgba(96,82,170,.10);padding:8px 0 3px}' +
 '.sheet .wk-title{font-size:13px;font-weight:800;color:#8a5a10;margin-bottom:4px}' +
 '.sheet .wk-row{display:flex;gap:7px;font-size:13px;line-height:1.65}' +
-'.sheet .wk-label{flex:none;width:45px;color:#8a7f6d;font-weight:700}' +
+'.sheet .wk-label{flex:none;width:45px;color:#6c6890;font-weight:700}' +
 '.sheet .wk-items{min-width:0;display:flex;flex-direction:column}' +
 '.sheet .wk-item{word-break:break-word;color:#4a4236}' +
-'.sheet .wk-now .wk-item{font-weight:800;color:#241f18}' +
-'body.th-dark .sheet .wk-work{border-color:#3d352a}body.th-dark .sheet .wk-title{color:#e8bd69}' +
-'body.th-dark .sheet .wk-label{color:#a3946f}body.th-dark .sheet .wk-item{color:#d9cdb2}' +
-'body.th-dark .sheet .wk-now .wk-item{color:#f5e9d0}' +
+'.sheet .wk-now .wk-item{font-weight:800;color:#23213a}' +
+'body.th-dark .sheet .wk-work{border-color:#2c2a48}body.th-dark .sheet .wk-title{color:#e8bd69}' +
+'body.th-dark .sheet .wk-label{color:#a3946f}body.th-dark .sheet .wk-item{color:rgba(96,82,170,.18)}' +
+'body.th-dark .sheet .wk-now .wk-item{color:rgba(124,92,255,.08)}' +
 /* 最近の動き=シートの主役（「何をしているか分からない」FB対応: 大きく・多く・スクロール可） */
-'.sheet .feedbox{background:#faf5ea;border:1px solid #ece3d0;border-radius:9px;padding:11px 13px;display:flex;flex-direction:column;gap:7px;max-height:46vh;overflow-y:auto}' +
+'.sheet .feedbox{background:#faf5ea;border:1px solid rgba(96,82,170,.10);border-radius:9px;padding:11px 13px;display:flex;flex-direction:column;gap:7px;max-height:46vh;overflow-y:auto}' +
 '.sheet .feedbox .feedline{white-space:normal;font-size:13.5px;color:#4a4236;line-height:1.7}' +
-'.sheet .feedbox .feedline:first-child{color:#241f18;font-weight:800}' +
-'.sheet .said{background:#faf5ea;border:1px solid #ece3d0;border-radius:9px;padding:9px 11px;font-size:12.5px;color:#4a4236;line-height:1.65;white-space:pre-wrap;max-height:34vh;overflow:auto}' +
-'.sheet .saidq{background:#fdf3e2;border:1.5px solid #d9a044;font-size:14px;font-weight:700;color:#241f18}' +
-'body.th-dark .sheet .saidq{background:#3a2c15;border-color:#b9791a;color:#f5e9d0}' +
-'.empty{color:#8a7f6d;text-align:center;padding:40px 0}' +
+'.sheet .feedbox .feedline:first-child{color:#23213a;font-weight:800}' +
+'.sheet .said{background:#faf5ea;border:1px solid rgba(96,82,170,.10);border-radius:9px;padding:9px 11px;font-size:12.5px;color:#4a4236;line-height:1.65;white-space:pre-wrap;max-height:34vh;overflow:auto}' +
+'.sheet .saidq{background:#fdf3e2;border:1.5px solid #d9a044;font-size:14px;font-weight:700;color:#23213a}' +
+'body.th-dark .sheet .saidq{background:#3a2c15;border-color:#b9791a;color:rgba(124,92,255,.08)}' +
+'.empty{color:#6c6890;text-align:center;padding:40px 0}' +
 '.setup{max-width:520px;margin:0 auto;padding:16px}' +
-'.setup h2{font-size:17px;margin-bottom:8px}.setup p{color:#5c5346;font-size:14px;line-height:1.7;margin-bottom:10px}' +
-'textarea,input{width:100%;border:1px solid #e2d9c6;border-radius:9px;padding:10px;font-size:15px;font-family:inherit;background:#fffdf8}' +
+'.setup h2{font-size:17px;margin-bottom:8px}.setup p{color:#4a4670;font-size:14px;line-height:1.7;margin-bottom:10px}' +
+'textarea,input{width:100%;border:1px solid rgba(96,82,170,.14);border-radius:9px;padding:10px;font-size:15px;font-family:inherit;background:rgba(255,255,255,.86)}' +
 /* 色は状態を意味する（PC掟と同一）: 送信/承認=セージ・危険(停止)=赤・中立=ニュートラル */
 'button{width:100%;border:0;border-radius:10px;padding:13px;font-size:15px;font-weight:800;color:#fff;background:var(--sage);margin-top:8px;font-family:inherit;transition:transform .1s,filter .1s;min-height:44px}' +
 'button.g{background:var(--sage)}button.r{background:var(--danger)}button.sub{background:#efe7d6;color:var(--muted)}' +
@@ -770,14 +773,14 @@ const APP_HTML = "<!doctype html><html lang=ja><head>" +
 '.hidden{display:none}' +
 '#sheetwrap{position:fixed;inset:0;z-index:90;pointer-events:none}' +
 '#sheetwrap.open{pointer-events:auto}' +
-'.sheet{position:absolute;left:0;right:0;bottom:0;background:#fffdf8;border-top:2px solid #241f18;border-radius:16px 16px 0 0;padding:14px 16px calc(16px + env(safe-area-inset-bottom));box-shadow:0 -8px 30px rgba(40,32,18,.22);max-width:640px;margin:0 auto;max-height:88vh;overflow-y:auto;transform:translateY(110%);transition:transform .32s cubic-bezier(.32,.72,0,1);will-change:transform}' +
+'.sheet{position:absolute;left:0;right:0;bottom:0;background:rgba(255,255,255,.86);border-top:2px solid #23213a;border-radius:16px 16px 0 0;padding:14px 16px calc(16px + env(safe-area-inset-bottom));box-shadow:0 -8px 30px rgba(40,32,18,.22);max-width:640px;margin:0 auto;max-height:88vh;overflow-y:auto;transform:translateY(110%);transition:transform .32s cubic-bezier(.32,.72,0,1);will-change:transform}' +
 '.sheet::before{content:"";display:block;width:38px;height:4px;border-radius:2px;background:#d8cdb8;margin:0 auto 12px}' +
 '#sheetwrap.open .sheet{transform:translateY(0)}' +
 '.sheet h3{font-size:16px;margin-bottom:2px}.sheet .who{color:#8a5a10;font-size:13px}' +
 '.shhead{display:flex;align-items:center;gap:11px;margin-bottom:10px}' +
 '.shhead img{height:48px;width:auto;image-rendering:pixelated;filter:drop-shadow(0 2px 0 rgba(0,0,0,.12))}' +
 '#shsay{background:#f6f1e4;color:#3c352a;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:14px;line-height:1.75;margin:2px 0 10px;min-height:44px;white-space:pre-wrap}' +
-'body.th-dark #shsay{background:#2b2419;border-color:#3d352a;color:#d9cdb2}' +
+'body.th-dark #shsay{background:#2b2419;border-color:#2c2a48;color:rgba(96,82,170,.18)}' +
 '.mask{position:absolute;inset:0;background:rgba(20,16,10,.45);opacity:0;transition:opacity .28s ease}' +
 '#sheetwrap.open .mask{opacity:1}' +
 /* 全文ログビューア（「最近の動き」タップで拡大・シートより上層） */
@@ -794,40 +797,46 @@ const APP_HTML = "<!doctype html><html lang=ja><head>" +
 '#setwrap.open .sheet{transform:translateY(0)}' +
 '.setrow{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:13px 2px;border-bottom:1px dashed #e4dbc8}' +
 '.setrow .lb{font-weight:800;font-size:14px;flex:none}' +
-'.setrow .hint{font-size:11.5px;color:#8a7f6d;margin-top:3px;font-weight:600}' +
+'.setrow .hint{font-size:11.5px;color:#6c6890;margin-top:3px;font-weight:600}' +
 '.seg{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end}' +
-'.seg button{width:auto;margin:0;background:#efe7d6;color:#6b5a40;border-radius:9px;padding:9px 14px;font-size:13px;min-height:42px}' +
+'.seg button{width:auto;margin:0;background:#efe7d6;color:#514d78;border-radius:9px;padding:9px 14px;font-size:13px;min-height:42px}' +
 '.seg button.on{background:var(--sage);color:#fff}' +
-'.setver{text-align:center;color:#a99a7d;font-size:11px;margin-top:12px;font-weight:700}' +
+'.setver{text-align:center;color:#8f8ab5;font-size:11px;margin-top:12px;font-weight:700}' +
 /* 🌙ダークテーマ（設定で切替・シーン絵はそのまま=イラスト部は共通） */
-'body.th-dark{background:#17130e;color:#ece2cc}' +
-'body.th-dark .card{background:#26211a;border-color:#3d352a;box-shadow:none}' +
+// R78: ダークもライトと同じ言語（深いインディゴ＋紫アクセント）。琥珀/緑の暖色は撤去。
+'body.th-dark{background:radial-gradient(90% 60% at 18% 4%,rgba(124,92,255,.18) 0%,rgba(124,92,255,0) 55%),linear-gradient(165deg,#191733 0%,#15132b 60%,#111027 100%);background-attachment:fixed;color:#e8e6f6}' +
+'body.th-dark .card{background:#26211a;border-color:#2c2a48;box-shadow:none}' +
 'body.th-dark .card:active{background:#31291f}' +
-'body.th-dark .card .nm{color:#f2e8d4}body.th-dark .card .st{color:#b3a790}body.th-dark .card .q{color:#e8b86a}body.th-dark .card .age{color:#a99a7d}' +
+'body.th-dark .card .nm{color:#f2e8d4}body.th-dark .card .st{color:#b3a790}body.th-dark .card .q{color:#e8b86a}body.th-dark .card .age{color:#8f8ab5}' +
 'body.th-dark .card.alert{background:#33231d}body.th-dark .card.pend{background:#2e2718}' +
-'body.th-dark .feedline{color:#a99a7d}' +
-'body.th-dark .feed{border-color:#3d352a}' +
+'body.th-dark .feedline{color:#8f8ab5}' +
+'body.th-dark .feed{border-color:#2c2a48}' +
 'body.th-dark .sheet{background:#221d15;border-top-color:#f5c96b;color:#ece2cc}' +
-'body.th-dark .sheet h3{color:#f5e9d0}body.th-dark .sheet .sec{color:#a3946f}' +
-'body.th-dark .sheet .feedbox,body.th-dark .sheet .said{background:#2b2419;border-color:#3d352a;color:#d9cdb2}' +
-'body.th-dark .sheet .feedbox .feedline{color:#cfc3a6}body.th-dark .sheet .feedbox .feedline:first-child{color:#f2e8d4}' +
-'body.th-dark .lgline{color:#d9cdb2;border-color:#3d352a}body.th-dark #lgbody .lgline:first-of-type{color:#f5e9d0}' +
-'body.th-dark textarea,body.th-dark input{background:#2b2419;border-color:#3d352a;color:#ece2cc}' +
-'body.th-dark button.sub{background:#3a3226;color:#cfc3a6}' +
-'body.th-dark .empty{color:#a99a7d}body.th-dark .setup h2{color:#f5e9d0}body.th-dark .setup p{color:#b3a790}' +
-'body.th-dark .setrow{border-color:#3d352a}body.th-dark .seg button{background:#3a3226;color:#cfc3a6}body.th-dark .seg button.on{background:var(--sage);color:#fff}' +
+'body.th-dark .sheet h3{color:rgba(124,92,255,.08)}body.th-dark .sheet .sec{color:#a3946f}' +
+'body.th-dark .sheet .feedbox,body.th-dark .sheet .said{background:#2b2419;border-color:#2c2a48;color:rgba(96,82,170,.18)}' +
+'body.th-dark .sheet .feedbox .feedline{color:rgba(96,82,170,.22)}body.th-dark .sheet .feedbox .feedline:first-child{color:#f2e8d4}' +
+'body.th-dark .lgline{color:rgba(96,82,170,.18);border-color:#2c2a48}body.th-dark #lgbody .lgline:first-of-type{color:rgba(124,92,255,.08)}' +
+'body.th-dark textarea,body.th-dark input{background:#2b2419;border-color:#2c2a48;color:#ece2cc}' +
+'body.th-dark button.sub{background:#2c2a48;color:rgba(96,82,170,.22)}' +
+'body.th-dark .empty{color:#8f8ab5}body.th-dark .setup h2{color:rgba(124,92,255,.08)}body.th-dark .setup p{color:#b3a790}' +
+'body.th-dark .setrow{border-color:#2c2a48}body.th-dark .seg button{background:#2c2a48;color:rgba(96,82,170,.22)}body.th-dark .seg button.on{background:var(--sage);color:#fff}' +
 /* v5: クロームのth-dark（classicライト化に伴い、ダークテーマは従来の暗色クロームを維持） */
-'body.th-dark .hdr2{background:#241f18;color:#f5c96b;border-bottom-color:#3d352a}' +
-'body.th-dark .hdr2 .total{background:#3a2f22;border-color:rgba(245,201,107,.4)}' +
-'body.th-dark .hdr2 .total b{color:#7fd8a4}body.th-dark .hdr2 .total small{color:#e9dcc0}' +
-'body.th-dark .statbar{background:#2e2718;border-bottom-color:#3d352a}' +
-'body.th-dark .stat{background:#3a3226;border-color:#3d352a;color:#cfc3a6}' +
+'body.th-dark .hdr2{background:rgba(30,28,58,.72);color:#e8e6f6;border-bottom-color:rgba(160,140,255,.20)}' +
+'body.th-dark .hdr2 .total{background:rgba(124,92,255,.20);border-color:rgba(160,140,255,.42)}' +
+'body.th-dark .hdr2 .total b{color:#b8a6ff}body.th-dark .hdr2 .total small{color:#c9c5e6}' +
+'body.th-dark .statbar,body.th-dark .deptbar{background:rgba(30,28,58,.55);border-bottom-color:rgba(160,140,255,.18)}' +
+'body.th-dark .stat{background:rgba(58,54,102,.55);border-color:rgba(160,140,255,.20);color:#c9c5e6}' +
+'body.th-dark .stat b{color:#f2f0ff}' +
 'body.th-dark .stat b{color:#f5c96b}body.th-dark .stat.attn{background:#33231d;border-color:#5a3028}body.th-dark .stat.attn b{color:#ff9d8a}' +
-'body.th-dark .deptbar{background:#241f18;border-bottom-color:#3d352a}' +
-'body.th-dark .deptchip{background:#3a3226;border-color:#6b5a40;color:#d8ccb5}' +
-'body.th-dark .deptchip.on{background:var(--sage);border-color:var(--sage-l);color:#fff}' +
-'body.th-dark .tabbar{background:#241f18;border-top-color:#3d352a;box-shadow:0 -4px 14px rgba(30,20,8,.25)}' +
-'body.th-dark .tabbar button{background:#3a2f22;color:#e9dcc0}' +
+'body.th-dark .deptbar{background:#23213a;border-bottom-color:#2c2a48}' +
+'body.th-dark .deptchip{background:rgba(58,54,102,.45);border-color:rgba(160,140,255,.22);color:#c9c5e6}' +
+'body.th-dark .deptchip.on{background:rgba(124,92,255,.30);border-color:rgba(160,140,255,.55);color:#efeaff}' +
+'body.th-dark .tabbar{background:rgba(25,23,51,.72);border-top-color:rgba(160,140,255,.20);box-shadow:0 -8px 24px rgba(8,6,24,.45)}' +
+'body.th-dark .tabbar button{background:transparent;color:#b9b5d6;border-color:transparent}' +
+'body.th-dark .tabbar button.on{background:rgba(124,92,255,.24);color:#d9ceff;border-color:rgba(160,140,255,.45)}' +
+'body.th-dark #scene3dwrap{background:rgba(40,37,78,.55);border-color:rgba(160,140,255,.20)}' +
+'body.th-dark #roster .rchip{background:rgba(58,54,102,.55);border-color:rgba(160,140,255,.20);color:#e8e6f6}' +
+'body.th-dark #plates .plate{background:rgba(30,28,58,.92);color:#e8e6f6;border-color:rgba(160,140,255,.30)}' +
 'body.th-dark .tabbar button.on{background:var(--sage);color:#fff}' +
 'body.th-dark .setrow .hint{color:#a3946f}' +
 /* 🔎文字大きめ（アクセシビリティ） */
@@ -838,10 +847,10 @@ const APP_HTML = "<!doctype html><html lang=ja><head>" +
 'body.th-big .ws .plate{font-size:12px}body.th-big .ws .act{font-size:11.5px}' +
 '.logsheet{max-height:94vh}' +
 '#lgbody{margin:2px 0 10px}' +
-'.lgsec{font-size:11px;font-weight:800;color:#8a7f6d;letter-spacing:.04em;margin:13px 0 3px}' +
+'.lgsec{font-size:11px;font-weight:800;color:#6c6890;letter-spacing:.04em;margin:13px 0 3px}' +
 '.lgline{font-size:14px;line-height:1.85;color:#3c352a;padding:10px 2px;border-bottom:1px dashed #e4dbc8;white-space:pre-wrap;word-break:break-word}' +
 '.lgline:last-child{border-bottom:0}' +
-'#lgbody .lgline:first-of-type{font-weight:800;color:#241f18}' +
+'#lgbody .lgline:first-of-type{font-weight:800;color:#23213a}' +
 '#note{position:fixed;left:50%;bottom:calc(86px + env(safe-area-inset-bottom));transform:translateX(-50%) translateY(8px);z-index:130;opacity:0;transition:opacity .25s,transform .25s;font-size:13px;font-weight:800;color:#fff;background:var(--sage);padding:10px 18px;border-radius:999px;max-width:90vw;text-align:center;box-shadow:0 4px 14px rgba(40,32,18,.28);pointer-events:none}' +
 '#note.show{opacity:1;transform:translateX(-50%) translateY(0)}' +
 '#note.err{background:var(--danger)}' +
@@ -863,7 +872,7 @@ const APP_HTML = "<!doctype html><html lang=ja><head>" +
 '.qopt{display:flex;flex-direction:column;align-items:flex-start;gap:1px;width:100%;min-height:44px;margin:0;padding:8px 9px;background:#f6eddc;color:#6b3d18;border:1.5px solid #c98b44;border-radius:9px;text-align:left;font-size:12px;line-height:1.25}' +
 '.qopt:hover{background:#f0dfbf}' +
 '.qopt .qopt-label{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:800}' +
-'.qopt .qopt-desc{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#8a7f6d;font-size:10.5px;font-weight:600}' +
+'.qopt .qopt-desc{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#6c6890;font-size:10.5px;font-weight:600}' +
 '.quickoptions{margin:0 0 8px}' +
 '.quickoptions .qopt{background:#fff5e6}' +
 '.attncard .attnactions{display:flex;flex-wrap:nowrap;gap:6px;margin-top:7px}' +
@@ -873,7 +882,8 @@ const APP_HTML = "<!doctype html><html lang=ja><head>" +
 '#attncards.on{display:block}' +
 '#attncards .attnmore{width:auto;min-height:44px;margin:0 0 8px;padding:8px 14px;background:#fdf4ef;color:var(--danger);border:1px solid var(--alert);border-radius:999px;font-size:12px;font-weight:800}' +
 'body.th-dark #attncards{background:#17130e}body.th-dark .attncard .attnq{color:#ffb09c}body.th-dark .attncard .attnsent{color:#9ee6bb}' +
-'#banner{display:none;background:var(--danger);color:#fff;font-size:12px;font-weight:800;text-align:center;padding:6px 10px}' +
+// R78: 警告は「面ごと赤く塗る」から「ガラスの上の赤いチップ」へ（3Dシーンの上でも浮かない）
+'#banner{display:none;margin:8px 10px 0;border-radius:12px;background:rgba(180,67,107,.10);border:1px solid rgba(180,67,107,.30);color:var(--danger);font-size:12px;font-weight:800;text-align:center;padding:7px 10px}' +
 'body.off #banner{display:block}' +
 'body.off #room,body.off #list{filter:grayscale(.55);opacity:.62}' +
 '#list{padding:10px 12px}' +
@@ -881,41 +891,42 @@ const APP_HTML = "<!doctype html><html lang=ja><head>" +
 'html{overflow-x:hidden}' +
 '.topbar{position:sticky;top:0;z-index:20}' +
 /* v5: クロームはPC版と同じ明るいデザイン言語（クリーム地+hairline+セージ=主操作）。ダークはth-darkで維持 */
-'.hdr2{background:#fffdf8;color:#241f18;display:flex;align-items:center;gap:8px;padding:calc(9px + env(safe-area-inset-top)) 14px 8px;font-weight:800;border-bottom:1px solid var(--line)}' +
+'.hdr2{background:rgba(255,255,255,.66);-webkit-backdrop-filter:blur(18px) saturate(150%);backdrop-filter:blur(18px) saturate(150%);color:var(--ink);display:flex;align-items:center;gap:8px;padding:calc(9px + env(safe-area-inset-top)) 14px 9px;font-weight:800;border-bottom:1px solid var(--line);letter-spacing:.01em}' +
 '.hdr2 .live{width:9px;height:9px;border-radius:50%;background:var(--sage);flex:none}' +
-'.hdr2 .live.off{background:#b0a693}' +
+'.hdr2 .live.off{background:#a7a2c4}' +
 /* 右肩=「いま動いているAIの合計」（セッション+部下エージェント・2026-07-13 FB） */
-'.hdr2 .total{margin-left:auto;flex:none;display:flex;align-items:baseline;gap:4px;background:#eef5ef;border:1px solid #cfe3d4;border-radius:999px;padding:4px 12px}' +
-'.hdr2 .total b{font-size:17px;color:var(--sage-d);line-height:1}' +
+'.hdr2 .total{margin-left:auto;flex:none;display:flex;align-items:baseline;gap:5px;background:rgba(124,92,255,.10);border:1px solid rgba(124,92,255,.24);border-radius:999px;padding:4px 12px}' +
+'.hdr2 .total b{font-size:17px;color:var(--accent);line-height:1}' +
 '.hdr2 .total small{font-size:10px;color:var(--muted);font-weight:800}' +
 '.hdr2 .ttl{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;font-size:15px}' +
 /* 統計バー=各アイコンの意味をラベルで明示（🟢🟡❗が何か分かるように）・1行コンパクト */
-'.statbar{display:flex;gap:6px;overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch;padding:6px 10px;background:#fffdf8;border-bottom:1px solid var(--line);height:40px;min-height:40px;scrollbar-width:none}' +
+'.statbar{display:flex;gap:6px;overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch;padding:6px 10px;background:rgba(255,255,255,.55);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);border-bottom:1px solid var(--line);height:40px;min-height:40px;scrollbar-width:none}' +
 '.statbar::-webkit-scrollbar{display:none}' +
 '.stat{flex:none;display:inline-flex;align-items:center;gap:5px;background:#f6f2e9;border:1px solid var(--line);border-radius:999px;padding:3px 10px;font-size:10.5px;font-weight:800;color:var(--muted)}' +
-'.stat b{font-size:13.5px;color:#241f18}' +
-'.stat.attn{border-color:#e6c3ba;background:#fbf1dd}' +
+'.stat b{font-size:13.5px;color:#23213a}' +
+'.stat.attn{border-color:rgba(224,83,138,.35);background:rgba(224,83,138,.10)}' +
 '.stat.attn b{color:var(--alert)}' +
-'.deptbar{display:flex;gap:7px;overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch;padding:6px 10px;background:#fffdf8;border-bottom:1px solid var(--line);height:47px;min-height:47px;scrollbar-width:none}' +
+'.deptbar{display:flex;gap:7px;overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch;padding:6px 10px;background:rgba(255,255,255,.55);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);border-bottom:1px solid var(--line);height:47px;min-height:47px;scrollbar-width:none}' +
 '.deptbar::-webkit-scrollbar{display:none}' +
 '.deptbar:empty{display:none}' +
 '.deptchip{width:auto;flex:none;margin:0;min-height:34px;padding:5px 13px;border:1px solid var(--line);border-radius:999px;background:#f6f2e9;color:var(--muted);font-size:12px;font-weight:800}' +
-'.deptchip.on{background:var(--sage);border-color:var(--sage);color:#fff}' +
+'.deptchip.on{background:rgba(124,92,255,.12);border-color:rgba(124,92,255,.30);color:var(--accent)}' +
 /* ===== フッターメニュー（2026-07-12 スマホ専用再構成: 操作は全部ここ・親指圏・潰れない） ===== */
-'.tabbar{position:fixed;left:0;right:0;bottom:0;z-index:60;display:flex;gap:8px;background:#fffdf8;border-top:1px solid var(--line);padding:7px 10px calc(7px + env(safe-area-inset-bottom));box-shadow:0 -2px 12px rgba(58,53,44,.10)}' +
-'.tabbar button{flex:1 1 0;min-width:0;margin:0;background:#f2ede1;color:var(--muted);border-radius:11px;padding:6px 2px;min-height:54px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:11px;font-weight:800;line-height:1.2}' +
+'.tabbar{position:fixed;left:0;right:0;bottom:0;z-index:60;display:flex;gap:8px;background:rgba(255,255,255,.72);-webkit-backdrop-filter:blur(18px) saturate(150%);backdrop-filter:blur(18px) saturate(150%);border-top:1px solid var(--line);padding:7px 10px calc(7px + env(safe-area-inset-bottom));box-shadow:0 -8px 24px rgba(64,52,140,.10)}' +
+'.tabbar button{flex:1 1 0;min-width:0;margin:0;background:transparent;color:var(--muted);border:1px solid transparent;border-radius:13px;padding:6px 2px;min-height:54px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:11px;font-weight:800;line-height:1.2;transition:background .14s,color .14s,border-color .14s}' +
 '.tabbar button .ic{font-size:20px;line-height:1}' +
-'.tabbar button.on{background:var(--sage);color:#fff}' +
+'.tabbar button.on{background:rgba(124,92,255,.12);color:var(--accent);border-color:rgba(124,92,255,.28)}' +
+'.tabbar button.on .ic{filter:none}' +
 '.tabbar button:active{transform:translateY(1px);filter:brightness(.95)}' +
 /* ===== スマホ=タイル床＋モダン家具のオフィスシーン 2026-07-24 ===== */
 /* v5: 旧v3シーンの#room定義はM1定義(後方)へ一本化済み */
 /* 歩行キャラ=フッターメニュー直上の固定通路（スクロール位置に関係なく常に「忙しく動いてる」・2026-07-13 FB） */
 /* 高さ=char50+bob3+bottom3+plate17+余白5=78px（64pxでは頭が見切れる=2026-07-13 FB） */
 /* v5: walkbar(フッター歩行帯)は廃止＝v4.0ミニマップの歩行遷移と情報重複し、名札プレートが重なって崩壊していた */
-'#room .empty{margin:auto;text-align:center;color:#6b5a40;font-size:14px;font-weight:700;padding:48px 20px}' +
+'#room .empty{margin:auto;text-align:center;color:#514d78;font-size:14px;font-weight:700;padding:48px 20px}' +
 '.ws{position:relative;z-index:2;width:100%;margin:0;padding:4px 2px 0;background:none;color:inherit;border:0;display:flex;flex-direction:column;align-items:center;min-width:0}' +
 '.ws:active{filter:brightness(1.07)}' +
-'.ws .bubble{position:relative;z-index:5;margin-bottom:1px;max-width:96%;background:#fffaf0;border:1.5px solid #d8c7a2;border-radius:9px;padding:2px 8px;font-size:10.5px;line-height:1.35;color:#5c5346;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:0 1px 2px rgba(58,53,44,.12)}' +
+'.ws .bubble{position:relative;z-index:5;margin-bottom:1px;max-width:96%;background:#fffaf0;border:1.5px solid #d8c7a2;border-radius:9px;padding:2px 8px;font-size:10.5px;line-height:1.35;color:#4a4670;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:0 1px 2px rgba(58,53,44,.12)}' +
 '.ws[data-alert] .bubble{background:#4a1f16;border-color:#c05a5a;color:#ffd9a8}' +
 /* キャラは大きく・机は小さく＝上半身がしっかり見える比率（机の前景が腰下を隠す=PC版と同じ着席表現） */
 '.ws .stage{position:relative;width:100%;max-width:110px;height:118px;margin:0 auto}' +
@@ -931,7 +942,7 @@ const APP_HTML = "<!doctype html><html lang=ja><head>" +
 '.standingperson .standchar{height:52px;width:auto;image-rendering:pixelated;filter:drop-shadow(0 2px 0 rgba(0,0,0,.12))}' +
 '.standingperson .standname{max-width:90px;font-size:10.5px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}' +
 '.standingperson .gesture{position:absolute;top:3px;right:3px;font-size:14px}' +
-'.zonemsg{flex:1 0 100%;font-size:12px;color:#6b5a40;padding:14px 12px;text-align:center;width:100%}' +
+'.zonemsg{flex:1 0 100%;font-size:12px;color:#514d78;padding:14px 12px;text-align:center;width:100%}' +
 /* タイル床の上でも読める空室メッセージ */
 /* 会議/ラウンジの名札チップ（誰がいるか一目で・タップ=詳細シート） */
 '.mplates{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-top:9px}' +
@@ -950,14 +961,16 @@ const APP_HTML = "<!doctype html><html lang=ja><head>" +
 '.ws .plate{z-index:4;margin-top:2px;max-width:100%;display:flex;align-items:center;gap:5px;background:#2e2a22;color:#f2ead8;font-size:10.5px;font-weight:800;border-radius:6px;padding:1px 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:0 1px 2px rgba(58,53,44,.2)}' +
 '.ws .plate .dot{flex:none}' +
 /* 各机の下に「いま何してるか」1行（officegridでは吹き出し非表示のため=「何してるか分からない」FB対応） */
-'.ws .act{max-width:100%;font-size:10px;font-weight:700;color:#6b5a40;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px;text-align:center}' +
+'.ws .act{max-width:100%;font-size:10px;font-weight:700;color:#514d78;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px;text-align:center}' +
 /* ゾーンラベル=部屋パネルに密着する看板（meet/loungeのみ・officeは床置きのまま） */
 '.zl-attach{margin:10px 0 -13px 18px;position:relative;z-index:3;box-shadow:0 2px 6px rgba(30,20,10,.42)}' +
 /* 休憩ラウンジ=明るいタイル床＋中央ソファ・右キッチネット・端の植物 */
 '.lounge{margin:2px 12px 4px;padding:10px 8px 10px;display:flex;flex-direction:column;align-items:center;background-color:#e4e5e8;background-image:url(/app/sprite/tile2_floor_white);background-repeat:repeat;background-size:24px 24px;image-rendering:pixelated;border:1px solid rgba(110,106,98,.24);border-radius:14px;box-shadow:inset 0 2px 8px rgba(90,80,60,.14)}' +
 /* ソファはキャラ(88px)との比率をPC版(ソファ幅≒キャラ2人分)に合わせる。巨大化するとキャラが飲まれる */
 /* ===== M1: スマホ1画面ミニフロアマップ（論理374×470） ===== */
-'#room:not(.hidden){position:relative;padding:0 0 28px;display:flex;flex-direction:column;align-items:center;background:#e4e5e8;min-height:calc(100dvh - 160px);overflow:hidden}' +
+// R78: 3Dが主役＝残りの高さを全部使う（❗カードが無い日に下が空くのをやめる）。
+// 面の色は body 側のフィールドに任せる（灰色の板を敷かない）。
+'#room:not(.hidden){position:relative;padding:0 0 10px;display:flex;flex-direction:column;align-items:stretch;background:transparent;min-height:calc(100dvh - 210px);overflow:hidden}' +
 '#room:not(.hidden)::before{display:none}' +
 '#mapframe{position:relative;width:100%;height:470px;overflow:hidden;flex:none;image-rendering:pixelated}' +
 '#map{position:absolute;left:0;top:0;width:374px;height:470px;transform-origin:top left;transform:scale(var(--map-scale,1));background-color:#5a5751;background-image:url(/app/sprite/tile2_wall_top);background-repeat:repeat;background-size:24px 24px;image-rendering:pixelated;box-shadow:inset 0 0 0 2px rgba(40,37,32,.6)}' +
@@ -997,7 +1010,7 @@ const APP_HTML = "<!doctype html><html lang=ja><head>" +
 /* 名札=PC同様のダークプレート・50px以内(アンカー54pxピッチで非重なり) */
 '#map .mchar .mname{display:block;max-width:50px;margin-top:1px;padding:0 4px;border-radius:4px;background:rgba(36,31,24,.88);color:#f2ead8;font-size:9px;line-height:12px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:0 1px 2px rgba(30,24,16,.3)}' +
 '#map .mchar[data-alert] .mname{background:rgba(142,52,42,.95);color:#ffe2d6}' +
-'#map .mchar .typing{position:absolute;left:33px;top:-7px;z-index:2;display:none;padding:1px 3px;background:#fffaf0;border:1px solid #d8c7a2;border-radius:5px;color:#5c5346;font-size:9px;line-height:11px;box-shadow:0 1px 2px rgba(58,53,44,.16);animation:typingbob .8s steps(2) infinite}' +
+'#map .mchar .typing{position:absolute;left:33px;top:-7px;z-index:2;display:none;padding:1px 3px;background:#fffaf0;border:1px solid #d8c7a2;border-radius:5px;color:#4a4670;font-size:9px;line-height:11px;box-shadow:0 1px 2px rgba(58,53,44,.16);animation:typingbob .8s steps(2) infinite}' +
 '#map .mchar[data-state=working] .typing{display:block}' +
 '#map .mchar[data-state=waiting] .mavatar{animation:mbreathe 3.4s ease-in-out infinite}' +
 '#map .mchar[data-state=resting] .mavatar{filter:grayscale(.4) opacity(.88);animation:mbreathe 3.4s ease-in-out infinite}' +
@@ -1009,7 +1022,7 @@ const APP_HTML = "<!doctype html><html lang=ja><head>" +
 '#map .mchar .mstate{position:absolute;right:-1px;top:2px;z-index:3;font-size:11px;line-height:1}' +
 '#map .mchar.sel,#map .mchar:active{z-index:12}' +
 /* 吹き出し会話(R23.5): 白ポップ・タップ透過・同時最大2体（過密マップを壊さない）。 */
-'#map .mchar .msay{position:absolute;left:50%;bottom:52px;transform:translateX(-50%);z-index:9;display:none;max-width:104px;padding:2px 6px;background:#fffdf8;border:1px solid #d8c7a2;border-radius:7px;color:#3a352c;font-size:8.5px;line-height:1.35;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:0 1px 2px rgba(58,53,44,.18);pointer-events:none}' +
+'#map .mchar .msay{position:absolute;left:50%;bottom:52px;transform:translateX(-50%);z-index:9;display:none;max-width:104px;padding:2px 6px;background:rgba(255,255,255,.86);border:1px solid #d8c7a2;border-radius:7px;color:#3a352c;font-size:8.5px;line-height:1.35;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:0 1px 2px rgba(58,53,44,.18);pointer-events:none}' +
 '#map .mchar .msay.on{display:block}' +
 '#map .mchar .msay.below{bottom:auto;top:52px}' +
 '#map .mchar .msay.edgeL{left:0;transform:none}' +
@@ -1033,11 +1046,25 @@ const APP_HTML = "<!doctype html><html lang=ja><head>" +
 '.openclawstage .ocbot2{animation-duration:26s;animation-delay:-8s}' +
 // R76: OpenClaw室に実メンバーを出す（旧: 常に「未接続」＋巡回ロボだけの飾りだった）
 // R77: 3Dオフィスの器（スマホ）。canvasは幅いっぱい・高さは画面の55%＝❗カードと両立
-'#scene3dwrap{position:relative;margin:2px 10px 6px;border-radius:14px;overflow:hidden;background:linear-gradient(180deg,#e9ecf6,#dfe3f0);box-shadow:0 2px 10px rgba(52,44,32,.18)}' +
+'#scene3dwrap{position:relative;flex:none;margin:8px 10px 8px;border-radius:18px;overflow:hidden;background:rgba(255,255,255,.72);-webkit-backdrop-filter:blur(14px) saturate(150%);backdrop-filter:blur(14px) saturate(150%);border:1px solid var(--line);box-shadow:0 12px 34px rgba(64,52,140,.12),0 2px 6px rgba(64,52,140,.06)}' +
 // 高さは「幅とほぼ同じ」＝balancedフィットの実描画に合わせる（55vhだと下に余白が出る）
-'#scene3d{width:100%;height:min(52vh,calc(100vw - 20px));min-height:280px;max-height:520px;display:block}' +
+'#scene3d{width:100%;height:min(54vh,calc(100vw - 16px));min-height:290px;max-height:520px;display:block}' +
 '#scene3d canvas{width:100%!important;height:100%!important;display:block;touch-action:manipulation}' +
 '#plates{position:absolute;inset:0;pointer-events:none}' +
+// R78: 3Dでは名札を全員に出せない（390pxで9枚は重なる）。誰が何をしているかは帯で補い、
+// タップでその社員へカメラが寄る＝一覧と3Dが同じ対象を指す。汎用buttonより高い詳細度で上書き。
+'#roster{flex:none;display:flex;gap:8px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding:2px 10px 8px;scrollbar-width:none}' +
+'#roster::-webkit-scrollbar{display:none}' +
+'#roster:empty{display:none}' +
+'#roster .rchip{width:auto;flex:none;margin:0;display:flex;align-items:center;gap:7px;max-width:210px;background:rgba(255,255,255,.72);border:1px solid var(--line);border-radius:999px;padding:6px 13px 6px 10px;min-height:38px;font-size:12px;font-weight:800;color:var(--ink);box-shadow:0 2px 8px rgba(64,52,140,.08);transition:background .14s,border-color .14s}' +
+'#roster .rchip .dot{width:9px;height:9px;border-radius:50%;flex:none;background:#b9b5d6}' +
+'#roster .rchip[data-state="working"] .dot{background:var(--sage)}' +
+'#roster .rchip[data-state="waiting"] .dot{background:var(--amber)}' +
+'#roster .rchip.attn{border-color:rgba(224,83,138,.38);background:rgba(224,83,138,.10)}' +
+'#roster .rchip.attn .dot{background:var(--alert)}' +
+'#roster .rchip.sel{border-color:rgba(124,92,255,.42);background:rgba(124,92,255,.12)}' +
+'#roster .rchip .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:110px}' +
+'#roster .rchip .vb{color:var(--muted);font-weight:700;font-size:10.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:84px}' +
 '#plates .plate{position:absolute;transform:translate(-50%,-100%);pointer-events:auto;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:800 11px/1.2 inherit;color:#2b2f3a;background:rgba(255,255,255,.94);border:1px solid rgba(70,60,90,.22);border-radius:999px;padding:3px 9px;box-shadow:0 2px 6px rgba(40,34,60,.20)}' +
 '#plates .plate.attn{color:#7c1d1d;background:#ffe9e6;border-color:#e5a49c}' +
 '#plates .plate.sel{border-color:#5f9b78;box-shadow:0 0 0 2px rgba(95,155,120,.35)}' +
@@ -1211,7 +1238,7 @@ PWA_ASSIGN_ROOMS_SOURCE + "\n" + PWA_GLOSS_SOURCE +
 'function closeLog(){var wrap=document.getElementById("logwrap");if(wrap&&wrap.classList.contains("open"))playSE("cursor");if(wrap)wrap.classList.remove("open")}' +
 // ⚙️設定: テーマ/文字サイズ/歩行アニメはlocalStorage永続・即時適用
 'var PREF={theme:localStorage.getItem("aioffice.theme")||"classic",big:localStorage.getItem("aioffice.big")==="1",walk:localStorage.getItem("aioffice.walk")!=="off",deptFilter:localStorage.getItem("aioffice.deptFilter")||""};' +
-'function applyPrefs(){var df=localStorage.getItem("aioffice.deptFilter");if(df!==null)PREF.deptFilter=df;document.body.classList.toggle("th-dark",PREF.theme==="dark");document.body.classList.toggle("th-big",!!PREF.big);document.body.classList.toggle("nowalk",!PREF.walk);var tc=document.querySelector("meta[name=theme-color]");if(tc)tc.setAttribute("content",PREF.theme==="dark"?"#241f18":"#fffdf8")}' +
+'function applyPrefs(){var df=localStorage.getItem("aioffice.deptFilter");if(df!==null)PREF.deptFilter=df;document.body.classList.toggle("th-dark",PREF.theme==="dark");document.body.classList.toggle("th-big",!!PREF.big);document.body.classList.toggle("nowalk",!PREF.walk);var tc=document.querySelector("meta[name=theme-color]");if(tc)tc.setAttribute("content",PREF.theme==="dark"?"#23213a":"rgba(255,255,255,.86)")}' +
 // R42.2d-2 静的チローム再適用: 焼き込みHTMLの日本語をtextContent/placeholderで差し替え（innerHTML禁止=XSS掟）
 'var NTOG_STATE=false;' +
 'function applyLangChrome(){document.documentElement.lang=LANG;function st(id,ja,en){var n=document.getElementById(id);if(n)n.textContent=T(ja,en)}' +
@@ -1340,19 +1367,22 @@ PWA_ASSIGN_ROOMS_SOURCE + "\n" + PWA_GLOSS_SOURCE +
 // R77: 3Dの器。#attncards（❗トリアージ）は据え置き＝スマホの主目的を落とさない。
 'function sceneShell3D(){var room=document.getElementById("room");if(!room)return null;'+
 'if(!document.getElementById("attncards")){var cards=el("section",null);cards.id="attncards";cards.setAttribute("aria-live","polite");room.appendChild(cards)}'+
-'var wrap=el("div",null);wrap.id="scene3dwrap";var host=el("div",null);host.id="scene3d";var plates=el("div",null);plates.id="plates";wrap.appendChild(host);wrap.appendChild(plates);room.appendChild(wrap);'+
+'var wrap=el("div",null);wrap.id="scene3dwrap";var host=el("div",null);host.id="scene3d";var plates=el("div",null);plates.id="plates";wrap.appendChild(host);wrap.appendChild(plates);room.appendChild(wrap);var rs=el("div",null);rs.id="roster";room.appendChild(rs);'+
 'host.addEventListener("click",function(ev){if(!window.__scene3d)return;var r=host.getBoundingClientRect();var id=window.__scene3d.pick(ev.clientX-r.left,ev.clientY-r.top);if(!id)return;var e=empOfAgent(id);if(e)openSheet(e)});'+
 'var s=document.createElement("script");s.type="module";s.src="/ui/pwa/boot3d.js";s.onerror=function(){if(!document.getElementById("map"))mapShell()};document.body.appendChild(s);return host}'+
 // シーンのagent(id=projectId or session) から /status の社員を引く単一の対応点
 'function empOfAgent(id){if(!window.__scene3d)return null;var ags=window.__scene3d.agents()||[];var ag=null;for(var i=0;i<ags.length;i++)if(ags[i].id===id){ag=ags[i];break}var sess=ag?ag.session:id;var list=officeAgents(LAST_OFFICE)||[];for(var j=0;j<list.length;j++)if(list[j]&&list[j].session===sess)return list[j];return null}'+
 // 名札は「❗のある社員」と「選択中」だけ＝390pxで9枚出すと重なって読めない
 'function paintPlates(){var layer=document.getElementById("plates");if(!layer||!window.__scene3d)return;var ags=window.__scene3d.agents()||[];var seen={};for(var i=0;i<ags.length;i++){(function(a){var e=empOfAgent(a.id);var attn=e?needsAttn(e):false;var sel=!!(SEL&&e&&SEL.session===e.session);if(!attn&&!sel)return;var p=window.__scene3d.project(a.id);if(!p)return;seen[a.id]=1;var n=null,all=layer.querySelectorAll(".plate");for(var k=0;k<all.length;k++)if(all[k].getAttribute("data-plate")===a.id){n=all[k];break}if(!n){n=el("button","plate");n.type="button";n.setAttribute("data-plate",a.id);n.addEventListener("click",function(){var cur=empOfAgent(a.id);if(cur)openSheet(cur)});layer.appendChild(n)}n.className="plate"+(attn?" attn":"")+(sel?" sel":"");n.textContent=(attn?"❗ ":"")+(e?dispCrew(e):a.name||a.id);n.style.left=Math.round(p.left)+"px";n.style.top=Math.round(p.top-30)+"px"})(ags[i])}var nodes=layer.querySelectorAll(".plate");for(var q=nodes.length-1;q>=0;q--)if(!seen[nodes[q].getAttribute("data-plate")])nodes[q].remove()}'+
+// R78: 3Dでは名札を全員に出せない（390pxで重なる）。誰が何をしているかは帯で補い、
+// タップでその社員へカメラが寄る＝一覧と3Dが同じ対象を指す。
+'function paintRoster(office){var bar=document.getElementById("roster");if(!bar)return;var emps=filterEmps(officeAgents(office)).slice().sort(triageSort);var seen={};emps.forEach(function(e){var key=e.session||"";seen[key]=1;var n=null,all=bar.querySelectorAll(".rchip");for(var i=0;i<all.length;i++)if(all[i].getAttribute("data-sess")===key){n=all[i];break}if(!n){n=el("button","rchip");n.type="button";n.setAttribute("data-sess",key);n.appendChild(el("i","dot"));n.appendChild(el("span","nm",""));n.appendChild(el("span","vb",""));n.addEventListener("click",function(){var cur=(officeAgents(LAST_OFFICE)||[]).filter(function(x){return x&&x.session===key})[0];if(!cur)return;openSheet(cur);if(window.__scene3d&&window.__scene3d.focus){var ags=window.__scene3d.agents()||[];for(var j=0;j<ags.length;j++)if(ags[j].session===key){window.__scene3d.focus(ags[j].id);break}}});bar.appendChild(n)}n.setAttribute("data-state",e.state||"");n.className="rchip"+(needsAttn(e)?" attn":"")+(SEL&&SEL.session===key?" sel":"");n.querySelector(".nm").textContent=dispCrew(e);n.querySelector(".vb").textContent=(e.verb||"")});var nodes=bar.querySelectorAll(".rchip");for(var q=nodes.length-1;q>=0;q--)if(!seen[nodes[q].getAttribute("data-sess")])nodes[q].remove()}'+
 'window.__paintPlates=paintPlates;'+
 // 3Dモジュールは非同期で載る。載った瞬間に**シーンだけ**描き直す。
 // ここで dispatch()（全再描画）を呼ぶと、設定シート等の開いているDOMが差し替わり
 // 直前のクリックが detach 空振りになる（R67でデスクトップが踏んだのと同じ罠）。
 'document.addEventListener("scene3d-ready",function(){if(LAST_OFFICE&&VIEW==="office")renderScene(LAST_OFFICE)});'+
-'function renderScene(office){var room=document.getElementById("room");if(room)room.querySelectorAll(".empty").forEach(function(n){n.remove()});if(!document.getElementById("scene3d"))sceneShell3D();if(window.__scene3d&&window.__scene3d.ready){window.__scene3d.apply(office);paintPlates();var m=document.getElementById("mapframe");if(m)m.style.display="none";var oc0=room?room.querySelector(".openclaw"):null;if(oc0)oc0.style.display="none";return}'+
+'function renderScene(office){var room=document.getElementById("room");if(room)room.querySelectorAll(".empty").forEach(function(n){n.remove()});if(!document.getElementById("scene3d"))sceneShell3D();if(window.__scene3d&&window.__scene3d.ready){window.__scene3d.apply(office);paintPlates();paintRoster(office);var m=document.getElementById("mapframe");if(m)m.style.display="none";var oc0=room?room.querySelector(".openclaw"):null;if(oc0)oc0.style.display="none";return}'+
 'if(!document.getElementById("map"))mapShell();var oc=room?room.querySelector(".openclaw"):null;if(oc)oc.style.display=featOn("openclaw")?"":"none";updateMapScene(office);paintOpenclaw(office)}' +
 'window.addEventListener("resize",function(){mapScale()});' +
 // 歩行キャラ(固定通路): 稼働/待機の社員が全員(最大6)同時に歩く。速度=活動の鮮度

@@ -49,6 +49,10 @@ if (host) {
     resize() {
       try { fitForPortrait(); } catch (_) { /* 回転直後などは黙って次フレームへ */ }
     },
+    /** R78: 一覧チップから「その社員へカメラを寄せる」（誰がどれか一目で分かる）。 */
+    focus(id) {
+      try { if (id) scene.focusOn(id); else scene.focusOff(); } catch (_) { /* 非対応でも操作は続行 */ }
+    },
     stats() {
       try { return scene.stats ? scene.stats() : null; } catch (_) { return null; }
     },
