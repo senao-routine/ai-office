@@ -695,6 +695,21 @@ def _claude_subscription(now):
             "staleSec": max(0, int(now - captured)), "account": account}
 
 
+def claude_gauge_public(now=None):
+    """R80.6: スマホPWA表示用の最小ゲージ。%と鮮度だけを返し、account/email は出さない
+    （office_json 経由で中継に載る前提のデータ＝新しい秘密を運ばない）。無ければ None。"""
+    now = _now_value(now)
+    sub = _claude_subscription(now)
+    if not sub:
+        return None
+    out = {"staleSec": sub["staleSec"]}
+    if sub.get("fiveHour"):
+        out["fiveHour"] = sub["fiveHour"]["pct"]
+    if sub.get("sevenDay"):
+        out["sevenDay"] = sub["sevenDay"]["pct"]
+    return out
+
+
 def collect_claude(now):
     """Claude transcript を増分・読み取り専用で集計する。"""
     now = _now_value(now)

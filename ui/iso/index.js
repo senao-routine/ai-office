@@ -35,7 +35,8 @@ const DEMO = new URLSearchParams(
 
 // R80: 購入・お知らせの導線は**この1箇所**だけを見る（R81でLPを作ったらここを差し替える）。
 // UIの各所にURLを散らすと、値上げ・移転のたびに探し回ることになる。
-const PRODUCT_SITE = "https://github.com/senao-routine/ai-office";
+// R81: 特設LP（購入・メール登録の単一入口。買うボタンと「知らせを受け取る」の両方がここへ）
+const PRODUCT_SITE = "https://routinelabo-lp.routinelabo-senao.workers.dev";
 
 export async function mount(root) {
   root.replaceChildren();
@@ -1202,8 +1203,7 @@ export async function mount(root) {
         .map(([k, label]) => `${feats[k] ? "✅" : "⬜"} ${label}`).join("  "));
     modal.append(featRow);
     if (!lic.valid) {
-      // 購入導線: LS checkout 確定までは「リリース通知を受け取る」を置く
-      // （興味を持った瞬間の熱を袋小路にしない）。URL確定後はここを Buy に差し替える
+      // 購入導線: R81のLPへ（Stripe Payment Link 確定まではLP側が「近日発売＝メール登録」を出す）
       if (built?.edition === "openclaw") {
         modal.append(mEl("p", "mnote", T("lic_upgrade_hybrid")));
       }

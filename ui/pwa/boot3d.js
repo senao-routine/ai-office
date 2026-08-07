@@ -89,7 +89,7 @@ if (host && scene) {
   // 覆われている間は描かない。シート/設定/ログは全画面オーバーレイなので、
   // その裏で回し続けるのは電池の丸損（かつテスト環境ではメインスレッドを飽和させ、
   // 他のUI操作の応答が1秒を超えて落ちる＝実際にこれで relay E2E が落ちた）。
-  const covered = () => ["sheetwrap", "setwrap", "logwrap", "runwrap"].some((id) => {
+  const covered = () => ["sheetwrap", "setwrap", "logwrap", "runwrap", "lnwrap"].some((id) => {
     const n = document.getElementById(id);
     return n && n.classList.contains("open");
   });
@@ -101,6 +101,52 @@ if (host && scene) {
     scene.update(built, t);
     if (typeof window.__paintPlates === "function") window.__paintPlates();
   });
+  // R80.6: タッチ操作（ユーザーFB「拡大したり移動させたりできたらいい」）。
+  // 1本指ドラッグ=パン・ピンチ=ズーム（中点ピボット・中点移動でパンも）・ダブルタップ=リセット。
+  // 8px未満の指の揺れはタップ扱い＝選択操作を殺さない。gestureMoved() は app.js の
+  // click ハンドラが読む（ドラッグ後に click が発火してシートが開く誤爆を防ぐ）。
+  const gs = { lastX: 0, lastY: 0, lastDist: 0, midX: 0, midY: 0, moved: 0, lastTap: 0 };
+  host.addEventListener("touchstart", (ev) => {
+    if (ev.touches.length === 1) {
+      const t0 = ev.touches[0];
+      gs.lastX = t0.clientX; gs.lastY = t0.clientY; gs.moved = 0;
+      const now = Date.now();
+      if (now - gs.lastTap < 320) { scene.viewReset(); gs.moved = 99; }
+      gs.lastTap = now;
+    } else if (ev.touches.length === 2) {
+      const [a, b] = ev.touches;
+      gs.lastDist = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+      gs.midX = (a.clientX + b.clientX) / 2; gs.midY = (a.clientY + b.clientY) / 2;
+      gs.moved = 99;
+    }
+  }, { passive: true });
+  host.addEventListener("touchmove", (ev) => {
+    if (ev.touches.length === 1) {
+      const t0 = ev.touches[0];
+      const dx = t0.clientX - gs.lastX, dy = t0.clientY - gs.lastY;
+      gs.moved += Math.abs(dx) + Math.abs(dy);
+      if (gs.moved > 8) { scene.viewPanBy(dx, dy); ev.preventDefault(); }
+      gs.lastX = t0.clientX; gs.lastY = t0.clientY;
+    } else if (ev.touches.length === 2) {
+      const r = host.getBoundingClientRect();
+      const [a, b] = ev.touches;
+      const d = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+      const mx = (a.clientX + b.clientX) / 2, my = (a.clientY + b.clientY) / 2;
+      if (gs.lastDist > 0 && d > 0) scene.viewZoomBy(d / gs.lastDist, mx - r.left, my - r.top);
+      scene.viewPanBy(mx - gs.midX, my - gs.midY);
+      gs.lastDist = d; gs.midX = mx; gs.midY = my;
+      gs.moved = 99;
+      ev.preventDefault();
+    }
+  }, { passive: false });
+  api.gestureMoved = () => gs.moved > 8;
+  api.view = {
+    zoomBy: (f, x, y) => { try { scene.viewZoomBy(f, x, y); } catch (_) { /* 非対応でも続行 */ } },
+    panBy: (dx, dy) => { try { scene.viewPanBy(dx, dy); } catch (_) { /* 非対応でも続行 */ } },
+    reset: () => { try { scene.viewReset(); } catch (_) { /* 非対応でも続行 */ } },
+    state: () => { try { return scene.viewState(); } catch (_) { return null; } },
+  };
+
   window.addEventListener("resize", api.resize);
   window.addEventListener("orientationchange", api.resize);
   window.__scene3d = api;

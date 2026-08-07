@@ -752,6 +752,18 @@ export class IsoScene {
           top: f.top + (g.top - f.top) * k,
           bottom: f.bottom + (g.bottom - f.bottom) * k };
       }
+      // R80.6: ピンチ/ドラッグのユーザービュー（スマホ）。既定(scale=1,pan=0)は完全no-op
+      // ＝goldenとデスクトップはビット不変。focusの寄り先に対して相対＝寄った先でもパンできる。
+      const us = this._userScale ?? 1;
+      const upx = this._userPanX || 0;
+      const upy = this._userPanY || 0;
+      if (us !== 1 || upx || upy) {
+        const cx = (f.left + f.right) / 2 + upx;
+        const cy = (f.top + f.bottom) / 2 + upy;
+        const hw = (f.right - f.left) / 2 * us;
+        const hh = (f.top - f.bottom) / 2 * us;
+        f = { left: cx - hw, right: cx + hw, top: cy + hh, bottom: cy - hh };
+      }
       const dx = frozen ? 0 : Math.sin(t * 0.045) * this.view * 0.012 * (1 - k * 0.6);
       const dy = frozen ? 0 : Math.sin(t * 0.031 + 1.7) * this.view * 0.007 * (1 - k * 0.6);
       this.camera.left = f.left + dx;
@@ -1182,6 +1194,63 @@ export class IsoScene {
     if (!actor) return null;
     const p = actor.nodes.root.position;
     return this.project(p.x, p.y + 1.1, p.z);
+  }
+
+  /** R80.6: ピンチズーム。factor>1=寄る。pxX/pxY=ピボット（canvas px・省略時は中央）。
+   *  指の下の点が動かないよう、スケール変化ぶんをパンへ繰り込む。 */
+  viewZoomBy(factor, pxX, pxY) {
+    if (!this._frame || !isFinite(factor) || factor <= 0) return;
+    const el = this.renderer.domElement;
+    const W = el.clientWidth || 1;
+    const H = el.clientHeight || 1;
+    const s0 = this._userScale ?? 1;
+    const s1 = Math.min(1.12, Math.max(0.34, s0 / factor));
+    const curW = this.camera.right - this.camera.left;
+    const curH = this.camera.top - this.camera.bottom;
+    const px = ((pxX ?? W / 2) / W - 0.5) * curW;
+    const py = (0.5 - (pxY ?? H / 2) / H) * curH;
+    const r = s1 / s0;
+    this._userPanX = (this._userPanX || 0) + px * (1 - r);
+    this._userPanY = (this._userPanY || 0) + py * (1 - r);
+    this._userScale = s1;
+    this._clampUserPan();
+  }
+
+  /** R80.6: ドラッグでパン（canvas pxで受け、カメラ座標へ換算）。 */
+  viewPanBy(dxPx, dyPx) {
+    if (!this._frame) return;
+    const el = this.renderer.domElement;
+    const W = el.clientWidth || 1;
+    const H = el.clientHeight || 1;
+    const curW = this.camera.right - this.camera.left;
+    const curH = this.camera.top - this.camera.bottom;
+    this._userPanX = (this._userPanX || 0) - dxPx / W * curW;
+    this._userPanY = (this._userPanY || 0) + dyPx / H * curH;
+    this._clampUserPan();
+  }
+
+  viewReset() {
+    this._userScale = 1;
+    this._userPanX = 0;
+    this._userPanY = 0;
+  }
+
+  viewState() {
+    return { scale: this._userScale ?? 1,
+      panX: this._userPanX || 0, panY: this._userPanY || 0 };
+  }
+
+  /** オフィスの外へ飛んで迷子にならない範囲（ズームで生じた余白＋12%まで）。 */
+  _clampUserPan() {
+    const f = this._frame;
+    if (!f) return;
+    const hw = (f.right - f.left) / 2;
+    const hh = (f.top - f.bottom) / 2;
+    const s = this._userScale ?? 1;
+    const mx = hw * (1 - s) + hw * 0.12;
+    const my = hh * (1 - s) + hh * 0.12;
+    this._userPanX = Math.min(mx, Math.max(-mx, this._userPanX || 0));
+    this._userPanY = Math.min(my, Math.max(-my, this._userPanY || 0));
   }
 
   /** R70: フォーカスズーム＝シートで選んだロボへ0.5sで寄る（update④が補間を描く）。 */

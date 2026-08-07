@@ -235,31 +235,103 @@ def main(argv):
 
                 page.screenshot(path=out)   # 目視用はタップ前＝シーンが写る絵にする
 
-                # ロボットをタップ → 詳細シートが開く（操作の本流が生きている証明）
+                # ロボットをタップ → 詳細シートが開く（操作の本流が生きている証明）。
+                # R80.6: タップ点が下部ドック（❗カード/ロスター）に覆われているロボを選ぶと
+                # カード側の click が走って2段タップを検証できない＝elementFromPoint で
+                # **シーン領域（canvas/名札）に当たる**候補だけを使う（名札タップも同じ2段フロー）。
                 point = page.evaluate(
                     """() => {
+                        const host = document.getElementById('scene3d');
+                        const r = host.getBoundingClientRect();
                         const ags = window.__scene3d ? window.__scene3d.agents() : [];
                         for (const a of ags) {
                             const p = window.__scene3d.project(a.id);
-                            if (p) return {id: a.id, left: p.left, top: p.top};
+                            if (!p) continue;
+                            const x = r.left + p.left, y = r.top + p.top + 30;
+                            const hit = document.elementFromPoint(x, y);
+                            const wrap = document.getElementById('scene3dwrap');
+                            if (hit && wrap && wrap.contains(hit)) {
+                                return {id: a.id, left: p.left, top: p.top};
+                            }
                         }
                         return null;
                     }""")
                 if not point:
-                    print("  ✗ ロボットのスクリーン座標が取れない")
+                    print("  ✗ ドックに覆われていないロボットが1体も無い（タップ検証不能）")
                     ng += 1
                 else:
+                    # R80.6: タップは2段（1度目=フォーカス+「誰が・何を」/ 2度目=シート）。
+                    # いきなりシートが開いたら「まず注目させる」段が消えた回帰。
                     box = page.locator("#scene3d").bounding_box()
-                    page.mouse.click(box["x"] + point["left"], box["y"] + point["top"] + 30)
-                    page.wait_for_timeout(700)
-                    opened = page.evaluate(
-                        "() => { const n=document.getElementById('sheetwrap');"
-                        " return !!n && n.classList.contains('open'); }")
-                    if opened:
-                        print("  ✓ ロボットのタップ → 詳細シートが開く")
-                    else:
-                        print("  ✗ ロボットをタップしてもシートが開かない")
+                    px = box["x"] + point["left"]
+                    py = box["y"] + point["top"] + 30
+                    page.mouse.click(px, py)
+                    page.wait_for_timeout(500)
+                    first = page.evaluate(
+                        "() => ({open: document.getElementById('sheetwrap')"
+                        ".classList.contains('open'),"
+                        " sel: !!document.querySelector('.rchip.sel'),"
+                        " note: (document.getElementById('note')||{}).textContent||''})")
+                    if first["open"]:
+                        print("  ✗ 1度目のタップでいきなりシートが開いた（2段タップの回帰）")
                         ng += 1
+                    elif not first["sel"]:
+                        print(f"  ✗ 1度目のタップで選択されない: {first}")
+                        ng += 1
+                    else:
+                        print(f"  ✓ 1度目のタップ=フォーカス＋選択（トースト: {first['note'][:24]}…）")
+                    # 1度目のフォーカスでカメラが寄る＝ロボの画面位置が動く。
+                    # 2度目は同じidの**新しい投影点**を取り直してからタップする
+                    # （実ユーザーは目でロボを追うので同じ操作になる）。
+                    page.wait_for_timeout(900)
+                    p2 = page.evaluate(
+                        """(id) => {
+                            const host = document.getElementById('scene3d');
+                            const r = host.getBoundingClientRect();
+                            const p = window.__scene3d.project(id);
+                            if (!p) return null;
+                            return {x: r.left + p.left, y: r.top + p.top + 30};
+                        }""", point["id"])
+                    if not p2:
+                        print("  ✗ フォーカス後のロボ位置が取れない")
+                        ng += 1
+                    else:
+                        page.mouse.click(p2["x"], p2["y"])
+                        page.wait_for_timeout(700)
+                        opened = page.evaluate(
+                            "() => { const n=document.getElementById('sheetwrap');"
+                            " return !!n && n.classList.contains('open'); }")
+                        if opened:
+                            print("  ✓ 2度目のタップ → 詳細シートが開く")
+                        else:
+                            print("  ✗ 2度目のタップでシートが開かない")
+                            ng += 1
+
+                # R80.6: ピンチズーム/パンのAPIが生きている（タッチ実ジェスチャの代わりに
+                # 公開APIで実測＝ズームでviewStateのscaleが変わり、リセットで戻る）
+                view = page.evaluate(
+                    """() => {
+                        const v = window.__scene3d && window.__scene3d.view;
+                        if (!v) return null;
+                        v.reset();
+                        const s0 = v.state().scale;
+                        v.zoomBy(1.6, 195, 300);
+                        const s1 = v.state().scale;
+                        v.panBy(40, -30);
+                        const p1 = v.state();
+                        v.reset();
+                        const s2 = v.state().scale;
+                        return {s0, s1, panX: p1.panX, s2};
+                    }""")
+                if not view:
+                    print("  ✗ ズーム/パンAPI（__scene3d.view）が無い")
+                    ng += 1
+                elif not (view["s0"] == 1 and view["s1"] < 1 and view["s2"] == 1
+                          and view["panX"] != 0):
+                    print(f"  ✗ ズーム/パンが効いていない: {view}")
+                    ng += 1
+                else:
+                    print(f"  ✓ ピンチズーム/パン（scale 1→{view['s1']:.2f}→リセット1・パン可）")
 
                 # R79-6: B10再発ガード＝ダークにすると本文色が hairline アルファ(.08〜.22)に
                 # 落ちる一括置換事故の再発を、計算済みcolorの不透明度で機械検知する

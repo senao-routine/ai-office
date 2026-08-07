@@ -997,11 +997,11 @@ const APP_HTML = "<!doctype html><html lang=ja><head>" +
 '#logwrap.open .mask{opacity:1}' +
 '#logwrap.open .sheet{transform:translateY(0)}' +
 /* ⚙️設定シート（フッター4ボタン化） */
-'#runwrap{position:fixed;inset:0;z-index:112;pointer-events:none}' +
-'#runwrap.open{pointer-events:auto}' +
-'#runwrap .mask{position:absolute;inset:0;background:rgba(20,16,10,.5);opacity:0;transition:opacity .28s ease}' +
-'#runwrap.open .mask{opacity:1}' +
-'#runwrap.open .sheet{transform:translateY(0)}' +
+'#runwrap,#lnwrap{position:fixed;inset:0;z-index:112;pointer-events:none}' +
+'#runwrap.open,#lnwrap.open{pointer-events:auto}' +
+'#runwrap .mask,#lnwrap .mask{position:absolute;inset:0;background:rgba(20,16,10,.5);opacity:0;transition:opacity .28s ease}' +
+'#runwrap.open .mask,#lnwrap.open .mask{opacity:1}' +
+'#runwrap.open .sheet,#lnwrap.open .sheet{transform:translateY(0)}' +
 '#rn_list .qopt{margin-bottom:8px}' +
 '#setwrap{position:fixed;inset:0;z-index:115;pointer-events:none}' +
 '#setwrap.open{pointer-events:auto}' +
@@ -1247,6 +1247,11 @@ const APP_HTML = "<!doctype html><html lang=ja><head>" +
 '<h3 id=rn_title>▶ 遠隔実行</h3><div class=who id=rn_hint>Macに登録した操作だけを実行できます</div>' +
 '<div id=rn_list></div><div id=rn_results></div>' +
 '<button class=sub id=rn_close onclick="closeRun()">閉じる</button></div></div>' +
+'<div id=lnwrap><div class=mask onclick="closeLaunch()"></div><div class="sheet">' +
+'<h3 style="margin-bottom:6px" id=ln_title>▶ プロジェクトを起動</h3>' +
+'<p class=hint id=ln_hint style="font-size:11.5px;color:#6c6890;font-weight:600;margin:0 0 10px">過去にMacで開いたことのあるプロジェクトだけが対象です（スマホから新しいフォルダは登録できません）</p>' +
+'<div id=ln_list></div>' +
+'<button class=sub id=ln_close onclick="closeLaunch()">閉じる</button></div></div>' +
 '<div id=setwrap><div class=mask onclick="closeSettings()"></div><div class="sheet">' +
 '<h3 style="margin-bottom:10px" id=st_title>⚙️ 設定</h3>' +
 '<div class=setrow><div><div class=lb id=st_th_lb>🎨 テーマ</div><div class=hint id=st_th_hint>配色を切り替えます</div></div>' +
@@ -1259,6 +1264,10 @@ const APP_HTML = "<!doctype html><html lang=ja><head>" +
 '<div class=seg><button id=st_pt_btn onclick="sendTestPush()">送信</button></div></div>' +
 '<div class=setrow><div><div class=lb id=st_rn_lb>▶ 遠隔実行</div><div class=hint id=st_rn_hint>Macに登録した操作を実行します（登録はMacの前でのみ）</div></div>' +
 '<div class=seg><button id=st_rn_btn onclick="closeSettings();openRun()">開く</button></div></div>' +
+'<div class=setrow><div><div class=lb id=st_ln_lb>▶ プロジェクトを起動</div><div class=hint id=st_ln_hint>休眠中のプロジェクトのセッションをMacで開きます</div></div>' +
+'<div class=seg><button id=st_ln_btn onclick="closeSettings();openLaunch()">開く</button></div></div>' +
+'<div class=setrow><div><div class=lb id=st_res_lb>⚡ リソース</div><div class=hint id=st_res_hint>読み込み中…</div></div></div>' +
+'<div class=setrow><div><div class=lb id=st_lic_lb>🧾 ライセンス</div><div class=hint id=st_lic_hint>読み込み中…</div></div></div>' +
 '<div class=setrow style="border-bottom:0"><div><div class=lb id=st_rp_lb>🔗 再ペアリング</div><div class=hint id=st_rp_hint>この端末の登録をやり直します</div></div>' +
 '<div class=seg><button class=r id=st_rp_btn style="background:var(--danger);color:#fff" onclick="repair()">解除</button></div></div>' +
 '<button class=sub id=st_close onclick="closeSettings()">閉じる</button>' +
@@ -1329,8 +1338,8 @@ PWA_GLOSS_SOURCE +
 'function pulseWave(ctx,duty){if(!ctx||!Number.isFinite(duty)||duty<=0||duty>=1)return null;var waves=PULSE_WAVE_CACHE.get(ctx);if(!waves){waves=new Map();PULSE_WAVE_CACHE.set(ctx,waves)}if(waves.has(duty))return waves.get(duty);var N=24,real=new Float32Array(N+1),imag=new Float32Array(N+1);for(var n=1;n<=N;n++)real[n]=(2/(n*Math.PI))*Math.sin(n*Math.PI*duty);var wave=ctx.createPeriodicWave(real,imag);waves.set(duty,wave);return wave}' +
 'function ensureCtx(){if(!AUDIO.enabled||AUDIO.ctx)return AUDIO.ctx;var AudioCtor=window.AudioContext||window.webkitAudioContext;if(!AudioCtor)return null;try{var ctx=new AudioCtor(),master=ctx.createGain();master.gain.value=.4;master.connect(ctx.destination);AUDIO.ctx=ctx;AUDIO.master=master;return ctx}catch(_){return null}}' +
 'function tone(ctx,dest,o){o=o||{};if(!ctx||!dest||!Number.isFinite(o.freq))return;var at=Number.isFinite(o.at)?o.at:ctx.currentTime,decay=Number.isFinite(o.decay)?o.decay:.2,attack=Number.isFinite(o.attack)?o.attack:.005,peak=Number.isFinite(o.peak)?o.peak:.2;if(!Number.isFinite(at)||!Number.isFinite(decay)||decay<=0)return;var osc=ctx.createOscillator(),gain=ctx.createGain(),wave=pulseWave(ctx,o.duty);if(wave)osc.setPeriodicWave(wave);else osc.type=o.type||"sine";osc.frequency.setValueAtTime(o.freq,at);if(Number.isFinite(o.toFreq)&&o.toFreq>0)osc.frequency.exponentialRampToValueAtTime(o.toFreq,at+decay);gain.gain.setValueAtTime(.0001,at);var attackTime=Math.max(.001,Math.min(decay,attack));gain.gain.linearRampToValueAtTime(Math.max(.0001,peak),at+attackTime);gain.gain.exponentialRampToValueAtTime(.0001,at+decay);osc.connect(gain);gain.connect(dest);osc.start(at);osc.stop(at+decay+.05)}' +
-'function playSoundRecipe(kind,ctx,dest,at){if(kind==="select")tone(ctx,dest,{freq:987.8,duty:.25,at:at,peak:.22,attack:.002,decay:.055});else if(kind==="cursor")tone(ctx,dest,{freq:740,duty:.25,at:at,peak:.12,decay:.03});else if(kind==="send")tone(ctx,dest,{freq:880,duty:.25,at:at,peak:.20,decay:.08,toFreq:1568});else if(kind==="attn"){tone(ctx,dest,{freq:880,duty:.25,at:at,peak:.40,decay:.55});tone(ctx,dest,{freq:1174.7,duty:.25,at:at+.17,peak:.40,decay:.55})}}' +
-'function playSE(kind){if(!AUDIO.enabled||!AUDIO.ctx||!AUDIO.master||document.hidden)return false;var now=performance.now(),min=kind==="attn"?10000:90;if(now-(AUDIO.lastAt[kind]||-Infinity)<min)return false;try{playSoundRecipe(kind,AUDIO.ctx,AUDIO.master,AUDIO.ctx.currentTime);AUDIO.lastAt[kind]=now;AUDIO.played++;return true}catch(_){return false}}' +
+'function playSoundRecipe(kind,ctx,dest,at){if(kind==="select")tone(ctx,dest,{freq:987.8,duty:.25,at:at,peak:.22,attack:.002,decay:.055});else if(kind==="cursor")tone(ctx,dest,{freq:740,duty:.25,at:at,peak:.12,decay:.03});else if(kind==="send")tone(ctx,dest,{freq:880,duty:.25,at:at,peak:.20,decay:.08,toFreq:1568});else if(kind==="talk"){tone(ctx,dest,{freq:980+((performance.now()/16|0)%5)*110,duty:.25,at:at,peak:.06,decay:.028})}else if(kind==="attn"){tone(ctx,dest,{freq:880,duty:.25,at:at,peak:.40,decay:.55});tone(ctx,dest,{freq:1174.7,duty:.25,at:at+.17,peak:.40,decay:.55})}}' +
+'function playSE(kind){if(!AUDIO.enabled||!AUDIO.ctx||!AUDIO.master||document.hidden)return false;var now=performance.now(),min=kind==="attn"?10000:(kind==="talk"?45:90);if(now-(AUDIO.lastAt[kind]||-Infinity)<min)return false;try{playSoundRecipe(kind,AUDIO.ctx,AUDIO.master,AUDIO.ctx.currentTime);AUDIO.lastAt[kind]=now;AUDIO.played++;return true}catch(_){return false}}' +
 'function unlockAudio(){if(!AUDIO.enabled)return;var ctx=ensureCtx();if(ctx){try{ctx.resume().catch(()=>{})}catch(_){}}}' +
 'document.addEventListener("pointerdown",unlockAudio,{capture:true});' +
 'document.addEventListener("visibilitychange",function(){if(!AUDIO.ctx)return;if(document.hidden){try{AUDIO.ctx.suspend().catch(()=>{})}catch(_){}}else if(AUDIO.enabled){try{AUDIO.ctx.resume().catch(()=>{})}catch(_){}}});' +
@@ -1361,7 +1370,7 @@ PWA_GLOSS_SOURCE +
 'function openSheet(e){if(e)playSE("select");if(SHSAY_IV){clearInterval(SHSAY_IV);SHSAY_IV=null}var shsay=document.getElementById("shsay");shsay.textContent="";SEL=e;document.querySelectorAll(".sel").forEach(function(n){n.classList.remove("sel")});if(e&&e.session){document.querySelectorAll("[data-sess]").forEach(function(n){if(n.getAttribute("data-sess")===e.session)n.classList.add("sel")})}document.getElementById("shname").textContent=dispCrew(e);' +
 'var sa=document.getElementById("shava");sa.style.setProperty("--asz","48px");setMono(sa,e);' +
 'document.getElementById("shwho").textContent=activityGlossPWA(e,LANG)+" ・"+fmtAge(e.age);' +
-'var sht=sayText(e);if(window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches){shsay.textContent=sht}else{var shchars=Array.from(sht),shi=0;SHSAY_IV=setInterval(function(){shsay.appendChild(document.createTextNode(shchars[shi++]));if(shi>=shchars.length){clearInterval(SHSAY_IV);SHSAY_IV=null}},18)}' +
+'var sht=sayText(e);if(window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches){shsay.textContent=sht}else{var shchars=Array.from(sht),shi=0;SHSAY_IV=setInterval(function(){shsay.appendChild(document.createTextNode(shchars[shi++]));if(shi%3===0)playSE("talk");if(shi>=shchars.length){clearInterval(SHSAY_IV);SHSAY_IV=null}},18)}' +
 'var dt=document.getElementById("shdetail");dt.innerHTML="";appendWorkBlock(dt,e.work);' +
 // R51: roster の sessions[] 内訳ミニ行（state/age/❗/📨のドットのみ・本文は構造的に持たない）
 'if(Array.isArray(e.sessions)&&e.sessions.length>1){dt.appendChild(el("div","sec",T("👥 セッション内訳（"+e.sessions.length+"）","👥 Sessions ("+e.sessions.length+")")));var sw=el("div","sessrows");e.sessions.slice(0,8).forEach(function(s){var r=el("div","sessrow");r.appendChild(el("span","dot "+(s.state||""),""));r.appendChild(el("span","sessid",String(s.session||"").slice(0,8)));r.appendChild(el("span","sessage",fmtAge(s.age)));if(s.attention)r.appendChild(el("span",null,"❗"));if(s.pending)r.appendChild(el("span",null,"📨"));if(s.minions)r.appendChild(el("span",null,"👥"+s.minions));sw.appendChild(r)});if(e.sessions.length>8)sw.appendChild(el("div","sessrow",T("ほか"+(e.sessions.length-8)+"件","+"+(e.sessions.length-8)+" more")));dt.appendChild(sw)}' +
@@ -1415,7 +1424,32 @@ PWA_GLOSS_SOURCE +
 'function markSeg(){function m(id,on){var b=document.getElementById(id);if(b)b.classList.toggle("on",!!on)}m("sg_th_c",PREF.theme!=="dark");m("sg_th_d",PREF.theme==="dark");m("sg_fs_s",!PREF.big);m("sg_fs_b",PREF.big);m("sg_sd_on",AUDIO.enabled);m("sg_sd_off",!AUDIO.enabled)}' +
 'function setTheme(t){PREF.theme=t;localStorage.setItem("aioffice.theme",t);applyPrefs();markSeg()}' +
 'function setBig(v){PREF.big=v;localStorage.setItem("aioffice.big",v?"1":"0");applyPrefs();markSeg()}' +
-'function openSettings(){markSeg();document.getElementById("setwrap").classList.add("open")}' +
+// R80.6: 設定を「状態が読める場所」へ（ユーザーFB「PC版にあるリソースやライセンスが無い」）。
+// ライセンス=edition.features から導出／リソース=office_json.res(Claude枠%)+relay(中継使用量)。
+// どちらも新しい秘密は運ばない（%とレベルの整数だけ＝redaction設計の内側）。
+'function paintSettingsInfo(){var o=LAST_OFFICE||{};'+
+'var lic=document.getElementById("st_lic_hint");if(lic){var ed=(o.edition&&o.edition.edition)||"";'+
+'lic.textContent=featOn("relayPwa")?T("Pro 有効（スマホ連携・通知・遠隔実行）","Pro active (phone link, push, remote actions)")+(ed?" · "+ed:""):T("無料版（スマホ連携はProで解錠）","Free (phone link unlocks with Pro)")}'+
+'var rs=document.getElementById("st_res_hint");if(rs){var parts=[];var res=o.res||{};'+
+'if(typeof res.fiveHour==="number")parts.push(T("Claude 5時間枠 ","Claude 5h ")+Math.round(res.fiveHour)+"%");'+
+'if(typeof res.sevenDay==="number")parts.push(T("7日枠 ","7d ")+Math.round(res.sevenDay)+"%");'+
+'var rl=o.relay||{};if(typeof rl.pct==="number")parts.push(T("中継使用量 ","Relay ")+Math.round(rl.pct)+"%"+(rl.level>=2?T("（自動減速中）"," (throttled)"):rl.level>=1?T("（減速中）"," (slowed)"):""));'+
+'rs.textContent=parts.length?parts.join(" · "):T("MacのAI Officeを更新すると表示されます","Update AI Office on your Mac to see gauges")}}'+
+'function openSettings(){markSeg();paintSettingsInfo();document.getElementById("setwrap").classList.add("open")}' +
+// R80.6: 休眠プロジェクトの起動（引き当てはMac側launchと同じ「過去に開いた実在プロジェクト」のみ）
+'function paintLaunch(){var host=document.getElementById("ln_list");if(!host)return;host.innerHTML="";'+
+'var o=LAST_OFFICE||{};var known=Array.isArray(o.launchable)?o.launchable:[];'+
+'if(!canAct()){host.appendChild(el("div","empty",T("このMacは遠隔起動に未対応です（AI Officeを更新してください）","This Mac does not support remote launch yet (update AI Office)")));return}'+
+'var act={};officeAgents(o).forEach(function(e){if(e&&e.projectId&&e.state!=="resting")act[e.projectId]=1});'+
+'var rows=known.filter(function(pj){return pj&&pj.projectId&&!act[pj.projectId]});'+
+'if(!rows.length){host.appendChild(el("div","empty",T("起動できる休眠プロジェクトがありません（全部出勤中です）","No dormant projects to launch (everything is on duty)")));return}'+
+'rows.slice(0,12).forEach(function(pj){var b=el("button","qopt");b.type="button";'+
+'b.appendChild(el("span","qopt-label","\u25b6 "+(pj.name||pj.projectId)));'+
+'b.appendChild(el("span","qopt-desc",T("最終稼働: ","Last active: ")+fmtAge(pj.ageSec)));'+
+'b.addEventListener("click",function(){launchProject({projectId:pj.projectId,disp:pj.name||pj.projectId});closeLaunch()});'+
+'host.appendChild(b)})}'+
+'function openLaunch(){paintLaunch();document.getElementById("lnwrap").classList.add("open")}'+
+'function closeLaunch(){var w=document.getElementById("lnwrap");if(w&&w.classList.contains("open"))playSE("cursor");if(w)w.classList.remove("open")}'+
 // ── R79-10 遠隔実行（許可リスト） ────────────────────────────────────────
 // 送信は既存の sign() をそのまま使う（canonical/KATは1バイトも触らない）。
 // session を "act-<16hex>" にするだけで、Mac側 relay_agent が act-分岐で daemon へ回す。
@@ -1507,7 +1541,10 @@ PWA_GLOSS_SOURCE +
 // R79-5: ❗トリアージとロスターは下部ドック（親指圏）。既存ノードは移設＝id重複(B7)を再発させない
 'var dock=el("div",null);dock.id="dock";var cards=document.getElementById("attncards");if(!cards){cards=el("section",null);cards.id="attncards";cards.setAttribute("aria-live","polite")}dock.appendChild(cards);'+
 'var rs=document.getElementById("roster");if(!rs){rs=el("div",null);rs.id="roster"}dock.appendChild(rs);room.appendChild(dock);'+
-'host.addEventListener("click",function(ev){if(!window.__scene3d)return;var r=host.getBoundingClientRect();var id=window.__scene3d.pick(ev.clientX-r.left,ev.clientY-r.top);if(!id)return;var e=empOfAgent(id);if(e)openSheet(e)});'+
+// R80.6: タップは2段（ユーザーFB「いきなりウィンドウでなく、まずフォーカスして
+// どういう作業のアバターか浮かび上がってほしい」）。1度目=カメラが寄る+選択名札+
+// 「誰が・何を」トースト。同じロボの2度目=シート。空きタップ=選択解除+カメラ戻し。
+'host.addEventListener("click",function(ev){if(!window.__scene3d)return;if(window.__scene3d.gestureMoved&&window.__scene3d.gestureMoved())return;var r=host.getBoundingClientRect();var id=window.__scene3d.pick(ev.clientX-r.left,ev.clientY-r.top);if(!id){if(SEL){SEL=null;document.querySelectorAll(".sel").forEach(function(n){n.classList.remove("sel")});window.__scene3d.focus(null)}return}tapAgent(id)});'+
 'var s=document.createElement("script");s.type="module";s.src="/ui/pwa/boot3d.js";s.onerror=scene3dFailed;document.body.appendChild(s);setTimeout(function(){if(SCENE3D==="pending")scene3dFailed()},4000);return host}'+
 // シーンのagent(id=projectId or session) から /status の社員を引く単一の対応点
 'function empOfAgent(id){if(!window.__scene3d)return null;var ags=window.__scene3d.agents()||[];var ag=null;for(var i=0;i<ags.length;i++)if(ags[i].id===id){ag=ags[i];break}var sess=ag?ag.session:id;var list=officeAgents(LAST_OFFICE)||[];for(var j=0;j<list.length;j++)if(list[j]&&list[j].session===sess)return list[j];return null}'+
@@ -1515,6 +1552,9 @@ PWA_GLOSS_SOURCE +
 // 6体以下=全員テキスト名札（識別が最優先・重なりはdrop()が下へ逃がす）。7体以上=二段marker
 // （①全員=足元モノグラムピン ②選択中/❗先頭=テキスト名札）＝390pxで名札が潰れる密度への退避。
 // ノードはid keyedで再利用＝毎フレームの全DOM走査をやめる（B12）。重なりは下へ逃がして解消（デスクトップpaintLabelsと同型）
+// R80.6: 2段タップの単一実装（canvas・名札の両方から呼ぶ）。1度目=フォーカス+選択+
+// 「誰が・何を」トースト（まず注目させる）。同じ対象の2度目=詳細シート。
+'function tapAgent(id){var e=empOfAgent(id);if(!e)return;if(SEL&&SEL.session===e.session){openSheet(e);return}SEL=e;playSE("select");document.querySelectorAll(".sel").forEach(function(n){n.classList.remove("sel")});document.querySelectorAll("[data-sess]").forEach(function(n){if(n.getAttribute("data-sess")===e.session)n.classList.add("sel")});if(window.__scene3d&&window.__scene3d.focus)window.__scene3d.focus(id);note(dispCrew(e)+" \u2014 "+activityGlossPWA(e,LANG)+T("（もう一度タップで詳細）"," (tap again for details)"))}'+
 'var PLATE_NODES={};'+
 'function paintPlates(){var layer=document.getElementById("plates");var s3=window.__scene3d;if(!layer||!s3)return;var ags=s3.agents()||[];var W=layer.clientWidth||0;'+
 'var emps=officeAgents(LAST_OFFICE)||[],bySess={};emps.forEach(function(x){if(x&&x.session)bySess[x.session]=x});'+
@@ -1526,7 +1566,7 @@ PWA_GLOSS_SOURCE +
 'var attn=e?needsAttn(e):!!a.attention;var sel=!!(SEL&&e&&SEL.session===e.session);var text=showAll||sel||!!(attn&&attnFirst&&e&&e.session===attnFirst.session);'+
 'var kind=text?"plate":"pin";var n=PLATE_NODES[a.id];'+
 'if(n&&n.getAttribute("data-kind")!==kind){n.remove();n=null}'+
-'if(!n){if(text){n=el("button","plate");n.type="button";n.appendChild(el("i","dot"));n.appendChild(el("span","nm",""));(function(id){n.addEventListener("click",function(){var cur=empOfAgent(id);if(cur)openSheet(cur)})})(a.id)}else{n=el("span","pin")}n.setAttribute("data-kind",kind);PLATE_NODES[a.id]=n;layer.appendChild(n)}'+
+'if(!n){if(text){n=el("button","plate");n.type="button";n.appendChild(el("i","dot"));n.appendChild(el("span","nm",""));(function(id){n.addEventListener("click",function(){tapAgent(id)})})(a.id)}else{n=el("span","pin")}n.setAttribute("data-kind",kind);PLATE_NODES[a.id]=n;layer.appendChild(n)}'+
 'seen[a.id]=1;'+
 'var cls=kind+(e&&e.state?" st-"+e.state:"")+((e&&e.external)?" ext":"")+(attn?" attn":"")+(sel?" sel":"");'+
 'if(n.className!==cls)n.className=cls;'+
@@ -1542,7 +1582,7 @@ PWA_GLOSS_SOURCE +
 // R79-6: チップ先頭にモノグラム（3Dの足元ピンと同じ文字＋状態リング＝対応が学習できる）。
 // R80.5: 述語(activityGloss)を常設の下段に＝タップしなくても「誰が・何を」が読める。×N=セッション内訳
 'function paintEmptyHint(n){var room=document.getElementById("room");if(!room)return;var el0=document.getElementById("emptyhint");if(n>0){if(el0)el0.remove();return}if(el0)return;var box=el("div",null);box.id="emptyhint";box.appendChild(el("div","eh-t",T("まだ誰も出勤していません","Nobody is on duty yet")));box.appendChild(el("div","eh-s",T("Macのターミナルで claude を起動すると、そのプロジェクトがここに出勤します。","Start claude in a terminal on your Mac and the project will show up here.")));room.appendChild(box)}'+
-'function paintRoster(office){var bar=document.getElementById("roster");if(!bar)return;var emps=officeAgents(office).slice().sort(triageSort);var seen={};emps.forEach(function(e){var key=e.session||"";seen[key]=1;var n=null,all=bar.querySelectorAll(".rchip");for(var i=0;i<all.length;i++)if(all[i].getAttribute("data-sess")===key){n=all[i];break}if(!n){n=el("button","rchip");n.type="button";n.setAttribute("data-sess",key);n.appendChild(el("span","mono"));var tx=el("span","rtxt");tx.appendChild(el("span","nm",""));tx.appendChild(el("span","gl",""));n.appendChild(tx);n.addEventListener("click",function(){var cur=(officeAgents(LAST_OFFICE)||[]).filter(function(x){return x&&x.session===key})[0];if(!cur)return;openSheet(cur);if(window.__scene3d&&window.__scene3d.focus){var ags=window.__scene3d.agents()||[];for(var j=0;j<ags.length;j++)if(ags[j].session===key){window.__scene3d.focus(ags[j].id);break}}});bar.appendChild(n)}n.setAttribute("data-state",e.state||"");n.className="rchip"+(needsAttn(e)?" attn":"")+(SEL&&SEL.session===key?" sel":"");setMono(n.querySelector(".mono"),e);var rnm=dispCrew(e)+((Array.isArray(e.sessions)&&e.sessions.length>1)?" \u00d7"+e.sessions.length:"");var rn=n.querySelector(".nm");if(rn.textContent!==rnm)rn.textContent=rnm;var gl0=activityGlossPWA(e,LANG)||"";var gn=n.querySelector(".gl");if(gn&&gn.textContent!==gl0)gn.textContent=gl0;var tt=rnm+" \u2014 "+gl0;if(n.title!==tt)n.title=tt});var nodes=bar.querySelectorAll(".rchip");for(var q=nodes.length-1;q>=0;q--)if(!seen[nodes[q].getAttribute("data-sess")])nodes[q].remove()}'+
+'function paintRoster(office){var bar=document.getElementById("roster");if(!bar)return;var emps=officeAgents(office).slice().sort(triageSort);var seen={};emps.forEach(function(e){var key=e.session||"";seen[key]=1;var n=null,all=bar.querySelectorAll(".rchip");for(var i=0;i<all.length;i++)if(all[i].getAttribute("data-sess")===key){n=all[i];break}if(!n){n=el("button","rchip");n.type="button";n.setAttribute("data-sess",key);n.appendChild(el("span","mono"));var tx=el("span","rtxt");tx.appendChild(el("span","nm",""));tx.appendChild(el("span","gl",""));n.appendChild(tx);n.addEventListener("click",function(){var cur=(officeAgents(LAST_OFFICE)||[]).filter(function(x){return x&&x.session===key})[0];if(!cur)return;openSheet(cur);if(window.__scene3d&&window.__scene3d.focus){var ags=window.__scene3d.agents()||[];for(var j=0;j<ags.length;j++)if(ags[j].session===key){window.__scene3d.focus(ags[j].id);break}}});bar.appendChild(n)}n.setAttribute("data-state",e.state||"");n.className="rchip"+(needsAttn(e)?" attn":"")+(SEL&&SEL.session===key?" sel":"");setMono(n.querySelector(".mono"),e);var rnm=dispCrew(e);var rn=n.querySelector(".nm");if(rn.textContent!==rnm)rn.textContent=rnm;var gl0=activityGlossPWA(e,LANG)||"";var gn=n.querySelector(".gl");if(gn&&gn.textContent!==gl0)gn.textContent=gl0;var tt=rnm+" \u2014 "+gl0;if(n.title!==tt)n.title=tt});var nodes=bar.querySelectorAll(".rchip");for(var q=nodes.length-1;q>=0;q--)if(!seen[nodes[q].getAttribute("data-sess")])nodes[q].remove()}'+
 'window.__paintPlates=paintPlates;'+
 // 3Dモジュールは非同期で載る。載った瞬間に**シーンだけ**描き直す。
 // ここで dispatch()（全再描画）を呼ぶと、設定シート等の開いているDOMが差し替わり
@@ -1575,7 +1615,7 @@ PWA_GLOSS_SOURCE +
 'var hs=document.getElementById("hstats");if(!hs)return;hs.innerHTML="";function mk(cls,lb,n,tip){var s=el("span","hstat"+(cls?" "+cls:""));s.appendChild(document.createTextNode(lb));s.appendChild(el("b",null,String(n)));s.title=tip;s.addEventListener("click",function(){note(tip)});hs.appendChild(s)}' +
 // R80-A10: タッチ端末に title は出ないので、タップで内訳（作業中N + サブエージェントM）を言う。
 // 「稼働12」が実は3+9だった、という一目の誤解を潰す。
-'if(al)mk("attn","❗",al,T("要対応（承認/質問まち）","Needs attention (approvals/questions)"));mk("",T("稼働","Active"),w+mn,T("作業中セッション"+w+" + サブエージェント"+mn,"Working sessions "+w+" + subagents "+mn));mk("",T("待機","Idle"),wa,T("指示待ちセッション","Sessions waiting for instructions"))}' +
+'var tl=document.querySelector(".hdr2 .ttl");if(tl){var htxt=emps.length?("🏢 "+emps.length+T("プロジェクト"," projects")):"🏢 AI Office";if(tl.textContent!==htxt)tl.textContent=htxt}if(al)mk("attn","❗",al,T("要対応（承認/質問まち）","Needs attention (approvals/questions)"));mk("",T("稼働","Active"),w+mn,T("作業中セッション"+w+" + サブエージェント"+mn,"Working sessions "+w+" + subagents "+mn));mk("",T("待機","Idle"),wa,T("指示待ちセッション","Sessions waiting for instructions"))}' +
 'function dispatch(){var off=LAST_OFFICE;var emps=officeAgents(off);var sig=sceneSig(emps);if(sig===LAST_SIG&&VIEW===LAST_VIEW)return;var sy=window.scrollY;LAST_SIG=sig;LAST_VIEW=VIEW;buildHeader(emps);buildDeptbar(emps);var room=document.getElementById("room"),list=document.getElementById("list");var to=document.getElementById("tb_office"),tl=document.getElementById("tb_list");if(to)to.classList.toggle("on",VIEW==="office");if(tl)tl.classList.toggle("on",VIEW!=="office");if(VIEW==="office"){room.classList.remove("hidden");list.classList.add("hidden");renderScene(off)}else{list.classList.remove("hidden");room.classList.add("hidden");renderList(off)}window.scrollTo(0,sy)}' +
 'function setView(v){if(VIEW!==v)playSE("cursor");VIEW=v;localStorage.setItem("aioffice.view",VIEW);dispatch()}' +
 // R79-7: status適用の単一路。HTTPポーリング応答もWS pushフレームも必ずここを通る
@@ -1625,7 +1665,7 @@ PWA_GLOSS_SOURCE +
 'if(lived>=WS_MIN_ALIVE)WS_TRY=0;wsStop();if(!document.hidden)wsRetry()}}' +
 'window.__office_ws={get on(){return WS_ON},get tries(){return WS_TRY},' +
 'get attempts(){return WS_STAMPS.length},budgetDelay:wsBudgetDelay};' +
-'document.addEventListener("keydown",function(ev){if(ev.key!=="Escape")return;if(document.getElementById("logwrap").classList.contains("open"))closeLog();else if(document.getElementById("runwrap").classList.contains("open"))closeRun();else if(document.getElementById("setwrap").classList.contains("open"))closeSettings();else closeSheet()});' +
+'document.addEventListener("keydown",function(ev){if(ev.key!=="Escape")return;if(document.getElementById("logwrap").classList.contains("open"))closeLog();else if(document.getElementById("runwrap").classList.contains("open"))closeRun();else if(document.getElementById("lnwrap").classList.contains("open"))closeLaunch();else if(document.getElementById("setwrap").classList.contains("open"))closeSettings();else closeSheet()});' +
 // R51: 基本ポーリング 5秒→20秒（CF無料枠対策）。R79-7: 表示中はWSが主役＝復帰時は即poll1発
 // →WS再接続（openでポーリング停止）。非表示はWSも切る（iOSはどのみち凍結する＝電池）。
 'document.addEventListener("visibilitychange",function(){if(document.hidden){stopPolling();wsStop()}else if(getCred()&&!document.getElementById("app").classList.contains("hidden")){poll();startPolling();wsConnect()}});' +

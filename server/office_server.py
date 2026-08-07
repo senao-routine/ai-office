@@ -1282,6 +1282,8 @@ def scan_office():
         "edition": edition_info,
         "actions": actions_view,
         "relay": relay_view,
+        "res": status_board.claude_gauge_public(now),
+        "launchable": launchable_projects(now),
         "lang": _LANG,
         "counts": {
             "working": sum(1 for e in employees if e["state"] == "working"),
@@ -2370,6 +2372,34 @@ def set_relay_usage(usage):
         return True
     except (OSError, TypeError, ValueError):
         return False
+
+
+_LAUNCHABLE_CACHE = {"ts": 0.0, "data": []}
+
+
+def launchable_projects(now=None):
+    """R80.6: スマホの「▶ プロジェクトを起動」用の一覧。projectId＋表示名＋鮮度のみ＝
+    **パスは1バイトも載せない**（中継に流れる前提。引き当ては exec_remote_action の launch と
+    同じ projects_index＝過去に本当に開かれたプロジェクトだけ）。projects_index はディレクトリ
+    走査を伴うので60秒キャッシュ（/api/office は数秒毎に呼ばれる）。"""
+    now = time.time() if now is None else now
+    cache = _LAUNCHABLE_CACHE
+    if now - cache["ts"] < 60:
+        return cache["data"]
+    out = []
+    try:
+        for prj in (projects_index.projects_json(now).get("projects") or [])[:24]:
+            path = prj.get("cwd") or ""
+            if not path:
+                continue
+            out.append({"projectId": project_id_for(path),
+                        "name": prj.get("name") or Path(path).name,
+                        "ageSec": int(prj.get("ageSec") or 0)})
+    except Exception:   # 補助データが office_json 本体を殺さない（fail-soft）
+        out = []
+    cache["ts"] = now
+    cache["data"] = out[:12]
+    return cache["data"]
 
 
 def relay_usage():

@@ -958,10 +958,15 @@ class PrivacyIsolationRegressionTest(unittest.TestCase):
             # R50: roster/rosterCounts/tasks を追加（status_board は依然として混ぜない）
             # R79-10: actions（許可リストの最小ビュー＋実行結果）を追加。argv/cwd/env は
             # recipes_public が落とすので中継へ構成情報は出ない（下の relay push 検査でピン）。
+            # R80.6: res は claude_gauge_public の**最小形だけ**（%とstale。account/emailは
+            # 構造的に出さない＝中継に新しい秘密を運ばない）。launchable も projectId+名前のみ。
             self.assertEqual(set(snapshot), {"officeName", "employees", "history", "generatedAt",
                                              "setup", "counts", "edition", "lang",
                                              "roster", "rosterCounts", "tasks", "actions",
-                                             "relay"})
+                                             "relay", "res", "launchable"})
+            if snapshot["res"] is not None:
+                self.assertLessEqual(set(snapshot["res"]),
+                                     {"fiveHour", "sevenDay", "staleSec"})
 
             relay = _exec_module(ROOT / "server" / "relay_agent.py", "relay_status_isolation")
             relay.office = office
