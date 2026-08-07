@@ -48,22 +48,30 @@ And privacy is structural, not a setting: message bodies are stripped **on your 
 
 ```bash
 git clone https://github.com/senao-routine/ai-office.git && cd ai-office
-python3 server/office_server.py
+bash setup.sh
 ```
 
-Open <http://localhost:4780> — sessions on your Mac appear as robots. Try the demo at `/?demo=1`.
-
-**Enable instruction delivery** (1 minute — this is the half you'll love):
+That's it. `setup.sh` wires the Stop hook (so your replies reach the real session), installs the
+resident app (starts at login), **runs the launchctl steps for you**, verifies the server responds,
+and opens the office. Re-running it is safe.
 
 ```bash
-bash hooks/install.sh --wire   # wires a Stop hook into ~/.claude/settings.json (backup kept)
+bash setup.sh --check       # diagnose only — changes nothing
+bash setup.sh --no-daemon   # just run it here, don't install as a resident app
 ```
 
-Run it as a resident app (starts at login, survives restarts):
+Open <http://localhost:4780> — sessions on your Mac appear as robots.
+No sessions yet? `/?demo=1` shows a populated office.
 
-```bash
-bash macapp/install.sh
-```
+### What it touches
+
+- `~/.claude/settings.json` — adds a Stop hook (a backup is kept). This is what lets your answers
+  reach the running session.
+- `~/Library/Application Support/AIOffice/` — the app and its data
+- `~/Library/LaunchAgents/com.senao.aioffice.plist` — starts the office at login
+- **macOS will ask for permission** the first time the office opens a Terminal for you
+  ("Python wants to control Terminal") and when it posts a notification. Both are expected;
+  the office only ever reads your transcripts and never sends their contents anywhere.
 
 ### MCP setup (optional)
 
@@ -72,13 +80,21 @@ claude mcp add --scope user aioffice -- "$(command -v python3)" "$PWD/server/mcp
 claude mcp list   # → aioffice: connected
 ```
 
-## Phone setup (Pro)
+## Phone setup (paid)
 
-The mobile relay runs on **your own Cloudflare account** (free tier is plenty):
+The mobile relay runs on **your own Cloudflare account** (the free tier is plenty — the office
+keeps its own daily budget and slows itself down long before you could hit a limit).
 
-1. `bash relay/deploy.sh` — deploys the Worker + Durable Object
-2. Office UI → **📱 Phone pairing** → issue a device → scan the QR with your iPhone
-3. Add to Home Screen (iOS 16.4+) → toggle 🔔 to enable push
+```bash
+bash relay/setup.sh
+```
+
+One command: it signs you in to Cloudflare if needed, generates the tokens and the push key,
+deploys the Worker, writes `~/.claude/office_relay.json`, and checks the round trip.
+Then, in the office UI: **📱 Phone pairing** → issue a device → open the link on your iPhone →
+Add to Home Screen (iOS 16.4+) → tap 🔔 for push.
+
+Requires Node.js (for `wrangler`) and a free Cloudflare account.
 
 Security model: the relay carries a transport token only and **cannot forge instructions** — authenticity is verified on your Mac with a per-device HMAC key that never leaves it.
 
@@ -100,6 +116,7 @@ The OpenClaw edition is **not a trial and does not expire** — start it with
 ## Requirements
 
 - macOS (Apple Silicon or Intel), Python 3.9+ (the system `python3` works)
+- Node.js — only for the optional phone relay (`wrangler` runs through `npx`)
 - [Claude Code](https://claude.com/claude-code) — the office visualizes its local sessions
   (not required for the OpenClaw edition, which shows agents from your OpenClaw machine instead)
 - UI language: English / Japanese (auto-detected from your locale; set `"lang"` in `office_config.json` to pin)

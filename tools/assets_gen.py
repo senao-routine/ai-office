@@ -37,7 +37,6 @@ REPO_ASSETS = HERE.parent / "assets"   # repo正本（app/ deploy-copyには存�
 
 def _sync_repo(filenames):
     """生成先がOFFICE_DATA(data側)のとき、標準アセットを repo assets/（SSOT）へ自動同期し、
-    PWA同梱索引（relay/src/sprites_data.js）も再生成する。cp忘れ＝PWAスプライト欠落・
     クリーンclone破壊の根を断つ（2026-07-11・手動cpルールの自動化）。
     custom キャラ（利用者ランタイムデータ）は呼び出し側で対象外にしている。"""
     if not REPO_ASSETS.is_dir():
@@ -67,14 +66,7 @@ def _sync_repo(filenames):
     if not copied:
         return
     print(f"↻ repo assets/ へ自動同期: {' '.join(copied)}", flush=True)
-    import subprocess
-    r = subprocess.run([sys.executable, str(HERE / "gen_pwa_sprites.py")])
-    if r.returncode == 0:
-        print("↻ relay/src/sprites_data.js 再生成済み（git commit を忘れずに・検証= verify ▶3b）",
-              flush=True)
-    else:
-        print("⚠ gen_pwa_sprites.py 失敗 → 手動再生成してから verify ▶3b を確認",
-              file=sys.stderr, flush=True)
+    # R79: PWAスプライト同梱(gen_pwa_sprites)は全廃＝再生成の後処理は不要になった
 
 STYLE = ("retro 16-bit pixel art game sprite, cute chibi office worker about 2.5 heads tall, "
          "front facing, standing straight, full body centered, big expressive eyes, rosy cheeks, "

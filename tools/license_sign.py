@@ -66,9 +66,13 @@ def _sign(lic, n, d):
     return format(pow(em, d, n), "x")
 
 
-def build_license(edition, email, n, e, d, key_id=None):
+def build_license(edition, email, n, e, d, key_id=None, product=None):
+    """R80: 既定で **v2（product入り）** を発行する。1組の署名鍵で複数プロダクト
+    （AI Office / 他アプリ / 有料スキル）を扱うため、鍵がどの製品向けかを署名対象に含める。
+    product=None は "ai-office"。v1（product無し）は既発行分の互換のためだけに残す。"""
     lic = {
-        "v": 1,
+        "v": 2,
+        "product": product or liccheck.LEGACY_PRODUCT,
         "edition": edition,
         "key_id": key_id or ("manual-" + secrets.token_hex(4)),
         "issued": int(time.time()),
@@ -87,7 +91,8 @@ def issue(args, install=False):
     if n != liccheck.PUBKEY_N:
         print("⚠ 署名鍵が server/license.py の PUBKEY_N と不一致（この出力は製品側で無効）",
               file=sys.stderr)
-    lic = build_license(args.edition, args.email, n, e, d, key_id=args.key_id)
+    lic = build_license(args.edition, args.email, n, e, d, key_id=args.key_id,
+                        product=getattr(args, "product", None))
     body = json.dumps(lic, ensure_ascii=False, indent=2)
     if install:
         LICENSE_OUT.write_text(body, encoding="utf-8")
@@ -110,6 +115,9 @@ def main():
         p.add_argument("--edition", required=True, choices=list(liccheck.VALID_LICENSE_EDITIONS))
         p.add_argument("--email", required=True)
         p.add_argument("--key-id", default=None)
+        # R80: 1組の署名鍵で複数プロダクトを扱う（鍵の使い回しを署名で禁じる）
+        p.add_argument("--product", default=None,
+                       help="対象プロダクト（既定 ai-office。例: sakutto-editor / skill-xxx）")
         if name == "issue":
             p.add_argument("--out", default=None)
     args = ap.parse_args()

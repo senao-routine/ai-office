@@ -35,6 +35,7 @@ if str(SERVER) not in sys.path:
     sys.path.insert(0, str(SERVER))
 import office_server as office     # noqa: E402  verify_envelope 再利用（canonical/KAT非接触）
 import relay_agent as ra           # noqa: E402  _first_chunk 再利用（4000字繰り越しの単一正本）
+import ws_client as wsc            # noqa: E402  R79-9: WS常時接続（KATはtest_ws_client）
 
 NET_ERRORS = (urllib.error.URLError, OSError, ValueError)
 _HOME = Path(os.environ.get("OFFICE_HOME", str(Path.home())))
@@ -127,12 +128,9 @@ def _deliver(session, text):
     tmp.rename(OC_INBOX / f"{session}.json")
 
 
-def pull_and_deliver(url, token, devices):
-    """1周: peek → 検証 → セッション別集約配達 → 成功分だけ ack。配達セッション数を返す。"""
-    d = _req("GET", url + "/pull?site=" + SITE, token)
-    items = d.get("items", [])
-    if not items:
-        return 0
+def _handle_items(items, devices):
+    """peek済みitemsを 検証 → セッション別集約配達。(delivered, ack_ids) を返す。
+    ack の送達は呼び出し側（HTTP=同周POST /ack・WS=次syncのackIds）＝コアはHTTP/WS共有。"""
     now = int(time.time())
     for k in [k for k, exp in _NONCES.items() if exp < now]:
         del _NONCES[k]
@@ -190,12 +188,110 @@ def pull_and_deliver(url, token, devices):
 
     if committed:
         _save_nonces()
+    return delivered, ack_ids
+
+
+def pull_and_deliver(url, token, devices):
+    """HTTP退避経路の1周: peek → 検証・配達（_handle_items）→ 成功分だけ ack。"""
+    d = _req("GET", url + "/pull?site=" + SITE, token)
+    items = d.get("items", [])
+    if not items:
+        return 0
+    delivered, ack_ids = _handle_items(items, devices)
     if ack_ids:
         try:
             _req("POST", url + "/ack?site=" + SITE, token, {"ids": ack_ids})
         except NET_ERRORS as e:
             print(f"⚠ ack送信失敗・次周は既視nonceでdropされ二重配達しない: {e}", flush=True)
     return delivered
+
+
+# ── R79-9: WS常時接続（wake駆動＝アイドル時0リクエスト・RELAY_WS=0でHTTPへ・--onceは常にHTTP） ──
+WS_ENABLED = os.environ.get("RELAY_WS", "1") != "0"
+WS_FAIL_DEMOTE = 3
+WS_DEMOTE_SECONDS = 600.0
+WS_KEEPALIVE = 25.0      # "p"→DO auto-response "P"＝課金ゼロ
+WS_DEAD_AFTER = 90.0
+WS_SYNC_TIMEOUT = 15.0
+
+
+def _ws_url(url):
+    if url.startswith("https://"):
+        base = "wss://" + url[len("https://"):]
+    elif url.startswith("http://"):
+        base = "ws://" + url[len("http://"):]
+    else:
+        base = url
+    return base + "/ws?role=agent&site=" + SITE
+
+
+def _ws_sync(ws, ack_ids):
+    """WS上の1周: {"t":"sync"} 送信 → items応答。officeはNone（miniは受信専門）。"""
+    ws.send_text(json.dumps({"t": "sync", "office": None,
+                             "ackIds": list(ack_ids), "wantOpenclaw": False}))
+    deadline = time.time() + WS_SYNC_TIMEOUT
+    while True:
+        remain = deadline - time.time()
+        if remain <= 0:
+            raise wsc.WSError("sync応答タイムアウト")
+        m = ws.recv(timeout=remain)
+        if m is None:
+            raise wsc.WSError("sync応答タイムアウト")
+        if m == "P":
+            continue
+        try:
+            d = json.loads(m)
+        except ValueError:
+            continue
+        if isinstance(d, dict) and d.get("t") == "sync":
+            if not d.get("ok"):
+                raise wsc.WSError(f"sync拒否: {d}")
+            return d.get("items") or []
+        # wake は今まさに同期中＝この直後の items に載っているので読み流してよい
+
+
+def ws_loop(url, token, devices):
+    """WS常時接続の1セッション。例外（切断・無応答）でのみ戻る。
+    idle は recv がそのまま wake 待ち＝oc-宛指示は転送の瞬間に届く。"""
+    ws = wsc.WSClient(_ws_url(url), token=token, timeout=10,
+                      user_agent="aioffice-openclaw-agent/1.0")
+    ws.connect()
+    print(f"🔌 WS接続 site={SITE}（wake駆動）", flush=True)
+    try:
+        pending_acks = []
+        need_sync = True     # 接続直後に1回（切断中に積まれた分の取りこぼし防止）
+        last_ka = time.time()
+        last_rx = time.time()
+        while True:
+            if need_sync or pending_acks:
+                items = _ws_sync(ws, pending_acks)
+                last_rx = time.time()
+                pending_acks = []
+                delivered, ack_ids = _handle_items(items, devices)
+                if delivered:
+                    print(f"📥 {delivered}セッションへ配達 (openclaw_inbox)", flush=True)
+                pending_acks = ack_ids
+                need_sync = bool(ack_ids)   # ackは即flush（at-least-once窓を最短化）
+                continue
+            m = ws.recv(timeout=30.0)
+            now = time.time()
+            if m is not None:
+                last_rx = now
+                if m != "P":
+                    try:
+                        d = json.loads(m)
+                    except ValueError:
+                        d = None
+                    if isinstance(d, dict) and d.get("t") == "wake":
+                        need_sync = True
+                        continue
+            if now - last_ka >= WS_KEEPALIVE:
+                ws.send_text("p")
+                last_ka = now
+            if now - last_rx >= WS_DEAD_AFTER:
+                raise wsc.WSError(f"無応答{int(now - last_rx)}秒（keepalive途絶）")
+    finally:
+        ws.close()
 
 
 def main():
@@ -208,9 +304,29 @@ def main():
     devices = {"devices": {device_id: {"secret": secret, "revoked": False,
                                        "expires": 2**53, "label": "oc-forward"}}}
     _load_nonces()
-    print(f"🦞 openclaw_agent 起動: {url} site={SITE} (間隔{interval:g}s"
+    ws_mode = WS_ENABLED and not once   # --once は常にHTTP＝E2E/デバッグの決定論
+    print(f"🦞 openclaw_agent 起動: {url} site={SITE} "
+          f"({'WS常時接続・退避HTTP' + format(interval, 'g') + 's' if ws_mode else '間隔' + format(interval, 'g') + 's'}"
           f"{' ・1周のみ' if once else ''})", flush=True)
+    ws_fail = 0
+    ws_down_until = 0.0
     while True:
+        # R79-9: WSが主経路。切断は再接続・3連続失敗で10分だけHTTPへ降格（自動復帰）
+        if ws_mode and time.time() >= ws_down_until:
+            started = time.time()
+            try:
+                ws_loop(url, token, devices)   # 例外でのみ戻る
+            except Exception as e:   # WSは何が来ても本流(HTTP退避)を守る
+                lived = time.time() - started
+                ws_fail = 1 if lived > 60 else ws_fail + 1
+                print(f"⚠ WS切断（{lived:.0f}s生存・連続{ws_fail}回目）: {e}", flush=True)
+                if ws_fail >= WS_FAIL_DEMOTE:
+                    ws_down_until = time.time() + WS_DEMOTE_SECONDS
+                    ws_fail = 0
+                    print(f"↩ {int(WS_DEMOTE_SECONDS / 60)}分間 HTTPポーリングへ降格（自動復帰）",
+                          flush=True)
+                time.sleep(min(2.0 * ws_fail + 1.0, 10.0))
+            continue
         try:
             n = pull_and_deliver(url, token, devices)
             if n:

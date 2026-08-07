@@ -453,17 +453,123 @@ class RelayAgentTest(unittest.TestCase):
         ra.office.office_json = lambda: json.loads(json.dumps(fixed))
         calls, items = self._mock_sync([self._sign(text="やあ")])
         state = {"acks": [], "fp": None, "pushed_at": 0.0}
-        n, seen = ra.sync_tick("http://x", "t", state)
+        n, seen, app_online = ra.sync_tick("http://x", "t", state)   # R79-8: 3タプル（appOnline追加）
         self.assertEqual(n, 1)
         self.assertTrue(self._inbox("relaytest-0001").exists())
         self.assertEqual(state["acks"], [1])                       # ackは次周へ持ち越し
         self.assertIsNotNone(calls["sync"][0]["office"])           # 初回は必ずpush
         self.assertIsNone(seen)
-        n2, _ = ra.sync_tick("http://x", "t", state)
+        self.assertFalse(app_online)                               # WS未接続のモックではFalse
+        n2, _, _ = ra.sync_tick("http://x", "t", state)
         self.assertEqual(calls["sync"][1]["ackIds"], [1])          # 前周の配達分を削除
         self.assertIsNone(calls["sync"][1]["office"])              # 無変化＝push省略
         self.assertEqual(items, [])                                # DO側から消えた
         self.assertEqual((n2, state["acks"]), (0, []))
+
+    # ── R79-10: act-封筒は office_inbox に書かず daemon へ回す ──
+    def test_r7910_act_goes_to_daemon_not_inbox(self):
+        """act- 宛は post_instruction を呼ばない（孤児inbox根絶）＋daemonへPOSTして ack。"""
+        self._seed_device()
+        calls = []
+        ra._post_action = lambda payload: (calls.append(payload) or {"ok": True, "state": "running"})
+        posted = []
+        real_post = ra.office.post_instruction
+        ra.office.post_instruction = lambda s, t: (posted.append((s, t)) or (True, "ok"))
+        try:
+            act = {"aioffice": 1, "kind": "run", "recipe": "r_verify", "args": [],
+                   "reqId": "req-unit0001"}
+            env = self._sign(session="act-0123456789abcdef", text=json.dumps(act))
+            items = [{"id": 7, "session": env["session"], "ts": int(time.time()),
+                      "text": json.dumps(env)}]
+            delivered, ack_ids = ra._process_items(items)
+        finally:
+            ra.office.post_instruction = real_post
+        self.assertEqual(posted, [], "act- が office_inbox へ書かれた（孤児inbox）")
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0]["action"]["recipe"], "r_verify")
+        self.assertEqual((delivered, ack_ids), (1, [7]))
+        self.assertFalse(self._inbox("act-0123456789abcdef").exists())
+
+    def test_r7910_act_not_acked_when_daemon_down(self):
+        """daemon不達なら **ackせず・nonceも焼かず** 残置（次周で再送＝配達durabilityの掟）。"""
+        self._seed_device()
+
+        def boom(_payload):
+            raise OSError("daemon down")
+        ra._post_action = boom
+        act = {"aioffice": 1, "kind": "run", "recipe": "r_verify", "args": [],
+               "reqId": "req-unit0002"}
+        env = self._sign(session="act-fedcba9876543210", text=json.dumps(act))
+        items = [{"id": 9, "session": env["session"], "ts": int(time.time()),
+                  "text": json.dumps(env)}]
+        delivered, ack_ids = ra._process_items(items)
+        self.assertEqual((delivered, ack_ids), (0, []))
+        key = f'{env["device_id"]}:{env["nonce"]}'
+        self.assertNotIn(key, ra._NONCES, "不達なのに nonce を焼いた（恒久ロストの原因）")
+
+    def test_r7910_act_bad_format_is_acked_and_dropped(self):
+        """形式不正の act- は恒久不正＝即ackで捨てる（キューを詰まらせない）。"""
+        self._seed_device()
+        ra._post_action = lambda payload: {"ok": True}
+        env = self._sign(session="act-00112233445566aa", text="これはJSONではない")
+        items = [{"id": 11, "session": env["session"], "ts": int(time.time()),
+                  "text": json.dumps(env)}]
+        delivered, ack_ids = ra._process_items(items)
+        self.assertEqual((delivered, ack_ids), (1, [11]))
+
+    def test_r7910_redaction_keeps_actions_but_drops_paths(self):
+        """office_json に増えた actions は中継へ通るが、cwd等のパスは従来どおり落ちる。"""
+        snap = {"employees": [{"session": "s", "cwd": "/Users/me/secret", "lastSaid": "本文"}],
+                "roster": [], "actions": {"recipes": [{"id": "r1", "label": "検証"}],
+                                          "results": [], "caps": {"actions": 1}}}
+        out = ra._redact_office_for_relay(json.loads(json.dumps(snap)))
+        self.assertEqual(out["employees"][0]["cwd"], "")
+        self.assertEqual(out["employees"][0]["lastSaid"], "")
+        self.assertEqual(out["actions"]["recipes"][0]["id"], "r1")
+
+    # ── R80: 通信の安全弁（Cloudflare無料枠を割る前に自分で減速する） ──
+    def test_r80_cross_do_throttle(self):
+        """C2: wantOpenclaw は **claude単体では常にFalse**・有効でも60秒に1回まで。
+        （Worker側で別DOへのRPC=1:1課金になり、WSの20:1圧縮を無効化するため）"""
+        ra._openclaw_enabled = lambda: False
+        self.assertFalse(ra._want_openclaw({}, 0.0))
+        ra._openclaw_enabled = lambda: True
+        state = {}
+        self.assertTrue(ra._want_openclaw(state, 1000.0))       # 初回は取りに行く
+        state["oc_fetched_at"] = 1000.0
+        self.assertFalse(ra._want_openclaw(state, 1030.0))      # 30秒後はまだ
+        self.assertTrue(ra._want_openclaw(state, 1061.0))       # 60秒超で再取得
+
+    def test_r80_scan_slows_down_as_usage_rises(self):
+        """使用量レベルが上がるほど scan 間隔が伸びる（純関数・決定論）。"""
+        self.assertEqual(ra._scan_interval(True, 0), ra.SCAN_FAST)
+        self.assertEqual(ra._scan_interval(True, 1), ra.SCAN_FAST * 2)
+        self.assertEqual(ra._scan_interval(True, 2), ra.SCAN_FAST * 6)
+        self.assertEqual(ra._scan_interval(False, 2), ra.SCAN_SLOW * 6)
+        # 不正値でも減速側に倒れない（既定倍率1.0）
+        self.assertEqual(ra._scan_interval(False, "x"), ra.SCAN_SLOW)
+
+    def test_r80_usage_is_forwarded_to_ui(self):
+        """C7: 中継が返した usage が office 側（UIの観測点）へ渡る。"""
+        self._seed_device()
+        got = {}
+        ra.office.set_relay_usage = lambda u: got.update(u) or True
+        ra.office.office_json = lambda: {"roster": [], "employees": []}
+        state = {"acks": [], "fp": None, "pushed_at": 0.0}
+        d = {"ok": True, "items": [], "usage": {"rows": 51234, "limit": 100000,
+                                                "pct": 51, "level": 1}}
+        ra._sync_apply(d, state, {"roster": [], "employees": []}, "fp", False, 0.0,
+                       "http://x", "t")
+        self.assertEqual(got.get("level"), 1)
+        self.assertEqual(state["usage"]["pct"], 51)
+
+    def test_r798_ws_pacing_and_url(self):
+        """R79-8: ローカルscan間隔（在席2s↔無人30s）とWS URL導出の純関数ピン。"""
+        self.assertEqual(ra._scan_interval(True), ra.SCAN_FAST)
+        self.assertEqual(ra._scan_interval(False), ra.SCAN_SLOW)
+        self.assertEqual(ra._ws_url("https://r.example"), "wss://r.example/ws?role=agent")
+        self.assertEqual(ra._ws_url("http://127.0.0.1:8789"),
+                         "ws://127.0.0.1:8789/ws?role=agent")
 
     def test_sync_tick_heartbeat_pushes_even_without_change(self):
         self._seed_device()
@@ -475,6 +581,32 @@ class RelayAgentTest(unittest.TestCase):
         state["pushed_at"] = ra.time.time() - ra.PUSH_HEARTBEAT - 1   # ハートビート経過を模擬
         ra.sync_tick("http://x", "t", state)
         self.assertIsNotNone(calls["sync"][1]["office"])
+
+    def test_burst_is_edge_triggered_not_level(self):
+        """R79: ❗が残り続けても burst を再武装しない（恒久8秒周期＝無料枠食い潰しの根絶）。
+
+        旧実装は state["attn"] が「❗が存在する」レベル値だったため、承認まちを1件
+        放置しただけで毎tick再武装され、60秒運用のつもりが 10,800 req/日になっていた。
+        """
+        self._seed_device()
+        attn = {"roster": [{"projectId": "p1", "session": "s1", "question": "どっち?"}],
+                "employees": []}
+        ra.office.office_json = lambda: json.loads(json.dumps(attn))
+        self._mock_sync([])
+        state = {"acks": [], "fp": None, "pushed_at": 0.0}
+
+        ra.sync_tick("http://x", "t", state)
+        self.assertTrue(state["attn"], "❗が新しく出た周は burst を張る")
+        self.assertEqual(state["attn_keys"], {"p1"})
+
+        ra.sync_tick("http://x", "t", state)
+        self.assertFalse(state["attn"], "同じ❗が残っているだけでは再武装しない")
+
+        # 別の相手に❗が出たらまた張る（エッジであることの確認）
+        attn["roster"].append({"projectId": "p2", "session": "s2", "approvalMin": 3})
+        ra.sync_tick("http://x", "t", state)
+        self.assertTrue(state["attn"], "新しい相手の❗はエッジ＝burstを張る")
+        self.assertEqual(state["attn_keys"], {"p1", "p2"})
 
     def test_save_openclaw_contract_unwraps_sync_shape(self):
         """/sync の openclaw は getStatus と同形 {json, ts} ＝ unwrapして契約v1のみ保存。"""

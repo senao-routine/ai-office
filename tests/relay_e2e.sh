@@ -19,6 +19,8 @@ if command -v node >/dev/null 2>&1; then
   node tests/js_sign_kat.mjs && ok "JS署名KAT一致 (canonical相互運用)" || ng "JS署名KAT不一致"
   # R65: PWAへ移植した gloss が正本 ui/core/world.js と同一出力（片方だけ直すと落ちる）
   node tests/gloss_parity.mjs >/dev/null 2>&1 && ok "R65 gloss parity (PWA↔core 同一出力)" || ng "R65 gloss parity 不一致 (node tests/gloss_parity.mjs で詳細)"
+  # R80-A11: ❗の「最優先の1件」がMacとスマホで一致すること（順序の正本を2つ持たない）
+  node tests/triage_parity.mjs >/dev/null 2>&1 && ok "R80 ❗順序パリティ (PWA↔core 同一の先頭)" || ng "R80 ❗順序パリティ不一致 (node tests/triage_parity.mjs で詳細)"
   # P7: Web Push暗号KAT（RFC8291 Appendix A公式ベクタ＋VAPID自己検証・wrangler不要）
   node tests/webpush_kat.mjs >/dev/null 2>&1 && ok "Web Push KAT (RFC8291ベクタ+VAPID)" || ng "Web Push KAT失敗 (node tests/webpush_kat.mjs で詳細)"
   # R5: Cloudflare依存を読み込まず、worker.js から純関数だけを抽出して購読フィルタを固定。
@@ -177,7 +179,7 @@ R=$(curl -s -X POST "$B/sync" -H "Authorization: Bearer $TOKEN" -H "Content-Type
   -d '{"office":null,"ackIds":[],"wantOpenclaw":false}')
 echo "$R" | grep -q '"ok":true' && ok "R51 POST /sync 応答" || ng "R51 /sync 失敗: $R"
 TS2=$(curl -s "$B/status" -H "Authorization: Bearer $TOKEN" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("ts"))')
-[ "$TS1" = "$TS2" ] && ok "R51 office=null は status.ts を進めない（変化時のみpush）" || ng "R51 nullでもts更新: $TS1→$TS2"
+[ "$TS1" = "$TS2" ] && ok "R51 office=null は status.ts を進めない（変化時のみpush）" || ng "R51 nullでもts更新: ${TS1}→$TS2"
 # /sync は輸送フルBearer専用（POST_TOKEN=OpenClaw限定トークンは403）
 CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$B/sync" -H "Authorization: Bearer $POST_TOKEN" \
   -H "Content-Type: application/json" -d '{"office":null,"ackIds":[]}')
@@ -342,6 +344,175 @@ R=$(curl -s -X POST "$B/push/unsubscribe" -H "Authorization: Bearer $TOKEN" -H "
   -d '{"endpoint":"https://127.0.0.1:9/e2e-push"}')
 C=$(curl -s "$B/push/subs" -H "Authorization: Bearer $TOKEN")
 echo "$C" | grep -q '"count":0' && ok "P7 unsubscribe 削除" || ng "P7 unsubscribe失敗: $C"
+
+# ---- R79-7 WebSocket（認証マトリクス/扇形配信/wake/"p"→"P"/appOnline） ----
+# statusを上書きするためPWAスモークより後に置く。HTTP退避経路（/sync /pull /ack /status）の
+# 既存アサーションは上に全て残っている＝WSはあくまで「追加」（退避削除はWS本番30日後に判断）。
+if node -e 'if(typeof WebSocket!=="function")process.exit(1)' 2>/dev/null; then
+  node tests/ws_e2e.mjs "$B" "$TOKEN" "$POST_TOKEN" "$MACMINI_TOKEN" || ng "R79-7/9 WS E2E失敗"
+else
+  echo "  - node組込WebSocket無し（node<22）→ WS E2E省略"
+fi
+
+# ---- R79-8 実daemonドッグフーディング（ws_client.py が実workerdへWS接続→wake→配達） ----
+# --once はHTTP固定なので、ここだけ本物の常駐モード（WS）を数秒だけ走らせて
+# 「投函の瞬間に配達される」＝ポーリング無しの本流を実測する。
+OFFICE_HOME="$VHOME" RELAY_URL="$B" RELAY_TOKEN="$TOKEN" \
+  python3 server/relay_agent.py > /tmp/relay_ws_agent.log 2>&1 &
+WS_AGENT_PID=$!
+WS_UP=0
+for i in $(seq 1 20); do
+  grep -q "WS接続" /tmp/relay_ws_agent.log 2>/dev/null && { WS_UP=1; break; }
+  sleep 0.5
+done
+[ "$WS_UP" = "1" ] && ok "R79-8 relay_agent がWS常時接続（ws_client.py→実workerd）" \
+  || ng "R79-8 daemonがWS接続しない: $(tail -3 /tmp/relay_ws_agent.log 2>/dev/null)"
+WSNONCE=$(python3 -c 'import secrets;print(secrets.token_hex(16))')
+ENV_WSD=$(sign_env "e2e-ws-agent-01" "WSドッグフード指示" "$(date +%s)" "$WSNONCE")
+curl -s -X POST "$B/instruct" -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" -d "$ENV_WSD" >/dev/null
+FWD="$VHOME/.claude/office_inbox/e2e-ws-agent-01.json"
+WS_DELIVERED=0
+for i in $(seq 1 20); do
+  [ -f "$FWD" ] && { WS_DELIVERED=1; break; }
+  sleep 0.5
+done
+if [ "$WS_DELIVERED" = "1" ] && grep -q "WSドッグフード指示" "$FWD"; then
+  ok "R79-8 wake駆動の配達（投函→WS経由で即時・HTTPポーリング無し）"
+else
+  ng "R79-8 WS配達失敗: $(tail -5 /tmp/relay_ws_agent.log 2>/dev/null)"
+fi
+kill "$WS_AGENT_PID" 2>/dev/null; wait "$WS_AGENT_PID" 2>/dev/null
+# 積み残し掃除（ackはdaemonが即flush済みのはずだが、失敗時もキューを次の検査へ持ち越さない）
+R=$(curl -s "$B/pull" -H "Authorization: Bearer $TOKEN")
+IDS=$(python3 -c 'import json,sys;d=json.loads(sys.argv[1]);print(json.dumps([i["id"] for i in d.get("items",[])]))' "$R")
+[ "$IDS" != "[]" ] && curl -s -X POST "$B/ack" -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" -d "{\"ids\":$IDS}" >/dev/null
+
+# ---- R79-10 遠隔実行（許可リスト）E2E: スマホ役の act-封筒 → relay_agent → daemon → 実行 ----
+# 実daemonを temp HOME で起こし、許可リストに1件だけ登録した安全なレシピを遠隔実行する。
+ACT_PORT=4796
+ACT_HOME="$VHOME"
+mkdir -p "$ACT_HOME/.claude"
+ACT_MARK="$ACT_HOME/act_ran.txt"
+python3 - "$ACT_HOME" "$ACT_MARK" <<'EOF'
+import json, os, sys, stat
+home, mark = sys.argv[1], sys.argv[2]
+p = os.path.join(home, ".claude", "office_recipes.json")
+json.dump({"v": 1, "recipes": [
+    {"id": "r_e2e", "label": "E2E検査", "argv": ["/bin/sh", "-c", f"echo ran > {mark}; echo done /Users/x/y/report.md"],
+     "cwd": "/tmp", "timeoutSec": 20, "returnOutput": "tail"}]},
+    open(p, "w"), ensure_ascii=False)
+os.chmod(p, 0o600)
+EOF
+OFFICE_HOME="$ACT_HOME" OFFICE_FAKE_NOTIFY="$ACT_HOME/notify.txt" \
+  python3 server/office_server.py --port $ACT_PORT > /tmp/act_daemon.log 2>&1 &
+ACT_PID=$!
+ACT_UP=0
+for i in $(seq 1 30); do
+  curl -s -o /dev/null "http://127.0.0.1:$ACT_PORT/api/office" && { ACT_UP=1; break; }
+  sleep 0.5
+done
+[ "$ACT_UP" = "1" ] && ok "R79-10 daemon起動（実行者=office_server）" || ng "R79-10 daemonが起動しない: $(tail -3 /tmp/act_daemon.log)"
+# office_json に許可リストの最小ビューが載る（argv/cwdは載らない＝中継に構成情報を出さない）
+python3 - "$ACT_PORT" <<'EOF' && ok "R79-10 office_json.actions（id/labelのみ・argv非公開）" || ng "R79-10 actionsビュー不正"
+import json, sys, urllib.request
+d = json.loads(urllib.request.urlopen(f"http://127.0.0.1:{sys.argv[1]}/api/office").read())
+a = d["actions"]
+assert a["caps"]["actions"] == 1, a
+assert [r["id"] for r in a["recipes"]] == ["r_e2e"], a
+assert set(a["recipes"][0]) == {"id", "label", "dangerous", "returnOutput"}, a["recipes"][0]
+assert "argv" not in json.dumps(a) and "/tmp" not in json.dumps(a), a
+EOF
+# スマホ役: act-封筒（kind=run）を署名して /instruct へ → relay_agent --once が daemon へ回す
+ACTN=$(python3 -c 'import secrets;print(secrets.token_hex(16))')
+ACT_TEXT='{"aioffice":1,"kind":"run","recipe":"r_e2e","args":[],"reqId":"req-e2e00001"}'
+ENV_ACT=$(sign_env "act-00112233445566ff" "$ACT_TEXT" "$(date +%s)" "$ACTN")
+curl -s -X POST "$B/instruct" -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" -d "$ENV_ACT" >/dev/null
+OFFICE_HOME="$ACT_HOME" RELAY_URL="$B" RELAY_TOKEN="$TOKEN" OFFICE_PORT=$ACT_PORT \
+  python3 server/relay_agent.py --once > /tmp/act_relay.log 2>&1
+RAN=0
+for i in $(seq 1 20); do
+  [ -f "$ACT_MARK" ] && { RAN=1; break; }
+  sleep 0.5
+done
+[ "$RAN" = "1" ] && ok "R79-10 スマホ→中継→relay_agent→daemon→**実コマンド実行**" \
+  || ng "R79-10 実行されず: $(tail -3 /tmp/act_relay.log)"
+[ ! -f "$ACT_HOME/.claude/office_inbox/act-00112233445566ff.json" ] \
+  && ok "R79-10 act-はoffice_inboxに書かない（孤児根絶）" || ng "R79-10 act-の孤児inboxが生えた"
+# 結果が office_json に出る（出力はscrub済み＝絶対パスが basename になっている）
+python3 - "$ACT_PORT" <<'EOF' && ok "R79-10 実行結果がoffice_jsonに反映（出力はscrub済み）" || ng "R79-10 結果が反映されない"
+import json, sys, time, urllib.request
+for _ in range(40):
+    d = json.loads(urllib.request.urlopen(f"http://127.0.0.1:{sys.argv[1]}/api/office").read())
+    rs = [r for r in d["actions"]["results"] if r["reqId"] == "req-e2e00001"]
+    if rs and rs[0]["state"] in ("done", "failed", "timeout"):
+        r = rs[0]
+        assert r["state"] == "done", r
+        assert "report.md" in r["output"], r
+        assert "/Users/" not in r["output"], r      # パスはbasenameへ
+        break
+    time.sleep(0.5)
+else:
+    raise AssertionError("結果が現れない")
+EOF
+# 未登録レシピは denied（許可リストの外は実行されない＝この機能の安全性の本体）
+ACTN2=$(python3 -c 'import secrets;print(secrets.token_hex(16))')
+ENV_ACT2=$(sign_env "act-00112233445566ee" '{"aioffice":1,"kind":"run","recipe":"r_notregistered","args":[],"reqId":"req-e2e00002"}' "$(date +%s)" "$ACTN2")
+curl -s -X POST "$B/instruct" -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" -d "$ENV_ACT2" >/dev/null
+OFFICE_HOME="$ACT_HOME" RELAY_URL="$B" RELAY_TOKEN="$TOKEN" OFFICE_PORT=$ACT_PORT \
+  python3 server/relay_agent.py --once >> /tmp/act_relay.log 2>&1
+python3 - "$ACT_PORT" <<'EOF' && ok "R79-10 未登録レシピは denied（許可リスト外は実行しない）" || ng "R79-10 未登録レシピの拒否が確認できない"
+import json, sys, time, urllib.request
+for _ in range(20):
+    d = json.loads(urllib.request.urlopen(f"http://127.0.0.1:{sys.argv[1]}/api/office").read())
+    rs = [r for r in d["actions"]["results"] if r["reqId"] == "req-e2e00002"]
+    if rs:
+        assert rs[0]["state"] == "denied", rs[0]
+        break
+    time.sleep(0.5)
+else:
+    raise AssertionError("denied結果が現れない")
+EOF
+# レシピの編集はローカルUI専用: CSRFヘッダ無しの POST /api/recipes/set は403
+CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "http://127.0.0.1:$ACT_PORT/api/recipes/set" \
+  -H "Content-Type: application/json" -d '{"recipes":[]}')
+[ "$CODE" = "403" ] && ok "R79-10 レシピ編集はCSRF必須（403）" || ng "R79-10 CSRF無しで編集できた ($CODE)"
+kill "$ACT_PID" 2>/dev/null; wait "$ACT_PID" 2>/dev/null
+
+# ---- R79-9 mini側もWSドッグフーディング（openclaw_agent が wake駆動で oc-配達） ----
+rm -f "$VHOME/.claude/openclaw_inbox/oc-wsdog-01.json"
+OFFICE_HOME="$VHOME" python3 tools/openclaw_agent.py > /tmp/oc_ws_agent.log 2>&1 &
+OC_WS_PID=$!
+OC_UP=0
+for i in $(seq 1 20); do
+  grep -q "WS接続" /tmp/oc_ws_agent.log 2>/dev/null && { OC_UP=1; break; }
+  sleep 0.5
+done
+[ "$OC_UP" = "1" ] && ok "R79-9 openclaw_agent がWS常時接続（site=macmini）" \
+  || ng "R79-9 openclaw_agentがWS接続しない: $(tail -3 /tmp/oc_ws_agent.log 2>/dev/null)"
+OCN=$(python3 -c 'import secrets;print(secrets.token_hex(16))')
+ENV_OCD=$(sign_oc "oc-wsdog-01" "WS経由のoc配達" "$(date +%s)" "$OCN")
+curl -s -X POST "$B/instruct?site=macmini" -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" -d "$ENV_OCD" >/dev/null
+FOC="$VHOME/.claude/openclaw_inbox/oc-wsdog-01.json"
+OC_DELIVERED=0
+for i in $(seq 1 20); do
+  [ -f "$FOC" ] && { OC_DELIVERED=1; break; }
+  sleep 0.5
+done
+if [ "$OC_DELIVERED" = "1" ] && grep -q "WS経由のoc配達" "$FOC"; then
+  ok "R79-9 wake駆動のoc-配達（mini側・ポーリング無し）"
+else
+  ng "R79-9 oc WS配達失敗: $(tail -5 /tmp/oc_ws_agent.log 2>/dev/null)"
+fi
+kill "$OC_WS_PID" 2>/dev/null; wait "$OC_WS_PID" 2>/dev/null
+R=$(curl -s "$B/pull?site=macmini" -H "Authorization: Bearer $TOKEN")
+IDS=$(python3 -c 'import json,sys;d=json.loads(sys.argv[1]);print(json.dumps([i["id"] for i in d.get("items",[])]))' "$R")
+[ "$IDS" != "[]" ] && curl -s -X POST "$B/ack?site=macmini" -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" -d "{\"ids\":$IDS}" >/dev/null
 
 echo
 [ $NG -eq 0 ] && echo "✅ relay E2E 合格" || { echo "❌ relay E2E ${NG}件失敗"; exit 1; }

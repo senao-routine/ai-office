@@ -4,37 +4,51 @@
 # ゲート（公開ポリシー: 本名・所属の秘匿・~/.claude/CLAUDE.md 冒頭）:
 #   Worker(workers.dev) と同梱PWA/スプライト索引は「すでに公開面」。
 #   deploy 前に禁止語（本名・旧所属・実パス文字列）を機械検査し、ヒットしたら失敗する。
-#   - 禁止語パターン自体は base64 で保持（本スクリプトも将来のリポ公開対象＝実名リテラルを置かない）
-#   - sprites_data.js は base64 連鎖(200文字以上)を「部分除去」してから検査＝
-#     データ内の偶然一致は無視しつつ、同一行のキー名（スプライト名）は検査対象に残す
-#   - あわせて assets/ ⇄ sprites_data.js のドリフト（--check）も deploy 前に固定
+#   - パターンはSHA-256でのみ保持（本スクリプトは公開リポに含まれる＝可逆な保持をしない）
 #
 # 使い方:
-#   bash deploy.sh              # ゲート → sprites drift check → node構文check → wrangler deploy
+#   bash deploy.sh              # 禁止語ゲート(ハッシュ照合) → node構文check → wrangler deploy
 #   bash deploy.sh --dry-run    # ゲートとcheckだけ（deployしない・検証用）
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
-# 禁止語regex（base64・平文を置かない）。更新時: printf '<新パターン>' | base64
-BANNED="$(printf 'c2hvdGF8b3RvYmV8aGFuYXpvbm985LmZ6YOofOiKseWcknznnIHlpKo=' | base64 -d)"
+# R80-B8: 禁止語は **ハッシュでしか持たない**（このスクリプトは公開リポに含まれる）。
+# 旧実装は base64 で保持していたが base64 は暗号ではなく、デコードすれば本名・旧所属が読めた
+# ＝公開ポリシー（本名・所属の秘匿）に自分で違反していた。平文もbase64も置かない。
+# 照合は python3（本製品の必須要件）で1パス＝1.2MBのバンドルでも一瞬。
+BANNED_SHA="c55fd8a7f68dd354 5d1f2281b3389cb5 bda574c0a28461f7 4dcaad6bf9930ef3 4b262af2a4c3fded 74acd9c3a32df2fa"
 
-echo "▶ 公開前 禁止語ゲート（relay/src + wrangler.jsonc）"
-hits="$( {
-  grep -rinE "$BANNED" "$HERE/src" --exclude=sprites_data.js 2>/dev/null
-  grep -rinE "$BANNED" "$HERE/wrangler.jsonc" 2>/dev/null
-  # sprites_data.js: base64連鎖だけを行内から除去してから検査（キー名は検査に残る）
-  sed -E 's#[A-Za-z0-9+/=]{200,}##g' "$HERE/src/sprites_data.js" 2>/dev/null | grep -inE "$BANNED" | sed 's#^#sprites_data.js:#'
-} || true )"
-if [ -n "$hits" ]; then
-  echo "✗ 禁止語を検出（公開ポリシー違反）— deploy を中止します:"
-  echo "$hits" | head -20
+echo "▶ 公開前 禁止語ゲート（relay/src + wrangler.jsonc・ハッシュ照合）"
+if ! BANNED_SHA="$BANNED_SHA" python3 - "$HERE/src" "$HERE/wrangler.jsonc" <<'PYGATE'
+import hashlib, os, re, sys
+from pathlib import Path
+banned = set(os.environ.get("BANNED_SHA", "").split())
+targets = []
+for arg in sys.argv[1:]:
+    p = Path(arg)
+    targets += sorted(p.glob("*.js")) if p.is_dir() else [p]
+word = re.compile(r"[A-Za-z\u00c0-\uffff]+")
+hits = []
+for f in targets:
+    try:
+        text = f.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        continue
+    for w in set(word.findall(text)):
+        d = hashlib.sha256(w.lower().encode("utf-8")).hexdigest()[:16]
+        if d in banned:
+            hits.append(f"{f.name}: {w[:2]}…（伏字）")
+if hits:
+    print("✗ 禁止語を検出（公開ポリシー違反）— deploy を中止します:")
+    for h in hits[:20]:
+        print("   " + h)
+    sys.exit(1)
+PYGATE
+then
   exit 1
 fi
 echo "  ✓ 禁止語なし"
 
-echo "▶ スプライト索引ドリフト検査（assets/ ⇄ sprites_data.js）"
-python3 "$ROOT/tools/gen_pwa_sprites.py" --check || { echo "✗ ドリフト検出 → python3 tools/gen_pwa_sprites.py で再生成してから"; exit 1; }
-echo "  ✓ ドリフトなし"
 
 echo "▶ worker.js 構文チェック"
 node --check "$HERE/src/worker.js" || { echo "✗ worker.js 構文エラー"; exit 1; }

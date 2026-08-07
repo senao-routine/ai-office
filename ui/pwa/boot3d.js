@@ -9,8 +9,21 @@ import { buildWorld } from "/ui/core/world.js";
 import { IsoScene } from "/ui/iso/scene3d.js";
 
 const host = document.getElementById("scene3d");
+// R79: WebGL不可・GPUドライバ拒否などで IsoScene の生成が投げると、以前は
+// window.__scene3d の代入にも通知にも到達せず「空のdivが残るだけで退避もしない」＝
+// **永久に白画面**だった（script.onerror は取得失敗でしか鳴らない）。
+// 失敗を必ずイベントで知らせ、app.js 側が一覧へ退避できるようにする。
+let scene = null;
 if (host) {
-  const scene = new IsoScene(host);
+  try {
+    scene = new IsoScene(host);
+  } catch (err) {
+    document.dispatchEvent(new CustomEvent("scene3d-failed", {
+      detail: { reason: String((err && err.message) || err) },
+    }));
+  }
+}
+if (host && scene) {
   let built = null;
   let last = null;
 
@@ -39,9 +52,19 @@ if (host) {
     pick(x, y) {
       try { return scene.pickAgent(x, y, 54); } catch (_) { return null; }
     },
-    /** 名札を置くためのスクリーン座標（canvas基準px）。 */
+    /** 名札を置くためのスクリーン座標（canvas基準px・胴のあたり）。 */
     project(id) {
       try { return scene.projectAgent(id); } catch (_) { return null; }
+    },
+    /** R79-6: 名札アンカー（足元）。デスクトップ paintLabels と同じ labelAnchorFor を再利用
+     *  ＝「頭上の大きな札はオフィスを隠す」FBの解をPC/スマホで揃える。 */
+    anchor(id) {
+      try {
+        if (!last) return null;
+        const i = (last.agents || []).findIndex((a) => a.id === id);
+        if (i < 0) return null;
+        return scene.labelAnchorFor(last.agents[i], last, i);
+      } catch (_) { return null; }
     },
     agents() {
       return last ? last.agents : [];
@@ -66,7 +89,7 @@ if (host) {
   // 覆われている間は描かない。シート/設定/ログは全画面オーバーレイなので、
   // その裏で回し続けるのは電池の丸損（かつテスト環境ではメインスレッドを飽和させ、
   // 他のUI操作の応答が1秒を超えて落ちる＝実際にこれで relay E2E が落ちた）。
-  const covered = () => ["sheetwrap", "setwrap", "logwrap"].some((id) => {
+  const covered = () => ["sheetwrap", "setwrap", "logwrap", "runwrap"].some((id) => {
     const n = document.getElementById(id);
     return n && n.classList.contains("open");
   });

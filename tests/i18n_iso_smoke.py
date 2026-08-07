@@ -93,6 +93,30 @@ def main():
                 page.keyboard.press("Escape")
                 page.wait_for_timeout(150)
 
+            # R80-A4: **用語の再混入を止める番人**。同じアバターが「社員/メンバー/
+            # キャラクター/部署」など6通りで呼ばれていて初見に伝わらなかった（配布前監査）。
+            # 画面の呼称は「プロジェクト/セッション/サブエージェント」の3語に統一したので、
+            # 廃止した語がUI文字列（strings.js と PWA）へ戻ってきたらここで落とす。
+            banned = ["社員", "メンバー", "キャラクター", "部署", "部下"]
+            sources = [pathlib.Path("ui/iso/strings.js"), pathlib.Path("relay/src/worker.js")]
+            leaks = []
+            for src in sources:
+                body = src.read_text(encoding="utf-8")
+                for line in body.splitlines():
+                    if line.lstrip().startswith("//") or line.lstrip().startswith("*"):
+                        continue          # コメントは説明文なので対象外
+                    for word in banned:
+                        # UIに出る文字列リテラルの中だけを見る
+                        if word in line and ('"' in line or "'" in line):
+                            leaks.append(f"{src.name}: {word} — {line.strip()[:70]}")
+            if leaks:
+                print(f"  ✗ 廃止した用語がUI文字列に混入（{len(leaks)}件）:")
+                for x in leaks[:5]:
+                    print(f"      {x}")
+                ng += 1
+            else:
+                print("  ✓ 用語統一（社員/メンバー/キャラクター/部署/部下 を画面に出さない）")
+
             real = [e for e in errors if "Failed to load resource" not in e]
             if real:
                 print(f"  ✗ JSエラー: {real[:3]}")

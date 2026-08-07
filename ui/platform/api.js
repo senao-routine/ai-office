@@ -78,6 +78,11 @@ export const pairList = () => api("/api/pair/list");
 export const pairRevoke = (deviceId) =>
   api("/api/pair/revoke", { method: "POST", body: { device_id: deviceId } });
 
+/** R79-10 遠隔実行の許可リスト（ローカルUI専用＝ここでしか作れない・スマホからは参照のみ）。 */
+export const getRecipes = () => api("/api/recipes");
+export const setRecipes = (recipes) =>
+  api("/api/recipes/set", { method: "POST", body: { recipes } });
+
 /**
  * 一定間隔でポーリングし、コールバックへ渡す。
  * 2回連続で失敗したらオフライン扱いにする（現行UIと同じ判定）。

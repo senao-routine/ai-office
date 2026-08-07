@@ -137,7 +137,8 @@ class ProjectsIndexTests(unittest.TestCase):
         # R50: roster/rosterCounts/tasks は新UIの集約ビュー（中継へは relay_agent が redact する）。
         # "projects" だけは**入れてはいけない**＝projects_index が返すローカルパス一覧のキー名。
         self.assertEqual({"officeName", "employees", "history", "generatedAt", "setup",
-                          "counts", "edition", "lang", "roster", "rosterCounts", "tasks"},
+                          "counts", "edition", "lang", "roster", "rosterCounts", "tasks",
+                          "actions", "relay"},
                          set(data))
         self.assertNotIn("projects", data)
 

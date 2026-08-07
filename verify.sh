@@ -21,6 +21,26 @@ python3 tools/check_stdlib.py server/*.py || ng "server/ に外部依存が混�
 # tools/office_send.py も stdlib のみ（office_server は同梱の許可モジュール）
 python3 tools/check_stdlib.py --allow office_server tools/office_send.py || ng "office_send.py に外部依存が混入"
 
+# R80: シェルスクリプトの「$VAR の直後に全角文字」は bash が全角まで変数名と解釈して
+# unbound variable で落ちる（setup.sh 作成時に実際に踏んだ）。日本語UIのスクリプトでは
+# 再発しやすいので機械で止める。
+python3 - <<'SHVAR' || ng "シェル変数展開の罠（\$VAR の直後に全角文字）"
+import re, sys
+from pathlib import Path
+pat = re.compile(r"\$([A-Za-z_][A-Za-z0-9_]*)(?=[^\x00-\x7f])")
+bad = []
+for f in Path(".").glob("**/*.sh"):
+    if "node_modules" in str(f) or "_archive" in str(f):
+        continue
+    for i, line in enumerate(f.read_text(encoding="utf-8", errors="ignore").splitlines(), 1):
+        for m in pat.finditer(line):
+            bad.append(f"{f}:{i}: ${m.group(1)} の直後が全角（${{{m.group(1)}}} と書く）")
+if bad:
+    print("\n".join("  " + b for b in bad[:10]))
+    sys.exit(1)
+print("  ✓ シェル変数展開の罠なし（$VAR+全角）")
+SHVAR
+
 echo "▶ 2b 新UI(R50) の層と core ユニット"
 # 層lint: ui/core が DOM/通信/時刻/乱数に触っていないこと＝core を node だけでテストできる前提を守る番人
 python3 tools/js_layer_lint.py || ng "R50 層lint 違反（core の逆流）"
@@ -89,45 +109,10 @@ if bad:
 print(f"  ✓ config OK ({len(cfg.get('projects', {}))}プロジェクト・sprite全実在) + tile2 7点+furn2 14点+基本アセットのPNGマジックOK")
 EOF
 
-echo "▶ 3b PWAスプライト同梱物 (sprites_data.js が assets/ と一致・git追跡・worker構文)"
-# 生成物 relay/src/sprites_data.js は worker.js が static import する＝未生成/未追跡だと
-# クリーンclone/CIで wrangler deploy が丸ごと失敗し既存relay全ルートが落ちる（レビュー指摘HIGH）。
-if python3 tools/gen_pwa_sprites.py --check >/dev/null 2>&1; then
-  ok "sprites_data.js が assets/ と一致"
-else
-  # scene専用の新タイル/家具はPWAのキャラ束へ入れない。relay/を変更せず、
-  # それ以外の収録キーとbase64だけが既存生成物と一致する場合はドリフト扱いにしない。
-  python3 - <<'EOF' && ok "sprites_data.js はPWA収録分一致 (scene専用2素材は除外)" \
-    || ng "sprites_data.js ドリフト/未生成 → python3 tools/gen_pwa_sprites.py で再生成しコミット"
-import base64, json, re, sys
-from pathlib import Path
-
-allowed = {"tile2_wall_interior", "furn2_rug_meeting"}
-assets = Path("assets")
-existing_path = Path("relay/src/sprites_data.js")
-if not existing_path.is_file():
-    sys.exit(1)
-expected = {}
-for path in sorted(assets.glob("*.png")):
-    if path.stem in allowed:
-        continue
-    # gen_pwa_sprites.pyと同じ除外規則でPWA収録キーを再計算する。
-    stem = path.stem
-    if "__" in stem or stem.endswith(("_walk", "_walkup", "_walkdown", "_walk2",
-                                      "_walkup2", "_walkdown2", "_wave")):
-        continue
-    if stem.startswith("bg_") or stem in {"bg", "bg2", "deskchair", "agent_bot", "building"}:
-        continue
-    raw = path.read_bytes()
-    if raw[:8] != b"\x89PNG\r\n\x1a\n":
-        sys.exit(1)
-    expected[stem] = base64.b64encode(raw).decode("ascii")
-actual = dict(re.findall(r'^  "([^"\\]+)": "([^"]+)",$',
-                         existing_path.read_text(encoding="utf-8"), re.MULTILINE))
-if set(actual) != set(expected) or any(actual[key] != value for key, value in expected.items()):
-    sys.exit(1)
-EOF
-fi
+echo "▶ 3b PWA同梱物 (modules_data.js が ui/ と一致・git追跡・worker構文)"
+# R79: スプライト同梱(sprites_data.js)は全廃＝アバターはモノグラム・シーンは3D ESM。
+# 生成物 relay/src/modules_data.js は worker.js が static import する＝未生成/未追跡だと
+# クリーンclone/CIで wrangler deploy が丸ごと失敗し既存relay全ルートが落ちる。
 # R77: PWAの3Dシーン用ESM同梱物も同じ掟（未生成/未追跡ならクリーンcloneのdeployが死ぬ）
 if python3 tools/gen_pwa_modules.py --check >/dev/null 2>&1; then
   ok "modules_data.js が ui/ と一致 (PWA 3Dシーン)"
@@ -137,27 +122,18 @@ fi
 git ls-files --error-unmatch relay/src/modules_data.js >/dev/null 2>&1 \
   && ok "modules_data.js git追跡済み" \
   || ng "modules_data.js が未追跡 → git add relay/src/modules_data.js"
-git ls-files --error-unmatch relay/src/sprites_data.js >/dev/null 2>&1 \
-  && ok "sprites_data.js git追跡済み (クリーンcloneでdeploy可)" \
-  || ng "sprites_data.js が未追跡=クリーンcloneでwrangler deploy失敗 → git add を"
+# R79: 撤去の恒久ピン＝スプライト同梱が「復活していない」ことを機械で守る
+if [ -f relay/src/sprites_data.js ] || [ -f tools/gen_pwa_sprites.py ]; then
+  ng "スプライト同梱が復活している（R79で全廃＝アバターはモノグラム）"
+else
+  ok "スプライト同梱なし (R79全廃・アバター=モノグラム)"
+fi
 if command -v node >/dev/null 2>&1; then
   node --check relay/src/worker.js >/dev/null 2>&1 && ok "worker.js 構文OK" || ng "worker.js 構文エラー"
 else
   echo "  - node無し → worker.js構文チェック省略"
 fi
 
-# 一本化した既定スプライト16枚の同梱サイズを監視する早期警報。
-SPRITES_FILE="relay/src/sprites_data.js"
-if [ -f "$SPRITES_FILE" ]; then
-  if SPRITES_SIZE=$(stat -f%z "$SPRITES_FILE" 2>/dev/null); then
-    :
-  else
-    SPRITES_SIZE=$(wc -c < "$SPRITES_FILE" | tr -d '[:space:]')
-  fi
-  [ "$SPRITES_SIZE" -le 6000000 ] \
-    && ok "sprites_data.js サイズOK (${SPRITES_SIZE} bytes)" \
-    || ng "sprites_data.js が 6,000,000 bytes 超 (${SPRITES_SIZE} bytes)"
-fi
 
 # ▶3d scene_sync --check は R52 旧UI削除で退役（office_scene.json 自体はサーバーの
 # /api/layout 等が現役で読む＝tests/test_scene_geometry.py が引き続きピンする）
@@ -509,6 +485,10 @@ elif [ -x "$VENV_PY" ] && "$VENV_PY" -c 'import playwright' >/dev/null 2>&1 \
   run_ui "R50 管理フロースモーク" "$VENV_PY" tests/ui_admin_smoke.py
   # R50提案2b: 初回体験（空オフィス導線・hook未設定バナー・?demo=1同梱world+投函ブロック）
   run_ui "R50 初回体験スモーク" "$VENV_PY" tests/ui_onboard_smoke.py
+  # R80-B6: WebGL不可の環境（古いGPU/VM/リモートデスクトップ）でも仕事ができるか。
+  # 配布すると必ず一定数いる環境で、以前は白画面＋英語の行き止まりだった
+  run_ui "R80 WebGL退避スモーク" "$VENV_PY" tests/ui_webgl_fallback_smoke.py \
+    "http://127.0.0.1:$TPORT" tests/artifacts/ui_webgl_fallback.png
   # R50提案2c: 新UIの日本語文字カナリア（lang=en で日本語0・旧i18n_smokeの新UI版）
   run_ui "R50 新UI i18nカナリア" "$VENV_PY" tests/i18n_iso_smoke.py
   # R42.6骨格: エディション別表示（openclawダーク/バッジ/Claude面ゲート/②→③導線・claude無退行）
@@ -579,7 +559,7 @@ find "$DTMP/app" \( -name '__pycache__' -o -name 'tests' -o -name 'relay' -o -na
 OFFICE_HOME="$DHOME" OFFICE_DATA="$DTMP/data" python3 "$DTMP/app/server/office_server.py" --port $TPORT >/dev/null 2>&1 &
 DPID=$!
 sleep 1.2
-kill -0 $DPID 2>/dev/null || ng "P4 コピー先サーバー即死 ($TPORT先客/EADDRINUSE?)"
+kill -0 $DPID 2>/dev/null || ng "P4 コピー先サーバー即死 (${TPORT}先客/EADDRINUSE?)"
 D_API=$(curl -s http://127.0.0.1:$TPORT/api/office)
 echo "$D_API" | grep -q '"employees"' && ok "P4 コピー先サーバー起動+API応答" || ng "P4 コピー先起動失敗: $(echo "$D_API" | head -c 120)"
 CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:$TPORT/assets/tile2_floor_wood.png)

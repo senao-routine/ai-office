@@ -1,0 +1,44 @@
+{
+ "_readme": [
+  "R79-10 遠隔実行の許可リストの雛形。~/.claude/office_recipes.json (0600) へ置くと、",
+  "スマホの「▶ 遠隔実行」からここに登録したものだけを実行できます。",
+  "編集はMacのオフィス画面（左サイドバー ▶ 遠隔実行）またはこのファイルを直接。",
+  "**スマホからは追加も編集もできません**（実行できるのは登録済み id のみ）。",
+  "",
+  "argv     : 配列のみ（shell文字列は不可。shell=False で起動します）",
+  "cwd      : 絶対パス必須",
+  "timeoutSec: 1..3600（超過するとプロセスグループごと停止＝孫プロセスも止まります）",
+  "returnOutput: none|tail|full（既定 none＝出力は中継にもスマホにも一切出ません。",
+  "            tail/full は秘密・パスを伏せた上で最大8000バイトだけ返します）",
+  "dangerous: true にすると実行前にMacの画面で確認ダイアログが出ます（既定キャンセル・10秒）",
+  "env      : 大文字名の短い文字列を最大10件（PATH/HOME/LANG は自動で入ります）"
+ ],
+ "v": 1,
+ "recipes": [
+  {
+   "id": "r_verify",
+   "label": "検証（verify.sh）",
+   "argv": ["bash", "verify.sh"],
+   "cwd": "/Users/you/path/to/your-project",
+   "timeoutSec": 900,
+   "returnOutput": "tail"
+  },
+  {
+   "id": "r_status",
+   "label": "gitの状態を見る",
+   "argv": ["git", "status", "--short"],
+   "cwd": "/Users/you/path/to/your-project",
+   "timeoutSec": 30,
+   "returnOutput": "tail"
+  },
+  {
+   "id": "r_deploy",
+   "label": "本番デプロイ",
+   "argv": ["bash", "relay/deploy.sh"],
+   "cwd": "/Users/you/path/to/your-project",
+   "timeoutSec": 600,
+   "returnOutput": "none",
+   "dangerous": true
+  }
+ ]
+}

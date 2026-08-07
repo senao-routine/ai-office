@@ -1,6 +1,6 @@
 {
-  "_使い方": "このファイルを ~/.claude/office_relay.json にコピーし、url と token を埋める（chmod 600 推奨・秘密なのでリポジトリには置かない）。token は Worker の RELAY_TOKEN と一致させる。interval=ポーリング間隔秒（既定5）。",
+  "_使い方": "このファイルを ~/.claude/office_relay.json にコピーし、url と token を埋める（chmod 600 推奨・秘密なのでリポジトリには置かない）。token は Worker の RELAY_TOKEN と一致させる。",
+  "_interval": "省略推奨。既定60秒＝WebSocketが主経路のときの退避用ポーリング間隔で、通常は使われない。15秒未満には下がらない（2026-07-30に5秒ポーリングでCloudflare無料枠を使い切った実績があるため床を設けている）。",
   "url": "https://ai-office-relay.<your-subdomain>.workers.dev",
-  "token": "ここに長いランダム文字列（wrangler secret put RELAY_TOKEN と同じ値）",
-  "interval": 5
+  "token": "ここに長いランダム文字列（wrangler secret put RELAY_TOKEN と同じ値）"
 }

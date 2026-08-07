@@ -78,7 +78,8 @@ class VerifyLicenseTest(unittest.TestCase):
 
     def test_reject_malformed(self):
         cases = [
-            (kat(v=2), "バージョン"),
+            (kat(v=3), "バージョン"),          # 未知の版は拒否（v1/v2のみ受理）
+            (kat(v=2), "product"),            # R80: v2 は product 必須
             (kat(alg="HS256"), "バージョン"),
             (kat(edition="openclaw"), "edition"),   # ②は無料＝ライセンス対象外
             (kat(edition="pro"), "edition"),
@@ -92,6 +93,29 @@ class VerifyLicenseTest(unittest.TestCase):
             ok, reason = lic.verify_license(bad, n=TEST_N, e=TEST_E)
             self.assertFalse(ok, f"不正が通った: {bad!r}")
             self.assertIn(frag, reason, f"{bad!r} => {reason}")
+
+    def test_r80_v2_product_is_signed(self):
+        """R80: v2ライセンスは product を署名対象に含む。
+        **1枚の鍵が別プロダクトを開けない**ことが複数プロダクト展開の前提なので、
+        product を書き換えたら必ず検証が落ちることを固定する。"""
+        built = signer.build_license("hybrid", "a@b", TEST_N, TEST_E, TEST_D,
+                                     product="ai-office")
+        self.assertEqual(built["v"], 2)
+        self.assertEqual(built["product"], "ai-office")
+        ok, reason = lic.verify_license(built, n=TEST_N, e=TEST_E)
+        self.assertTrue(ok, reason)
+        # 別プロダクトへ書き換え → 署名不一致（鍵の使い回しができない）
+        forged = dict(built, product="sakutto-editor")
+        ok2, reason2 = lic.verify_license(forged, n=TEST_N, e=TEST_E)
+        self.assertFalse(ok2)
+        self.assertIn("署名", reason2)
+
+    def test_r80_v1_is_treated_as_ai_office(self):
+        """既発行の v1（product無し）は AI Office 専用として扱う＝互換を壊さない。"""
+        v1 = {"v": 1, "edition": "hybrid", "key_id": "k", "issued": 1753500000,
+              "holder": "h", "alg": "RS256"}
+        self.assertEqual(lic.license_product(v1), "ai-office")
+        self.assertEqual(lic.license_product({"v": 2, "product": "skill-x"}), "skill-x")
 
     def test_prod_pubkey_sane(self):
         self.assertEqual(lic.PUBKEY_N.bit_length(), 2048)
@@ -128,6 +152,18 @@ class OfficeLicenseStateTest(unittest.TestCase):
         self.licpath.write_text(json.dumps(body, ensure_ascii=False), encoding="utf-8")
         os.utime(self.licpath, (time.time() + 2, time.time() + 2))  # mtimeキャッシュを確実に破る
 
+    def test_r80_apply_license_keeps_all_signed_fields(self):
+        """登録（apply_license）→保存→読み直しで検証が通り続ける。
+        保存時のホワイトリストから**署名対象の項目を落とすと壊れる**ため機械で固定する
+        （R80で product を足したとき実際に落として復帰E2Eが落ちた）。"""
+        built = signer.build_license("hybrid", "a@b", TEST_N, TEST_E, TEST_D,
+                                     product="ai-office")
+        ok, msg, _extra = office.apply_license(built)
+        self.assertTrue(ok, msg)
+        state = office.license_state()
+        self.assertTrue(state["valid"], state["reason"])
+        self.assertEqual(state.get("product"), "ai-office")
+
     def test_missing_file_is_free_tier(self):
         state = office.license_state()
         self.assertFalse(state["valid"])
@@ -148,13 +184,31 @@ class OfficeLicenseStateTest(unittest.TestCase):
         # hybridライセンスは①claude利用もカバー（アップグレード動線）
         self.assertTrue(office.edition_features("claude", state)["costDash"])
 
-    def test_claude_license_does_not_cover_hybrid(self):
-        built = signer.build_license("claude", "a@b", TEST_N, TEST_E, TEST_D)
-        self._write(built)
-        state = office.license_state()
-        self.assertTrue(state["valid"])
-        self.assertFalse(office.edition_features("hybrid", state)["costDash"])
-        self.assertTrue(office.edition_features("claude", state)["costDash"])
+    def test_r80_license_unlocks_regardless_of_edition(self):
+        """R80-B1: **買った鍵は、どの版で動かしていても対応機能を開ける**。
+
+        旧仕様は「claude鍵 × hybrid版」を解錠しなかった。新規cloneの既定editionは hybrid
+        なので、**Proを買った人が素のまま使うと解錠されない**という致命的な噛み合わせだった
+        （回避策はconfigへの手書きのみでREADMEにもUIにも記述なし）。ここで全組み合わせを固定する。"""
+        for lic_edition in ("claude", "hybrid"):
+            self._write(signer.build_license(lic_edition, "a@b", TEST_N, TEST_E, TEST_D))
+            state = office.license_state()
+            self.assertTrue(state["valid"], lic_edition)
+            for ed in ("claude", "hybrid"):
+                feats = office.edition_features(ed, state)
+                self.assertTrue(feats["relayPwa"], f"{lic_edition}鍵 × {ed}版 でスマホが開かない")
+                self.assertTrue(feats["push"], f"{lic_edition}鍵 × {ed}版 でPushが開かない")
+                self.assertTrue(feats["costDash"], f"{lic_edition}鍵 × {ed}版 でコストが開かない")
+            # openclaw版は Claude セッションを読まない＝costDash は元から対象外（仕様どおり）
+            self.assertTrue(office.edition_features("openclaw", state)["relayPwa"])
+
+    def test_r80_no_license_keeps_free_tier_closed(self):
+        """鍵が無ければ有料機能は閉じたまま（無料版の境界が壊れていないこと）。"""
+        for ed in ("claude", "hybrid"):
+            feats = office.edition_features(ed, {"valid": False})
+            self.assertFalse(feats["relayPwa"])
+            self.assertFalse(feats["push"])
+            self.assertFalse(feats["costDash"])
 
     def test_openclaw_edition_free_without_license(self):
         feats = office.edition_features("openclaw", office.license_state())

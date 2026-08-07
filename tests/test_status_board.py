@@ -956,9 +956,12 @@ class PrivacyIsolationRegressionTest(unittest.TestCase):
             office = _exec_module(ROOT / "server" / "office_server.py", "office_status_isolation")
             snapshot = office.office_json()
             # R50: roster/rosterCounts/tasks を追加（status_board は依然として混ぜない）
+            # R79-10: actions（許可リストの最小ビュー＋実行結果）を追加。argv/cwd/env は
+            # recipes_public が落とすので中継へ構成情報は出ない（下の relay push 検査でピン）。
             self.assertEqual(set(snapshot), {"officeName", "employees", "history", "generatedAt",
                                              "setup", "counts", "edition", "lang",
-                                             "roster", "rosterCounts", "tasks"})
+                                             "roster", "rosterCounts", "tasks", "actions",
+                                             "relay"})
 
             relay = _exec_module(ROOT / "server" / "relay_agent.py", "relay_status_isolation")
             relay.office = office
@@ -977,6 +980,14 @@ class PrivacyIsolationRegressionTest(unittest.TestCase):
             self.assertTrue(sent["url"].endswith("/status"))
             self.assertNotIn("usedPercent", body)
             self.assertNotIn("office_resources", body)
+            # R79-10: actions は中継へ通る（スマホの▶実行UIが要る）が、**構成情報は持たない**。
+            # argv/cwd/env が中継に出たら「何をどこで動かしているか」が漏れる＝ここでピンする。
+            actions = (sent["body"].get("office") or {}).get("actions") or {}
+            for recipe in (actions.get("recipes") or []):
+                self.assertEqual(set(recipe), {"id", "label", "dangerous", "returnOutput"},
+                                 f"recipes_public 以外のキーが中継へ出ています: {recipe}")
+            self.assertNotIn('"argv"', body)
+            self.assertNotIn('"cwd":"/', body)
         finally:
             for key, value in old.items():
                 if value is _MISSING:

@@ -16,7 +16,6 @@ if str(TOOLS) not in sys.path:
 
 import theme_gen
 import assets_gen
-import gen_pwa_sprites
 import style_proof
 
 
@@ -292,23 +291,7 @@ class ThemeGenFinalizeTests(unittest.TestCase):
             theme_gen.OFFICE_JOB_DESC["works_hq"],
         )
 
-    def test_pwa_theme_stems_are_excluded_but_base_stems_are_kept(self):
-        self.assertTrue(gen_pwa_sprites.is_excluded_stem("deskset__rpg"))
-        self.assertTrue(gen_pwa_sprites.is_excluded_stem("blog__rpg"))
-        self.assertFalse(gen_pwa_sprites.is_excluded_stem("deskset"))
-        self.assertFalse(gen_pwa_sprites.is_excluded_stem("blog"))
-        # R32.1: 横歩き2フレーム(walk/walk2)はPWA歩行モーションに使うので同梱。
-        # 上下向き(walkdown/walkup系)と手振りは引き続き非同梱。
-        self.assertFalse(gen_pwa_sprites.is_excluded_stem("blog_walk"))
-        self.assertFalse(gen_pwa_sprites.is_excluded_stem("blog_walk2"))
-        self.assertFalse(gen_pwa_sprites.is_excluded_stem("agent_bot"))
-        self.assertTrue(gen_pwa_sprites.is_excluded_stem("blog_walkdown2"))
-        self.assertTrue(gen_pwa_sprites.is_excluded_stem("blog_walkup2"))
-        self.assertTrue(gen_pwa_sprites.is_excluded_stem("blog_wave"))
-        self.assertTrue(gen_pwa_sprites.is_excluded_stem("blog__rpg_walk2"))
-        # R26: 部屋背景・ビル外観はPWA非同梱
-        self.assertTrue(gen_pwa_sprites.is_excluded_stem("bg_works_video"))
-        self.assertTrue(gen_pwa_sprites.is_excluded_stem("building"))
+    # R79: PWAスプライト同梱は全廃（アバター=モノグラム）＝除外規則のテストも退役
 
     def test_style_proof_generates_png_from_vintage_assets(self):
         self.assertEqual(style_proof.main([]), 0)

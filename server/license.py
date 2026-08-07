@@ -31,10 +31,31 @@ _SHA256_DIGESTINFO = bytes.fromhex("3031300d060960864801650304020105000420")
 VALID_LICENSE_EDITIONS = ("claude", "hybrid")
 
 
+# R80: 複数プロダクト（AI Office / 他アプリ / 有料スキル）を **1組の署名鍵**で扱うため
+# product を導入した。canonical は署名対象なので**既存の v1 を一切変えず**、
+# v2 を足して版で分岐する（ライセンスJSONは元から "v" を持ち verify が版を検査している＝
+# 版交渉の仕組みが最初からある。指示封筒の canonical とは違い、ここは安全に拡張できる）。
+#   v1（〜R80）: product を持たない ＝ **AI Office 専用**として扱う（既発行分の互換）
+#   v2（R80〜）: product を署名対象に含む ＝ 鍵1枚が別プロダクトを開けない
+LEGACY_PRODUCT = "ai-office"
+
+
 def canonical(lic):
-    """署名対象のcanonical bytes（固定6行・\\n区切り）。issuedはintへ正規化して
-    JSONの数値表記ゆれを吸収する。各値はJSON文字列由来でも\\n混入をsplit不能にしない
-    （行数固定+末尾hashなしの単純連結でも、検証はバイト完全一致なので改竄は署名不一致になる）。"""
+    """署名対象のcanonical bytes（\\n区切り・版ごとに行数固定）。issuedはintへ正規化して
+    JSONの数値表記ゆれを吸収する。検証はバイト完全一致なので改竄は署名不一致になる。"""
+    try:
+        ver = int(lic.get("v") or 1)
+    except (TypeError, ValueError):
+        ver = 1
+    if ver >= 2:
+        return "\n".join([
+            "aioffice-license", "v2",
+            str(lic.get("product") or ""),
+            str(lic.get("edition") or ""),
+            str(lic.get("key_id") or ""),
+            str(int(lic.get("issued") or 0)),
+            str(lic.get("holder") or ""),
+        ]).encode("utf-8")
     return "\n".join([
         "aioffice-license", "v1",
         str(lic.get("edition") or ""),
@@ -42,6 +63,13 @@ def canonical(lic):
         str(int(lic.get("issued") or 0)),
         str(lic.get("holder") or ""),
     ]).encode("utf-8")
+
+
+def license_product(lic):
+    """この鍵が対象とするプロダクト。v1（product無し）は AI Office 専用として扱う。"""
+    if not isinstance(lic, dict):
+        return ""
+    return str(lic.get("product") or "") or LEGACY_PRODUCT
 
 
 def _emsa_pkcs1_v15(digest, klen):
@@ -55,8 +83,11 @@ def verify_license(lic, n=None, e=None):
     e = PUBKEY_E if e is None else e
     if not isinstance(lic, dict):
         return False, "ライセンス形式が不正です"
-    if lic.get("v") != 1 or lic.get("alg") != "RS256":
+    if lic.get("v") not in (1, 2) or lic.get("alg") != "RS256":
         return False, "バージョン/署名方式が未対応です"
+    # v2 は product を必須にする（空だと「どの製品の鍵か」が定まらない）
+    if lic.get("v") == 2 and not str(lic.get("product") or "").strip():
+        return False, "productが指定されていません"
     if lic.get("edition") not in VALID_LICENSE_EDITIONS:
         return False, "editionが不正です"
     try:

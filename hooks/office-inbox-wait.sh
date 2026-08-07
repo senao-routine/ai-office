@@ -25,9 +25,16 @@ for _ in $(seq 1 "$LOOPS"); do   # 既定 5秒 × 1440 = 2時間（テストは�
   # 新しいポーラーに交代していたら退場
   [ "$(cat "$PIDF" 2>/dev/null)" = "$$" ] || exit 0
   if [ -f "$MSGF" ]; then
-    TXT=$(/usr/bin/python3 -c 'import json,sys
-try: print(json.load(open(sys.argv[1])).get("text",""))
-except Exception: print("")' "$MSGF" 2>/dev/null)
+    # R79: ttl 切れは配達しない（閉じたセッション宛の指示が数時間後に突然実行されるのを防ぐ）。
+    # 期限切れ・壊れたJSONは空文字を返し、下で rm されて静かに消える。
+    TXT=$(/usr/bin/python3 -c 'import json,sys,time
+try:
+    d = json.load(open(sys.argv[1]))
+    ttl = float(d.get("ttl") or 0)
+    ts = float(d.get("ts") or 0)
+    print("" if (ttl > 0 and ts > 0 and time.time() - ts > ttl) else d.get("text", ""))
+except Exception:
+    print("")' "$MSGF" 2>/dev/null)
     rm -f "$MSGF"
     if [ -n "$TXT" ]; then
       echo "📨 AIオフィス（ユーザー）からの指示: $TXT"

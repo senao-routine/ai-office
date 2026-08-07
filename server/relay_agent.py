@@ -30,6 +30,7 @@ HERE = Path(__file__).resolve().parent
 if str(HERE) not in sys.path:          # exec_module 反復でも sys.path に重複挿入しない
     sys.path.insert(0, str(HERE))
 import office_server as office  # 同じ server/・標準ライブラリのみ（post_instruction / office_json）
+import ws_client as wsc         # R79-8: RFC6455クライアント（同じ server/・stdlibのみ・KATはtest_ws_client）
 
 
 def _adopt_p4_data():
@@ -179,6 +180,64 @@ def pull_and_deliver(url, token):
     return delivered
 
 
+# ── R79-10 遠隔実行（許可リスト）: act-封筒は daemon(127.0.0.1) へ回す ──────────
+# 実行者を relay_agent にしない理由: launch は osascript＝**Automation TCC同意**が要り、
+# 別LaunchAgentのrelay_agentから初めて叩くと「誰も居ないMacで同意ダイアログが出て詰む」。
+ACT_SESSION_RE = re.compile(r"^act-[0-9a-f]{16}$")
+ACT_PORT = int(os.environ.get("OFFICE_PORT", "4780"))
+ACT_URL = os.environ.get("OFFICE_ACTION_URL", f"http://127.0.0.1:{ACT_PORT}/api/action/exec")
+
+
+def _post_action(payload):
+    """daemon の /api/action/exec へ（loopback+CSRFヘッダ）。応答dictを返す。"""
+    req = urllib.request.Request(
+        ACT_URL, data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        method="POST",
+        headers={"Content-Type": "application/json",
+                 "X-Office-Local": "1",              # CSRFゲート（ローカル操作の証）
+                 "User-Agent": "aioffice-relay/1.0"})
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+
+def _deliver_actions(session, g):
+    """act-宛の各封筒を daemon へ受理させる。(ack対象ids, コミットするnonce鍵) を返す。
+    受理できなかった分は**ackしない・nonceも焼かない**＝次周で再送（300秒の鮮度窓を超えたら
+    自然に stale-ts で落ちる＝「3時間前のタップが今走る」を防ぐアクション本来の性質）。"""
+    ok_ids, ok_keys = [], []
+    for i, text in enumerate(g["texts"]):
+        iid = g["ids"][i]
+        key = g["keys"][i]
+        try:
+            act = json.loads(text)
+        except (ValueError, TypeError):
+            act = None
+        if not isinstance(act, dict) or act.get("aioffice") != 1:
+            if iid is not None:      # 形式不正は恒久＝即ackで捨てる（キューを詰まらせない）
+                ok_ids.append(iid)
+            print(f"⛔拒否(act-format) id={iid}", flush=True)
+            continue
+        try:
+            r = _post_action({"action": act, "device_id": session})
+        except urllib.error.HTTPError as e:
+            # daemonは**受け取ったうえで拒否**した（denied/形式不正）＝恒久的な結果。
+            # 残置すると毎周リトライでキューが詰まるので ack して捨てる（nonceも焼く）。
+            print(f"⛔アクション拒否 id={iid} http={e.code}", flush=True)
+            if iid is not None:
+                ok_ids.append(iid)
+            ok_keys.append(key)
+            continue
+        except NET_ERRORS as e:
+            print(f"⚠ アクション不達（daemon未起動?・残置して次周）: {e}", flush=True)
+            continue                 # ★ackしない・nonceも焼かない
+        state = str((r or {}).get("state") or (r or {}).get("msg") or "?")
+        print(f"🎬 アクション受理 id={iid} state={state}", flush=True)
+        if iid is not None:
+            ok_ids.append(iid)
+        ok_keys.append(key)
+    return ok_ids, ok_keys
+
+
 def _process_items(items):
     """items（peek済み）を per-device HMAC署名検証 → セッション別に集約配達し、
     (delivered, ack対象idリスト) を返す。ack の送達は呼び出し側
@@ -249,6 +308,19 @@ def _process_items(items):
     delivered = 0
     committed = False
     for session, g in groups.items():
+        # R79-10: act-<16hex> は「遠隔実行アクション」＝office_inbox へは書かない。
+        # 実行者は daemon（office_server・Automation TCC同意済み）＝ここは配達員のまま。
+        # 掟: daemon に届いた（受理された）ときだけ ack＋nonceコミット。不達なら残置して次周へ。
+        if ACT_SESSION_RE.match(session):
+            done_ids, done_keys = _deliver_actions(session, g)
+            if done_ids:
+                delivered += 1
+                committed = True
+                for k in done_keys:
+                    if k is not None:
+                        _NONCES[k[0]] = k[1]
+                ack_ids.extend(done_ids)
+            continue
         chunk, n = _first_chunk(g["texts"])   # 4000字に収まる先頭chunkだけ（残りは次tickへ繰り越す）
         try:
             ok, _msg = office.post_instruction(session, chunk)
@@ -500,14 +572,35 @@ def _status_fingerprint(snapshot):
 
 
 def _any_attention(snapshot):
+    return bool(_attention_keys(snapshot))
+
+
+def _attention_keys(snapshot):
+    """❗を持つ相手のキー集合。R79: burst の判定を「❗が存在する」から
+    「❗が**新しく出た**（エッジ）」へ変えるための材料。
+
+    旧実装は存在レベルで判定していたため、承認まちが1件でも放置されていると
+    毎tickで burst が再武装され、60秒運用のつもりが**恒久的に8秒周期**へ張り付いた
+    （実測 10,800 req/日＝意図の7.5倍）。エッジなら「出た瞬間だけ速回し」になる。"""
+    keys = set()
     for e in (snapshot.get("roster") or []) + (snapshot.get("employees") or []):
         if isinstance(e, dict) and (
                 e.get("question") or e.get("attention") or (e.get("approvalMin") or 0) > 0):
-            return True
-    return False
+            k = str(e.get("projectId") or e.get("session") or "")
+            if k:
+                keys.add(k)
+    return keys
 
 
-def _want_openclaw():
+# R80-C2: openclaw集約の取得間隔。**Worker は wantOpenclaw を受けると別DO(macmini)を
+# RPCで叩き、DO RPC は 20:1 圧縮の対象外＝1:1 課金**になる。毎syncで立てると WS化で
+# 圧縮したはずのリクエストが丸ごと戻ってくる（scan 2秒なら 43,200 DO req/日＝枠の43%）。
+# openclaw の状態は人間が見るもので秒単位の鮮度は要らないので、間隔で間引く。
+OPENCLAW_MIN_INTERVAL = float(os.environ.get("OFFICE_OPENCLAW_INTERVAL", "60"))
+
+
+def _openclaw_enabled():
+    """エディション上 openclaw 連携が有効か（機能フラグの素の値）。"""
     try:
         return bool(office.edition_features(office.edition(),
                                             office.license_state()).get("openclaw"))
@@ -515,20 +608,79 @@ def _want_openclaw():
         return False
 
 
-def sync_tick(url, token, state):
-    """1周1リクエスト: 前周ackの送達＋配達items取得＋状況push（変化時のみ）＋mini集約＋在席検知。
-    (delivered, appSeenAgo) を返す。掟: items は peek＝配達成功分の id を state["acks"] に積み
-    **次周**の /sync で削除する（at-least-once。ack前にクラッシュしても再取得→既視nonce→ack で
-    二重配達しない＝ _process_items の replay-ack 性質に守られる）。"""
+def _want_openclaw(state=None, now=None):
+    """**この周で** openclaw集約を要求するか。エディション無効なら常に False
+    （claude単体のユーザーは cross-DO を1回も踏まない）。有効でも前回取得から
+    OPENCLAW_MIN_INTERVAL 秒未満なら False＝別DOを起こさない。"""
+    if not _openclaw_enabled():
+        return False
+    if not isinstance(state, dict):
+        return True          # 状態を持たない呼び出し（後方互換）は従来どおり要求
+    now = time.time() if now is None else now
+    return (now - float(state.get("oc_fetched_at") or 0.0)) >= OPENCLAW_MIN_INTERVAL
+
+
+def _sync_request(state):
+    """/sync（HTTP）・{"t":"sync"}（WS）共通のリクエスト組み立て。
+    (body, snapshot, fp, send_office, now) を返す。"""
     now = time.time()
     snapshot = _redact_office_for_relay(office.office_json())
     fp = _status_fingerprint(snapshot)
     send_office = (fp != state.get("fp")
                    or now - state.get("pushed_at", 0.0) >= PUSH_HEARTBEAT)
-    want_oc = _want_openclaw()
     body = {"office": snapshot if send_office else None,
             "ackIds": list(state.get("acks") or []),
-            "wantOpenclaw": want_oc}
+            "wantOpenclaw": _want_openclaw(state, now)}
+    return body, snapshot, fp, send_office, now
+
+
+def _sync_apply(d, state, snapshot, fp, send_office, now, url, token):
+    """sync応答の適用（HTTP/WS共通）。(delivered, appSeenAgo, appOnline) を返す。
+    掟: items は peek＝配達成功分の id を state["acks"] に積み、**次の sync** で削除する
+    （at-least-once。ack前にクラッシュしても再取得→既視nonce→ack で二重配達しない）。"""
+    if send_office:
+        state["fp"] = fp
+        state["pushed_at"] = now
+    # R79: ❗は「存在」ではなく「新規遷移（エッジ）」で burst を張る。
+    # 前周から増えたキーがあるときだけ True＝放置された承認まちで張り付かない。
+    attn_keys = _attention_keys(snapshot)
+    state["attn"] = bool(attn_keys - state.get("attn_keys", frozenset()))
+    state["attn_keys"] = attn_keys
+    delivered, ack_ids = _process_items(d.get("items") or [])
+    state["acks"] = ack_ids
+    # R42.5: oc-宛の転送（outboxが空ならリクエストゼロ・失敗は本流を巻き込まない）。
+    # 転送はエディションで判断する（間引きの対象は「集約の取得」だけ＝指示は遅らせない）
+    oc_on = _openclaw_enabled()
+    try:
+        state["oc_sent"] = forward_oc_outbox(url, token) if oc_on else 0
+    except Exception as e:
+        state["oc_sent"] = 0
+        print(f"⚠ oc-転送のみ失敗（本流は完了済み）: {e}", flush=True)
+    # R80-C2: 応答に openclaw が載っている周＝要求した周だけ保存し、取得時刻を刻む
+    if oc_on and d.get("openclaw") is not None:
+        state["oc_fetched_at"] = now
+        try:
+            _save_openclaw_contract(d.get("openclaw"))
+        except OSError as e:
+            print(f"⚠ OpenClaw集約の保存のみ失敗: {e}", flush=True)
+    # R80: 中継の使用量（今日の書込行数と無料枠比）。UIへ出し、scan間隔の減速にも使う
+    usage = d.get("usage")
+    if isinstance(usage, dict):
+        state["usage"] = usage
+        try:
+            office.set_relay_usage(usage)      # office_json 経由でUIへ（失敗しても本流は続行）
+        except Exception:
+            pass
+    seen = d.get("appSeenAgo")
+    return (delivered,
+            int(seen) if isinstance(seen, (int, float)) else None,
+            bool(d.get("appOnline")))
+
+
+def sync_tick(url, token, state):
+    """1周1リクエスト（HTTP退避経路の正本）: 前周ackの送達＋配達items取得＋
+    状況push（変化時のみ）＋mini集約＋在席検知。(delivered, appSeenAgo, appOnline) を返す。"""
+    body, snapshot, fp, send_office, now = _sync_request(state)
     try:
         d = _req("POST", url + "/sync", token, body)
     except urllib.error.HTTPError as e:
@@ -537,25 +689,125 @@ def sync_tick(url, token, state):
         raise
     if not isinstance(d, dict) or not d.get("ok"):
         raise SyncUnsupported()
-    if send_office:
-        state["fp"] = fp
-        state["pushed_at"] = now
-    state["attn"] = _any_attention(snapshot)
-    delivered, ack_ids = _process_items(d.get("items") or [])
-    state["acks"] = ack_ids
-    # R42.5: oc-宛の転送（outboxが空ならリクエストゼロ・失敗は本流を巻き込まない）
+    return _sync_apply(d, state, snapshot, fp, send_office, now, url, token)
+
+
+# ── R79-8: WebSocket常時接続（既定ON・RELAY_WS=0 で即HTTPへ・--once は常にHTTP＝E2E決定論） ──
+# 経済: 送信メッセージはDO受信20:1課金・無変化なら0メッセージ。ローカルscan（リクエスト0円）を
+# スマホ在席(appOnline)で 2秒↔30秒 に切替＝体感ライブ・無人時は静か。
+WS_ENABLED = os.environ.get("RELAY_WS", "1") != "0"
+WS_FAIL_DEMOTE = 3           # 連続失敗この回数で
+WS_DEMOTE_SECONDS = 600.0    # この秒数 HTTP /sync へ降格（自動復帰＝リスク3の退避策）
+WS_KEEPALIVE = 25.0          # "p" 送信間隔（DO auto-response "P"＝課金ゼロ・DOも起きない）
+WS_DEAD_AFTER = 90.0         # 無受信がこの秒数続いたら死んだとみなし再接続
+WS_SYNC_TIMEOUT = 15.0       # sync応答の待ち上限
+SCAN_FAST, SCAN_SLOW = 2.0, 30.0
+
+
+# R80: 使用量レベル（Workerが返す usage.level）に応じた減速倍率。
+# 0=通常 / 1=無料枠50%超（半分の速さ）/ 2=80%超（最小限）。
+# **枠を割ってから止まるのではなく、割る前に自分で遅くする**のが狙い。
+USAGE_SLOWDOWN = {0: 1.0, 1: 2.0, 2: 6.0}
+
+
+def _scan_interval(app_online, usage_level=0):
+    """スマホがWS在席なら2秒（ライブ感）・無人なら30秒（省エネ）。
+    使用量が無料枠に近づいたら倍率で伸ばす。純関数＝単体でピン。"""
+    base = SCAN_FAST if app_online else SCAN_SLOW
     try:
-        state["oc_sent"] = forward_oc_outbox(url, token) if want_oc else 0
-    except Exception as e:
-        state["oc_sent"] = 0
-        print(f"⚠ oc-転送のみ失敗（本流は完了済み）: {e}", flush=True)
-    if want_oc:
+        mult = USAGE_SLOWDOWN.get(int(usage_level), 1.0)
+    except (TypeError, ValueError):
+        mult = 1.0
+    return base * mult
+
+
+def _ws_url(url):
+    if url.startswith("https://"):
+        return "wss://" + url[len("https://"):] + "/ws?role=agent"
+    if url.startswith("http://"):
+        return "ws://" + url[len("http://"):] + "/ws?role=agent"
+    return url + "/ws?role=agent"
+
+
+def _ws_sync_roundtrip(ws, state, url, token):
+    """WS上で1周: {"t":"sync"} 送信 → 応答適用。(delivered, appOnline) を返す。
+    応答が来なければ WSError（呼び出し側が再接続を裁く）。"""
+    body, snapshot, fp, send_office, now = _sync_request(state)
+    ws.send_text(json.dumps({"t": "sync", **body}, ensure_ascii=False))
+    deadline = time.time() + WS_SYNC_TIMEOUT
+    while True:
+        remain = deadline - time.time()
+        if remain <= 0:
+            raise wsc.WSError("sync応答タイムアウト")
+        m = ws.recv(timeout=remain)
+        if m is None:
+            raise wsc.WSError("sync応答タイムアウト")
+        if m == "P":
+            continue
         try:
-            _save_openclaw_contract(d.get("openclaw"))
-        except OSError as e:
-            print(f"⚠ OpenClaw集約の保存のみ失敗: {e}", flush=True)
-    seen = d.get("appSeenAgo")
-    return delivered, (int(seen) if isinstance(seen, (int, float)) else None)
+            d = json.loads(m)
+        except ValueError:
+            continue
+        if isinstance(d, dict) and d.get("t") == "sync":
+            if not d.get("ok"):
+                raise wsc.WSError(f"sync拒否: {d}")
+            n, _seen, app_online = _sync_apply(
+                d, state, snapshot, fp, send_office, now, url, token)
+            return n, app_online
+        # 同期中に届いた wake は読み捨てず旗に変える（捨てると最悪30秒の配達遅れ）
+        if isinstance(d, dict) and d.get("t") == "wake":
+            state["_wake_pending"] = True
+
+
+def ws_loop(url, token, state):
+    """WS常時接続の1セッション。例外（切断・無応答）でのみ戻る。
+    idle中は recv がそのまま wake 待ち＝指示は投函の瞬間に届く。"""
+    ws = wsc.WSClient(_ws_url(url), token=token, timeout=10)
+    ws.connect()
+    print(f"🔌 WS接続（wake駆動・scan {SCAN_FAST:g}s↔{SCAN_SLOW:g}s）", flush=True)
+    try:
+        app_online = False
+        last_ka = time.time()
+        last_rx = time.time()
+        need_sync = True          # 接続直後に1回フル同期（再接続の冪等再同期）
+        while True:
+            if need_sync or state.get("acks"):
+                n, app_online = _ws_sync_roundtrip(ws, state, url, token)
+                last_rx = time.time()
+                if n:
+                    print(f"📨 {n}セッションへ配達", flush=True)
+                # 配達したら ack を即flush（次スキャンを待たず1周＝at-least-once窓を最短化）。
+                # 同期中に来た wake も取りこぼさない
+                need_sync = bool(state.get("acks")) or state.pop("_wake_pending", False)
+                continue
+            lvl = int((state.get("usage") or {}).get("level") or 0)
+            m = ws.recv(timeout=_scan_interval(app_online, lvl))
+            now = time.time()
+            if m is not None:
+                last_rx = now
+                if m != "P":
+                    try:
+                        d = json.loads(m)
+                    except ValueError:
+                        d = None
+                    if isinstance(d, dict) and d.get("t") == "wake":
+                        need_sync = True   # 投函→即配達（これがWS化の本体）
+                        continue
+            # ローカルscan（リクエスト0円）: 変化かheartbeat期限のときだけsyncを送る
+            snapshot = _redact_office_for_relay(office.office_json())
+            # 使用量が高いほど heartbeat も伸ばす（無変化時の定期pushを減らす）
+            hb = PUSH_HEARTBEAT * USAGE_SLOWDOWN.get(lvl, 1.0)
+            if (_status_fingerprint(snapshot) != state.get("fp")
+                    or now - state.get("pushed_at", 0.0) >= hb):
+                need_sync = True
+                continue
+            if now - last_ka >= WS_KEEPALIVE:
+                ws.send_text("p")   # auto-response "P"＝課金ゼロ・接続の生死だけ確かめる
+                last_ka = now
+            if now - last_rx >= WS_DEAD_AFTER:
+                raise wsc.WSError(f"無応答{int(now - last_rx)}秒（keepalive途絶）")
+    finally:
+        ws.close()
 
 
 def tick(url, token):
@@ -613,17 +865,40 @@ def main():
             sys.exit(1)
         time.sleep(60)
     _load_nonces()   # 既視 nonce を復元（再起動後も窓内リプレイを塞ぐ）
-    print(f"📡 中継エージェント起動: {url} (間隔{interval:g}s{' ・1周のみ' if once else ''})",
-          flush=True)
+    ws_mode = WS_ENABLED and not once   # --once は常にHTTP＝E2E/デバッグの決定論を守る
+    print(f"📡 中継エージェント起動: {url} "
+          f"({'WS常時接続・退避HTTP' + format(interval, 'g') + 's' if ws_mode else '間隔' + format(interval, 'g') + 's'}"
+          f"{' ・1周のみ' if once else ''})", flush=True)
     state = {"acks": [], "fp": None, "pushed_at": 0.0, "attn": False}
     sync_ok = True     # まず /sync（1周1リクエスト）。旧Workerなら一度だけレガシーへ降格
     burst_until = 0.0
+    ws_fail = 0
+    ws_down_until = 0.0
     while True:
+        # ── R79-8: WS常時接続が主経路。切断は再接続・3連続失敗で10分だけHTTPへ降格（自動復帰） ──
+        if ws_mode and sync_ok and time.time() >= ws_down_until:
+            started = time.time()
+            try:
+                ws_loop(url, token, state)   # 例外でのみ戻る
+            except SyncUnsupported:
+                sync_ok = False
+                print("ℹ Worker が /sync 未対応＝レガシー経路で継続", flush=True)
+            except Exception as e:   # WSは何が来ても本流(HTTP退避)を守る＝握って降格判定
+                lived = time.time() - started
+                ws_fail = 1 if lived > 60 else ws_fail + 1   # 長寿命後の切断=CF再利用の正常系
+                print(f"⚠ WS切断（{lived:.0f}s生存・連続{ws_fail}回目）: {e}", flush=True)
+                if ws_fail >= WS_FAIL_DEMOTE:
+                    ws_down_until = time.time() + WS_DEMOTE_SECONDS
+                    ws_fail = 0
+                    print(f"↩ {int(WS_DEMOTE_SECONDS / 60)}分間 HTTP /sync へ降格"
+                          "（フレーミング/経路の障害でも配達は退化しない・後で自動復帰）", flush=True)
+                time.sleep(min(2.0 * ws_fail + 1.0, 10.0))
+            continue
         appseen = None
         try:
             if sync_ok:
                 try:
-                    n, appseen = sync_tick(url, token, state)
+                    n, appseen, _app_online = sync_tick(url, token, state)
                 except SyncUnsupported:
                     sync_ok = False
                     print("ℹ Worker が /sync 未対応＝レガシー経路（3リクエスト/周）で継続。"

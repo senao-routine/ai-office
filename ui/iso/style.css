@@ -478,11 +478,19 @@
 }
 .ui-iso .lbl:hover { background: #fff; }
 .ui-iso .lbl b { font-size: 10.5px; font-weight: 700; color: #33305a; max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
-.ui-iso .lbl .dot { width: 6px; height: 6px; border-radius: 999px; background: #c9c6dd; flex: none; }
-.ui-iso .lbl.st-working .dot { background: var(--iso-ok); }
-.ui-iso .lbl.st-waiting .dot { background: var(--iso-warn); }
-.ui-iso .lbl.zone-queue .dot { background: var(--iso-alert); }
-.ui-iso .lbl.zone-external .dot { background: var(--iso-accent-2); }
+/* R80-A17: 足元チップの先頭をスマホと同じモノグラム（1文字＋状態リング）にする。
+   Mac↔スマホで同じ記号を使うことで「チップのE＝あのロボ」の対応が両画面で通じる。 */
+.ui-iso .lbl .mono {
+  width: 15px; height: 15px; border-radius: 999px; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-style: normal; font-size: 8.5px; font-weight: 800; line-height: 1;
+  color: #33305a; background: rgba(255, 255, 255, .9);
+  border: 1.5px solid #c9c6dd; box-sizing: border-box;
+}
+.ui-iso .lbl.st-working .mono { border-color: var(--iso-ok); }
+.ui-iso .lbl.st-waiting .mono { border-color: var(--iso-warn); }
+.ui-iso .lbl.zone-queue .mono { border-color: var(--iso-alert); }
+.ui-iso .lbl.zone-external .mono { border-color: var(--iso-accent-2); }
 .ui-iso .lbl.attn { border-color: var(--iso-alert); background: rgba(255, 244, 246, .95); }
 .ui-iso .lbl.attn b { color: #a3274e; }
 /* R53.2: 指示を受け取って動き出した直後の数秒ハイライト（keyframe不使用＝golden安全） */
@@ -499,21 +507,30 @@
 #attn.tray {
   position: absolute; left: 14px; right: 14px; top: 14px; z-index: 5;
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-  background: #40160a; color: #ffe9df; border-radius: 12px; padding: 10px 14px;
-  box-shadow: 0 8px 24px rgba(64, 22, 10, .28);
+  /* R80-A5: ❗は --iso-alert に一本化（旧: こげ茶ソリッドだけがガラスUIから浮いていた） */
+  background: rgba(224, 83, 138, .13); color: #7a1f42;
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+  backdrop-filter: blur(14px) saturate(150%);
+  border: 1px solid rgba(224, 83, 138, .34);
+  border-radius: 12px; padding: 10px 14px;
+  box-shadow: 0 8px 24px rgba(140, 40, 80, .16);
 }
 #attn.tray[hidden] { display: none; }
-#attn.tray b { font-size: 12.5px; font-weight: 800; color: #ffb18a; }
+#attn.tray b { font-size: 12.5px; font-weight: 800; color: var(--iso-alert); }
 #attn.tray span { font-size: 12.5px; flex: 1; min-width: 12em; }
 #attn.tray .kbd {
-  font: inherit; font-size: 11.5px; font-weight: 700; background: #f6f2e9; color: #241f18;
-  border-radius: 7px; padding: 5px 10px; border: 1px solid #d8cdb6; cursor: pointer;
+  font: inherit; font-size: 11.5px; font-weight: 700;
+  background: rgba(255, 255, 255, .92); color: var(--iso-ink);
+  border-radius: 7px; padding: 5px 10px; border: 1px solid var(--iso-line); cursor: pointer;
 }
 #attn.tray .kbd:hover { background: #fff; }
 #attn.tray .kbd:active { transform: translateY(1px); }
 #attn.tray .trayans { font-size: 12px; font-style: normal; color: #ffd9a8; font-weight: 700; }
-#attn.tray .traynext { background: transparent; color: #ffd9a8; border-color: rgba(255, 217, 168, .45); }
-#attn.tray .traynext:hover { background: rgba(255, 217, 168, .12); }
+/* R80-A5: 旧こげ茶トレイ用の淡いクリーム色は、ガラス化した明るい帯の上では読めない
+   （実レンダで確認）。❗の意味色でコントラストを取る。 */
+#attn.tray .traynext { background: rgba(255, 255, 255, .70); color: #7a1f42;
+  border-color: rgba(224, 83, 138, .40); }
+#attn.tray .traynext:hover { background: #fff; border-color: var(--iso-alert); }
 
 /* 📨 投函済み・未配達チップ（エージェント行） */
 .ui-iso .apend { font-size: 10.5px; opacity: .9; }
@@ -546,13 +563,16 @@
 .ui-iso .sheetact { font-size: 12px; color: var(--iso-ink-soft); margin: 0; }
 .ui-iso .sheetbody { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
 .ui-iso .sheetq {
-  background: #40160a; color: #ffe9df; border-radius: 11px; padding: 10px 12px;
+  background: rgba(224, 83, 138, .11); color: #7a1f42;
+  border: 1px solid rgba(224, 83, 138, .30);
+  border-radius: 11px; padding: 10px 12px;
   display: flex; flex-direction: column; gap: 7px;
 }
-.ui-iso .sheetq b { font-size: 12px; color: #ffb18a; }
+.ui-iso .sheetq b { font-size: 12px; color: var(--iso-alert); }
 .ui-iso .sheetopt {
   font: inherit; font-size: 12px; font-weight: 700; text-align: left;
-  background: #f6f2e9; color: #241f18; border: 1px solid #d8cdb6;
+  background: rgba(255, 255, 255, .92); color: var(--iso-ink);
+  border: 1px solid var(--iso-line);
   border-radius: 8px; padding: 7px 10px; cursor: pointer;
 }
 .ui-iso .sheetopt:hover { background: #fff; }
@@ -806,3 +826,56 @@
   border: 1px solid rgba(224, 96, 68, .3); border-radius: 999px; vertical-align: 3px;
 }
 .ui-iso .edbadge[hidden] { display: none; }
+
+/* R80-B6: 3D不可時のステージ内お知らせ（操作面は右レールで生きている） */
+.ui-iso .no3d {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  margin: auto; max-width: 460px; height: fit-content; padding: 18px 22px;
+  background: rgba(255, 255, 255, .78);
+  -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+  border: 1px solid var(--iso-line); border-radius: 16px;
+  font-size: 13px; line-height: 1.8; color: var(--iso-ink-soft); text-align: center;
+}
+
+/* R80: 購入の下に置く「お知らせを受け取る」導線（買わない人を袋小路にしない） */
+.ui-iso .mlink { display: block; margin-top: 6px; color: var(--iso-accent); text-decoration: none; }
+.ui-iso .mlink:hover { text-decoration: underline; }
+
+/* R80-A21: 配達未設定バナー＝製品の前提条件なので、読めてコピーできる形にする */
+.ui-iso .setupbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ui-iso .setupbar .sb-cmd {
+  font-family: ui-monospace, Menlo, monospace; font-size: 11.5px;
+  background: rgba(255, 255, 255, .7); border: 1px solid var(--iso-line);
+  border-radius: 6px; padding: 2px 8px;
+}
+.ui-iso .setupbar .sb-copy {
+  font-size: 11px; font-weight: 700; padding: 3px 10px; min-height: 24px;
+  border: 1px solid var(--iso-line); border-radius: 999px; background: #fff;
+  color: var(--iso-ink-soft); cursor: pointer;
+}
+.ui-iso .setupbar .sb-copy:hover { border-color: var(--iso-accent); color: var(--iso-accent); }
+
+/* R80-A8: モーダルの閉じるボタン（背景クリックとEscだけでは「閉じ方が見えない」） */
+.ui-iso .modalclose {
+  position: absolute; top: 18px; right: 18px; width: 32px; height: 32px;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px solid var(--iso-line); border-radius: 999px;
+  background: rgba(255, 255, 255, .92); color: var(--iso-ink-soft);
+  font-size: 14px; line-height: 1; cursor: pointer;
+}
+.ui-iso .modalclose:hover { color: var(--iso-ink); border-color: var(--iso-accent); }
+
+/* R80-A20: 空オフィスのとき、中央ステージにも次の一歩を置く */
+.ui-iso .stagehint {
+  position: absolute; left: 50%; top: 46%; transform: translate(-50%, -50%);
+  max-width: 380px; padding: 14px 18px; text-align: center;
+  background: rgba(255, 255, 255, .78);
+  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+  border: 1px solid var(--iso-line); border-radius: 14px;
+  font-size: 12.5px; line-height: 1.8; color: var(--iso-ink-soft); pointer-events: none;
+}
+
+/* R80-A15: シートが開いている間もトレイの回答ボタンを見えるようにする。
+   従来はシート(z:7・幅320px)がトレイ(z:5)の右側＝回答ボタン群を丸ごと覆い、
+   同時に数字キーも無効化されるので「シートを開いた瞬間トレイに戻れない」行き止まりだった。 */
+.ui-iso.sheet-open #attn.tray { right: 348px; }

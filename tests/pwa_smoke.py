@@ -72,18 +72,9 @@ def main(argv):
                 )
                 assert not page_errors, "page error: " + "; ".join(page_errors[:5])
                 assert page.locator(".tabbar").is_visible(), ".tabbar が非表示"
-                assert page.locator("#room").is_visible(), "officeビュー(#room) が非表示"
+                # R79: 3D不可端末はリストへ自動退避済み＝初期表示は #list が正
+                assert page.locator("#list").is_visible(), "退避先のリスト(#list)が非表示"
 
-                # R76: OpenClaw室は実データ駆動（旧＝常に「未接続（拡張準備中）」の飾り）。
-                # /status に external 社員が居るなら人数ピルと実メンバーが出ること。
-                band = page.locator(".openclaw")
-                assert band.count() == 1, "OpenClaw帯が無い"
-                pill = page.locator("#ocz_pill").inner_text()
-                members = page.locator(".openclaw .ocmem").count()
-                assert members >= 1, f"OpenClaw実メンバーが描画されていない (pill={pill!r})"
-                assert "接続中" in pill or "connected" in pill, f"人数ピルが未接続のまま: {pill!r}"
-                names = page.locator(".openclaw .ocmem .ocname").all_inner_texts()
-                assert any(n.strip() for n in names), "メンバー名が空"
 
                 audio_initial_probe = page.evaluate(
                     """() => ({
@@ -137,138 +128,47 @@ def main(argv):
                 )
                 page.locator("#setwrap .sheet button.sub").click()
 
-                employee_nodes = page.locator("#map .mchar")
-                # R76: 外部(OpenClaw)社員はマップではなく OpenClaw室の帯に出る＝マップの
-                # 期待値は「外部を除いた社員数」。ここを全社員数にすると帯の実装が入った
-                # 瞬間に嘘の不一致で落ちる。
+                # R79: /ui/** 遮断＝3D不可端末。4秒タイムアウト後にリストへ自動退避し、
+                # 2DのDOM（#map/#mapframe/.openclaw）は一切作られないことが新しい正。
+                page.wait_for_function(
+                    "() => typeof SCENE3D !== 'undefined' && SCENE3D === 'failed'",
+                    timeout=15000)
+                fb = page.evaluate(
+                    """() => ({
+                        view: VIEW,
+                        twoD: document.querySelectorAll('#map,#mapframe,.openclaw').length,
+                        cards: document.querySelectorAll('#list .card').length,
+                        lastOffice: !!localStorage.getItem('aioffice.lastOffice'),
+                    })""")
+                assert fb["view"] == "list", f"3D不可でリストへ自動退避していない: {fb}"
+                assert fb["twoD"] == 0, f"2DのDOMが残っている: {fb}"
                 seed_count = page.evaluate(
                     """() => {
                         const raw = localStorage.getItem('aioffice.lastOffice');
                         const office = raw ? JSON.parse(raw) : {};
-                        const all = Array.isArray(office.employees) ? office.employees : [];
-                        return all.filter((e) => e && !e.external).length;
-                    }"""
+                        return (office.employees || []).filter((e) => e).length;
+                    }""")
+                assert fb["cards"] == seed_count, (
+                    f"リストのカード数({fb['cards']}) != 社員数({seed_count})")
+                assert fb["lastOffice"], "aioffice.lastOffice が未保存"
+                # R79: 2D撤去後は OpenClaw 帯そのものが無い。外部(OpenClaw)社員は
+                # リストに出る（「3Dに居るものは必ず一覧にも居る」の退避側の相方）。
+                # 退避で既にリスト表示なのでタブ操作は不要（viewを動かさない＝後続検査の前提を守る）
+                list_texts = page.locator("#list .card").all_inner_texts()
+                assert any("OpenClaw" in s for s in list_texts), (
+                    "外部(OpenClaw)社員がリストに出ていません: " + repr(list_texts[:5])
                 )
-                assert seed_count >= 1, "seed社員が取得できません"
-                assert employee_nodes.count() == seed_count, (
-                    f"#map .mchar 数({employee_nodes.count()}) != seed社員数({seed_count})"
-                )
-                # v5: walkbar廃止＝歩行フレームはマップのmcharで検証（walking時に_walk系ソースへ切替）
-                walk_probe = page.evaluate(
-                    """() => {
-                        const rec = [...MCHARS.values()][0];
-                        if(!rec) return {ok:false};
-                        rec.walking = true;
-                        const src = mcharSource(rec);
-                        rec.walking = false;
-                        return {ok:true, walkSrc:src.includes('_walk'),
-                                idleSrc:mcharSource(rec).includes('_walk')};
-                    }"""
-                )
-                assert walk_probe.get("ok"), "mchar歩行プローブ失敗"
-                assert walk_probe["walkSrc"] and not walk_probe["idleSrc"], (
-                    "mchar歩行フレーム切替が不正: " + repr(walk_probe)
-                )
-                assert page.evaluate("() => !document.getElementById('walkbar')"), (
-                    "廃止済みのwalkbarがDOMに残っています"
-                )
+                # officeタブへ戻ると3D不可の告知が出る（白画面にしない）
+                page.locator("#tb_office").click()
+                page.wait_for_timeout(300)
+                assert page.locator("#no3d").is_visible(), "3D不可の告知(#no3d)が出ていない"
+                page.locator("#tb_list").click()
+                page.wait_for_timeout(200)
 
-                labels = page.locator("#map .zonepill").all_inner_texts()
-                assert any("会議" in label for label in labels), (
-                    "会議コーナーpillがない: " + repr(labels)
-                )
-
-                # R23.5: ミニマップ吹き出し会話。6秒ローテを待たず決定論部を直接検査する
-                # （msayLine=redaction後素材のみ・.msay要素実在・on付与で実描画・タップ透過）。
-                bubble_probe = page.evaluate(
-                    """() => {
-                        const rec = [...MCHARS.values()][0];
-                        if(!rec || !rec.say) return {ok:false, reason:'no rec/say'};
-                        const flavorLine = msayLine({state:'waiting', session:'probe', feed:[]}, 0);
-                        const logLine = msayLine({state:'working', age:10, session:'probe',
-                                                  feed:['編集中 run.py']}, 2);   // (2+wHash('probe'))%3!==0=ログ行分岐
-                        rec.say.textContent = flavorLine;
-                        rec.say.classList.add('on');
-                        const rect = rec.say.getBoundingClientRect();
-                        const style = getComputedStyle(rec.say);
-                        const result = {
-                            ok: true,
-                            flavorLine, logLine,
-                            visible: rect.width > 0 && rect.height > 0,
-                            passthrough: style.pointerEvents === 'none',
-                        };
-                        rec.say.classList.remove('on');
-                        rec.say.textContent = '';
-                        return result;
-                    }"""
-                )
-                assert bubble_probe.get("ok"), "吹き出しプローブ失敗: " + repr(bubble_probe)
-                assert bubble_probe["flavorLine"], "flavor台詞が空: " + repr(bubble_probe)
-                assert bubble_probe["logLine"] == "編集中 run.py", (
-                    "動作ログ行が吹き出しに出ていません: " + repr(bubble_probe)
-                )
-                assert bubble_probe["visible"], "吹き出し.onが実描画されません: " + repr(bubble_probe)
-                assert bubble_probe["passthrough"], "吹き出しがタップを遮っています: " + repr(bubble_probe)
-
-                scene_probe = page.evaluate(
-                    """() => {
-                        const room = document.querySelector('#room');
-                        const map = document.querySelector('#map');
-                        const mapStyle = map ? getComputedStyle(map) : null;
-                        const styleText = [...document.querySelectorAll('style')]
-                            .map(node => node.textContent || '').join('\\n');
-                        return {
-                            map: !!map,
-                            mapScale: !!map && !!mapStyle && mapStyle.transform !== 'none' &&
-                                map.getBoundingClientRect().width > 0,
-                            mapLogicalWidth: !!map && map.offsetWidth === 374,
-                            mchars: document.querySelectorAll('#map .mchar').length,
-                            desks: document.querySelectorAll('#map .mdesk').length,
-                            oldFurniture: document.querySelectorAll(
-                                'img[src*="deskset"], img[src*="meetset"], img[src*="sofaset"]'
-                            ).length,
-                            oldWall: styleText.includes('wallstrip'),
-                            oldElements: document.querySelectorAll(
-                                '#room .officegrid, #room .meetroom, #room .loungestage'
-                            ).length,
-                            openclaw: !!room && [...room.querySelectorAll('.zonepill')]
-                                .some(node => (node.textContent || '').includes('OpenClaw')),
-                            openclawCrt: room ? room.querySelectorAll('.openclaw .crt').length : 0,
-                            openclawServer: room ? room.querySelectorAll('.openclaw .server').length : 0,
-                            openclawBots: room ? room.querySelectorAll('.openclaw .ocbot').length : 0,
-                            walkfObject: typeof WALKF === 'object' && WALKF !== null && !Array.isArray(WALKF),
-                            walkbarGone: !document.getElementById('walkbar'),
-                            lastOffice: !!localStorage.getItem('aioffice.lastOffice'),
-                        };
-                    }"""
-                )
-                assert scene_probe["map"], "#map がありません"
-                assert scene_probe["mapScale"], "#map にscale transformが適用されていません"
-                assert scene_probe["mapLogicalWidth"], "#map の論理幅が374pxではありません"
-                assert scene_probe["mchars"] == seed_count, (
-                    "#map .mchar 数がseed社員数と一致しません: " + repr(scene_probe)
-                )
-                assert scene_probe["desks"] == 6, (
-                    "マップ机(.mdesk)が6個ではありません: " + repr(scene_probe)
-                )
-                assert scene_probe["oldFurniture"] == 0, (
-                    "旧家具スプライト参照が残っています: " + repr(scene_probe)
-                )
-                assert not scene_probe["oldWall"], "CSSに旧 wallstrip 参照が残っています"
-                assert scene_probe["oldElements"] == 0, (
-                    "旧縦積みゾーン要素が残っています: " + repr(scene_probe)
-                )
-                assert scene_probe["openclaw"] and scene_probe["openclawCrt"] == 3 and scene_probe["openclawServer"] == 1, (
-                    "OpenClaw装飾バンドが不正です: " + repr(scene_probe)
-                )
-                assert scene_probe["openclawBots"] == 2, (
-                    "OpenClawロボットが2体ではありません: " + repr(scene_probe)
-                )
-                assert scene_probe["walkfObject"] and scene_probe["walkbarGone"], (
-                    "歩行フレームまたはWALKFが不正です: " + repr(scene_probe)
-                )
-                assert scene_probe["lastOffice"], "localStorage aioffice.lastOffice が未保存"
-
+                # ❗カードは officeタブ（#room）内＝退避でリストに居るので戻してから検査。
+                # failed分岐でも updateAttnCards が塗る（officeへ戻ったユーザーにも❗を見せる）ことの検査でもある
+                page.locator("#tb_office").click()
+                page.wait_for_timeout(400)
                 attn_seed = page.evaluate(
                     """() => {
                         const raw = localStorage.getItem('aioffice.lastOffice');
@@ -324,7 +224,10 @@ def main(argv):
                 )
                 assert not page_errors, "page error: " + "; ".join(page_errors[:5])
 
-                employee_nodes.first.click()
+                # シートのタイプライター検査＝リストのカードから開く（2Dキャラは撤去済み）
+                page.locator("#tb_list").click()
+                page.wait_for_timeout(300)
+                page.locator("#list .card").first.click()
                 page.locator("#sheetwrap.open").wait_for(state="visible", timeout=5000)
                 for _ in range(50):
                     if page.locator("#shsay").inner_text().strip():
@@ -365,6 +268,14 @@ def main(argv):
                         f"EN検査: POST /status = {en_resp.status}"
                     )
                 page.reload(wait_until="domcontentloaded")
+                # reload後はリスト表示のまま＝シーン起動はofficeタブを見た時に始まる（節約）。
+                # 先にofficeへ切り替えて❗カードを塗らせ（分岐前で必ず塗る）、failed確定を待つ
+                # （自動退避でリストへ戻るが、textContent の検査は表示状態に依存しない）
+                page.locator("#tb_office").click()
+                page.wait_for_function(
+                    "() => typeof SCENE3D !== 'undefined' && SCENE3D === 'failed'",
+                    timeout=15000)
+                page.wait_for_timeout(300)
                 page.wait_for_function("() => window.LANG === 'en'", timeout=15000)
                 assert page.evaluate(
                     "() => localStorage.getItem('aioffice.lang')"
@@ -379,28 +290,30 @@ def main(argv):
                             .map(n => (n.textContent || '').trim()).filter(Boolean);
                         return {
                             tabbar: grab('#tabbar button'),
-                            statbar: grab('#statbar .stat').concat(grab('#total')),
+                            header: grab('#hstats .hstat'),
                             attncards: grab('#attncards .attnactions button')
                                 .concat(grab('#attncards .attngo'),
                                         grab('#attncards .attnmore'),
                                         grab('#attncards .attnsent')),
-                            zonepills: grab('#mainzone .zonepill')
-                                .concat(grab('#loungezone .zonepill'),
-                                        grab('#meetingzone .zonepill'),
-                                        grab('#room .openclaw .zonepill'),
-                                        grab('#room .ocpill')),
+                            no3d: grab('#no3d'),
                             banner: grab('#banner'),
                         };
                     }"""
                 )
-                assert len(chrome_texts["tabbar"]) == 4, (
-                    "EN検査: tabbarが4ボタンではありません: " + repr(chrome_texts["tabbar"])
+                # R79-5: タブは3つ（オフィス/リスト/設定）。🔔はヘッダーへ、統計はヘッダー右肩の3チップへ
+                assert len(chrome_texts["tabbar"]) == 3, (
+                    "EN検査: tabbarが3ボタンではありません: " + repr(chrome_texts["tabbar"])
+                )
+                assert len(chrome_texts["header"]) >= 2, (
+                    "EN検査: ヘッダー統計チップがありません: " + repr(chrome_texts["header"])
                 )
                 assert chrome_texts["attncards"], "EN検査: ❗即答カードのボタンが空です"
                 for area, values in chrome_texts.items():
                     bad = [v for v in values if jp_re.search(v)]
                     assert not bad, f"EN検査: {area} に日本語が残存: {bad!r}"
-                page.locator("#map .mchar").first.click()
+                page.locator("#tb_list").click()
+                page.wait_for_timeout(300)
+                page.locator("#list .card").first.click()
                 page.locator("#sheetwrap.open").wait_for(state="visible", timeout=5000)
                 sheet_texts = page.evaluate(
                     """() => {

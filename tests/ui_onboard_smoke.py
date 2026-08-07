@@ -60,11 +60,16 @@ def main():
             else:
                 print("  ✗ 空オフィスに onboarding カードが出ない")
                 ng += 1
+            # R80-A21: バナーは「文言＋コマンド＋コピーボタン」の3要素。
+            # 回答が実セッションへ届かないという**致命的な前提条件**を伝える場所なので、
+            # 読めるだけでなく**コピーして実行できる**ことまでを固定する。
             bar = page.query_selector("#setupbar")
-            if bar and "hooks/install.sh" in bar.text_content():
-                print("  ✓ hook未設定バナー（📮配達未設定）表示")
+            cmd = page.query_selector("#setupbar .sb-cmd")
+            copy = page.query_selector("#setupbar .sb-copy")
+            if bar and cmd and copy and "setup.sh" in cmd.text_content():
+                print("  ✓ hook未設定バナー（文言＋コマンド＋コピーボタン）")
             else:
-                print("  ✗ hook未設定バナーが出ない")
+                print("  ✗ hook未設定バナーが出ない/コピーできない")
                 ng += 1
             page.close()
 

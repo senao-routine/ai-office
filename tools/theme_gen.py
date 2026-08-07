@@ -540,13 +540,7 @@ def repad_assets(include_data=False):
         repadded += data_repadded
         skipped += data_skipped
 
-    if repo_changed:
-        command = [sys.executable, str(ROOT / "tools" / "gen_pwa_sprites.py")]
-        result = subprocess.run(command, cwd=ROOT)
-        if result.returncode != 0:
-            raise RuntimeError(
-                "repo側キャラ変更後の gen_pwa_sprites.py が失敗しました"
-            )
+    # R79: PWAスプライト同梱は全廃＝repo側キャラ変更後の再生成は不要になった
 
     print(f"✓ repad {repadded}枚 / skip {skipped}枚")
     return 0

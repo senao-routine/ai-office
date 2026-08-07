@@ -12,6 +12,7 @@
     python3 tools/gen_pwa_modules.py --check   # ui/ との一致（ドリフト検知・verify用）
 """
 import base64
+import hashlib
 import json
 import re
 import sys
@@ -67,12 +68,27 @@ def collect_assets():
     return out
 
 
+def build_id(mods, assets):
+    """内容から決まる版ID。Worker の ETag に使う＝内容が変われば必ず新版になる。
+    実行時に計算すると1.2MBを毎コールドスタートで舐めるので、生成時に確定させる。"""
+    h = hashlib.sha256()
+    for url, src in mods.items():
+        h.update(url.encode("utf-8")); h.update(b"\x00")
+        h.update(src.encode("utf-8")); h.update(b"\x00")
+    for url, (mime, b64) in assets.items():
+        h.update(url.encode("utf-8")); h.update(b"\x00")
+        h.update(b64.encode("ascii")); h.update(b"\x00")
+    return h.hexdigest()[:12]
+
+
 def render(mods, assets):
     lines = [
         "// 自動生成: tools/gen_pwa_modules.py（手で編集しない）",
         "// PWAの3Dシーン用ESM。Worker が /ui/... の同じパスで返す＝import指定子を書き換えない。",
         "export const MODULES = Object.assign(Object.create(null), {",
     ]
+    lines.insert(2, f"export const BUILD = {json.dumps(build_id(mods, assets))};   // 内容ハッシュ＝ETagの版")
+    lines.insert(3, "")
     for url, src in mods.items():
         lines.append(f"  {json.dumps(url)}: {json.dumps(src)},")
     lines.append("});")

@@ -47,6 +47,7 @@ try:
     import status_board
     import license as office_license
     import openclaw_source
+    import office_actions
 except ModuleNotFoundError:  # importlibでファイルを直接読む既存テスト向け
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     try:
@@ -54,6 +55,7 @@ except ModuleNotFoundError:  # importlibでファイルを直接読む既存テ�
         import status_board
         import license as office_license
         import openclaw_source
+        import office_actions
     finally:
         del sys.path[0]
 
@@ -145,6 +147,8 @@ OC_OUTBOX = _HOME / ".claude" / "office_oc_outbox"
 DEVICES_FILE = _HOME / ".claude" / "office_devices.json"   # P3: スマホ端末台帳(600・secret平文)
 PORT = 4780
 SHOW_WINDOW = int(os.environ.get("OFFICE_SHOW_WINDOW", 3 * 3600))  # 3時間以内に動いたセッションを「出勤中」として表示（R23.5退勤早期化・verify.shカナリア/works watchdogの窓と同期）
+# R79: inbox の指示の寿命。表示窓と同じにして「画面に出ているのに届かない」を作らない。
+INBOX_TTL = float(os.environ.get("OFFICE_INBOX_TTL", SHOW_WINDOW))
 TAIL_BYTES = 80_000
 TASK_TAIL_BYTES = 8 * 1024 * 1024   # R64: 初回窓。以降は増分読みなのでコストは初回のみ
 CACHE_SEC = 2.0
@@ -272,8 +276,17 @@ def edition(config=None):
     return val if val in VALID_EDITIONS else "claude"
 
 
-# ライセンスがカバーするedition（hybridライセンスは①claude利用も可＝アップグレード動線）
-_LICENSE_COVERS = {"claude": ("claude",), "hybrid": ("claude", "openclaw", "hybrid")}
+# R80: このプロダクトの識別子（ライセンスの product と照合する）
+PRODUCT_ID = "ai-office"
+
+# R80-B1: ライセンスの有効判定を単純化した。
+# 旧実装は「ライセンスのedition」×「動作中のedition」の入れ子表で、**新規cloneの既定edition
+# (hybrid) を claude(Pro)ライセンスがカバーしない**ため、買った人が素のまま使うと解錠されず
+# 「有効なライセンスを登録済みなのに『Pro機能です』で403」になっていた（実測確認）。
+# 回避策は config への手書きのみで、READMEにもUIにも記述が無い＝返金と信頼喪失の直行便。
+# 正しい約束は「買った鍵は、どの版で動かしていても、その鍵が示す機能を開ける」。
+# hybrid鍵は上位互換なので、判定は「有効な鍵があるか」だけで足りる。
+_LICENSE_EDITIONS = ("claude", "hybrid")   # 鍵として受理する edition 名（license.py と対）
 
 
 def edition_features(ed, lic=None):
@@ -282,7 +295,7 @@ def edition_features(ed, lic=None):
     ②openclaw版は完全無料（editionだけで全開）・①③の中継/Push/コストダッシュは有償。"""
     lic = lic if isinstance(lic, dict) else {}
     licensed = (bool(lic.get("valid"))
-                and ed in _LICENSE_COVERS.get(str(lic.get("edition") or ""), ()))
+                and str(lic.get("edition") or "") in _LICENSE_EDITIONS)
     return {
         "claudeSessions": ed in ("claude", "hybrid"),
         "openclaw": ed in ("openclaw", "hybrid"),
@@ -307,18 +320,27 @@ def license_state():
     try:
         mtime = p.stat().st_mtime
     except OSError:
-        return {"valid": False, "edition": "", "reason": L_now("ライセンス未登録", "no license registered")}
+        return {"valid": False, "edition": "", "product": "",
+                "reason": L_now("ライセンス未登録", "no license registered")}
     if (_license_cache["state"] is not None and _license_cache["path"] == str(p)
             and _license_cache["mtime"] == mtime):
         return _license_cache["state"]
     try:
         lic = json.loads(p.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError, UnicodeDecodeError):
-        state = {"valid": False, "edition": "", "reason": "ライセンスファイルが読めません"}
+        state = {"valid": False, "edition": "", "product": "",
+                 "reason": "ライセンスファイルが読めません"}
     else:
         ok, reason = office_license.verify_license(lic, n=_license_pubkey_override())
+        # R80: 1組の署名鍵で複数プロダクト（他アプリ・有料スキル）を扱うため、
+        # **自分宛ての鍵しか受理しない**。v1（product無し）は AI Office 専用の既発行分。
+        if ok and office_license.license_product(lic) != PRODUCT_ID:
+            ok = False
+            reason = L_now("この鍵は AI Office 用ではありません",
+                           "This license is for another product")
         state = {"valid": ok,
                  "edition": str(lic.get("edition") or "") if ok else "",
+                 "product": office_license.license_product(lic),
                  "reason": reason}
     _license_cache["path"] = str(p)
     _license_cache["mtime"] = mtime
@@ -356,7 +378,11 @@ def apply_license(lic):
     okv, reason = office_license.verify_license(lic, n=_license_pubkey_override())
     if not okv:
         return False, f"検証に失敗: {reason}", {}
-    keep = {k: lic[k] for k in ("v", "edition", "key_id", "issued", "holder", "alg", "sig")
+    # ★保存する項目は **canonical（署名対象）を1つも落とさない**こと。
+    #   R80で product を v2 の署名対象へ足したとき、ここに追加し忘れて
+    #   「登録し直すと検証が落ちる」実バグを作った（verify ▶5 の復帰E2Eが検出）。
+    keep = {k: lic[k] for k in ("v", "product", "edition", "key_id", "issued",
+                                "holder", "alg", "sig")
             if k in lic}
     p.parent.mkdir(parents=True, exist_ok=True)
     tmp = p.with_name(p.name + ".tmp")
@@ -1362,6 +1388,17 @@ def scan_office():
     # 「office_json に projects を混ぜない」既存の privacy 番人と衝突させない）。
     roster = group_by_project(employees, _LANG)
 
+    # R79-10 遠隔実行: 許可リスト（表示用の最小ビュー＝argv/cwd/envは載せない）と実行結果。
+    # caps はUIの機能ゲート（旧Macでは▶実行ボタンを出さない＝版ズレ耐性）。
+    recipes, _recipe_errors = office_actions.load_recipes()
+    actions_view = {
+        "recipes": office_actions.recipes_public(recipes),
+        "results": office_actions.results_public(),
+        "caps": {"actions": 1, "ws": 1},
+    }
+    # R80: 中継の今日の使用量（未設定/古い＝None＝UIは何も出さない）
+    relay_view = relay_usage()
+
     return {
         "officeName": config.get("officeName") or default_office_name(_LANG),
         "employees": employees,
@@ -1370,6 +1407,8 @@ def scan_office():
         "generatedAt": now,
         "setup": setup,
         "edition": edition_info,
+        "actions": actions_view,
+        "relay": relay_view,
         "lang": _LANG,
         "counts": {
             "working": sum(1 for e in employees if e["state"] == "working"),
@@ -1847,7 +1886,12 @@ def post_instruction(session, text):
                            "Queued for OpenClaw (the relay will deliver it)")
     INBOX.mkdir(parents=True, exist_ok=True)
     tmp = INBOX / f".{session}.tmp"
-    tmp.write_text(json.dumps({"text": text, "ts": time.time(), "from": "office"},
+    # R79: TTL を持たせる。旧実装は期限が無く、閉じたセッション宛の指示が**無期限に保留**
+    # された（受信フックの寿命は最長2時間・UIの表示窓は3時間・掃除も無し）。結果
+    # 「2〜3時間前に止まったセッションは画面に出るのに指示は永遠に届かず📨が残り続ける」。
+    # 期限切れは hook 側と _watch_loop の掃除役が捨てる＝古い指示が突然実行されない。
+    tmp.write_text(json.dumps({"text": text, "ts": time.time(), "from": "office",
+                               "ttl": INBOX_TTL},
                               ensure_ascii=False), encoding="utf-8")
     tmp.rename(INBOX / f"{session}.json")
     _record_instruction_history(session, text)
@@ -2739,6 +2783,16 @@ class Handler(BaseHTTPRequestHandler):
                 return self._deny(403, "cross-site request blocked")
             self._send(200, json.dumps(projects_index.projects_json(), ensure_ascii=False).encode("utf-8"),
                        "application/json; charset=utf-8")
+        elif self.path.split("?", 1)[0] == "/api/recipes":
+            # R79-10: 許可リストの全文（argv/cwd/env入り）はローカルUI専用。
+            # 中継へ出るのは office_json の recipes_public（id/label/dangerousのみ）だけ。
+            if not self._csrf_ok():
+                return self._deny(403, "cross-site request blocked")
+            recipes, errors = office_actions.load_recipes()
+            self._send(200, json.dumps({"recipes": recipes, "errors": errors,
+                                        "file": str(office_actions.RECIPES_FILE)},
+                                       ensure_ascii=False).encode("utf-8"),
+                       "application/json; charset=utf-8")
         elif self.path.split("?", 1)[0] in ("/", "/index.html"):  # ?style= / ?demo= 等のクエリを許容
             # R52: 旧UI（office_page.html・?ui=legacy）はP7計画どおり削除済み＝常に新UI。
             page_f = ROOT / "ui" / "boot.html"
@@ -2849,6 +2903,23 @@ class Handler(BaseHTTPRequestHandler):
         elif self.path.startswith("/api/pair/revoke"):
             ok = revoke_device(data.get("device_id", ""))
             msg = "失効しました" if ok else "端末が見つかりません"
+        elif self.path.startswith("/api/recipes/set"):
+            # R79-10: 許可リストの編集は**ここだけ**（loopback+CSRF＝Macの前の人間のみ）。
+            # 遠隔からレシピを作る/変える経路は存在しない（電話が持てるのは登録済みidへの参照だけ）。
+            recipes, errors = office_actions.validate_recipes(data)
+            if errors:
+                ok, msg = False, " / ".join(errors[:3])
+            else:
+                try:
+                    office_actions.save_recipes(recipes)
+                    ok, msg = True, f"{len(recipes)}件を保存しました"
+                except OSError as e:
+                    ok, msg = False, f"保存できません: {e}"
+            extra = {"recipes": recipes, "errors": errors}
+        elif self.path.startswith("/api/action/exec"):
+            # R79-10: 実行者は office_server（Automation TCC同意済み＝osascript経路を持つ）。
+            # relay_agent は act-封筒を検証してここへ 127.0.0.1 で回すだけの配達員でいる。
+            ok, msg, extra = _action_exec(data)
         elif self.path.startswith("/api/keys/set"):
             ok, msg = set_office_key(data.get("name"), data.get("value"))
         elif self.path.startswith("/api/lang"):
@@ -2934,6 +3005,93 @@ def _install_ts_logging(log_name):
 # ── デスクトップ通知と日報（R50-P7d） ─────────────────────────────
 DAILY_DIR = _HOME / ".claude" / "office_daily"
 DAILY_HOUR = 18                      # この時刻以降の最初の巡回で日報を出す
+
+
+# ── R80: 中継の使用量（Cloudflare無料枠に対する今日の消費）─────────────────
+# relay_agent（別プロセス）が中継から受け取った値をここへ書き、office_json 経由でUIへ出す。
+# 「気づけないまま枠を割って中継が止まる」のを防ぐための観測点。秘密は含まない。
+RELAY_USAGE_FILE = _HOME / ".claude" / "office_relay_usage.json"
+
+
+def set_relay_usage(usage):
+    """relay_agent から呼ばれる（同プロセスではない＝ファイル経由）。失敗は握る。"""
+    if not isinstance(usage, dict):
+        return False
+    try:
+        RELAY_USAGE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        tmp = RELAY_USAGE_FILE.with_name(RELAY_USAGE_FILE.name + ".tmp")
+        tmp.write_text(json.dumps({
+            "rows": int(usage.get("rows") or 0),
+            "limit": int(usage.get("limit") or 100000),
+            "pct": int(usage.get("pct") or 0),
+            "level": int(usage.get("level") or 0),
+            "at": time.time(),
+        }), encoding="utf-8")
+        tmp.replace(RELAY_USAGE_FILE)
+        return True
+    except (OSError, TypeError, ValueError):
+        return False
+
+
+def relay_usage():
+    """UI表示用（24時間以上古い値は出さない＝嘘の%を見せない）。"""
+    try:
+        d = json.loads(RELAY_USAGE_FILE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return None
+    if not isinstance(d, dict) or time.time() - float(d.get("at") or 0) > 86400:
+        return None
+    return {"rows": d.get("rows"), "limit": d.get("limit"),
+            "pct": d.get("pct"), "level": d.get("level")}
+
+
+def _action_exec(data):
+    """R79-10: act-封筒の中身（署名検証は relay_agent 側で完了済み）を実行する。
+    (ok, msg, extra) を返す。**必ず1つの終了状態に落ちる**（denied/busy/running/…）。
+
+    掟:
+    - 許可リスト（office_recipes.json）に無いものは実行しない。argv/cwd はレシピ側だけが持つ。
+    - kind=launch は「登録済みプロジェクトのセッション起動」＝projectId（cwdのsha1[:12]）で
+      config のプロジェクトを引き当てる。**遠隔から任意パスは起動できない**。
+    - reqId は冪等キー（at-least-once の再配達で二重起動しない）。
+    """
+    office_actions.NOTIFY = notify_mac      # 実行系の通知はローカル通知に集約
+    act = office_actions.parse_action(json.dumps(data.get("action") or data,
+                                                 ensure_ascii=False))
+    if not act:
+        return False, "アクション形式が不正です", {"state": "denied"}
+    device = str(data.get("device_id") or "")[:32]
+    recipes, _errors = office_actions.load_recipes()
+    if act["kind"] == "run":
+        state, rec = office_actions.start_action(act, recipes, device=device)
+        return state in ("running", "done"), state, {"state": state, "reqId": rec["reqId"],
+                                                     "label": rec["label"]}
+    if act["kind"] == "launch":
+        # 既知の reqId は再実行しない（Terminalが二重に開く驚きを避ける）
+        for r in office_actions.results_public(limit=office_actions.RESULT_KEEP):
+            if r["reqId"] == act["reqId"]:
+                return True, r["state"], {"state": r["state"], "reqId": r["reqId"]}
+        # 引き当ては projects_index（実在する Claude プロジェクトの cwd 一覧）。
+        # 「過去に本当に開かれたプロジェクト」だけが対象＝遠隔から任意パスは起動できない。
+        target, label = "", ""
+        for prj in (projects_index.projects_json().get("projects") or []):
+            path = prj.get("cwd") or ""
+            if path and project_id_for(path) == act["project"]:
+                target, label = path, prj.get("name") or Path(path).name
+                break
+        if not target or not Path(target).is_dir():
+            rec = office_actions.register_result(act["reqId"], "launch", act["project"],
+                                                 "denied", reason="unknown-project",
+                                                 device=device)
+            notify_mac("📲 遠隔起動 拒否", "未登録プロジェクト")
+            return False, "denied", {"state": "denied", "reqId": rec["reqId"]}
+        ok = launch_claude(target)
+        rec = office_actions.register_result(act["reqId"], "launch", label,
+                                             "done" if ok else "failed", device=device)
+        notify_mac("📲 遠隔起動", f"{label}: {'起動しました' if ok else '失敗'}")
+        return ok, rec["state"], {"state": rec["state"], "reqId": rec["reqId"],
+                                  "label": label}
+    return False, "未対応のアクションです", {"state": "denied"}
 
 
 def notify_mac(title, body):

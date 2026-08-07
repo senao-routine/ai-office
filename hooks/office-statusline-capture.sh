@@ -11,7 +11,7 @@
 #
 # パススルー: ~/.claude/office_usage/passthrough.cmd があれば、その中身へ同じ stdin を
 # 渡して stdout をそのまま返す（既存の statusLine 表示を維持）。無ければ自前の1行を出す。
-# OFFICE_HOME はテスト注入口（既定 $HOME）。
+# OFFICE_HOME はテスト注入口（既定 ${HOME}）。
 set +e
 H="${OFFICE_HOME:-$HOME}"
 INPUT="$(cat 2>/dev/null)"

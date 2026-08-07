@@ -9,7 +9,8 @@ import {
   deliveryTransitions, summarizeWorld, tidyActivity,
 } from "/ui/core/world.js";
 import {
-  focusTerminal, getKeysStatus, getOffice, getStatusBoard, licenseSet, licenseStatus,
+  focusTerminal, getKeysStatus, getOffice, getRecipes, getStatusBoard,
+  licenseSet, licenseStatus, setRecipes,
   newProject, pairList, pairNew, pairRevoke, pickProjectFolder, poll, postInstruction,
   budgetApply, setOfficeKey, spendApply,
 } from "/ui/platform/api.js";
@@ -31,6 +32,10 @@ const attnKeyFor = (a) => (a?.question ? `q:${a.question}` : `approval:${a?.sess
 /** 🎬デモモード（?demo=1）: /ui/demo/world.json を1回だけ読み、投函は行わない。 */
 const DEMO = new URLSearchParams(
   typeof location === "undefined" ? "" : location.search).get("demo") === "1";
+
+// R80: 購入・お知らせの導線は**この1箇所**だけを見る（R81でLPを作ったらここを差し替える）。
+// UIの各所にURLを散らすと、値上げ・移転のたびに探し回ることになる。
+const PRODUCT_SITE = "https://github.com/senao-routine/ai-office";
 
 export async function mount(root) {
   root.replaceChildren();
@@ -61,6 +66,7 @@ export async function mount(root) {
       <div class="admin">
         <button class="abtn" id="btn-newproj" type="button"></button>
         <button class="abtn" id="btn-pair" type="button"></button>
+        <button class="abtn" id="btn-run" type="button"></button>
         <button class="abtn" id="btn-res" type="button"></button>
         <button class="abtn" id="btn-license" type="button"></button>
       </div>
@@ -97,6 +103,7 @@ export async function mount(root) {
         <div class="toast" id="toast" hidden></div>
         <div class="modalwrap" id="modalwrap" hidden>
           <div class="modal" id="modal"></div>
+          <button class="modalclose" id="modalclose" type="button" aria-label="閉じる">✕</button>
         </div>
         <footer class="bottom">
           <div class="card donutcard">
@@ -129,7 +136,34 @@ export async function mount(root) {
   css.href = "/ui/iso/style.css";
   await new Promise((res) => { css.onload = res; css.onerror = res; document.head.append(css); });
 
-  const scene = new IsoScene(shell.querySelector("#viewport"));
+  // R80-B6: WebGLが使えない環境（古いGPU・仮想マシン・リモートデスクトップ・ドライバ拒否）で
+  // 以前は `new IsoScene()` の例外が mount() ごと落ち、boot.html が英語の行き止まりを出していた。
+  // スマホPWAは同じ状況で「リスト表示へ自動退避」するのに、デスクトップだけ白画面という逆転。
+  // ここでは **3Dだけを諦めて、操作面（右レール・❗トレイ・詳細シート・下部）は全部生かす**。
+  // 分岐を増やさないため、失敗時は同じ形の「何もしないシーン」を差す（null object）。
+  let scene3dOk = true;
+  let scene;
+  try {
+    scene = new IsoScene(shell.querySelector("#viewport"));
+  } catch (err) {
+    scene3dOk = false;
+    console.warn("[iso] 3D unavailable — falling back to the list view", err);
+    const nil = () => null;
+    scene = {
+      ready: false, update: () => {}, resize: () => {}, dispose: () => {},
+      pickAgent: nil, projectAgent: nil, project: nil, projectBoss: nil,
+      labelAnchorFor: nil, focusOn: () => {}, focusOff: () => {},
+      stats: () => ({ drawCalls: 0, robots: 0 }),
+    };
+    const vp = shell.querySelector("#viewport");
+    if (vp) {
+      const note = document.createElement("div");
+      note.id = "no3d";
+      note.className = "no3d";
+      note.textContent = T("no3d");
+      vp.append(note);
+    }
+  }
   const onResize = () => scene.resize();
   window.addEventListener("resize", onResize);
 
@@ -140,7 +174,7 @@ export async function mount(root) {
   const draw = (t) => {
     if (!built) return;
     scene.update(built, t);
-    paintLabels(shell, scene, built);
+    if (scene3dOk) paintLabels(shell, scene, built);
     // R67: 「今更新された」の可視化。frozen では非表示＝golden 撮り直し不要
     if (!frozen && lastDataMono !== null) {
       const s = Math.max(0, Math.round(t - lastDataMono));
@@ -380,7 +414,8 @@ export async function mount(root) {
         ? agent.questionOptions.slice(0, 4).map((o) => ({
             label: o.label ?? o, text: T("opt_text", o.label ?? o) }))
         : [{ label: T("opt_approve"), text: T("opt_approve_text") },
-           { label: T("opt_pause"), text: T("opt_pause_text") }];
+           { label: T("opt_pause"), text: T("opt_pause_text") },
+           { label: T("opt_report"), text: T("opt_report_text") }];   // R80: スマホと同じ3本
       for (const o of opts) {
         const b = sEl("button", "sheetopt", o.label);
         b.type = "button";
@@ -409,6 +444,7 @@ export async function mount(root) {
     dock.append(board);
     paintTarget(agent);
     sheetEl.hidden = false;
+    shell.classList.add("sheet-open");  // R80-A15: トレイを詰めて回答ボタンを生かす
     scene.focusOn?.(agent.id);          // R70: 選んだロボへカメラが寄る
     // R67: 開きだけ .show 2段階でフェードイン（hidden の即時性は維持＝スモーク互換・
     // frozen は .no-anim で transition:none＝golden 非干渉）
@@ -421,6 +457,7 @@ export async function mount(root) {
     composeTarget = null;
     sheetEl.classList.remove("show");
     sheetEl.hidden = true;
+    shell.classList.remove("sheet-open");
     composeInput.value = "";
     shell.querySelector("#quickdock").replaceChildren();
     clearInterval(typeTimer);
@@ -588,6 +625,9 @@ export async function mount(root) {
     modal.replaceChildren();
   };
   modalWrap.addEventListener("click", (e) => { if (e.target === modalWrap) closeModal(); });
+  // R80-A8: 全モーダルに閉じる手段を出す。従来は「背景クリック」か Escape だけで、
+  // **画面上に閉じ方が一切見えていなかった**（スマホは全シートに「閉じる」があるのに逆転）。
+  shell.querySelector("#modalclose").addEventListener("click", closeModal);
   const openModal = () => {
     modalWrap.hidden = false;
     requestAnimationFrame(() => modalWrap.classList.add("show"));   // R67: 開きのフェード
@@ -715,6 +755,71 @@ export async function mount(root) {
     } catch { /* 一覧はベストエフォート */ }
   };
   shell.querySelector("#btn-pair").addEventListener("click", renderPairPanel);
+
+  // ── ▶ 遠隔実行の許可リスト（R79-10）─────────────────────────────────
+  // **ここが唯一の作成・編集口**（loopback+CSRF＝Macの前の人間だけ）。スマホ側は
+  // 登録済み id を参照して実行を依頼できるだけ＝鍵が漏れても未登録コマンドは動かない。
+  const renderRunPanel = async () => {
+    modal.replaceChildren(mEl("b", "mtitle", T("run_head")), mEl("p", "mnote", T("run_note")));
+    openModal();
+    let data = null;
+    try {
+      data = await getRecipes();
+    } catch (err) {
+      modal.append(mEl("p", "mnote merr", err.message));
+      return;
+    }
+    const recipes = data?.recipes || [];
+    if (!recipes.length) modal.append(mEl("p", "mnote", T("run_empty")));
+    for (const r of recipes) {
+      const row = mEl("div", "mkeyrow");
+      row.append(mEl("b", null, (r.dangerous ? "⚠️ " : "▶ ") + r.label),
+                 mEl("code", "mnote", r.argv.join(" ")));
+      modal.append(row);
+    }
+    for (const e of (data?.errors || [])) modal.append(mEl("p", "mnote merr", e));
+    const ta = document.createElement("textarea");
+    ta.className = "mtextarea";
+    ta.rows = 10;
+    ta.value = JSON.stringify({ recipes }, null, 1);
+    const save = mEl("button", "abtn", T("run_save"));
+    save.type = "button";
+    save.addEventListener("click", async () => {
+      let parsed;
+      try {
+        parsed = JSON.parse(ta.value);
+      } catch (err) {
+        showToast(String(err.message || err), false);
+        return;
+      }
+      try {
+        const res = await setRecipes(parsed.recipes ?? parsed);
+        showToast(res?.msg || T("run_saved"));
+        renderRunPanel();
+      } catch (err) {
+        showToast(err.message, false);
+      }
+    });
+    // R80-A6: 雛形へUIから到達できるようにする（従来は example.json がリポジトリにしか無く、
+    // 初見に argv配列・絶対cwd・returnOutput を素手で書かせていた）
+    const sample = mEl("button", "abtn", T("run_sample"));
+    sample.type = "button";
+    sample.addEventListener("click", () => {
+      const cur = (() => {
+        try { return JSON.parse(ta.value).recipes || []; } catch { return []; }
+      })();
+      const example = {
+        id: "r_status", label: T("run_sample_label"),
+        argv: ["git", "status", "--short"],
+        cwd: "/Users/you/path/to/your-project",
+        timeoutSec: 30, returnOutput: "tail",
+      };
+      ta.value = JSON.stringify({ recipes: [...cur, example] }, null, 1);
+      showToast(T("run_sample_note"));
+    });
+    modal.append(mEl("p", "mnote", T("run_hint")), ta, sample, save);
+  };
+  shell.querySelector("#btn-run").addEventListener("click", renderRunPanel);
 
   // ── ⚡リソース（status_board 読み取りビュー） ─────────────────────
   // R72: 課金方式の正本はサーバー（status_board の billing）。ただし app/ 未更新など
@@ -1106,10 +1211,17 @@ export async function mount(root) {
         modal.append(mEl("p", "mnote", T("lic_upgrade_hybrid")));
       }
       const buy = mEl("a", "mbuy", T("lic_buy"));
-      buy.href = "https://github.com/senao-routine/ai-office";
+      buy.href = PRODUCT_SITE;
       buy.target = "_blank";
       buy.rel = "noopener";
       modal.append(buy);
+      // 買わない人にも「知らせを受け取る」道を用意する（無料版が主戦場なので、
+      // ここで袋小路にせず、次のリリースまで関係を繋ぐ）
+      const news = mEl("a", "mnote mlink", T("lic_news"));
+      news.href = PRODUCT_SITE;
+      news.target = "_blank";
+      news.rel = "noopener";
+      modal.append(news);
     }
     const ta = mEl("textarea", "mtextarea");
     ta.placeholder = T("lic_ph");
@@ -1492,9 +1604,9 @@ function paintLabels(shell, scene, w) {
     if (!chip) {
       chip = document.createElement("div");
       chip.dataset.project = a.id;
-      const dot = document.createElement("i");
-      dot.className = "dot";
-      chip.append(dot, document.createElement("b"));
+      const mono = document.createElement("i");
+      mono.className = "mono";      // R80-A17: スマホのピン/チップと同じ「1文字＋状態リング」
+      chip.append(mono, document.createElement("b"));
       host.append(chip);
     }
     oldChips.delete(a.id);
@@ -1508,6 +1620,8 @@ function paintLabels(shell, scene, w) {
       (a.crew > 1 ? `${a.name} ×${a.crew}` : a.name);
     if (nameEl.textContent !== txt) {
       nameEl.textContent = txt;
+      const monoEl = chip.firstElementChild;
+      if (monoEl) monoEl.textContent = [...String(a.name || "?")][0]?.toUpperCase() || "?";
       chip.title = a.crew > 1 ? `${a.name} ×${a.crew}` : a.name;   // R69: 省略時も全文が読める
       chip.dataset.w = "";                                    // テキスト変化＝寸法キャッシュ無効化
     }
@@ -1556,6 +1670,7 @@ function applyStaticStrings(shell) {
   shell.querySelector("#gtitle-money").textContent = T("gauge_money");
   shell.querySelector("#btn-newproj").textContent = T("btn_newproj");
   shell.querySelector("#btn-pair").textContent = T("btn_pair");
+  shell.querySelector("#btn-run").textContent = T("btn_run");
   shell.querySelector("#btn-res").textContent = T("btn_res");
   shell.querySelector("#btn-license").textContent = T("btn_license");
   shell.querySelector("#greet").textContent = T("office_fallback");
@@ -1563,6 +1678,10 @@ function applyStaticStrings(shell) {
   shell.querySelector("#sheetsnd").title = T("snd_title");
   shell.querySelector("#sheetterm").title = T("term_title");
   shell.querySelector("#composeinput").placeholder = T("compose_ph");
+  // R80-B6: 3D不可の案内は mount 時（＝office_json の lang 到着前）に作られるので、
+  // 言語が確定したここで必ず貼り直す（旧: 日本語UIに英語の案内が出ていた）
+  const no3d = shell.querySelector("#no3d");
+  if (no3d) no3d.textContent = T("no3d");
   shell.querySelector("#title-tasks").textContent = T("card_tasks");
   shell.querySelector("#title-hist").textContent = T("card_hist");
   shell.querySelector("#title-agents").textContent = T("card_agents");
@@ -1601,6 +1720,21 @@ function render(shell, w) {
       w.agents.filter((a) => a.state === "working").length,   // R69: ゾーン頭数でなく実働数
       z.queue, z.lounge);
 
+  // R80-A20: 0体のとき、視線が向かう**中央ステージ**にも一言置く
+  //（右レールのカードだけでは、広い空オフィスを見て「壊れている?」と思われる）
+  const stage = shell.querySelector("#viewport");
+  let stageHint = shell.querySelector("#stagehint");
+  if (!DEMO && stage && w.agents.length === 0 && !shell.querySelector("#no3d")) {
+    if (!stageHint) {
+      stageHint = el("div", "stagehint");
+      stageHint.id = "stagehint";
+      stage.append(stageHint);
+    }
+    stageHint.textContent = T("ob_p1");
+  } else if (stageHint) {
+    stageHint.remove();
+  }
+
   // 📮 配達未設定バナー（旧UIのオンボーディング表現の復元）。demoでは出ない
   let setupBar = shell.querySelector("#setupbar");
   if (!DEMO && w.setup && w.setup.hookInstalled === false) {
@@ -1609,7 +1743,26 @@ function render(shell, w) {
       setupBar.id = "setupbar";
       shell.querySelector(".head").append(setupBar);
     }
-    setupBar.textContent = T("setup_hook");
+    // R80-A21: コマンドを読ませるだけでなく**コピーできる**ようにする
+    //（この帯は「回答が実セッションへ届かない」という致命的な前提条件を伝えている）
+    if (!setupBar.dataset.built) {
+      setupBar.replaceChildren();
+      setupBar.append(el("span", "sb-msg"), el("code", "sb-cmd"));
+      const copy = el("button", "sb-copy");
+      copy.type = "button";
+      copy.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(T("setup_hook_cmd"));
+          copy.textContent = T("setup_hook_copied");
+          setTimeout(() => { copy.textContent = T("setup_hook_copy"); }, 1800);
+        } catch { /* クリップボード不許可でもコマンドは読める */ }
+      });
+      setupBar.append(copy);
+      setupBar.dataset.built = "1";
+    }
+    setupBar.querySelector(".sb-msg").textContent = T("setup_hook");
+    setupBar.querySelector(".sb-cmd").textContent = T("setup_hook_cmd");
+    setupBar.querySelector(".sb-copy").textContent = T("setup_hook_copy");
   } else if (setupBar) {
     setupBar.remove();
   }
@@ -1635,9 +1788,12 @@ function render(shell, w) {
           acts.push({ ...base, label, text: T("opt_text", label) });
         });
       } else {
-        // 承認まち: 定型2択（文言はPWAのQUICKと同思想）
+        // R80: 承認まちの定型は **スマホと完全に同じ3本・同じ本文**。
+        // 従来はMac 2本/スマホ 3本で、同じ「承認」でも送られる日本語が違った
+        // （どちらで答えたかによってセッションが受け取る文が変わる状態だった）。
         acts.push({ ...base, label: T("opt_approve"), text: T("opt_approve_text") });
         acts.push({ ...base, label: T("opt_pause"), text: T("opt_pause_text") });
+        acts.push({ ...base, label: T("opt_report"), text: T("opt_report_text") });
       }
       acts.push({ ...base, label: T("opt_free"), compose: true });
       acts.forEach((a, i) => {
