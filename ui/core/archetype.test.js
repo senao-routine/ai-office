@@ -8,6 +8,13 @@ test("キーワードで職業が決まる（名前/role/deptのどれでも）"
   assert.equal(archetypeFor({ role: "LP制作", name: "x" }).kind, "design");
   assert.equal(archetypeFor({ name: "経費申請bot" }).kind, "ops");
   assert.equal(archetypeFor({ name: "AIオフィス開発" }).kind, "dev");
+  // R80.8 拡充ぶん
+  assert.equal(archetypeFor({ name: "ポッドキャスト編集" }).kind, "audio");   // audioがvideoの「編集」より先
+  assert.equal(archetypeFor({ name: "リサーチ部" }).kind, "research");
+  assert.equal(archetypeFor({ name: "収益ダッシュボード" }).kind, "finance");
+  assert.equal(archetypeFor({ name: "広報チーム" }).kind, "support");
+  assert.equal(archetypeFor({ name: "CI移行" }).kind, "infra");
+  assert.equal(archetypeFor({ name: "台本チーム" }).kind, "writer");
 });
 
 test("該当なしは generic＝アクセサリ無し・ハッシュで決まる淡色（決定論）", () => {

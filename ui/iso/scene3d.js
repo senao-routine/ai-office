@@ -1227,8 +1227,9 @@ export class IsoScene {
     this._archCache = this._archCache || new Map();
     const hit = this._archCache.get(cacheKey);
     if (hit && hit.kind === arch.kind) return hit;
-    const KIND_PART = { video: "phones", dev: "cap", design: "beret",
-      writer: "pencil", ops: "bowtie" };
+    const KIND_PART = { video: "phones", audio: "phones", dev: "cap",
+      design: "beret", writer: "pencil", ops: "bowtie", research: "mortar",
+      support: "headset", infra: "hardhat", finance: "eyeshade" };
     const built = {
       kind: arch.kind,
       part: KIND_PART[arch.kind] || null,

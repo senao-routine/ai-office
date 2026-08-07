@@ -16,8 +16,9 @@ const PARTS = [
   "head", "visor", "eye", "ear", "antStem", "antTip", "collar", "chest",
   "torso", "pelvis", "upper", "fore", "hand", "thigh", "shin", "foot",
   "claw",
-  // R80.7: 職業アクセサリ（core/archetype.js が決める）。各1 InstancedMesh=+5ドロー上限
+  // R80.7/R80.8: 職業アクセサリ（core/archetype.js が決める）。各1 InstancedMesh
   "phones", "cap", "beret", "pencil", "bowtie",
+  "mortar", "headset", "hardhat", "eyeshade",
 ];
 
 /** R75: ロブスターbot（OpenClaw社員）の見た目＝殻の色。
@@ -60,6 +61,10 @@ export function buildPartGeometries() {
     beret: beretGeometry(),
     pencil: pencilGeometry(),
     bowtie: bowtieGeometry(),
+    mortar: mortarGeometry(),
+    headset: headsetGeometry(),
+    hardhat: hardhatGeometry(),
+    eyeshade: eyeshadeGeometry(),
   };
 }
 
@@ -102,6 +107,47 @@ function pencilGeometry() {
   g.rotateZ(1.15);
   g.translate(0.315, 0.235, 0.04);
   return g;
+}
+
+/** 🎓 リサーチ/研究: 角帽（正方形の板＋タッセル） */
+function mortarGeometry() {
+  const board = new THREE.BoxGeometry(0.52, 0.030, 0.52);
+  board.rotateY(0.5);
+  const base = new THREE.CylinderGeometry(0.20, 0.23, 0.10, 20);
+  const tassel = new THREE.SphereGeometry(0.038, 10, 8);
+  return mergeGeometries([bake(board, 0, 0.315, 0), bake(base, 0, 0.255, 0),
+    bake(tassel, 0.24, 0.30, 0.20)]);
+}
+
+/** 🎤 広報/サポート: ヘッドセット（細いバンド＋片耳カップ＋マイクブーム） */
+function headsetGeometry() {
+  const band = new THREE.TorusGeometry(0.36, 0.018, 8, 24, Math.PI);
+  const cup = new THREE.CylinderGeometry(0.085, 0.085, 0.055, 16);
+  cup.rotateZ(Math.PI / 2);
+  const boom = new THREE.CylinderGeometry(0.014, 0.014, 0.24, 8);
+  boom.rotateX(Math.PI / 2 - 0.35);
+  boom.rotateY(-0.45);
+  const mic = new THREE.SphereGeometry(0.036, 10, 8);
+  return mergeGeometries([band, bake(cup, 0.355, 0.01, 0),
+    bake(boom, 0.28, -0.10, 0.16), bake(mic, 0.20, -0.185, 0.27)]);
+}
+
+/** ⛑ インフラ/移行: ヘルメット（ドーム＋つば一周＋天面リブ） */
+function hardhatGeometry() {
+  const dome = new THREE.SphereGeometry(0.355, 26, 14, 0, Math.PI * 2, 0, 0.95);
+  const brim = new THREE.CylinderGeometry(0.42, 0.44, 0.028, 26);
+  const rib = new THREE.BoxGeometry(0.055, 0.035, 0.56);
+  return mergeGeometries([bake(dome, 0, 0.055, 0), bake(brim, 0, 0.10, 0),
+    bake(rib, 0, 0.315, 0)]);
+}
+
+/** 👓 経理/会計: アイシェード（緑の半透明ツバ＝会計士の記号。ツバだけ＝目は隠さない） */
+function eyeshadeGeometry() {
+  const brim = new THREE.CylinderGeometry(0.36, 0.40, 0.030, 24, 1, false, -0.75, 1.5);
+  const bandR = new THREE.TorusGeometry(0.345, 0.020, 8, 22, Math.PI * 1.2);
+  bandR.rotateX(Math.PI / 2);
+  bandR.rotateZ(-0.19);
+  return mergeGeometries([bake(brim, 0, 0.235, 0.10), bake(bandR, 0, 0.235, 0)]);
 }
 
 /** 🎀 運用/事務: 蝶ネクタイ（襟元。左右の羽＋結び目） */
@@ -163,6 +209,10 @@ export function makeSkeleton() {
       beret: attach(neck, 0, 0.16, 0),
       pencil: attach(neck, 0, 0.16, 0),
       bowtie: attach(hip, 0, 0.275, 0.168),
+      mortar: attach(neck, 0, 0.16, 0),
+      headset: attach(neck, 0, 0.16, 0),
+      hardhat: attach(neck, 0, 0.16, 0),
+      eyeshade: attach(neck, 0, 0.16, 0),
     },
     eyes: [], ears: [], arms: [], legs: [],
   };
@@ -294,7 +344,8 @@ export class RobotBatch {
       hand: "white", thigh: "shell", shin: "white", foot: "dark",
       claw: "shell",
       phones: "white", cap: "white", beret: "white", pencil: "white",
-      bowtie: "white",
+      bowtie: "white", mortar: "white", headset: "white", hardhat: "white",
+      eyeshade: "white",
     };
     this.perBody = {
       eye: 2, ear: 2, upper: 2, fore: 2, hand: 2, thigh: 2, shin: 2, foot: 2,

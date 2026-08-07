@@ -591,9 +591,37 @@ export async function mount(root) {
       }
       const id = scene.pickAgent?.(x, y);
       const a = id && (built?.agents || []).find((q) => q.id === id);
-      if (a) openCompose(a);
+      if (a) { scene.greet?.(a.id); openCompose(a); }   // R80.8: 挨拶=スマホと同じ演出
     }, 250);
   });
+  // R80.8: PCにもスマホと同じカメラ操作を（デザイン統一のユーザーFB）。
+  // ホイール=ズーム（ポインタ位置ピボット）／ドラッグ=パン／空きダブルクリック=全景。
+  viewportEl.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    const { x, y } = stagePoint(e);
+    scene.viewZoomBy?.(e.deltaY < 0 ? 1.12 : 1 / 1.12, x, y);
+  }, { passive: false });
+  let dragFrom = null;
+  let dragMoved = 0;
+  viewportEl.addEventListener("mousedown", (e) => {
+    if (e.button !== 0) return;
+    dragFrom = { x: e.clientX, y: e.clientY };
+    dragMoved = 0;
+  });
+  window.addEventListener("mousemove", (e) => {
+    if (!dragFrom) return;
+    const dx = e.clientX - dragFrom.x;
+    const dy = e.clientY - dragFrom.y;
+    dragMoved += Math.abs(dx) + Math.abs(dy);
+    if (dragMoved > 5) scene.viewPanBy?.(dx, dy);
+    dragFrom = { x: e.clientX, y: e.clientY };
+  });
+  window.addEventListener("mouseup", () => { dragFrom = null; });
+  viewportEl.addEventListener("click", (e) => {
+    // ドラッグ後の click はパン操作の残骸＝選択に化けさせない（capture で先取り）
+    if (dragMoved > 5) { e.stopImmediatePropagation(); clearTimeout(clickTimer); }
+  }, { capture: true });
+
   // R53: ロボをダブルクリック → そのセッションの実ターミナルを前面へ（見る→実物の輪）
   viewportEl.addEventListener("dblclick", (e) => {
     clearTimeout(clickTimer);                 // R67: シングルクリック側を無効化
@@ -601,6 +629,7 @@ export async function mount(root) {
     const id = scene.pickAgent?.(x, y);
     const a = id && (built?.agents || []).find((q) => q.id === id);
     if (a && !a.external) jumpTerminal(a.session, a.name);
+    else if (!a) scene.viewReset?.();       // R80.8: 空きダブルクリック=全景（スマホと同じ）
   });
   // ホバー: ロボット/ボスの上で cursor:pointer＋対応する足元チップを強調（60msスロットリング）
   let hoverLast = 0;
