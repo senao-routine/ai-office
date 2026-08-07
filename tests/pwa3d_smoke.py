@@ -342,13 +342,23 @@ def main(argv):
                         page.touchscreen.tap(tp["x"], tp["y"])
                         page.wait_for_timeout(150)
                         page.touchscreen.tap(tp["x"], tp["y"])
-                        page.wait_for_timeout(800)
+                        # 高負荷時はclick合成が数百ms遅延する（load9で実測）＝固定待ちでなく
+                        # 最大3秒ポーリング。機能の正しさはこのピンの主眼（リセット化け/空振り化け）
+                        try:
+                            page.wait_for_function(
+                                "() => document.getElementById('sheetwrap')"
+                                ".classList.contains('open')", timeout=3000)
+                            opened2 = True
+                        except PWTimeout:
+                            opened2 = False
                         touch = page.evaluate(
                             "() => ({open: document.getElementById('sheetwrap')"
                             ".classList.contains('open'),"
+                            " sel: !!SEL, note: (document.getElementById('note')||{})"
+                            ".textContent || '',"
                             " scale: window.__scene3d.view.state().scale})")
-                        if not touch["open"]:
-                            print(f"  ✗ 実タッチの連続タップでシートが開かない（リセットに化けた?）: {touch}")
+                        if not opened2:
+                            print(f"  ✗ 実タッチの連続タップでシートが開かない（リセット/空振り化け?）: {touch}")
                             ng += 1
                         elif touch["scale"] != 1:
                             print(f"  ✗ ロボ上の連続タップでズームが動いた: {touch}")
