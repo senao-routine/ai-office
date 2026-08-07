@@ -1186,28 +1186,33 @@ const APP_HTML = "<!doctype html><html lang=ja><head>" +
 // R80.7: ロスターは**上部の常設帯**へ（ユーザーFB「下のスライドできる項目は上に」）。
 // ❗カードは下（親指圏）のまま＝縦の取り合いが消えたので圧縮モードは廃止。
 '#topdock{position:absolute;left:8px;right:8px;top:calc(58px + env(safe-area-inset-top));z-index:6}' +
-'#gaugebar{display:flex;gap:10px;align-items:center;padding:7px 12px;background:rgba(255,255,255,.72);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border:1px solid var(--line);border-radius:13px;box-shadow:0 2px 8px rgba(64,52,140,.08)}' +
-'#gaugebar{color:var(--ink);min-height:0;margin:0;width:100%;text-align:left;font-weight:800}' +
+
+// R81-5: 下部は #infodock 1枚のガラスパネル（バラバラの小ピルが「素人感」の正体・ユーザーFB）
+'#infodock{background:rgba(255,255,255,.82);-webkit-backdrop-filter:blur(22px) saturate(160%);backdrop-filter:blur(22px) saturate(160%);border:1px solid var(--line);border-radius:18px;box-shadow:0 12px 32px rgba(64,52,140,.16);overflow:hidden}' +
+'body.th-dark #infodock{background:rgba(28,26,54,.86);border-color:rgba(160,140,255,.22)}' +
+'#gaugebar{color:var(--ink);min-height:0;margin:0;width:100%;text-align:left;font-weight:800;background:transparent;border:0;border-radius:0;box-shadow:none;padding:10px 14px 13px;border-top:1px solid rgba(124,92,255,.12);display:flex;gap:12px;align-items:center}' +
 '#gaugebar .gg b{color:var(--ink)}' +
-'body.th-dark #gaugebar{background:rgba(30,28,58,.80);border-color:rgba(160,140,255,.20);color:#e8e6f6}' +
+'body.th-dark #gaugebar{color:#e8e6f6;border-top-color:rgba(160,140,255,.16)}' +
 'body.th-dark #gaugebar .gg b{color:#e8e6f6}' +
 '#gaugebar:empty{display:none}' +
-'#ticker{display:flex;align-items:center;gap:8px;padding:8px 12px;margin:0;width:100%;text-align:left;background:rgba(255,255,255,.72);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border:1px solid var(--line);border-radius:13px;box-shadow:0 2px 8px rgba(64,52,140,.08);color:var(--ink);font-weight:700;transition:opacity .35s}' +
+'#ticker{display:flex;align-items:center;gap:10px;padding:12px 14px 10px;margin:0;width:100%;text-align:left;background:transparent;border:0;border-radius:0;box-shadow:none;color:var(--ink);font-weight:700;transition:opacity .18s;min-height:0}' +
 '#ticker:empty{display:none}' +
 '#ticker.fade{opacity:0}' +
-'#ticker .mono{--asz:22px;flex:none}' +
-'#ticker .tk-nm{flex:none;font-size:12px;max-width:34%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
-'#ticker .tk-act{flex:1;min-width:0;font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}' +
-'#ticker .tk-n{flex:none;font-size:10px;color:var(--muted);font-weight:800}' +
-'body.th-dark #ticker{background:rgba(30,28,58,.80);border-color:rgba(160,140,255,.20);color:#e8e6f6}' +
-'#gaugebar .gg{flex:1;display:grid;grid-template-columns:1fr auto;grid-template-areas:"lb pct" "bar bar";column-gap:6px;row-gap:3px;min-width:0;align-items:center}' +
-'#gaugebar .gg .lb{grid-area:lb;font-size:9.5px;font-weight:800;color:var(--muted);overflow:hidden;white-space:nowrap}' +
-'#gaugebar .gg .tr{grid-area:bar;height:6px;border-radius:99px;background:rgba(124,92,255,.12);overflow:hidden}' +
+'#ticker .mono{--asz:26px;flex:none}' +
+'#ticker .tk-nm{flex:none;font-size:13.5px;max-width:38%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;letter-spacing:.01em}' +
+'#ticker .tk-act{flex:1;min-width:0;font-size:12.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:700}' +
+'#ticker .tk-n{flex:none;font-size:10px;color:var(--muted);font-weight:800;background:rgba(124,92,255,.10);border-radius:99px;padding:2px 7px}' +
+'body.th-dark #ticker{color:#e8e6f6}' +
+'#gaugebar .gg{flex:1;display:grid;grid-template-columns:1fr auto;grid-template-areas:"lb pct" "bar bar";column-gap:7px;row-gap:4px;min-width:0;align-items:center}' +
+'#gaugebar .gg .lb{grid-area:lb;font-size:11.5px;font-weight:800;color:var(--muted);overflow:hidden;white-space:nowrap;letter-spacing:.02em}' +
+'#gaugebar .gg .tr{grid-area:bar;height:10px;border-radius:99px;background:rgba(124,92,255,.12);overflow:hidden;box-shadow:inset 0 1px 2px rgba(64,52,140,.10)}' +
 '#gaugebar .gg .tr i{display:block;height:100%;border-radius:99px;background:var(--sage)}' +
 '#gaugebar .gg.warn .tr i{background:var(--amber)}' +
 '#gaugebar .gg.hot .tr i{background:var(--alert)}' +
-'#gaugebar .gg b{grid-area:pct;font-size:10px;font-weight:800}' +
-'#gaugebar .gg-t{display:flex;flex:none;align-items:center}' +
+'#gaugebar .gg b{grid-area:pct;font-size:15px;font-weight:800;letter-spacing:.01em}' +
+'#gaugebar .gg-t{display:flex;flex:none;align-items:center;background:rgba(124,92,255,.10);border-radius:12px;padding:7px 11px}' +
+'#gaugebar .gg-t .lb{font-size:12.5px;color:var(--ink)}' +
+'body.th-dark #gaugebar .gg-t .lb{color:#e8e6f6}' +
 '#reswrap .sheet{background:rgba(255,255,255,.97)}' +
 'body.th-dark #reswrap .sheet{background:rgba(26,24,50,.97)}' +
 '#rs_body .rs-sec{font-weight:800;font-size:13px;margin:14px 0 6px}' +
@@ -1228,7 +1233,7 @@ const APP_HTML = "<!doctype html><html lang=ja><head>" +
 /* R79-6: チップは縦型アバターグリッド（モノグラム上・名前下・幅62px＝390pxで5枚超が一目）。
    モノグラムは3Dの足元ピンと同じ文字＋状態リング＝「チップのE＝あのロボ」の対応が学習できる。
    述語はテキスト名札とシートが担う（チップに詰め込まない） */
-'#roster .rchip{flex:none;margin:0;display:flex;align-items:center;text-align:left;gap:7px;min-width:118px;max-width:178px;background:rgba(255,255,255,.78);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border:1px solid var(--line);border-radius:14px;padding:6px 10px 6px 7px;min-height:48px;font-weight:700;color:var(--ink);box-shadow:0 2px 8px rgba(64,52,140,.08);transition:background .14s,border-color .14s}' +
+'#roster .rchip{flex:none;margin:0;display:flex;align-items:center;text-align:left;gap:7px;min-width:118px;max-width:178px;background:rgba(255,255,255,.78);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border:1px solid var(--line);border-radius:16px;padding:6px 11px 6px 8px;min-height:48px;font-weight:700;color:var(--ink);box-shadow:0 6px 18px rgba(64,52,140,.12);transition:background .14s,border-color .14s}' +
 '#roster .rchip .mono{--asz:24px;flex:none}' +
 '#roster .rchip .rtxt{display:flex;flex-direction:column;gap:2px;min-width:0}' +
 '#roster .rchip.attn{border-color:rgba(224,83,138,.38);background:rgba(224,83,138,.10)}' +
@@ -1485,8 +1490,8 @@ PWA_GLOSS_SOURCE +
 'tk.appendChild(el("span","tk-act",activityGlossPWA(e,LANG)||""));'+
 'tk.appendChild(el("span","tk-n",(TICKER_I+1)+"/"+emps.length));'+
 'tk.classList.remove("fade")}'+
-'if(adv&&!(window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches)){tk.classList.add("fade");setTimeout(swap,300)}else swap()}'+
-'setInterval(function(){if(document.hidden||VIEW!=="office")return;paintTicker(true)},4500);'+
+'if(adv&&!(window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches)){tk.classList.add("fade");setTimeout(swap,180)}else swap()}'+
+'setInterval(function(){if(document.hidden||VIEW!=="office")return;paintTicker(true)},6000);'+
 // R81-4: ⚡リソースシート＝ゲージの意味を全部ここで説明する（「謎の中継ゲージ」FB対策）
 'function paintRes(){var b=document.getElementById("rs_body");if(!b)return;b.innerHTML="";var o=LAST_OFFICE||{};var res=o.res||{};var rl=o.relay||{};var tk0=o.tasks||{};'+
 'function sec(s){b.appendChild(el("div","rs-sec",s))}'+
@@ -1624,8 +1629,12 @@ PWA_GLOSS_SOURCE +
 // R79-5: ❗トリアージとロスターは下部ドック（親指圏）。既存ノードは移設＝id重複(B7)を再発させない
 'var top=el("div",null);top.id="topdock";var rs=document.getElementById("roster");if(!rs){rs=el("div",null);rs.id="roster"}top.appendChild(rs);room.appendChild(top);'+
 'var dock=el("div",null);dock.id="dock";var cards=document.getElementById("attncards");if(!cards){cards=el("section",null);cards.id="attncards";cards.setAttribute("aria-live","polite")}dock.appendChild(cards);'+
-'var tk=el("button",null);tk.id="ticker";tk.type="button";tk.addEventListener("click",function(){var e=TICKER_CUR&&officeAgents(LAST_OFFICE).filter(function(x){return x&&x.session===TICKER_CUR})[0];if(e)openSheet(e)});dock.appendChild(tk);'+
-'var gb=el("button",null);gb.id="gaugebar";gb.type="button";gb.title=T("タップで詳細（AI利用枠・中継・ライセンス）","Tap for details (AI quota, relay, license)");gb.addEventListener("click",openRes);dock.appendChild(gb);room.appendChild(dock);'+
+// ticker/gaugebar/infodock も attncards/roster と同じ**再利用ガード**（B7: sceneShell3Dは
+// 再描画のたび走る＝素で作るとid重複し、描画対象と表示個体が別物になって空白が出る。再発2敗目）
+'var info=document.getElementById("infodock");if(!info){info=el("div",null);info.id="infodock";'+
+'var tk=el("button",null);tk.id="ticker";tk.type="button";tk.addEventListener("click",function(){var e=TICKER_CUR&&officeAgents(LAST_OFFICE).filter(function(x){return x&&x.session===TICKER_CUR})[0];if(e)openSheet(e)});info.appendChild(tk);'+
+'var gb=el("button",null);gb.id="gaugebar";gb.type="button";gb.title=T("タップで詳細（AI利用枠・中継・ライセンス）","Tap for details (AI quota, relay, license)");gb.addEventListener("click",openRes);info.appendChild(gb)}'+
+'dock.appendChild(info);room.appendChild(dock);'+
 // R80.6: タップは2段（ユーザーFB「いきなりウィンドウでなく、まずフォーカスして
 // どういう作業のアバターか浮かび上がってほしい」）。1度目=カメラが寄る+選択名札+
 // 「誰が・何を」トースト。同じロボの2度目=シート。空きタップ=選択解除+カメラ戻し。
@@ -1633,7 +1642,7 @@ PWA_GLOSS_SOURCE +
 // 2度目の空振り救済: 1度目でカメラが寄る＝ロボが画面上を移動するので、同じ場所への
 // 2度目タップはpickを外しやすい（実機で「タップが効かない」と見えた本体）。
 // 選択中ロボの現在位置から180px以内なら「2度目=詳細」とみなす。遠い空タップ=選択解除。
-'function hostTap(ev){if(!window.__scene3d)return;if(window.__scene3d.gestureMoved&&window.__scene3d.gestureMoved())return;var r=host.getBoundingClientRect();var tx=ev.clientX-r.left,ty=ev.clientY-r.top;var id=window.__scene3d.pick(tx,ty);if(!id){if(SEL){var ags=window.__scene3d.agents()||[],cur=null;for(var i=0;i<ags.length;i++)if(ags[i].session===SEL.session){cur=ags[i];break}var pp=cur&&window.__scene3d.project(cur.id);if((Date.now()-SEL_AT<2500)||(pp&&Math.hypot(pp.left-tx,pp.top-ty)<180)){var fresh=cur&&empOfAgent(cur.id);openSheet(fresh||SEL);return}SEL=null;document.querySelectorAll(".sel").forEach(function(n){n.classList.remove("sel")});window.__scene3d.focus(null)}return}tapAgent(id)}'+
+'function hostTap(ev){if(!window.__scene3d)return;if(window.__scene3d.gestureMoved&&window.__scene3d.gestureMoved())return;var r=host.getBoundingClientRect();var tx=ev.clientX-r.left,ty=ev.clientY-r.top;var id=window.__scene3d.pick(tx,ty);if(!id){if(SEL){var ags=window.__scene3d.agents()||[],cur=null;for(var i=0;i<ags.length;i++)if(ags[i].session===SEL.session){cur=ags[i];break}var pp=cur&&window.__scene3d.project(cur.id);if((Date.now()-SEL_AT<4000)||(pp&&Math.hypot(pp.left-tx,pp.top-ty)<180)){var fresh=cur&&empOfAgent(cur.id);openSheet(fresh||SEL);return}SEL=null;document.querySelectorAll(".sel").forEach(function(n){n.classList.remove("sel")});window.__scene3d.focus(null)}return}tapAgent(id)}'+
 'host.addEventListener("click",hostTap);host.addEventListener("dblclick",hostTap);'+
 'var s=document.createElement("script");s.type="module";s.src="/ui/pwa/boot3d.js";s.onerror=scene3dFailed;document.body.appendChild(s);setTimeout(function(){if(SCENE3D==="pending")scene3dFailed()},4000);return host}'+
 // シーンのagent(id=projectId or session) から /status の社員を引く単一の対応点

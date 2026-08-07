@@ -118,10 +118,14 @@ if (host && scene) {
       if (now - gs.lastTap < 320) {
         // ロボの上の連続タップは「2度目=詳細シート」の操作。全景リセットに化けさせると
         // タップ動線が丸ごと死ぬ（実機で発覚＝E2Eはタップ間隔900msで見逃した）。
+        // さらに: 1度目の選択でカメラが寄る＝2度目の座標からロボが外れる（126px実測）。
+        // pick命中だけでなく「直近4秒に選択がある」もリセット除外の条件にする
+        // （app.js の SEL/SEL_AT はclassic scriptのトップレベルvar=windowで読める）。
         const r = host.getBoundingClientRect();
         let hit = null;
         try { hit = scene.pickAgent(t0.clientX - r.left, t0.clientY - r.top, 54); } catch (_) { hit = null; }
-        if (!hit) { scene.viewReset(); gs.moved = 99; }
+        const recentSel = window.SEL && (Date.now() - (window.SEL_AT || 0) < 4000);
+        if (!hit && !recentSel) { scene.viewReset(); gs.moved = 99; }
       }
       gs.lastTap = now;
     } else if (ev.touches.length === 2) {

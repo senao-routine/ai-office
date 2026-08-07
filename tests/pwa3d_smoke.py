@@ -352,38 +352,80 @@ def main(argv):
                     # ロボ上でも発動すると2度目のclickが飲まれてシート動線が丸ごと死ぬ
                     # （実機で発覚＝マウスE2Eでは踏めない）。ロボ上ではリセットしないのが正。
                     page.evaluate(
-                        "() => { closeSheet(); SEL = null;"
-                        " window.__scene3d.view.reset(); window.__scene3d.focus(null); }")
-                    page.wait_for_timeout(700)
-                    tp = page.evaluate(
-                        """(id) => {
-                            const host = document.getElementById('scene3d');
-                            const r = host.getBoundingClientRect();
-                            const p = window.__scene3d.project(id);
-                            return p ? {x: r.left + p.left, y: r.top + p.top + 30} : null;
-                        }""", point["id"])
+                        """() => { closeSheet(); SEL = null;
+                            window.__scene3d.view.reset(); window.__scene3d.focus(null);
+                            // 失敗時診断: タップ経路のトレース（決定論バグと環境遅延の切り分け）
+                            window.__tapdbg = [];
+                            if (!window.__tapdbg_wired) {
+                                window.__tapdbg_wired = true;
+                                const _ta = tapAgent;
+                                tapAgent = function (id) {
+                                    window.__tapdbg.push(["tapAgent", id, SEL && SEL.session]);
+                                    return _ta(id);
+                                };
+                                const _os = openSheet;
+                                openSheet = function (e) {
+                                    window.__tapdbg.push(["openSheet", e && e.session]);
+                                    return _os(e);
+                                };
+                                const _cs = closeSheet;
+                                closeSheet = function () {
+                                    window.__tapdbg.push(["closeSheet"]);
+                                    return _cs();
+                                };
+                            } }""")
+                    # カメラ整定待ち: focusOff直後は投影が動き続ける（126pxドリフト実測）。
+                    # 2サンプル300ms間隔で5px以内に収まってからタップ座標を確定する
+                    tp = None
+                    prev = None
+                    for _ in range(12):
+                        cur = page.evaluate(
+                            """(id) => {
+                                const host = document.getElementById('scene3d');
+                                const r = host.getBoundingClientRect();
+                                const p = window.__scene3d.project(id);
+                                return p ? {x: r.left + p.left, y: r.top + p.top + 30} : null;
+                            }""", point["id"])
+                        if prev and cur and abs(cur["x"] - prev["x"]) < 5                                 and abs(cur["y"] - prev["y"]) < 5:
+                            tp = cur
+                            break
+                        prev = cur
+                        page.wait_for_timeout(300)
                     if not tp:
-                        print("  ✗ タッチ検証用のロボ位置が取れない")
+                        print("  ✗ タッチ検証用のロボ位置が整定しない")
                         ng += 1
                     else:
-                        page.touchscreen.tap(tp["x"], tp["y"])
-                        page.wait_for_timeout(150)
-                        page.touchscreen.tap(tp["x"], tp["y"])
-                        # 高負荷時はclick合成が数百ms遅延する（load9で実測）＝固定待ちでなく
-                        # 最大3秒ポーリング。機能の正しさはこのピンの主眼（リセット化け/空振り化け）
-                        try:
-                            page.wait_for_function(
-                                "() => document.getElementById('sheetwrap')"
-                                ".classList.contains('open')", timeout=3000)
-                            opened2 = True
-                        except PWTimeout:
-                            opened2 = False
-                        touch = page.evaluate(
-                            "() => ({open: document.getElementById('sheetwrap')"
-                            ".classList.contains('open'),"
-                            " sel: !!SEL, note: (document.getElementById('note')||{})"
-                            ".textContent || '',"
-                            " scale: window.__scene3d.view.state().scale})")
+                        # 高負荷（load25超・別プロセスが多コア占有）ではclick合成自体が
+                        # 救済窓4秒を超えて届くことがある＝環境遅延。コード退行（リセット化け/
+                        # 空振り化け）は決定論なので、**一連の再試行1回**では隠れない。
+                        opened2 = False
+                        touch = None
+                        for tap_try in (1, 2):
+                            page.touchscreen.tap(tp["x"], tp["y"])
+                            page.wait_for_timeout(150)
+                            page.touchscreen.tap(tp["x"], tp["y"])
+                            try:
+                                page.wait_for_function(
+                                    "() => document.getElementById('sheetwrap')"
+                                    ".classList.contains('open')", timeout=4000)
+                                opened2 = True
+                            except PWTimeout:
+                                opened2 = False
+                            touch = page.evaluate(
+                                "() => ({open: document.getElementById('sheetwrap')"
+                                ".classList.contains('open'),"
+                                " sel: !!SEL, note: (document.getElementById('note')||{})"
+                                ".textContent || '',"
+                                " scale: window.__scene3d.view.state().scale})")
+                            if opened2:
+                                break
+                            trace = page.evaluate("() => window.__tapdbg || []")
+                            print(f"  - 連続タップ試行{tap_try}が届かない: {touch} trace={trace}")
+                            page.evaluate(
+                                "() => { closeSheet(); SEL = null;"
+                                " window.__scene3d.view.reset();"
+                                " window.__scene3d.focus(null); }")
+                            page.wait_for_timeout(1200)
                         if not opened2:
                             print(f"  ✗ 実タッチの連続タップでシートが開かない（リセット/空振り化け?）: {touch}")
                             ng += 1
