@@ -1185,20 +1185,23 @@ const APP_HTML = "<!doctype html><html lang=ja><head>" +
 // R80-A16: ❗が出ている＝**いちばん「誰が何をしているか」を知りたい瞬間**なのに、
 // 旧実装はロスターを丸ごと消していた（残るのは1文字ピンだけで述語が全滅）。
 // 消さずに1行へ圧縮する（高さを 56→40px・名前だけ）＝❗カードの場所は保ちつつ情報を残す。
-'#attncards.on~#roster .rchip{min-height:40px;width:54px;padding:4px 3px;gap:2px}' +
+'#attncards.on~#roster .rchip{flex-direction:column;text-align:center;min-height:40px;min-width:0;max-width:none;width:54px;padding:4px 3px;gap:2px}' +
 '#attncards.on~#roster .rchip .mono{--asz:18px}' +
 '#attncards.on~#roster .rchip .nm{font-size:9px;max-width:48px}' +
+'#attncards.on~#roster .rchip .gl{display:none}' +
 '#roster{flex:none;display:flex;gap:8px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding:2px;scrollbar-width:none}' +
 '#roster::-webkit-scrollbar{display:none}' +
 '#roster:empty{display:none}' +
 /* R79-6: チップは縦型アバターグリッド（モノグラム上・名前下・幅62px＝390pxで5枚超が一目）。
    モノグラムは3Dの足元ピンと同じ文字＋状態リング＝「チップのE＝あのロボ」の対応が学習できる。
    述語はテキスト名札とシートが担う（チップに詰め込まない） */
-'#roster .rchip{flex:none;margin:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;width:62px;background:rgba(255,255,255,.78);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border:1px solid var(--line);border-radius:15px;padding:6px 4px 5px;min-height:56px;font-weight:700;color:var(--ink);box-shadow:0 2px 8px rgba(64,52,140,.08);transition:background .14s,border-color .14s}' +
-'#roster .rchip .mono{--asz:26px}' +
+'#roster .rchip{flex:none;margin:0;display:flex;align-items:center;text-align:left;gap:7px;min-width:118px;max-width:178px;background:rgba(255,255,255,.78);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border:1px solid var(--line);border-radius:14px;padding:6px 10px 6px 7px;min-height:48px;font-weight:700;color:var(--ink);box-shadow:0 2px 8px rgba(64,52,140,.08);transition:background .14s,border-color .14s}' +
+'#roster .rchip .mono{--asz:24px;flex:none}' +
+'#roster .rchip .rtxt{display:flex;flex-direction:column;gap:2px;min-width:0}' +
 '#roster .rchip.attn{border-color:rgba(224,83,138,.38);background:rgba(224,83,138,.10)}' +
 '#roster .rchip.sel{border-color:rgba(124,92,255,.42);background:rgba(124,92,255,.12)}' +
-'#roster .rchip .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:54px;font-size:10px;line-height:1.2}' +
+'#roster .rchip .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:132px;font-size:11px;line-height:1.2}' +
+'#roster .rchip .gl{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:132px;font-size:9px;line-height:1.2;font-weight:600;color:var(--muted)}' +
 /* R79-6: 名札は二段マーカー（ユーザーFB「どのロボットがどのエージェントか分からない」）。
    ①全員=足元モノグラムピン（1文字＋状態リング＝リスト/ロスターの.monoと同じ記号体系）
    ②選択中/❗先頭=テキスト名札（デスクトップ.lblと同じガラスピル・足元アンカー・高さ18px） */
@@ -1508,8 +1511,9 @@ PWA_GLOSS_SOURCE +
 'var s=document.createElement("script");s.type="module";s.src="/ui/pwa/boot3d.js";s.onerror=scene3dFailed;document.body.appendChild(s);setTimeout(function(){if(SCENE3D==="pending")scene3dFailed()},4000);return host}'+
 // シーンのagent(id=projectId or session) から /status の社員を引く単一の対応点
 'function empOfAgent(id){if(!window.__scene3d)return null;var ags=window.__scene3d.agents()||[];var ag=null;for(var i=0;i<ags.length;i++)if(ags[i].id===id){ag=ags[i];break}var sess=ag?ag.session:id;var list=officeAgents(LAST_OFFICE)||[];for(var j=0;j<list.length;j++)if(list[j]&&list[j].session===sess)return list[j];return null}'+
-// R79-6: 名札は二段マーカー（ユーザーFB「どのロボットがどのエージェントか分からない」）。
-// ①全員=足元モノグラムピン（1文字＋状態リング・ロスターの.monoと同じ記号）②選択中/❗先頭=テキスト名札。
+// R79-6→R80.5: 名札（ユーザーFB「どのロボットがどのエージェントか分からない」×2回）。
+// 6体以下=全員テキスト名札（識別が最優先・重なりはdrop()が下へ逃がす）。7体以上=二段marker
+// （①全員=足元モノグラムピン ②選択中/❗先頭=テキスト名札）＝390pxで名札が潰れる密度への退避。
 // ノードはid keyedで再利用＝毎フレームの全DOM走査をやめる（B12）。重なりは下へ逃がして解消（デスクトップpaintLabelsと同型）
 'var PLATE_NODES={};'+
 'function paintPlates(){var layer=document.getElementById("plates");var s3=window.__scene3d;if(!layer||!s3)return;var ags=s3.agents()||[];var W=layer.clientWidth||0;'+
@@ -1517,8 +1521,9 @@ PWA_GLOSS_SOURCE +
 'var attnFirst=emps.filter(needsAttn).slice().sort(triageSort)[0]||null;'+
 'var seen={},placed=[];'+
 'function drop(l,t,w,h){for(var g=0;g<6;g++){var hit=null;for(var i=0;i<placed.length;i++){var q=placed[i];if(l-w/2<q.r+3&&l+w/2>q.l-3&&t<q.b+2&&t+h>q.t-2){hit=q;break}}if(!hit)break;t=hit.b+2}placed.push({l:l-w/2,r:l+w/2,t:t,b:t+h});return t}'+
+'var showAll=ags.length<=6;'+
 'ags.forEach(function(a){var e=bySess[a.session]||null;var at=(s3.anchor&&s3.anchor(a.id))||s3.project(a.id);if(!at||!isFinite(at.left)||!isFinite(at.top))return;'+
-'var attn=e?needsAttn(e):!!a.attention;var sel=!!(SEL&&e&&SEL.session===e.session);var text=sel||!!(attn&&attnFirst&&e&&e.session===attnFirst.session);'+
+'var attn=e?needsAttn(e):!!a.attention;var sel=!!(SEL&&e&&SEL.session===e.session);var text=showAll||sel||!!(attn&&attnFirst&&e&&e.session===attnFirst.session);'+
 'var kind=text?"plate":"pin";var n=PLATE_NODES[a.id];'+
 'if(n&&n.getAttribute("data-kind")!==kind){n.remove();n=null}'+
 'if(!n){if(text){n=el("button","plate");n.type="button";n.appendChild(el("i","dot"));n.appendChild(el("span","nm",""));(function(id){n.addEventListener("click",function(){var cur=empOfAgent(id);if(cur)openSheet(cur)})})(a.id)}else{n=el("span","pin")}n.setAttribute("data-kind",kind);PLATE_NODES[a.id]=n;layer.appendChild(n)}'+
@@ -1532,12 +1537,12 @@ PWA_GLOSS_SOURCE +
 'var top=drop(left,at.top+4,w,h);'+
 'var lp=Math.round(left)+"px",tp=Math.round(top)+"px";if(n.style.left!==lp)n.style.left=lp;if(n.style.top!==tp)n.style.top=tp});'+
 'Object.keys(PLATE_NODES).forEach(function(id){if(!seen[id]){PLATE_NODES[id].remove();delete PLATE_NODES[id]}})}'+
-// R78: 3Dでは名札を全員に出せない（390pxで重なる）。誰が何をしているかは帯で補い、
-// タップでその社員へカメラが寄る＝一覧と3Dが同じ対象を指す。
+// R78→R80.5: 帯は「名前＋今なにをしているか」の情報カード（豆粒チップでは何も分からない実FB）。
+// タップでそのプロジェクトへカメラが寄る＝帯と3Dが同じ対象を指す。
 // R79-6: チップ先頭にモノグラム（3Dの足元ピンと同じ文字＋状態リング＝対応が学習できる）。
-// 述語はactivityGloss要約・選択/❗のときだけ表示（既定は名前だけ＝可視4枚の密度）
+// R80.5: 述語(activityGloss)を常設の下段に＝タップしなくても「誰が・何を」が読める。×N=セッション内訳
 'function paintEmptyHint(n){var room=document.getElementById("room");if(!room)return;var el0=document.getElementById("emptyhint");if(n>0){if(el0)el0.remove();return}if(el0)return;var box=el("div",null);box.id="emptyhint";box.appendChild(el("div","eh-t",T("まだ誰も出勤していません","Nobody is on duty yet")));box.appendChild(el("div","eh-s",T("Macのターミナルで claude を起動すると、そのプロジェクトがここに出勤します。","Start claude in a terminal on your Mac and the project will show up here.")));room.appendChild(box)}'+
-'function paintRoster(office){var bar=document.getElementById("roster");if(!bar)return;var emps=officeAgents(office).slice().sort(triageSort);var seen={};emps.forEach(function(e){var key=e.session||"";seen[key]=1;var n=null,all=bar.querySelectorAll(".rchip");for(var i=0;i<all.length;i++)if(all[i].getAttribute("data-sess")===key){n=all[i];break}if(!n){n=el("button","rchip");n.type="button";n.setAttribute("data-sess",key);n.appendChild(el("span","mono"));n.appendChild(el("span","nm",""));n.addEventListener("click",function(){var cur=(officeAgents(LAST_OFFICE)||[]).filter(function(x){return x&&x.session===key})[0];if(!cur)return;openSheet(cur);if(window.__scene3d&&window.__scene3d.focus){var ags=window.__scene3d.agents()||[];for(var j=0;j<ags.length;j++)if(ags[j].session===key){window.__scene3d.focus(ags[j].id);break}}});bar.appendChild(n)}n.setAttribute("data-state",e.state||"");n.className="rchip"+(needsAttn(e)?" attn":"")+(SEL&&SEL.session===key?" sel":"");setMono(n.querySelector(".mono"),e);var rnm=dispCrew(e);var rn=n.querySelector(".nm");if(rn.textContent!==rnm){rn.textContent=rnm;n.title=rnm+" — "+activityGlossPWA(e,LANG)}});var nodes=bar.querySelectorAll(".rchip");for(var q=nodes.length-1;q>=0;q--)if(!seen[nodes[q].getAttribute("data-sess")])nodes[q].remove()}'+
+'function paintRoster(office){var bar=document.getElementById("roster");if(!bar)return;var emps=officeAgents(office).slice().sort(triageSort);var seen={};emps.forEach(function(e){var key=e.session||"";seen[key]=1;var n=null,all=bar.querySelectorAll(".rchip");for(var i=0;i<all.length;i++)if(all[i].getAttribute("data-sess")===key){n=all[i];break}if(!n){n=el("button","rchip");n.type="button";n.setAttribute("data-sess",key);n.appendChild(el("span","mono"));var tx=el("span","rtxt");tx.appendChild(el("span","nm",""));tx.appendChild(el("span","gl",""));n.appendChild(tx);n.addEventListener("click",function(){var cur=(officeAgents(LAST_OFFICE)||[]).filter(function(x){return x&&x.session===key})[0];if(!cur)return;openSheet(cur);if(window.__scene3d&&window.__scene3d.focus){var ags=window.__scene3d.agents()||[];for(var j=0;j<ags.length;j++)if(ags[j].session===key){window.__scene3d.focus(ags[j].id);break}}});bar.appendChild(n)}n.setAttribute("data-state",e.state||"");n.className="rchip"+(needsAttn(e)?" attn":"")+(SEL&&SEL.session===key?" sel":"");setMono(n.querySelector(".mono"),e);var rnm=dispCrew(e)+((Array.isArray(e.sessions)&&e.sessions.length>1)?" \u00d7"+e.sessions.length:"");var rn=n.querySelector(".nm");if(rn.textContent!==rnm)rn.textContent=rnm;var gl0=activityGlossPWA(e,LANG)||"";var gn=n.querySelector(".gl");if(gn&&gn.textContent!==gl0)gn.textContent=gl0;var tt=rnm+" \u2014 "+gl0;if(n.title!==tt)n.title=tt});var nodes=bar.querySelectorAll(".rchip");for(var q=nodes.length-1;q>=0;q--)if(!seen[nodes[q].getAttribute("data-sess")])nodes[q].remove()}'+
 'window.__paintPlates=paintPlates;'+
 // 3Dモジュールは非同期で載る。載った瞬間に**シーンだけ**描き直す。
 // ここで dispatch()（全再描画）を呼ぶと、設定シート等の開いているDOMが差し替わり

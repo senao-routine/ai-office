@@ -100,8 +100,9 @@ def main(argv):
                 else:
                     print("  ✓ 2Dコードはシンボルごと存在しない（完全撤去）")
 
-                # R79-6: 名札二段マーカー＝全ロボットに足元モノグラムピン＋テキスト名札は最大2枚
-                # （選択中/❗先頭）・高さ≤20px。❗があるときロスターは隠れる（ドックの一等地は排他）
+                # R79-6→R80.5: 6体以下は**全員テキスト名札**（識別最優先・実FB2回目）。
+                # 7体以上は二段marker（全員=モノグラムピン＋テキスト名札は選択/❗先頭の最大2枚）。
+                # どちらでも pins+plates=ロボ全数・名札高さ≤20px。
                 page.wait_for_timeout(700)   # paintPlatesは描画ループ内＝1フレーム以上待つ
                 marks = page.evaluate(
                     """() => ({
@@ -114,18 +115,25 @@ def main(argv):
                             return c ? Math.round(c.getBoundingClientRect().height) : 0; })(),
                         attnOn: !!document.querySelector('#attncards.on'),
                     })""")
+                few = marks["robots"] <= 6
                 if len(marks["pins"]) + len(marks["plates"]) != marks["robots"]:
                     print(f"  ✗ 全ロボットにマーカーが付いていない: {marks}")
                     ng += 1
                 elif not all(len(t) == 1 for t in marks["pins"]):
                     print(f"  ✗ ピンが1文字モノグラムでない: {marks}")
                     ng += 1
-                elif len(marks["plates"]) > 2 or any(h > 20 for h in marks["plates"]):
-                    print(f"  ✗ テキスト名札が2枚超or高さ20px超: {marks}")
+                elif few and len(marks["plates"]) != marks["robots"]:
+                    print(f"  ✗ 6体以下なのに全員に名札が付いていない: {marks}")
+                    ng += 1
+                elif (not few) and len(marks["plates"]) > 2:
+                    print(f"  ✗ 7体以上でテキスト名札が2枚超: {marks}")
+                    ng += 1
+                elif any(h > 20 for h in marks["plates"]):
+                    print(f"  ✗ テキスト名札の高さが20px超: {marks}")
                     ng += 1
                 else:
-                    print(f"  ✓ 名札二段（ピン{len(marks['pins'])}＋名札{len(marks['plates'])}"
-                          f"＝ロボ{marks['robots']}体・名札≤20px）")
+                    print(f"  ✓ 名札（ピン{len(marks['pins'])}＋名札{len(marks['plates'])}"
+                          f"＝ロボ{marks['robots']}体・{'全員名札' if few else '二段'}・≤20px）")
                 # R80-A16: ❗表示中もロスターは**消さず圧縮**する（一番「誰が何を」を知りたい
                 # 瞬間に述語が全滅していたため）。ドックが3Dを覆わないよう高さは詰める。
                 if marks["attnOn"] and marks["rosterH"] > 46:
@@ -136,6 +144,17 @@ def main(argv):
                     ng += 1
                 elif marks["attnOn"]:
                     print(f"  ✓ ❗表示中もロスターを圧縮して残す（{marks['rosterH']}px）")
+
+                # R80.5: ロスターは情報カード＝各チップに述語（activityGloss）が入っている
+                # （圧縮中はCSSで隠れるが内容は常に供給＝タップ不要で「誰が・何を」）
+                glosses = page.evaluate(
+                    "() => [...document.querySelectorAll('#roster .rchip .gl')]"
+                    ".map(n => n.textContent)")
+                if not glosses or not any(g.strip() for g in glosses):
+                    print(f"  ✗ ロスターに述語（.gl）が無い: {glosses}")
+                    ng += 1
+                else:
+                    print(f"  ✓ ロスター情報カード（述語 {sum(1 for g in glosses if g.strip())}/{len(glosses)} 枚）")
 
                 # R79-5: 骨格ピン＝3Dはフルブリード背景・officeタブは一切スクロールしない・
                 # タブ3つ・❗/ロスターは下部ドック（親指圏）・statbar/deptbar常設2段は廃止
