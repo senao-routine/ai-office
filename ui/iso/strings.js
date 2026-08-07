@@ -117,7 +117,6 @@ const DICT = {
     // ➕新プロジェクト
     np_opening: "フォルダ選択ダイアログを開いています…（Terminal側に出ます）",
     np_name_ph: "プロジェクト名（例: ブログ編集）",
-    np_gen: " キャラを生成（約$0.4・数分後に反映）",
     np_launch: " Terminal で claude を起動",
     np_go: "入社させる",
     np_joined: (n) => `🎉 ${n} が入社しました`,
@@ -318,7 +317,6 @@ const DICT = {
     boss_note: "Who should get the instruction?",
     np_opening: "Opening the folder picker… (it appears on the Terminal side)",
     np_name_ph: "Department name (e.g. Blog Team)",
-    np_gen: " Generate a character (≈$0.4 · appears in a few minutes)",
     np_launch: " Launch claude in Terminal",
     np_go: "Hire",
     np_joined: (n) => `🎉 ${n} joined the office`,

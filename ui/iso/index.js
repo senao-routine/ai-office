@@ -659,13 +659,10 @@ export async function mount(root) {
     nameIn.value = picked.suggest || "";
     nameIn.placeholder = T("np_name_ph");
     modal.append(nameIn);
-    const optGen = mEl("label", "mopt");
-    const cbGen = mEl("input"); cbGen.type = "checkbox"; cbGen.checked = true;
-    optGen.append(cbGen, document.createTextNode(T("np_gen")));
     const optLaunch = mEl("label", "mopt");
     const cbLaunch = mEl("input"); cbLaunch.type = "checkbox"; cbLaunch.checked = true;
     optLaunch.append(cbLaunch, document.createTextNode(T("np_launch")));
-    modal.append(optGen, optLaunch);
+    modal.append(optLaunch);
     const go = mEl("button", "mgo", T("np_go"));
     go.type = "button";
     go.id = "mgo-newproj";
@@ -673,7 +670,7 @@ export async function mount(root) {
       go.disabled = true;
       try {
         await newProject(picked.path, nameIn.value.trim(),
-          { genSprite: cbGen.checked, launch: cbLaunch.checked });
+          { launch: cbLaunch.checked });
         showToast(T("np_joined", nameIn.value.trim() || picked.suggest));
         closeModal();
       } catch (err) {

@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*-
 """P4 OFFICE_DATA リダイレクトの契約テスト:
 - 未設定 → DATA=ROOT（後方互換・repo の config/assets を読む）
-- 設定   → config_file() と ASSETS が OFFICE_DATA 配下（daemon/dev が同一データ＝分岐しない）
-assets_gen の鍵解決（env → works/.env(SSOT) → ~/.claude/office_secrets）もここで固定する。"""
+- 設定   → config_file() が OFFICE_DATA 配下（daemon/dev が同一データ＝分岐しない）"""
 import importlib.util
 import json
 import os
@@ -41,7 +40,6 @@ class OfficeDataTest(unittest.TestCase):
     def test_default_data_is_root(self):
         o = _load("office_data_default", ROOT / "server" / "office_server.py")
         self.assertEqual(o.DATA, ROOT)
-        self.assertEqual(o.ASSETS, ROOT / "assets")
         self.assertEqual(o.config_file(), ROOT / "office_config.json")
 
     def test_office_data_redirects_config_and_assets(self):
@@ -49,7 +47,6 @@ class OfficeDataTest(unittest.TestCase):
         os.environ["OFFICE_DATA"] = str(tmp)
         o = _load("office_data_redirect", ROOT / "server" / "office_server.py")
         self.assertEqual(o.DATA, tmp)
-        self.assertEqual(o.ASSETS, tmp / "assets")
         self.assertEqual(o.config_file(), tmp / "office_config.json")
         # OFFICE_CONFIG（テスト注入口）は OFFICE_DATA より優先のまま
         os.environ["OFFICE_CONFIG"] = str(tmp / "other.json")
@@ -93,51 +90,6 @@ class OfficeDataTest(unittest.TestCase):
         (home / ".claude" / "settings.json").write_text("{broken", encoding="utf-8")
         o = _load("office_hook_invalid", ROOT / "server" / "office_server.py")
         self.assertEqual(o.office_json()["setup"], {"hookInstalled": False})
-
-    def test_assets_gen_key_resolution_daemon_path(self):
-        """daemon相当env（OPENAI_API_KEY無・works/.env不可視を実際に模擬）で
-        ~/.claude/office_secrets から鍵が解決＝P1キャラ生成が常駐で無言退化しない回帰。"""
-        try:
-            import requests  # noqa: F401  (tools/はstdlib縛りの外・システムpythonに存在)
-        except ImportError:
-            self.skipTest("requests なし")
-        home = self._tmpdir("ohome_")
-        (home / ".claude").mkdir()
-        (home / ".claude" / "office_secrets").write_text("OPENAI_API_KEY=sk-test-p4\n")
-        os.environ["OFFICE_HOME"] = str(home)
-        a = _load("assets_gen_t", ROOT / "tools" / "assets_gen.py")
-        a.WORKS_ENV = home / "no.env"          # works/.env 不可視(=daemonのTCC拒否)を実際に模擬
-        k = a.api_key()
-        # 失敗時に本物の鍵を出力へ漏らさない（マスク表示）
-        self.assertTrue(k == "sk-test-p4", "鍵解決回帰 (got=%s…)" % str(k)[:8])
-
-    def test_assets_gen_key_ssot_wins_when_readable(self):
-        """works/.env が読める(dev Terminal)ときは SSOT が office_secrets より勝つ＝
-        キーローテーション後に旧キーを無言で使い続けない回帰。"""
-        try:
-            import requests  # noqa: F401
-        except ImportError:
-            self.skipTest("requests なし")
-        home = self._tmpdir("ohome2_")
-        (home / ".claude").mkdir()
-        (home / ".claude" / "office_secrets").write_text("OPENAI_API_KEY=sk-old-rotated\n")
-        env = home / "central.env"
-        env.write_text("OPENAI_API_KEY=sk-new-central\n")
-        os.environ["OFFICE_HOME"] = str(home)
-        a = _load("assets_gen_ssot", ROOT / "tools" / "assets_gen.py")
-        a.WORKS_ENV = env
-        k = a.api_key()
-        self.assertTrue(k == "sk-new-central", "SSOT優先の回帰 (got=%s…)" % str(k)[:8])
-
-    def test_assets_gen_office_data_redirect(self):
-        try:
-            import requests  # noqa: F401
-        except ImportError:
-            self.skipTest("requests なし")
-        home = self._tmpdir("ohome3_")
-        os.environ["OFFICE_DATA"] = str(home / "d")
-        a = _load("assets_gen_data", ROOT / "tools" / "assets_gen.py")
-        self.assertEqual(a.ASSETS, home / "d" / "assets")
 
 
 class PageFallbackTest(unittest.TestCase):

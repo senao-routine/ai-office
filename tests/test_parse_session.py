@@ -170,9 +170,9 @@ class HelpersTest(unittest.TestCase):
 
     def test_project_label_nfc_and_first_match(self):
         cfg = {"projects": {"demo-project": {"name": "デモ部", "role": "検証"}}}
-        name, role, sprite = office.project_label("/Users/test/demo-project", "-x", cfg)
+        name, role = office.project_label("/Users/test/demo-project", "-x", cfg)
         self.assertEqual((name, role), ("デモ部", "検証"))
-        name, _, _ = office.project_label("/Users/test/unknown", "-x", {"projects": {}})
+        name, _ = office.project_label("/Users/test/unknown", "-x", {"projects": {}})
         self.assertEqual(name, "unknown")
 
 

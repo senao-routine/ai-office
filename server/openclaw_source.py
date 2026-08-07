@@ -81,8 +81,6 @@ def parse_openclaw_status(raw, now, lang="ja"):
             "minions": minions,
             "pending": False,
             "avatar": 0,
-            "sprite": "/assets/agent_bot.png",
-            "spriteWalk": "",
         })
     # 同名の採番（Claude側 disp 規則と同型・oc名前空間内で完結）
     counts = {}

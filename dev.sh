@@ -49,7 +49,6 @@ start_server() {
   fi
   VHOME=$(python3 tests/make_home.py)
   mkdir -p "$VHOME/data"
-  cp -R assets "$VHOME/data/assets"
   OFFICE_HOME="$VHOME" OFFICE_CONFIG="$VHOME/office_config.json" OFFICE_DATA="$VHOME/data" \
     python3 server/office_server.py --port $PORT >logs/dev.log 2>&1 &
   SPID=$!

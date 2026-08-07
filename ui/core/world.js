@@ -42,7 +42,6 @@ export function buildWorld(office) {
     pending: Boolean(p.pending),
     minions: Number(p.minions) || 0,
     age: Number(p.age) || 0,
-    sprite: p.sprite || "",
     external: p.external || null,
     sessions: Array.isArray(p.sessions) ? p.sessions : [],
     feed: Array.isArray(p.feed) ? p.feed : [],

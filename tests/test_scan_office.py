@@ -55,11 +55,14 @@ class ScanOfficeTest(unittest.TestCase):
         data = office.scan_office()
         self.assertEqual(len(data["employees"]), 0)
 
-    def test_sprite_fallback(self):
+    def test_r80_no_sprite_fields(self):
+        """R80: スプライト生成パイプラインは撤去済み（3D/モノグラム化で誰も表示しない）。
+        誤って sprite フィールドの供給が復活したらここで気づく（不可視の$0.4生成の再発防止）。"""
         put_session("-Users-test-demo-project", "sess-aaaa0003.jsonl", "working_tool.jsonl", age=10)
         data = office.scan_office()
-        spr = data["employees"][0]["sprite"]
-        self.assertTrue(spr == "" or spr.startswith("/assets/"))
+        self.assertNotIn("sprite", data["employees"][0])
+        for prj in data["roster"]:
+            self.assertNotIn("sprite", prj)
 
 
 if __name__ == "__main__":

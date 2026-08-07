@@ -150,9 +150,9 @@ class RelayAgentTest(unittest.TestCase):
     def test_adopt_p4_data_respects_explicit_env(self):
         # 明示 OFFICE_DATA が最優先＝_adopt_p4_data はテスト注入を上書きしない（P4分岐防止の前提）
         os.environ["OFFICE_DATA"] = "/tmp/explicit-x"
-        before_data, before_assets = ra.office.DATA, ra.office.ASSETS
+        before_data = ra.office.DATA
         ra._adopt_p4_data()
-        self.assertEqual((ra.office.DATA, ra.office.ASSETS), (before_data, before_assets))
+        self.assertEqual(ra.office.DATA, before_data)
 
     # ---- 署名検証・配達 ----
     def test_valid_signature_delivered_and_acked(self):

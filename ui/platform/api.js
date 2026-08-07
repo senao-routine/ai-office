@@ -35,7 +35,6 @@ export async function api(path, { method = "GET", body = null, signal = null } =
 }
 
 export const getOffice = (signal) => api("/api/office", { signal });
-export const getLayout = (signal) => api("/api/layout", { signal });
 export const getProjects = (signal) => api("/api/projects", { signal });
 export const getStatusBoard = (signal) => api("/api/status_board", { signal });
 
@@ -55,8 +54,8 @@ export const setOfficeKey = (name, value) =>
 /** ➕新プロジェクト（P1）: フォルダ選択（ネイティブダイアログ・最大300秒）→登録。 */
 export const pickProjectFolder = () =>
   api("/api/project/pick", { method: "POST", body: {} });
-export const newProject = (path, name, { genSprite = true, launch = true } = {}) =>
-  api("/api/project/new", { method: "POST", body: { path, name, genSprite, launch } });
+export const newProject = (path, name, { launch = true } = {}) =>
+  api("/api/project/new", { method: "POST", body: { path, name, launch } });
 
 /** 💳実支出台帳（R50提案3で新UIへ移植）: upsert/delete。形は status_board.spend_apply が正本。 */
 export const spendApply = (body) =>

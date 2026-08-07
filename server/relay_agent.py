@@ -42,9 +42,8 @@ def _adopt_p4_data():
         return
     d = Path.home() / "Library" / "Application Support" / "AIOffice" / "data"
     if d.is_dir():
-        os.environ["OFFICE_DATA"] = str(d)   # subprocess(assets_gen等)への継承用
-        office.DATA = d                       # config_file()/ASSETS は呼出時にモジュール属性参照
-        office.ASSETS = d / "assets"
+        os.environ["OFFICE_DATA"] = str(d)   # 子プロセスへの継承用
+        office.DATA = d                       # config_file() は呼出時にモジュール属性参照
         print(f"data: {d} (P4常駐と共有)", flush=True)
 
 _HOME = Path(os.environ.get("OFFICE_HOME", str(Path.home())))
@@ -406,7 +405,7 @@ def _redact_entry_for_relay(e):
 
 def _redact_office_for_relay(office_snapshot):
     """office_json() の結果から機微になりうる本文/パスを除去して返す（破壊的・呼び出し側は都度生成物を渡す）。
-    残す=state/kind/verb/feedの動作ログ(実行中・編集中…)/question/disp/dept/role/sprite/age/minions/approvalMin/stuckTool。
+    残す=state/kind/verb/feedの動作ログ(実行中・編集中…)/question/disp/dept/role/age/minions/approvalMin/stuckTool。
     落とす=lastSaid・target(本文由来)・lastOrder・cwd・branch、および feed の「💬 発言」行。
 
     R50: roster[] も同じ規則で落とす。projectId は cwd のハッシュ（パスを含まない）なので残す。

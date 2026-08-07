@@ -4,7 +4,7 @@
 set -u
 cd "$(dirname "$0")"
 # 呼び出しシェルの注入envを除染（P4デバッグ中のシェルから実行しても検証対象がすり替わらない）
-unset OFFICE_DATA OFFICE_CONFIG OFFICE_HOME OFFICE_LAYOUT OFFICE_PICK_DIR OFFICE_FAKE_LAUNCH OFFICE_FAKE_GEN 2>/dev/null || true
+unset OFFICE_DATA OFFICE_CONFIG OFFICE_HOME OFFICE_PICK_DIR OFFICE_FAKE_LAUNCH OFFICE_FAKE_GEN 2>/dev/null || true
 NG=0
 ng(){ echo "  ✗ $1"; NG=$((NG+1)); }
 ok(){ echo "  ✓ $1"; }
@@ -62,51 +62,21 @@ else
   echo "  - node なし → 新UIのJS検査を省略"
 fi
 
-echo "▶ 3/8 office_config.json + UI必須アセット検証"
-python3 - <<'EOF' || ng "config/アセット検証失敗"
+echo "▶ 3/8 office_config.json 検証"
+# R80 Phase4: アセット検査（sprite実在/PNGマジック/寸法）は退役＝assets/ ごと撤去した。
+# 3D UIは ui/iso/tex/*.webp（▶3bのmodules番人が守る）だけを読む。ここはconfigの構造のみ。
+python3 - <<'EOF' || ng "config検証失敗"
 import json, sys
 from pathlib import Path
-# office_config.json は個人設定＝gitに置かない（出荷は example のみ・2026-07-31）。
-# クリーンcloneには存在しないので、無ければ sprite 参照チェックだけ空でスキップする
 _cfg_p = Path("office_config.json")
 cfg = json.loads(_cfg_p.read_text()) if _cfg_p.exists() else {}
-missing = [m["sprite"] for m in cfg.get("projects", {}).values()
-           if m.get("sprite") and not (Path("assets") / m["sprite"]).exists()]
-if missing:
-    print(f"  ✗ sprite実体なし: {missing}"); sys.exit(1)
-# UIがハードコード参照するアセット: 実在+PNGマジック（Playwright不要＝SKIP_UI環境でも守る）。
-# R30-P16: 旧タイル/家具ピンは退役し、新SSOTのタイル7点＋家具14点を独立監査する。
-REQ = {
-    "agent_bot.png": None,
-    **{name: None for name in (
-        "tile2_floor_white.png", "tile2_floor_wood.png", "tile2_floor_dark.png",
-        "tile2_wall_face.png", "tile2_wall_glass.png", "tile2_wall_top.png",
-        "tile2_wall_interior.png",
-    )},
-    **{name: None for name in (
-        "furn2_desk_nochair.png", "furn2_chair_black.png", "furn2_desk_pod.png",
-        "furn2_sofa_cream.png", "furn2_reception.png", "furn2_bookshelf_white.png",
-        "furn2_kitchenette_modern.png", "furn2_copier_modern.png", "furn2_plant_modern.png",
-        "furn2_planterbox_modern.png", "furn2_meeting_table.png",
-        "furn2_whiteboard_modern.png", "furn2_crt_station.png", "furn2_rug_meeting.png",
-    )},
-}
-bad = []
-for name, dims in REQ.items():
-    p = Path("assets") / name
-    min_bytes = 512 if name == "agent_bot.png" else 1
-    if not p.exists() or p.stat().st_size < min_bytes:
-        bad.append(f"{name}: 欠損or小さすぎ"); continue
-    head = p.read_bytes()[:24]
-    if head[:8] != b"\x89PNG\r\n\x1a\n":
-        bad.append(f"{name}: PNGでない"); continue
-    if dims:
-        w = int.from_bytes(head[16:20], "big"); h = int.from_bytes(head[20:24], "big")
-        if (w, h) != dims:
-            bad.append(f"{name}: 寸法 {w}x{h} != 期待 {dims[0]}x{dims[1]}")
+projects = cfg.get("projects", {})
+if not isinstance(projects, dict):
+    print("  ✗ projects が dict ではありません"); sys.exit(1)
+bad = [k for k, v in projects.items() if not isinstance(v, dict)]
 if bad:
-    print("  ✗ UI必須アセット異常: " + " / ".join(bad)); sys.exit(1)
-print(f"  ✓ config OK ({len(cfg.get('projects', {}))}プロジェクト・sprite全実在) + tile2 7点+furn2 14点+基本アセットのPNGマジックOK")
+    print(f"  ✗ 不正なプロジェクト項目: {bad}"); sys.exit(1)
+print(f"  ✓ config OK ({len(projects)}プロジェクト)")
 EOF
 
 echo "▶ 3b PWA同梱物 (modules_data.js が ui/ と一致・git追跡・worker構文)"
@@ -138,10 +108,6 @@ fi
 # ▶3d scene_sync --check は R52 旧UI削除で退役（office_scene.json 自体はサーバーの
 # /api/layout 等が現役で読む＝tests/test_scene_geometry.py が引き続きピンする）
 
-echo "▶ 3c スタイルアセット検査 (theme_gen check)"
-# 2026-07-17 一本化後は THEMES_READY=[] のため、既定スタイルだけで green を確認する。
-python3 tools/theme_gen.py check || ng "テーマアセット検査失敗"
-
 echo "▶ 4/8 ユニットテスト (状態推定ゴールデン他)"
 python3 -m unittest discover -s tests -q 2>&1 | tail -2 | sed 's/^/  /'
 python3 -m unittest discover -s tests -q >/dev/null 2>&1 || ng "unittest失敗"
@@ -158,10 +124,7 @@ fi
 echo "▶ 5/8 起動スモーク (フィクスチャHOME・:$TPORT)"
 VHOME=$(python3 tests/make_home.py)
 LAUNCH_MARKER="$VHOME/claude_launch.marker"
-GEN_MARKER="$VHOME/photo_gen.marker"
-# fake生成物もリポジトリの assets/ へ触れないよう、スモーク専用dataへ隔離する。
 mkdir -p "$VHOME/data"
-cp -R assets "$VHOME/data/assets"
 # R42.2: fixtureサーバーはテスト鍵ライセンスで解錠して起動（既存のstatus_board/pairスモークは
 # 「ライセンス済みの通常挙動」を検証・無ライセンスの403は後段で剥がして検査する）
 LIC_TEST_N=$(python3 -c 'import json;print(json.load(open("tests/fixtures/license_test_key.json"))["n"][2:])')
@@ -169,7 +132,7 @@ OFFICE_LICENSE_SIGNING=tests/fixtures/license_test_key.json \
   python3 tools/license_sign.py issue --edition hybrid --email verify@fixture \
   --out "$VHOME/office_license.json" >/dev/null 2>&1 || ng "R42.2 fixtureライセンス発行失敗"
 OFFICE_HOME="$VHOME" OFFICE_CONFIG="$VHOME/office_config.json" OFFICE_PICK_DIR="$VHOME/pickme" \
-  OFFICE_DATA="$VHOME/data" OFFICE_FAKE_LAUNCH="$LAUNCH_MARKER" OFFICE_FAKE_GEN="$GEN_MARKER" \
+  OFFICE_DATA="$VHOME/data" OFFICE_FAKE_LAUNCH="$LAUNCH_MARKER" \
   OFFICE_LICENSE="$VHOME/office_license.json" OFFICE_LICENSE_PUBKEY_N="$LIC_TEST_N" \
   python3 server/office_server.py --port $TPORT >/dev/null 2>&1 &
 SPID=$!
@@ -186,45 +149,6 @@ for e in emps:
 print(f"  ✓ /api/office スキーマOK (社員{len(emps)})")
 EOF
 H_LOCAL='-H X-Office-Local:1'
-# R6: レイアウトGETはCSRF不要、POSTはCSRF必須。保存→読戻し→削除を往復確認。
-# R30-P16: シーン導出範囲（机=main床・sofa=brk床・door=entrance開口）内の座標のみ受理。
-LAYOUT='{"desks":[{"dx":336,"dy":408}],"sofa":{"x":864,"y":336,"w":96},"door":{"x":530,"y":625}}'
-R=$(curl -s http://127.0.0.1:$TPORT/api/layout)
-python3 - "$R" <<'EOF' || ng "R6 layout 初期GET異常"
-import json, sys
-d = json.loads(sys.argv[1])
-assert d == {"custom": False, "layout": None, "roomPins": {}}, d
-print("  ✓ R6 layout 初期GET (custom:false)")
-EOF
-CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://127.0.0.1:$TPORT/api/layout $H_LOCAL \
-  -H "Content-Type: application/json" -d "{\"layout\":$LAYOUT}")
-[ "$CODE" = "200" ] && ok "R6 layout POST保存 (200)" || ng "R6 layout 保存失敗 (code=$CODE)"
-R=$(curl -s http://127.0.0.1:$TPORT/api/layout)
-python3 - "$R" "$LAYOUT" <<'EOF' || ng "R6 layout GET往復不一致"
-import json, sys
-d = json.loads(sys.argv[1]); expected = json.loads(sys.argv[2])
-assert d == {"custom": True, "layout": {**expected, "roomPins": {}}, "roomPins": {}}, d
-print("  ✓ R6 layout 保存→GET往復一致")
-EOF
-CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://127.0.0.1:$TPORT/api/layout $H_LOCAL \
-  -H "Content-Type: application/json" -d '{"layout":null}')
-[ "$CODE" = "200" ] && [ ! -e "$VHOME/data/office_layout.json" ] \
-  && ok "R6 layout nullで既定へ復帰" || ng "R6 layout 削除失敗 (code=$CODE)"
-BAD=$(python3 - "$LAYOUT" <<'EOF'
-import json, sys
-d = json.loads(sys.argv[1])
-d["desks"] = [{"dx": 252, "dy": 408} for _ in range(17)]
-print(json.dumps({"layout": d}, separators=(",", ":")))
-EOF
-)
-BAD_RC=$?
-if [ "$BAD_RC" = "0" ] && [ -n "$BAD" ]; then
-  CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://127.0.0.1:$TPORT/api/layout $H_LOCAL \
-    -H "Content-Type: application/json" -d "$BAD")
-  [ "$CODE" = "400" ] && ok "R6 layout 机17個を拒否 (400)" || ng "R6 layout 机17個拒否失敗 (code=$CODE)"
-else
-  ng "R6 layout 机17個payload生成失敗 (rc=$BAD_RC)"
-fi
 # R3: ローカルパス一覧はCSRF必須。6時間窓外の古いプロジェクトも返す。
 CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:$TPORT/api/projects)
 [ "$CODE" = "403" ] && ok "R3 projects CSRFガード (ヘッダ無403)" || ng "R3 projects CSRF失敗 (code=$CODE)"
@@ -276,31 +200,6 @@ R=$(curl -s -X POST http://127.0.0.1:$TPORT/api/project/new $H_LOCAL -H "Content
   -d "{\"path\":\"$VHOME/curltest\",\"name\":\"検証部\",\"role\":\"P1テスト\"}")
 echo "$R" | grep -q '"ok": true' && grep -q "検証部" "$VHOME/office_config.json" \
   && ok "P1 新プロジェクト登録 (configにエントリ増)" || ng "P1 登録失敗: $R"
-CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://127.0.0.1:$TPORT/api/sprite/set $H_LOCAL -H "Content-Type: application/json" -d "{\"cwd\":\"$VHOME/curltest\",\"sprite\":\"generic_f.png\"}"); [ "$CODE" = "200" ] && grep -q '"sprite": "generic_f.png"' "$VHOME/office_config.json" && ok "R2 キャラ変更 (200+config反映)" || ng "R2 キャラ変更失敗 (code=$CODE)"
-CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://127.0.0.1:$TPORT/api/sprite/set $H_LOCAL -H "Content-Type: application/json" -d "{\"cwd\":\"$VHOME/curltest\",\"sprite\":\"../evil.png\"}"); [ "$CODE" = "400" ] && ok "R2 不正sprite名拒否 (400)" || ng "R2 不正sprite名拒否失敗 (code=$CODE)"
-# R4: 実画像生成は一切行わず、OFFICE_FAKE_GENでvintage 2枚生成・状態遷移・config反映まで通す。
-PHOTO_B64='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl5QAAAAASUVORK5CYII='
-UPLOAD_RAW=$(curl -s -w $'\n%{http_code}' -X POST http://127.0.0.1:$TPORT/api/sprite/upload $H_LOCAL \
-  -H "Content-Type: application/json" \
-  -d "{\"cwd\":\"$VHOME/curltest\",\"imageB64\":\"data:image/png;base64,$PHOTO_B64\"}")
-UPLOAD_CODE=${UPLOAD_RAW##*$'\n'}
-UPLOAD_JSON=${UPLOAD_RAW%$'\n'*}
-UPLOAD_SLUG=$(echo "$UPLOAD_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("slug", ""))' 2>/dev/null)
-GEN_STATE=""
-for _ in $(seq 1 50); do
-  GEN_STATE=$(curl -s http://127.0.0.1:$TPORT/api/project/gen_status | \
-    python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get(sys.argv[1], {}).get("state", ""))' "$UPLOAD_SLUG" 2>/dev/null)
-  [ "$GEN_STATE" = "done" ] && break
-  sleep 0.1
-done
-[ "$UPLOAD_CODE" = "200" ] && [ -n "$UPLOAD_SLUG" ] && [ "$GEN_STATE" = "done" ] \
-  && [ -f "$GEN_MARKER" ] && grep -q "\"sprite\": \"$UPLOAD_SLUG.png\"" "$VHOME/office_config.json" \
-  && ok "R4 写真アップロード (200→fake生成done→config反映)" \
-  || ng "R4 写真アップロード失敗 (code=$UPLOAD_CODE slug=$UPLOAD_SLUG state=$GEN_STATE)"
-CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://127.0.0.1:$TPORT/api/sprite/upload $H_LOCAL \
-  -H "Content-Type: application/json" \
-  -d "{\"cwd\":\"$VHOME/curltest\",\"imageB64\":\"dGV4dA==\"}")
-[ "$CODE" = "400" ] && ok "R4 写真マジック不正拒否 (400)" || ng "R4 写真マジック不正拒否失敗 (code=$CODE)"
 CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://127.0.0.1:$TPORT/api/project/new $H_LOCAL \
   -H "Content-Type: application/json" -d '{"path":"/no/such/dir9","name":"x"}')
 [ "$CODE" = "400" ] && ok "P1 不正パス拒否 (400)" || ng "P1 不正パス拒否失敗 (code=$CODE)"
@@ -545,14 +444,10 @@ DTMP=$(mktemp -d)
 DHOME=$(python3 tests/make_home.py)
 # (a) temp-deploy: exit code＋コード/データ配置＋余計なもの(tests/relay/キャッシュ)が入らない
 AIOFFICE_DEST="$DTMP" bash macapp/install.sh >/dev/null 2>&1 || ng "P4 install(1回目) exit≠0"
-DEPLOY_OK=1
-for f in tile2_floor_wood.png tile2_wall_face.png tile2_wall_interior.png furn2_bookshelf_white.png furn2_desk_nochair.png furn2_chair_black.png furn2_sofa_cream.png furn2_rug_meeting.png agent_bot.png; do
-  [ -f "$DTMP/data/assets/$f" ] || { DEPLOY_OK=0; break; }
-done
-[ "$DEPLOY_OK" = "1" ] && [ -f "$DTMP/app/server/office_server.py" ] && [ -f "$DTMP/app/tools/assets_gen.py" ] \
+[ -f "$DTMP/app/server/office_server.py" ] \
   && [ -f "$DTMP/app/server/mcp_office.py" ] && [ -f "$DTMP/app/tools/qr_gen.py" ] \
   && [ -f "$DTMP/app/tools/vendor/segno/encoder.py" ] && [ -f "$DTMP/data/office_config.json" ] \
-  && ok "P4 deploy-copy (app/+data/・家具8点・新scene素材・mcp/qr_gen/vendored segno同梱)" || ng "P4 deploy-copy失敗 (欠落: ${f:-})"
+  && ok "P4 deploy-copy (app/+data/・mcp/qr_gen/vendored segno同梱)" || ng "P4 deploy-copy失敗"
 find "$DTMP/app" \( -name '__pycache__' -o -name 'tests' -o -name 'relay' -o -name 'node_modules' \) | grep -q . \
   && ng "P4 app/に除外物が混入" || ok "P4 除外 (キャッシュ/tests/relay無し)"
 # (b) コピー先起動＝自己完結証明（:4797・応答者が本当にこのプロセスであることも確認）
@@ -562,31 +457,7 @@ sleep 1.2
 kill -0 $DPID 2>/dev/null || ng "P4 コピー先サーバー即死 (${TPORT}先客/EADDRINUSE?)"
 D_API=$(curl -s http://127.0.0.1:$TPORT/api/office)
 echo "$D_API" | grep -q '"employees"' && ok "P4 コピー先サーバー起動+API応答" || ng "P4 コピー先起動失敗: $(echo "$D_API" | head -c 120)"
-CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:$TPORT/assets/tile2_floor_wood.png)
-[ "$CODE" = "200" ] && ok "P4 assets が data/ 側から配信 (200)" || ng "P4 assets解決失敗 (code=$CODE)"
 kill $DPID 2>/dev/null; wait $DPID 2>/dev/null; DPID=""
-# (c) 鍵解決回帰（daemon相当env: env鍵無し・works/.env不可視を実際に模擬 → office_secrets から解決。
-#     repo側と deploy側コピーの両方で検証。鍵値は出力しない=fail時も平文を漏らさない）
-mkdir -p "$DHOME/.claude"; echo "OPENAI_API_KEY=sk-verify-p4" > "$DHOME/.claude/office_secrets"
-key_check(){
-  env -u OPENAI_API_KEY OFFICE_HOME="$DHOME" python3 - "$1" 2>/dev/null <<'EOF'
-import importlib.util, sys
-from pathlib import Path
-spec = importlib.util.spec_from_file_location("a", sys.argv[1])
-a = importlib.util.module_from_spec(spec); spec.loader.exec_module(a)
-a.WORKS_ENV = Path("/nonexistent/.env")   # daemonのTCC拒否(works/.env不可視)を実際に模擬
-print("OK" if a.api_key() == "sk-verify-p4" else "NG")
-EOF
-}
-[ "$(key_check tools/assets_gen.py)" = "OK" ] && ok "P4 鍵解決 (office_secrets・daemon相当env)" || ng "P4 鍵解決失敗 (repo側)"
-[ "$(key_check "$DTMP/app/tools/assets_gen.py")" = "OK" ] && ok "P4 鍵解決 (deploy側コピーでも)" || ng "P4 鍵解決失敗 (deploy側)"
-# (c2) 鍵シード経路の回帰（works/.env→office_secrets 600。実HOMEに触れないテスト注入で）
-echo "OPENAI_API_KEY=sk-seed-p4" > "$DTMP/fake.env"
-AIOFFICE_DEST="$DTMP" AIOFFICE_SEED_TEST=1 AIOFFICE_ENVSRC="$DTMP/fake.env" \
-  AIOFFICE_SECRETS="$DTMP/sec/office_secrets" bash macapp/install.sh >/dev/null 2>&1 || ng "P4 seed-test install exit≠0"
-PERM=$(python3 -c 'import os,sys; print(oct(os.stat(sys.argv[1]).st_mode & 0o777)[-3:])' "$DTMP/sec/office_secrets" 2>/dev/null)
-grep -q "sk-seed-p4" "$DTMP/sec/office_secrets" 2>/dev/null && [ "$PERM" = "600" ] \
-  && ok "P4 鍵シード経路 (works/.env→secrets 600)" || ng "P4 鍵シード失敗 (perm=$PERM)"
 # (d) plist 妥当性（lint+中身+実行子の存在）
 bash macapp/install.sh --print-plist > "$DTMP/p.plist"
 plutil -lint "$DTMP/p.plist" >/dev/null && ok "P4 plist lint合格" || ng "P4 plist lint失敗"
@@ -609,8 +480,8 @@ RTARGET=$(python3 -c "import plistlib; print(plistlib.load(open('$DTMP/com.senao
 # (e) TCC主張の機械固定: plist にも 既定DEST にも Downloads を書かない
 grep -q "/Downloads/" "$DTMP/p.plist" && ng "P4 plist がDownloads参照 (TCC違反)" || ok "P4 plist にDownloads無し (TCC回避)"
 grep -q 'Application Support/AIOffice' macapp/aioffice.env.sh && ok "P4 既定DEST=Application Support" || ng "P4 既定DEST不正"
-# (f) 冪等＆非破壊: 2回目installで plist不変・生成sprite/config追記が残る・トップレベルstaleは剪定
-cp "$DTMP/data/assets/tile2_floor_wood.png" "$DTMP/data/assets/zzz_gen.png"
+# (f) 冪等＆非破壊: 2回目installで plist不変・data直下の追加物/config追記が残る・トップレベルstaleは剪定
+touch "$DTMP/data/zzz_keep.marker"
 python3 - "$DTMP/data/office_config.json" <<'EOF'
 import json, sys
 p = sys.argv[1]
@@ -621,9 +492,9 @@ EOF
 touch "$DTMP/app/stale_top.sh"
 cp "$DTMP/com.senao.aioffice.plist" "$DTMP/p1.plist"
 AIOFFICE_DEST="$DTMP" bash macapp/install.sh >/dev/null 2>&1 || ng "P4 install(2回目) exit≠0"
-diff -q "$DTMP/p1.plist" "$DTMP/com.senao.aioffice.plist" >/dev/null && [ -f "$DTMP/data/assets/zzz_gen.png" ] \
+diff -q "$DTMP/p1.plist" "$DTMP/com.senao.aioffice.plist" >/dev/null && [ -f "$DTMP/data/zzz_keep.marker" ] \
   && grep -q "P4マーカー部署" "$DTMP/data/office_config.json" && [ ! -e "$DTMP/app/stale_top.sh" ] \
-  && ok "P4 冪等+非破壊 (plist不変・生成物温存・staleトップレベル剪定)" || ng "P4 再installで破壊/剪定漏れ/plist差分"
+  && ok "P4 冪等+非破壊 (plist不変・data温存・staleトップレベル剪定)" || ng "P4 再installで破壊/剪定漏れ/plist差分"
 # (g) uninstall TESTMODE: app削除・data温存・実plist/実SwiftBarに非接触（テスト後片付けが安全）
 AIOFFICE_DEST="$DTMP" bash macapp/uninstall.sh >/dev/null 2>&1 \
   && [ ! -d "$DTMP/app" ] && [ -f "$DTMP/data/office_config.json" ] \

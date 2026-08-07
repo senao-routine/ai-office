@@ -45,8 +45,7 @@ class ParseTest(unittest.TestCase):
         main = emps[0]
         self.assertEqual(main["external"], "openclaw")
         self.assertEqual(main["state"], "working")
-        self.assertEqual(main["sprite"], "/assets/agent_bot.png")
-        self.assertEqual(main["spriteWalk"], "")
+        self.assertNotIn("sprite", main)   # R80: スプライトは全廃＝ソースから出さない
         self.assertEqual(main["feed"], ["replying on WhatsApp"])
         self.assertEqual(main["minions"], 1)
         self.assertEqual(main["role"], "whatsapp")

@@ -98,13 +98,11 @@ def _scan(now):
             continue
         meta = _project_meta(cwd, config)
         name = meta.get("name") or Path(cwd).name
-        sprite = meta.get("sprite") or ""
         age = now - last_active
         projects.append({
             "dir": directory.name,
             "cwd": cwd,
             "name": name,
-            "sprite": sprite if isinstance(sprite, str) else "",
             "lastActive": last_active,
             "ageSec": age,
             "sessions": len(sessions),

@@ -90,17 +90,17 @@ class ProjectsIndexTests(unittest.TestCase):
         self.assertEqual("/Volumes/work/real-name", by_dir[preferred]["cwd"])
         self.assertEqual("/Users/test/fallback/project", by_dir[fallback]["cwd"])
 
-    def test_config_link_uses_nfc_partial_match_for_name_and_sprite(self):
+    def test_config_link_uses_nfc_partial_match_for_name(self):
         dirname = "-Users-test-cafe-project"
         self.session(dirname, "sess.jsonl", self.now - 1,
                      [{"cwd": "/Users/test/cafe\u0301/project"}])
         self.config.write_text(json.dumps({"projects": {
-            "café": {"name": "喫茶開発部", "sprite": "barista.png"},
+            "café": {"name": "喫茶開発部"},
         }}, ensure_ascii=False), encoding="utf-8")
 
         project = load_module(PROJECTS_INDEX, "projects_index").projects_json(self.now)["projects"][0]
         self.assertEqual("喫茶開発部", project["name"])
-        self.assertEqual("barista.png", project["sprite"])
+        self.assertNotIn("sprite", project)   # R80: スプライト全廃
 
     def test_empty_and_non_directory_entries_are_skipped(self):
         (self.projects / "-broken-empty").mkdir()

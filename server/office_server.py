@@ -63,76 +63,6 @@ HERE = Path(__file__).resolve().parent          # AI Office/server
 ROOT = HERE.parent                               # AI Office/
 
 
-def _load_office_scene():
-    """レイアウト検証の単一正本を起動時に読む。"""
-    scene_path = ROOT / "ui" / "office_scene.json"
-    try:
-        scene = json.loads(scene_path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
-        raise RuntimeError(f"office scene を読めません: {scene_path}") from exc
-    if not isinstance(scene, dict):
-        raise RuntimeError("office scene のルートがobjectではありません")
-    return scene
-
-
-SCENE = _load_office_scene()
-
-
-def _scene_layout_bounds(scene):
-    rooms = {
-        room.get("id"): room for room in scene.get("rooms", [])
-        if isinstance(room, dict) and isinstance(room.get("id"), str)
-    }
-    main_floor = rooms.get("main", {}).get("floor", {})
-    brk_floor = rooms.get("brk", {}).get("floor", {})
-    entrance = next(
-        (door.get("rect", {}) for door in scene.get("doors", [])
-         if isinstance(door, dict) and door.get("id") == "entrance"),
-        {},
-    )
-    catalog = scene.get("catalog", {})
-    desk_size = catalog.get("deskset", {}).get("footprint", {})
-    sofa_catalog = catalog.get("sofaset", {})
-    sofa_default = scene.get("defaultLayout", {}).get("sofa", {})
-    sofa_w = sofa_default.get("w", sofa_catalog.get("displayW"))
-    sofa_h = sofa_catalog.get("displayH")
-    if not all(isinstance(value, int) and not isinstance(value, bool)
-               for value in (*main_floor.values(), *brk_floor.values(),
-                             *entrance.values(), *desk_size.values(),
-                             *sofa_default.values())):
-        raise RuntimeError("office scene のレイアウト寸法が不正です")
-    if not isinstance(sofa_w, int) or not isinstance(sofa_h, int):
-        raise RuntimeError("office scene のソファ寸法が不正です")
-    desk_w = desk_size.get("w")
-    desk_h = desk_size.get("h")
-    if not isinstance(desk_w, int) or not isinstance(desk_h, int):
-        raise RuntimeError("office scene の机寸法が不正です")
-    return {
-        "desk": {
-            "w": desk_w,
-            "h": desk_h,
-            "x": (main_floor["x"], main_floor["x"] + main_floor["w"] - desk_w),
-            "y": (main_floor["y"], main_floor["y"] + main_floor["h"] - desk_h),
-        },
-        "sofa": {
-            "w": sofa_w,
-            "h": sofa_h,
-            "x": (brk_floor["x"], brk_floor["x"] + brk_floor["w"] - sofa_w),
-            "y": (brk_floor["y"], brk_floor["y"] + brk_floor["h"] - sofa_h),
-        },
-        "door": {
-            "x": (entrance["x"], entrance["x"] + entrance["w"]),
-            "y": (entrance["y"], entrance["y"] + entrance["h"]),
-        },
-    }
-
-
-SCENE_LAYOUT_BOUNDS = _scene_layout_bounds(SCENE)
-ASSIGNABLE_ROOM_IDS = frozenset(
-    room["id"] for room in SCENE.get("rooms", [])
-    if isinstance(room, dict) and room.get("assignable") is True
-    and isinstance(room.get("id"), str)
-)
 # OFFICE_HOME はテスト用の注入口（未指定なら実HOME）。~/.claude 配下を読む
 _HOME = Path(os.environ.get("OFFICE_HOME", str(Path.home())))
 # OFFICE_DATA = config+assets の置き場（P4常駐: ~/Library/Application Support/AIOffice/data を
@@ -154,21 +84,6 @@ TASK_TAIL_BYTES = 8 * 1024 * 1024   # R64: 初回窓。以降は増分読みな�
 CACHE_SEC = 2.0
 DEFAULT_OFFICE_NAME = "AIオフィス"
 
-# 未登録プロジェクトの表示名に含まれる役割語。上から先に判定する。
-ROLE_KEYWORDS = (
-    ("video", ("video", "movie", "動画", "編集", "premiere", "davinci")),
-    ("shorts", ("shorts", "short", "ショート", "tiktok", "reel")),
-    ("blog", ("blog", "ブログ", "note", "記事", "article")),
-    ("xpost", ("xpost", "x-", "sns", "twitter", "tweet", "投稿")),
-    ("xrun", ("growth", "marketing", "マーケ", "集客")),
-    ("sakutto", ("dev", "app", "api", "server", "tool", "開発", "cli", "bot")),
-    ("memo", ("memo", "メモ", "note-taking", "docs", "資料")),
-    ("ribbon", ("community", "コミュニティ", "support", "サポート")),
-)
-GENERIC_POOL = (
-    "generic_f", "generic_m", "generic_f2", "generic_m2", "generic_f3",
-    "generic_m3", "generic_f4", "generic_m4", "generic_f5", "generic_m5",
-)
 
 TOOL_VERB = {
     "Bash": "実行中", "Edit": "編集中", "Write": "執筆中", "Read": "読込中",
@@ -237,11 +152,6 @@ def nfc(s):
 def config_file():
     # OFFICE_CONFIG はテスト用の注入口（未指定なら OFFICE_DATA 配下＝daemon/devで同一正本）
     return Path(os.environ.get("OFFICE_CONFIG", str(DATA / "office_config.json")))
-
-
-def layout_file():
-    # OFFICE_LAYOUT はテスト用の注入口（未指定なら OFFICE_DATA 配下）。
-    return Path(os.environ.get("OFFICE_LAYOUT", str(DATA / "office_layout.json")))
 
 
 def load_config():
@@ -1057,7 +967,6 @@ def parse_session(path, now):
     return employee
 
 
-ASSETS = DATA / "assets"    # OFFICE_DATA 未設定なら ROOT/assets（後方互換）
 
 # ── R50 新UI: ui/ 配下の静的配信 ──────────────────────────────────
 # 旧UIは単一HTMLで完結していたが、2スタイル構成では ESM・CSS・フォント・three.js を配る必要がある。
@@ -1112,36 +1021,9 @@ def project_label(cwd, dirname, config):
     pat = project_config_key(cwd, config, dirname)
     if pat is not None:
         meta = config["projects"][pat]
-        return (meta.get("name") or Path(cwd).name, meta.get("role", ""),
-                meta.get("sprite", ""))
+        return (meta.get("name") or Path(cwd).name, meta.get("role", ""))
     base = Path(cwd).name if cwd else dirname.strip("-").split("-")[-1]
-    return nfc(base) or "未知のプロジェクト", "", ""
-
-
-def sprite_url(name, avatar, hint=""):
-    """(立ち絵URL, 歩き絵URL) を返す（無ければ役割別/汎用→空）。"""
-    base = None
-    if name and (ASSETS / name).exists():
-        base = name
-    elif not name:
-        label = nfc(str(hint)).casefold()
-        for stem, keywords in ROLE_KEYWORDS:
-            if any(keyword.casefold() in label for keyword in keywords):
-                candidate = f"{stem}.png"
-                if (ASSETS / candidate).is_file():
-                    base = candidate
-                break
-    if not base:
-        existing_pool = tuple(
-            stem for stem in GENERIC_POOL if (ASSETS / f"{stem}.png").is_file()
-        )
-        if existing_pool:
-            base = f"{existing_pool[avatar % len(existing_pool)]}.png"
-    if not base:
-        return "", ""
-    walk = base.replace(".png", "_walk.png")
-    return (f"/assets/{base}",
-            f"/assets/{walk}" if (ASSETS / walk).exists() else "")
+    return nfc(base) or "未知のプロジェクト", ""
 
 
 def load_history():
@@ -1262,8 +1144,6 @@ def group_by_project(employees, lang="ja"):
             "lastOrder": lead.get("lastOrder", ""),
             "feed": lead.get("feed", []),
             "skills": lead.get("skills", []),
-            "sprite": lead.get("sprite", ""),
-            "spriteWalk": lead.get("spriteWalk", ""),
             "avatar": int(lead.get("avatar") or 0),
             "sessions": [_session_brief(m) for m in
                          sorted(members, key=lambda m: int(m.get("age") or 0))],
@@ -1346,16 +1226,9 @@ def scan_office():
                 continue
             info = parse_session(f, now)
             if info:
-                dept, role, spr = project_label(info["cwd"], proj.name, config)
+                dept, role = project_label(info["cwd"], proj.name, config)
                 info["dept"] = dept
                 info["role"] = role
-                info["avatar"] = sum(ord(c) for c in info["session"]) % 8
-                hint = " ".join(
-                    part for part in (dept, role, proj.name, info["cwd"]) if part
-                )
-                info["sprite"], info["spriteWalk"] = sprite_url(
-                    spr, info["avatar"], hint=hint
-                )
                 employees.append(info)
     employees.sort(key=lambda e: e["mtime"], reverse=True)
     counts = {}
@@ -1459,171 +1332,6 @@ class _file_flock:
 
 
 # 掟: レイアウトはローカル設定＝office_json に混ぜない（中継に載せない）。
-_LAYOUT_KEYS = ("desks", "sofa", "door")
-_LEGACY_LAYOUT_KEYS = frozenset({"meet", "meetLead", "minions"})
-
-
-def _layout_int(value, low, high):
-    return isinstance(value, int) and not isinstance(value, bool) and low <= value <= high
-
-
-def _layout_fields(value, fields):
-    """必須フィールドを検証し、余計なキーを落とした新しいdictを返す。"""
-    if not isinstance(value, dict) or any(name not in value for name in fields):
-        raise ValueError("missing layout field")
-    return {name: value[name] for name in fields}
-
-
-def _validate_room_pins(room_pins):
-    if not isinstance(room_pins, dict):
-        raise ValueError("invalid roomPins")
-    clean = {}
-    used_rooms = set()
-    for project_key, room_id in room_pins.items():
-        # UIのprojectKeyForと同じく、cwdを識別子にする。キー全体で200字まで。
-        if (not isinstance(project_key, str) or len(project_key) > 200 or
-                not project_key.startswith("cwd:") or
-                not project_key[4:].strip().rstrip("/\\") or
-                project_key != "cwd:" + project_key[4:].strip().rstrip("/\\")):
-            raise ValueError("invalid roomPins projectKey")
-        if (not isinstance(room_id, str) or room_id not in ASSIGNABLE_ROOM_IDS):
-            raise ValueError("invalid roomPins roomId")
-        if room_id in used_rooms:
-            raise ValueError("duplicate roomPins roomId")
-        clean[project_key] = room_id
-        used_rooms.add(room_id)
-    return clean
-
-
-def validate_layout(layout):
-    """desks/sofa/doorと任意のroomPinsを保存可能な形へ正規化する。不正ならNone。"""
-    try:
-        if (not isinstance(layout, dict) or
-                any(name not in layout for name in _LAYOUT_KEYS) or
-                _LEGACY_LAYOUT_KEYS.intersection(layout)):
-            raise ValueError("incomplete or legacy layout")
-
-        desks = layout["desks"]
-        if not isinstance(desks, list) or not 1 <= len(desks) <= 10:
-            raise ValueError("invalid desks")
-        clean_desks = []
-        for raw in desks:
-            desk = _layout_fields(raw, ("dx", "dy"))
-            bounds = SCENE_LAYOUT_BOUNDS["desk"]
-            if (not _layout_int(desk["dx"], *bounds["x"]) or
-                    not _layout_int(desk["dy"], *bounds["y"])):
-                raise ValueError("desk outside main floor")
-            clean_desks.append(desk)
-
-        sofa = _layout_fields(layout["sofa"], ("x", "y", "w"))
-        bounds = SCENE_LAYOUT_BOUNDS["sofa"]
-        if (not _layout_int(sofa["x"], *bounds["x"]) or
-                not _layout_int(sofa["y"], *bounds["y"]) or
-                not _layout_int(sofa["w"], bounds["w"], bounds["w"])):
-            raise ValueError("sofa outside break corner")
-
-        door = _layout_fields(layout["door"], ("x", "y"))
-        bounds = SCENE_LAYOUT_BOUNDS["door"]
-        if (not _layout_int(door["x"], *bounds["x"]) or
-                not _layout_int(door["y"], *bounds["y"])):
-            raise ValueError("door outside entrance")
-        room_pins = _validate_room_pins(layout.get("roomPins", {}))
-    except (KeyError, TypeError, ValueError):
-        return None
-
-    return {"desks": clean_desks, "sofa": sofa, "door": door, "roomPins": room_pins}
-
-
-def _default_layout():
-    """scene.defaultLayoutをvalidate_layoutと同じ形式で返す。"""
-    raw = SCENE.get("defaultLayout")
-    clean = validate_layout(raw)
-    if clean is None:
-        raise RuntimeError("office scene のdefaultLayoutが不正です")
-    return clean
-
-
-def layout_json():
-    target = layout_file()
-    try:
-        layout = json.loads(target.read_text(encoding="utf-8"))
-        if not isinstance(layout, dict):
-            raise ValueError("layout must be an object")
-        # R25教訓: 間取り改装でvalidate範囲が変わると、保存済みカスタムが新しい部屋に
-        # 重なって「ソファが壁を飛び出す/旧会議室へ壁抜け歩行」する。読み込み時にも
-        # 現行rangeで検証し、通らない古いレイアウトは既定へフォールバックする。
-        layout = validate_layout(layout)
-        if layout is None:
-            raise ValueError("stale layout out of range")
-    except (OSError, UnicodeError, json.JSONDecodeError, ValueError):
-        return {"custom": False, "layout": None, "roomPins": {}}
-    return {"custom": True, "layout": layout, "roomPins": layout["roomPins"]}
-
-
-def set_layout(layout):
-    target = layout_file()
-    if layout is None:
-        try:
-            with _lock, _file_flock(target):
-                target.unlink(missing_ok=True)
-        except OSError:
-            return False, "レイアウトを削除できませんでした"
-        return True, "既定レイアウトに戻しました"
-
-    clean = validate_layout(layout)
-    if clean is None:
-        return False, "レイアウトが不正です"
-
-    tmp = target.with_name(f".{target.name}.tmp")
-    try:
-        with _lock, _file_flock(target):
-            try:
-                tmp.write_text(json.dumps(clean, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-                os.replace(tmp, target)
-            finally:
-                # 固定tmp名なので、次のwriterが作る前にflock保持中のまま片付ける。
-                try:
-                    tmp.unlink(missing_ok=True)
-                except OSError:
-                    pass
-    except (OSError, UnicodeError):
-        return False, "レイアウトを保存できませんでした"
-    return True, "保存しました"
-
-
-def set_room_pins(room_pins):
-    """roomPinsだけの更新を既存レイアウトへマージして保存する。"""
-    try:
-        clean_pins = _validate_room_pins(room_pins)
-    except ValueError:
-        return False, "roomPinsが不正です"
-
-    target = layout_file()
-    tmp = target.with_name(f".{target.name}.tmp")
-    try:
-        with _lock, _file_flock(target):
-            base = _default_layout()
-            try:
-                current = json.loads(target.read_text(encoding="utf-8"))
-                current = validate_layout(current)
-            except (OSError, UnicodeError, json.JSONDecodeError):
-                current = None
-            merged = current or base
-            merged["roomPins"] = clean_pins
-            tmp.write_text(json.dumps(merged, ensure_ascii=False, indent=2) + "\n",
-                           encoding="utf-8")
-            try:
-                os.replace(tmp, target)
-            finally:
-                try:
-                    tmp.unlink(missing_ok=True)
-                except OSError:
-                    pass
-    except (OSError, UnicodeError, RuntimeError):
-        return False, "roomPinsを保存できませんでした"
-    return True, "保存しました"
-
-
 def _office_secrets_file():
     return _HOME / ".claude" / "office_secrets"
 
@@ -1899,27 +1607,9 @@ def post_instruction(session, text):
 
 
 # ---- ➕ 新しいプロジェクト起動（P1） ------------------------------------
-# 流れ: pick(フォルダ選択) → new(config先頭に登録 → キャラ生成を裏で開始 → Terminalでclaude起動)
-# spriteは生成完了後にconfigへ書く（生成前に書くとsprite実在チェックが壊れる＆
-# 完了した瞬間に汎用キャラから専用キャラへ「着替える」演出になる）
-GEN_STATUS = {}   # slug -> {"state": "generating"|"done"|"error", "msg"/"note": str}
-_RESERVING = set()  # 生成中でまだPNGが無いslug（実在チェックだけでは衝突するため予約する）
-
-# R2 のキャラ変更パネルに常設する出荷スプライト。写真生成ではこれらを上書きせず、
-# 既存 sprite がこの集合外のときだけ runtime custom の stem を引き継ぐ。
-_STANDARD_SPRITES = frozenset({
-    "blog.png", "generic_f.png", "generic_m.png", "memo.png", "ribbon.png",
-    "sakutto.png", "shorts.png", "video.png", "works_hq.png", "xpost.png", "xrun.png",
-    "generic_f2.png", "generic_m2.png", "generic_f3.png", "generic_m3.png",
-    "generic_f4.png", "generic_m4.png", "generic_f5.png", "generic_m5.png",
-})
-_PHOTO_MAX_BYTES = 5 * 1024 * 1024
-_PHOTO_BODY_MAX_BYTES = 8_000_000
-_TINY_PNG = base64.b64decode(
-    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
-)
-
-
+# 流れ: pick(フォルダ選択) → new(config先頭に登録 → Terminalでclaude起動)
+# （キャラ画像の生成はR80で廃止＝3D化・モノグラム化により生成物を誰も表示しなくなったため。
+#  1件あたり約$0.4の画像生成が不可視のPNGを作り続けていた）
 def pick_folder():
     """フォルダ選択ダイアログ。OFFICE_PICK_DIR はテスト用の注入口（ダイアログ省略）"""
     mock = os.environ.get("OFFICE_PICK_DIR")
@@ -1938,329 +1628,6 @@ def pick_folder():
         return False, "キャンセルされました"
     path = r.stdout.strip().rstrip("/")
     return (True, path) if path and Path(path).is_dir() else (False, "フォルダを取得できませんでした")
-
-
-def sprite_slug(pattern, base):
-    """スプライトファイル名（ascii化・日本語のみならハッシュ・既存PNGとも生成中slugとも衝突しない）
-    ※呼び出し側が _lock を保持している前提（_RESERVING を参照するため）"""
-    s = re.sub(r"[^a-z0-9]+", "_", nfc(base).lower()).strip("_")[:24]
-    if len(s) < 2:
-        s = "proj_" + hashlib.md5(nfc(pattern).encode("utf-8")).hexdigest()[:6]
-    slug, i = s, 2
-    while (ASSETS / f"{slug}.png").exists() or slug in _RESERVING:
-        slug = f"{s}{i}"
-        i += 1
-    return slug
-
-
-def project_pattern(path):
-    """cwdマッチ用パターン。ホーム配下なら相対形（他Macでも同じ形になる）"""
-    p = str(Path(path).expanduser().resolve())
-    home = str(Path.home())
-    return p[len(home) + 1:] if p.startswith(home + "/") else p
-
-
-def _write_config(cfg):
-    cf = config_file()
-    tmp = cf.with_name(cf.name + ".tmp")
-    tmp.write_text(json.dumps(cfg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    tmp.replace(cf)
-
-
-def _set_sprite(pattern, sprite):
-    """キャラ生成完了後に呼ばれ、configの該当エントリへspriteを書き足す"""
-    with _lock, _file_flock(config_file()):
-        try:
-            cfg = json.loads(config_file().read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            return
-        if pattern in cfg.get("projects", {}):
-            cfg["projects"][pattern]["sprite"] = sprite
-            _write_config(cfg)
-        _cache["t"] = 0.0
-
-
-def set_lang(lang):
-    """UIの🌐トグルから言語をconfigへ永続化（オフィス全体設定・R42.2d）。"""
-    val = str(lang or "").strip().lower()
-    if val not in LANGS:
-        return False, "lang は ja / en のみ"
-    with _lock, _file_flock(config_file()):
-        try:
-            cfg = json.loads(config_file().read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            cfg = {"projects": {}}
-        if not isinstance(cfg, dict):
-            cfg = {"projects": {}}
-        cfg["lang"] = val
-        _write_config(cfg)
-        _cache["t"] = 0.0
-    return True, val
-
-
-def set_sprite(cwd, sprite):
-    """既存プロジェクトの vintage 正本スプライトだけを差し替える。"""
-    if not isinstance(cwd, str) or not cwd:
-        return False, "cwd が不正です"
-    if (not isinstance(sprite, str)
-            or not re.fullmatch(r"[a-z0-9_]+\.png", sprite)
-            or "__" in sprite):
-        return False, "sprite 名が不正です"
-    if not (ASSETS / sprite).is_file():
-        return False, "sprite が見つかりません"
-    config = load_config()
-    pattern = project_config_key(cwd, config)
-    if pattern is None:
-        # macOS の /var→/private/var 等の symlink 差でキー不一致になるため realpath でも照合
-        pattern = project_config_key(os.path.realpath(cwd), config)
-    if pattern is None:
-        return False, "プロジェクトが見つかりません"
-    _set_sprite(pattern, sprite)
-    return True, "変更しました"
-
-
-def _ready_themes():
-    """theme_gen.py を import せず、出荷済みテーマ名だけを軽量に読み取る。"""
-    theme_gen = ROOT / "tools" / "theme_gen.py"
-    if not theme_gen.is_file():
-        theme_gen = ROOT / "app" / "tools" / "theme_gen.py"
-    try:
-        text = theme_gen.read_text(encoding="utf-8")
-        match = re.search(r"^THEMES_READY\s*=\s*(\[.*?\])", text, re.M)
-        themes = ast.literal_eval(match.group(1)) if match else None
-        if not isinstance(themes, list) or not all(isinstance(t, str) for t in themes):
-            raise ValueError("THEMES_READY is not a string list")
-        return themes
-    except (OSError, SyntaxError, ValueError, AttributeError) as e:
-        print(f"[theme custom] THEMES_READY を読めません: {short(e, 200)}")
-        return []
-
-
-# codex_image.sh は「最新PNG収穫」方式のため並列生成が混線する→テーマ経由のcustom生成はプロセス内直列化。
-_CUSTOM_GEN_LOCK = threading.Lock()
-
-
-def _promote_theme_custom(slug, theme):
-    """theme_gen 生成物(<slug>__<theme>*.png)を無印（既定表示の正）へ昇格コピー。立ち絵必須・歩き絵はあれば。"""
-    source = ASSETS / f"{slug}__{theme}.png"
-    if not source.is_file():
-        return False
-    shutil.copyfile(source, ASSETS / f"{slug}.png")
-    walk = ASSETS / f"{slug}__{theme}_walk.png"
-    if walk.is_file():
-        shutil.copyfile(walk, ASSETS / f"{slug}_walk.png")
-    return True
-
-
-def _generate_sprite(slug, label, pattern):
-    """customキャラ生成（同期・テスト可能）。R23.5画風追随:
-    主レーン= theme_gen READY先頭テーマ（現行画風・Codexサブスク・参照アンカー付き）→無印へ昇格コピー。
-    失敗/未READY時は assets_gen custom（旧画風・OpenAI API）へフォールバック＝Codex障害でも生成は死なない。"""
-    ok = False
-    detail = ""
-    themes = _ready_themes()
-    primary = themes[0] if themes else ""
-    try:
-        if primary:
-            try:
-                with _CUSTOM_GEN_LOCK:
-                    themed = subprocess.run(
-                        [sys.executable, str(ROOT / "tools" / "theme_gen.py"),
-                         primary, "custom", slug, label],
-                        capture_output=True, text=True, timeout=900)
-                ok = themed.returncode == 0 and _promote_theme_custom(slug, primary)
-                if not ok:
-                    detail = short((themed.stdout or "") + (themed.stderr or ""), 200)
-                    print(f"[theme custom] {primary} 主生成失敗→assets_genへフォールバック: {detail}")
-            except (OSError, subprocess.TimeoutExpired) as e:
-                detail = short(str(e), 200)
-                print(f"[theme custom] {primary} 主生成例外→assets_genへフォールバック: {detail}")
-        if not ok:
-            r = subprocess.run(
-                [sys.executable, str(ROOT / "tools" / "assets_gen.py"), "custom", slug, label],
-                capture_output=True, text=True, timeout=900)
-            ok = r.returncode == 0 and (ASSETS / f"{slug}.png").exists()
-            if not ok:
-                detail = detail or short(r.stdout + r.stderr, 200)
-        if ok:
-            _set_sprite(pattern, f"{slug}.png")
-        GEN_STATUS[slug] = {"state": "done" if ok else "error", "msg": "" if ok else detail}
-    except (OSError, subprocess.TimeoutExpired) as e:
-        GEN_STATUS[slug] = {"state": "error", "msg": short(str(e), 200)}
-    finally:
-        _RESERVING.discard(slug)  # PNGが実在するので以後は実在チェックが衝突を防ぐ
-    # 追いテーマ生成はしない: 主レーン成功時は__テーマ版が既に在り、失敗時はCodex不調なので
-    # 再試行は900秒の無駄玉になる（フォールバック絵は次のREADYテーマ再生成の機会に揃える）。
-
-
-def gen_sprite_async(slug, label, pattern):
-    """tools/assets_gen.py custom を裏で実行（server/はstdlib縛りのためsubprocess経由）"""
-    GEN_STATUS[slug] = {"state": "generating", "msg": ""}
-    threading.Thread(target=_generate_sprite, args=(slug, label, pattern), daemon=True).start()
-
-
-def _decode_photo_b64(value):
-    """data URL または素の base64 を、許可画像のバイト列へ検証付きで戻す。"""
-    if not isinstance(value, str) or not value:
-        return False, "写真データが空です"
-    encoded = value
-    if value.startswith("data:"):
-        match = re.fullmatch(r"data:image/(?:png|jpeg);base64,(.*)", value,
-                             flags=re.IGNORECASE | re.DOTALL)
-        if not match:
-            return False, "写真データの形式が不正です"
-        encoded = match.group(1)
-    try:
-        raw = base64.b64decode(encoded, validate=True)
-    except (ValueError, binascii.Error):
-        return False, "写真データをbase64として読めません"
-    if len(raw) > _PHOTO_MAX_BYTES:
-        return False, "写真は5MBまでです"
-    if not (raw.startswith(b"\x89PNG") or raw.startswith(b"\xff\xd8")):
-        return False, "PNGまたはJPEGの写真を選んでください"
-    return True, raw
-
-
-def _custom_sprite_stem(sprite):
-    """config の sprite が runtime custom なら安全な stem、それ以外は空文字を返す。"""
-    if (not isinstance(sprite, str) or sprite in _STANDARD_SPRITES
-            or not re.fullmatch(r"[a-z0-9_]+\.png", sprite) or "__" in sprite):
-        return ""
-    return Path(sprite).stem
-
-
-def _photo_output_names(slug):
-    return [f"{slug}.png", f"{slug}_walk.png"]
-
-
-def _run_photo_generation(slug, label, pattern, photo):
-    """写真参照の既定スタイルを生成し、写真を消してから最終状態を公開する。"""
-    final_status = {"state": "error", "msg": "キャラ生成に失敗しました"}
-    try:
-        fake_marker = os.environ.get("OFFICE_FAKE_GEN")
-        if fake_marker:
-            # verify/unittest 専用注入口。実ジェネレータを一切起動せず既定2成果物を再現する。
-            ASSETS.mkdir(parents=True, exist_ok=True)
-            output_names = _photo_output_names(slug)
-            Path(fake_marker).write_text("\n".join(output_names) + "\n", encoding="utf-8")
-            for name in output_names:
-                (ASSETS / name).write_bytes(_TINY_PNG)
-            generated_ok = True
-        else:
-            generated_ok = False
-            # R23.5画風追随: 主=READY先頭テーマ（現行画風・__テーマ版→無印へ昇格）。
-            # 未READY/失敗時は旧vintageレーン（無印直書き）へフォールバック。
-            themes = _ready_themes()
-            lanes = [(theme, True) for theme in themes[:1]] + [("vintage", False)]
-            for theme, promote in lanes:
-                try:
-                    with _CUSTOM_GEN_LOCK:
-                        generated = subprocess.run(
-                            [sys.executable, str(ROOT / "tools" / "theme_gen.py"),
-                             theme, "custom", slug, label, "--photo-ref", str(photo)],
-                            capture_output=True, text=True, timeout=900)
-                    produced = generated.returncode == 0 and (not promote or _promote_theme_custom(slug, theme))
-                    expected = (ASSETS / f"{slug}.png", ASSETS / f"{slug}_walk.png")
-                    generated_ok = produced and all(p.is_file() for p in expected)
-                    if generated_ok:
-                        break
-                    # 失敗理由はローカルログのみ（API状態には載せない=写真パス露出防止）
-                    print(f"[photo] {theme} 生成失敗: {short(generated.stderr or generated.stdout, 200)}")
-                except (OSError, subprocess.TimeoutExpired) as e:
-                    generated_ok = False
-                    print(f"[photo] {theme} 生成例外: {short(e, 120)}")
-
-        if generated_ok:
-            _set_sprite(pattern, f"{slug}.png")
-            final_status = {"state": "done", "msg": ""}
-        else:
-            final_status = {"state": "error", "msg": "キャラ生成に失敗しました"}
-    except Exception:
-        # 生成コマンドの詳細（写真の一時パスを含み得る）は API 状態へ載せない。
-        final_status = {"state": "error", "msg": "キャラ生成に失敗しました"}
-    finally:
-        cleanup_failed = False
-        try:
-            photo.unlink(missing_ok=True)
-        except OSError:
-            cleanup_failed = True
-        finally:
-            # プライバシー掟: 成否に関係なく写真は必ずここで削除を試み、
-            # 写真データ・一時パスを office_json / relay payload へ決して載せない。
-            _RESERVING.discard(slug)
-        if cleanup_failed:
-            final_status = {"state": "error", "msg": "一時写真を削除できませんでした"}
-        # done を観測した時点で upload_tmp が空であることを保証するため、削除後にのみ更新する。
-        GEN_STATUS[slug] = final_status
-
-
-def upload_sprite_photo(cwd, image_b64):
-    """既存プロジェクト用の写真を私有一時ファイルへ保存し、生成スレッドを起動する。"""
-    if not isinstance(cwd, str) or not cwd:
-        return False, "cwd が不正です", {}
-    config = load_config()
-    pattern = project_config_key(cwd, config)
-    if pattern is None:
-        # set_sprite と同じく /var→/private/var 等の symlink 差を realpath で吸収する。
-        pattern = project_config_key(os.path.realpath(cwd), config)
-    if pattern is None:
-        return False, "プロジェクトが見つかりません", {}
-
-    valid, decoded = _decode_photo_b64(image_b64)
-    if not valid:
-        return False, decoded, {}
-
-    meta = config.get("projects", {}).get(pattern, {})
-    if not isinstance(meta, dict):
-        return False, "プロジェクト設定が不正です", {}
-    label = short(meta.get("name") or Path(cwd).name or "オリジナルキャラ", 30)
-    with _lock:
-        slug = _custom_sprite_stem(meta.get("sprite", ""))
-        if not slug:
-            # 標準スプライトは共有物なので、部署名を基に custom 用の新規 stem を予約する。
-            slug = sprite_slug(pattern, label)
-        if slug in _RESERVING:
-            return False, "このキャラは生成中です", {}
-        _RESERVING.add(slug)
-
-    photo_dir = DATA / "upload_tmp"
-    photo = photo_dir / f"{slug}_photo.png"
-    try:
-        photo_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
-        os.chmod(photo_dir, 0o700)
-        flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
-        if hasattr(os, "O_NOFOLLOW"):
-            flags |= os.O_NOFOLLOW
-        fd = os.open(str(photo), flags, 0o600)
-        try:
-            os.fchmod(fd, 0o600)
-            with os.fdopen(fd, "wb") as f:
-                fd = -1
-                f.write(decoded)
-        finally:
-            if fd >= 0:
-                os.close(fd)
-    except OSError:
-        _RESERVING.discard(slug)
-        try:
-            photo.unlink(missing_ok=True)
-        except OSError:
-            pass
-        return False, "写真を一時保存できませんでした", {}
-
-    GEN_STATUS[slug] = {"state": "generating"}
-    try:
-        threading.Thread(target=_run_photo_generation,
-                         args=(slug, label, pattern, photo), daemon=True).start()
-    except Exception:
-        _RESERVING.discard(slug)
-        try:
-            photo.unlink(missing_ok=True)
-        except OSError:
-            pass
-        GEN_STATUS[slug] = {"state": "error", "msg": "生成処理を開始できませんでした"}
-        return False, "生成処理を開始できませんでした", {}
-    return True, "生成を開始しました", {"slug": slug, "genStarted": True}
 
 
 def launch_claude(path):
@@ -2430,8 +1797,22 @@ def focus_terminal(session):
     return True, (app_name or "Terminal")
 
 
-def add_project(path, name, role, gen_sprite=False, launch=False):
-    """office_config.json へ登録し、キャラ生成とclaude起動をキックする"""
+def project_pattern(path):
+    """cwdマッチ用パターン。ホーム配下なら相対形（他Macでも同じ形になる）"""
+    p = str(Path(path).expanduser().resolve())
+    home = str(Path.home())
+    return p[len(home) + 1:] if p.startswith(home + "/") else p
+
+
+def _write_config(cfg):
+    cf = config_file()
+    tmp = cf.with_name(cf.name + ".tmp")
+    tmp.write_text(json.dumps(cfg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    tmp.replace(cf)
+
+
+def add_project(path, name, role, launch=False):
+    """office_config.json へ登録し、必要なら Terminal で claude を起動する"""
     if not isinstance(path, str) or not path.strip():
         return False, "フォルダが存在しません", {}
     try:
@@ -2450,8 +1831,7 @@ def add_project(path, name, role, gen_sprite=False, launch=False):
         return False, "名前が空です", {}
     pattern = project_pattern(str(p))
     cf = config_file()
-    # read-modify-write を _lock+flock 内で原子的に（キャラ生成完了スレッドの _set_sprite・
-    # P4の daemon/dev 併走プロセスとの lost update 防止）
+    # read-modify-write を _lock+flock 内で原子的に（P4の daemon/dev 併走プロセスとの lost update 防止）
     with _lock, _file_flock(config_file()):
         try:
             cfg = json.loads(cf.read_text(encoding="utf-8")) if cf.exists() else {"projects": {}}
@@ -2459,7 +1839,6 @@ def add_project(path, name, role, gen_sprite=False, launch=False):
             return False, "office_config.json が読めません（壊れている可能性・手動確認を）", {}
         projects = cfg.get("projects", {})
         existing = pattern in projects
-        slug = ""
         if existing:
             entry = dict(projects[pattern])
             entry["name"] = name
@@ -2471,17 +1850,11 @@ def add_project(path, name, role, gen_sprite=False, launch=False):
             entry = {"name": name, "role": role}
             # 先頭に挿入＝広いパターン(例: Downloads/works)より先にマッチさせる
             cfg["projects"] = {pattern: entry, **projects}
-            if gen_sprite:
-                slug = sprite_slug(pattern, p.name)  # _RESERVING を見るのでロック内で確定
-                _RESERVING.add(slug)
         _write_config(cfg)
         _cache["t"] = 0.0
-    if slug:
-        gen_sprite_async(slug, f"{name} {p.name}", pattern)
     launched = launch_claude(str(p)) if launch else False
     return True, "登録しました", {
-        "pattern": pattern, "existing": existing, "name": name, "slug": slug,
-        "genStarted": bool(slug), "launched": launched,
+        "pattern": pattern, "existing": existing, "name": name, "launched": launched,
     }
 
 
@@ -2729,10 +2102,6 @@ class Handler(BaseHTTPRequestHandler):
         if self.path.startswith("/api/office"):
             self._send(200, json.dumps(office_json(), ensure_ascii=False).encode("utf-8"),
                        "application/json; charset=utf-8")
-        elif self.path.split("?", 1)[0] == "/api/layout":
-            # 座標だけなので /api/office と同格。GETはCSRFヘッダ不要。
-            self._send(200, json.dumps(layout_json(), ensure_ascii=False).encode("utf-8"),
-                       "application/json; charset=utf-8")
         elif self.path.split("?", 1)[0] == "/api/external/openclaw":
             # 外部接続の器はローカルUI専用。office_jsonへは混ぜない。
             if not self._csrf_ok():
@@ -2740,9 +2109,6 @@ class Handler(BaseHTTPRequestHandler):
             if not edition_features(edition()).get("openclaw"):
                 return self._deny(403, "openclaw is not part of this edition")
             self._send(200, json.dumps(external_openclaw_json(), ensure_ascii=False).encode("utf-8"),
-                       "application/json; charset=utf-8")
-        elif self.path.startswith("/api/project/gen_status"):
-            self._send(200, json.dumps(GEN_STATUS, ensure_ascii=False).encode("utf-8"),
                        "application/json; charset=utf-8")
         elif self.path.startswith("/api/pair/list"):
             # 端末一覧（secretは含まないが label/id を晒すので）別オリジンGETを弾く。
@@ -2809,14 +2175,6 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 self.send_response(404)
                 self.end_headers()
-        elif self.path.startswith("/assets/"):
-            name = os.path.basename(self.path.split("?")[0])
-            f = ASSETS / name
-            if f.is_file() and f.suffix == ".png":
-                self._send(200, f.read_bytes(), "image/png")
-            else:
-                self.send_response(404)
-                self.end_headers()
         else:
             self.send_response(404)
             self.end_headers()
@@ -2838,8 +2196,7 @@ class Handler(BaseHTTPRequestHandler):
                                              "The cost dashboard is a Pro feature (register a license via 🧾)"))
         try:
             n = int(self.headers.get("Content-Length", 0))
-            # base64化で約4/3になる写真JSONだけ8MBまで読む。他のPOSTは従来の100KB上限を維持する。
-            body_limit = _PHOTO_BODY_MAX_BYTES if route == "/api/sprite/upload" else 100_000
+            body_limit = 100_000
             data = json.loads(self.rfile.read(min(max(n, 0), body_limit)).decode("utf-8")) if n else {}
         except (ValueError, json.JSONDecodeError, UnicodeDecodeError):
             data = {}
@@ -2860,16 +2217,6 @@ class Handler(BaseHTTPRequestHandler):
                 ok, msg = focus_terminal(sess)
                 if ok:
                     extra = {"app": msg}
-        elif route == "/api/layout":
-            if "roomPins" in data and "layout" not in data:
-                ok, msg = set_room_pins(data["roomPins"])
-            elif (isinstance(data.get("layout"), dict) and
-                  set(data["layout"]) == {"roomPins"}):
-                ok, msg = set_room_pins(data["layout"]["roomPins"])
-            elif "layout" not in data:
-                ok, msg = False, "layout またはroomPinsが必要です"
-            else:
-                ok, msg = set_layout(data["layout"])
         elif self.path.startswith("/api/project/pick"):
             ok, msg = pick_folder()
             if ok:
@@ -2877,7 +2224,7 @@ class Handler(BaseHTTPRequestHandler):
         elif self.path.startswith("/api/project/new"):
             ok, msg, extra = add_project(
                 data.get("path", ""), data.get("name", ""), data.get("role", ""),
-                gen_sprite=bool(data.get("genSprite")), launch=bool(data.get("launch")))
+                launch=bool(data.get("launch")))
         elif self.path == "/api/projects/launch":
             path = data.get("path")
             try:
@@ -2889,11 +2236,6 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 ok = launch_claude(path)
                 msg = "Terminalを起動できませんでした"
-        elif route == "/api/sprite/upload":
-            ok, msg, extra = upload_sprite_photo(
-                data.get("cwd", ""), data.get("imageB64", ""))
-        elif self.path.startswith("/api/sprite/set"):
-            ok, msg = set_sprite(data.get("cwd", ""), data.get("sprite", ""))
         elif self.path.startswith("/api/pair/new"):
             # secret を返すのは loopback+CSRF 済みのローカルUIのみ（_host_ok/_csrf_ok 配下）
             dev = new_device(data.get("label", ""))
@@ -2942,9 +2284,6 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(404)
             self.end_headers()
             return
-        if ok and route == "/api/layout":
-            current = layout_json()
-            extra = {"layout": current["layout"], "roomPins": current["roomPins"]}
         body = json.dumps({"ok": ok, **(extra if ok else {"error": msg})},
                           ensure_ascii=False).encode("utf-8")
         self._send(200 if ok else 400, body, "application/json; charset=utf-8")

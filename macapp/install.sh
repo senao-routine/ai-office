@@ -3,19 +3,16 @@
 #
 # やること:
 #   1. コードを ~/Library/Application Support/AIOffice/app/ へ rsync --delete（stale一掃）
-#   2. データ(config+assets)を .../AIOffice/data/ へシード（非--delete＝UI追記/生成spriteを守る）
-#   3. OPENAI_API_KEY を works/.env → ~/.claude/office_secrets(600) へ一度だけシード
-#      （Downloads=TCC保護なので daemon は works/.env を読めない。非保護の office_secrets に写す。
-#       キー解決の優先順位は env → works/.env(SSOT) → office_secrets＝ローテーションは中央が勝つ）
-#   4. LaunchAgent plist を生成（launchctl は実行しない＝load はユーザー操作。末尾の手順参照）
-#   5. SwiftBar が在ればプラグインを配置（無ければ何もしない）
+#   2. データ(config)を .../AIOffice/data/ へシード（非--delete＝UI追記を守る）
+#   3. LaunchAgent plist を生成（launchctl は実行しない＝load はユーザー操作。末尾の手順参照）
+#   4. SwiftBar が在ればプラグインを配置（無ければ何もしない）
+# （R80 Phase4: assets/ とスプライト生成パイプラインは退役＝アセットシード・OPENAI鍵シードは行わない）
 #
 # 使い方:
 #   bash macapp/install.sh                 # 本番インストール（既定 DEST）
 #   bash macapp/install.sh --print-plist   # plist を stdout に出すだけ（verify用・副作用なし）
 #   bash macapp/install.sh --seed-config   # data/office_config.json を repo から強制再シード
-#   AIOFFICE_DEST=/tmp/x bash install.sh   # テスト用: DEST差替（鍵シード/実plist/SwiftBarはスキップ）
-#   （テスト注入口: AIOFFICE_SECRETS / AIOFFICE_ENVSRC / AIOFFICE_SEED_TEST=1 = 鍵シード経路の検証用）
+#   AIOFFICE_DEST=/tmp/x bash install.sh   # テスト用: DEST差替（実plist/SwiftBarはスキップ）
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"          # AI Office/macapp
 ROOT="$(cd "$HERE/.." && pwd)"                 # AI Office/
@@ -25,8 +22,6 @@ DEST="${AIOFFICE_DEST:-$AIOFFICE_DEST_DEFAULT}"
 TESTMODE=0
 [ -n "${AIOFFICE_DEST:-}" ] && TESTMODE=1      # DEST差替時=テスト: 実plist/鍵/SwiftBarに触れない
 CODE="$DEST/app"; DATA="$DEST/data"; LOGDIR="$DEST/logs"
-SECRETS="${AIOFFICE_SECRETS:-$HOME/.claude/office_secrets}"
-ENVSRC="${AIOFFICE_ENVSRC:-$ROOT/../.env}"
 
 # --- python3 の実体解決（launchd の PATH は最小・shim/venv だと常駐が死ぬ） ---
 PYBIN="$(command -v python3)"
@@ -133,7 +128,7 @@ done
 echo "▶ AI Office 常駐インストール → $DEST"
 
 # --- 1) コード配置（rsync --delete・除外=キャッシュ/秘密） ---
-mkdir -p "$CODE" "$DATA/assets" "$LOGDIR"
+mkdir -p "$CODE" "$DATA" "$LOGDIR"
 rsync -a --delete \
   --exclude='__pycache__' --exclude='*.pyc' --exclude='.git' \
   "$ROOT/server" "$ROOT/ui" "$ROOT/tools" "$ROOT/hooks" "$CODE/" \
@@ -146,18 +141,7 @@ find "$CODE" -type d -exec chmod 755 {} + 2>/dev/null
 find "$CODE" -type f -name '*.sh' -exec chmod 755 {} + 2>/dev/null
 echo "  ✓ コード → app/（server/ui/tools/hooks・--delete+トップレベル剪定でstale一掃）"
 
-# --- 2) データシード（非--delete: 生成sprite/config追記は温存。-u=更新時のみ＝data側で
-#        furniture再生成した新しいアセットを repo の古い版で巻き戻さない。repo更新は伝播する） ---
-rsync -au "$ROOT/assets/" "$DATA/assets/" 2>/dev/null
-# タイル/家具スプライトは repo が正本（ユーザーは手編集しない）＝mtime に関わらず強制上書き
-# （旧bg/bg2一枚絵はR30-P3で退役: _archive/assets_bg2_r27_20260721）
-for f in "$ROOT"/assets/tile_*.png "$ROOT"/assets/furn_*.png; do
-  [ -f "$f" ] && cp -p "$f" "$DATA/assets/$(basename "$f")"
-done
-for f in tile_floor_wood.png tile_floor_grey.png tile_wall_face.png tile_wall_top.png \
-         deskset.png deskchair.png meetset.png sofaset.png; do
-  [ -f "$DATA/assets/$f" ] || { echo "✗ assets シード失敗: $DATA/assets/$f が無い（repo assets/欠損・権限・ディスクを確認）"; exit 1; }
-done
+# --- 2) データシード（非--delete: config追記は温存） ---
 if [ ! -f "$DATA/office_config.json" ] || [ "${1:-}" = "--seed-config" ]; then
   # R51で office_config.json は個人設定＝git非追跡。クリーンcloneは example からシード
   if [ -f "$ROOT/office_config.json" ]; then _CFG_SRC="$ROOT/office_config.json"
@@ -186,32 +170,9 @@ tmp.replace(p)
 print(f"  ✓ edition = {sys.argv[2]} を data config へ設定")
 PYEOF
 fi
-echo "  ✓ データ → data/（assets刷新・生成物/config追記は非破壊）"
+echo "  ✓ データ → data/（config追記は非破壊）"
 
-# --- 3) 鍵シード（works/.env → office_secrets 600・既存は温存＋不一致警告） ---
-if [ "$TESTMODE" = "0" ] || [ "${AIOFFICE_SEED_TEST:-}" = "1" ]; then
-  NEWLINE="$(grep -m1 '^OPENAI_API_KEY=' "$ENVSRC" 2>/dev/null || true)"
-  if [ ! -f "$SECRETS" ]; then
-    if [ -n "$NEWLINE" ]; then
-      mkdir -p "$(dirname "$SECRETS")"
-      (umask 077; printf '%s\n' "$NEWLINE" > "$SECRETS")
-      echo "  ✓ OPENAI_API_KEY を $(basename "$SECRETS")(600) へシード（daemonのキャラ生成用）"
-    else
-      echo "  ⚠ OPENAI_API_KEY 未検出: P1キャラ生成を常駐で使うなら $SECRETS に"
-      echo "     OPENAI_API_KEY=sk-... を置いてください（daemon本体はキー無しでも動きます）"
-    fi
-  else
-    CURLINE="$(grep -m1 '^OPENAI_API_KEY=' "$SECRETS" 2>/dev/null || true)"
-    if [ -n "$NEWLINE" ] && [ "$NEWLINE" != "$CURLINE" ]; then
-      echo "  ⚠ office_secrets のキーが works/.env と不一致（ローテーション済み？）"
-      echo "     daemon経路は次回シードまで旧キーの可能性 → 更新: rm \"$SECRETS\" && 本スクリプト再実行"
-    else
-      echo "  - $(basename "$SECRETS") は既存（温存）"
-    fi
-  fi
-fi
-
-# --- 4) plist 生成＋lint（office_server と relay_agent の2本・実 launchctl はしない） ---
+# --- 3) plist 生成＋lint（office_server と relay_agent の2本・実 launchctl はしない） ---
 if [ "$TESTMODE" = "0" ]; then
   PLIST_OUT="$AIOFFICE_PLIST"; RELAY_PLIST_OUT="$AIOFFICE_RELAY_PLIST"; mkdir -p "$(dirname "$PLIST_OUT")"
 else
@@ -223,7 +184,7 @@ gen_relay_plist "$RELAY_PLIST_OUT"
 plutil -lint "$RELAY_PLIST_OUT" >/dev/null || { echo "✗ relay plist lint 失敗: $RELAY_PLIST_OUT"; exit 1; }
 echo "  ✓ LaunchAgent plist ×2 → office + relay（plutil lint合格・python=${PYBIN}）"
 
-# --- 5) SwiftBar プラグイン（在れば配置・無ければ何もしない） ---
+# --- 4) SwiftBar プラグイン（在れば配置・無ければ何もしない） ---
 SBDIR="$HOME/Library/Application Support/SwiftBar/Plugins"
 if [ "$TESTMODE" = "0" ] && [ -d "$SBDIR" ]; then
   cp -p "$HERE/swiftbar/aioffice.5s.sh" "$SBDIR/" && chmod +x "$SBDIR/aioffice.5s.sh"

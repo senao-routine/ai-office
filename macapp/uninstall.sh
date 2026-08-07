@@ -1,5 +1,5 @@
 #!/bin/bash
-# AI Office 常駐のアンインストール。既定はコード+plistのみ削除（data/=config・生成spriteは温存）。
+# AI Office 常駐のアンインストール。既定はコード+plistのみ削除（data/=configは温存）。
 # 全消し（データ含む）は --purge-data。launchctl bootout は安全のため自動実行せずコマンド表示。
 # AIOFFICE_DEST 指定時=テストモード: 実plist/実SwiftBar/launchctlに一切触れない（テスト後片付け用）。
 set -u
@@ -35,6 +35,6 @@ if [ "${1:-}" = "--purge-data" ]; then
   rm -rf "$DEST/data" && rmdir "$DEST" 2>/dev/null
   echo "✓ データも削除: $DEST/data"
 else
-  echo "- data/（config・生成sprite）は温存: $DEST/data（全消しは --purge-data）"
+  echo "- data/（config）は温存: $DEST/data（全消しは --purge-data）"
 fi
 echo "✅ アンインストール完了（~/.claude/office_secrets は触っていません）"
