@@ -37,7 +37,8 @@ def main(argv):
             ng = 0
             browser = p.chromium.launch()
             try:
-                page = browser.new_page(viewport={"width": 390, "height": 844})
+                page = browser.new_page(viewport={"width": 390, "height": 844},
+                                        has_touch=True)
                 page.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
                 page.on("pageerror", lambda e: errors.append(str(e)))
                 page.add_init_script(
@@ -319,6 +320,41 @@ def main(argv):
                         else:
                             print("  ✗ 2度目のタップでシートが開かない")
                             ng += 1
+
+                    # R80.9: **実タッチ**の連続タップ（<320ms）。ダブルタップ=全景リセットが
+                    # ロボ上でも発動すると2度目のclickが飲まれてシート動線が丸ごと死ぬ
+                    # （実機で発覚＝マウスE2Eでは踏めない）。ロボ上ではリセットしないのが正。
+                    page.evaluate(
+                        "() => { closeSheet(); SEL = null;"
+                        " window.__scene3d.view.reset(); window.__scene3d.focus(null); }")
+                    page.wait_for_timeout(700)
+                    tp = page.evaluate(
+                        """(id) => {
+                            const host = document.getElementById('scene3d');
+                            const r = host.getBoundingClientRect();
+                            const p = window.__scene3d.project(id);
+                            return p ? {x: r.left + p.left, y: r.top + p.top + 30} : null;
+                        }""", point["id"])
+                    if not tp:
+                        print("  ✗ タッチ検証用のロボ位置が取れない")
+                        ng += 1
+                    else:
+                        page.touchscreen.tap(tp["x"], tp["y"])
+                        page.wait_for_timeout(150)
+                        page.touchscreen.tap(tp["x"], tp["y"])
+                        page.wait_for_timeout(800)
+                        touch = page.evaluate(
+                            "() => ({open: document.getElementById('sheetwrap')"
+                            ".classList.contains('open'),"
+                            " scale: window.__scene3d.view.state().scale})")
+                        if not touch["open"]:
+                            print(f"  ✗ 実タッチの連続タップでシートが開かない（リセットに化けた?）: {touch}")
+                            ng += 1
+                        elif touch["scale"] != 1:
+                            print(f"  ✗ ロボ上の連続タップでズームが動いた: {touch}")
+                            ng += 1
+                        else:
+                            print("  ✓ 実タッチの連続タップ（150ms間隔）→ シートが開く")
 
                 # R80.6: ピンチズーム/パンのAPIが生きている（タッチ実ジェスチャの代わりに
                 # 公開APIで実測＝ズームでviewStateのscaleが変わり、リセットで戻る）

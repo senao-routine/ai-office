@@ -902,7 +902,7 @@ const PWA_GLOSS_SOURCE = tidyActivityPWA.toString() + "\n" + activityGlossPWA.to
 
 const APP_HTML = "<!doctype html><html lang=ja><head>" +
 '<meta charset=utf-8>' +
-'<meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover">' +
+'<meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1,user-scalable=no">' +
 '<meta name=apple-mobile-web-app-capable content=yes>' +
 '<meta name=apple-mobile-web-app-status-bar-style content=default>' +
 '<meta name=apple-mobile-web-app-title content="AI Office">' +
@@ -1559,7 +1559,12 @@ PWA_GLOSS_SOURCE +
 // R80.6: タップは2段（ユーザーFB「いきなりウィンドウでなく、まずフォーカスして
 // どういう作業のアバターか浮かび上がってほしい」）。1度目=カメラが寄る+選択名札+
 // 「誰が・何を」トースト。同じロボの2度目=シート。空きタップ=選択解除+カメラ戻し。
-'host.addEventListener("click",function(ev){if(!window.__scene3d)return;if(window.__scene3d.gestureMoved&&window.__scene3d.gestureMoved())return;var r=host.getBoundingClientRect();var id=window.__scene3d.pick(ev.clientX-r.left,ev.clientY-r.top);if(!id){if(SEL){SEL=null;document.querySelectorAll(".sel").forEach(function(n){n.classList.remove("sel")});window.__scene3d.focus(null)}return}tapAgent(id)});'+
+// 素早い連続タップはOSが2発目を dblclick にすることがある＝同じハンドラを両方へ
+// 2度目の空振り救済: 1度目でカメラが寄る＝ロボが画面上を移動するので、同じ場所への
+// 2度目タップはpickを外しやすい（実機で「タップが効かない」と見えた本体）。
+// 選択中ロボの現在位置から180px以内なら「2度目=詳細」とみなす。遠い空タップ=選択解除。
+'function hostTap(ev){if(!window.__scene3d)return;if(window.__scene3d.gestureMoved&&window.__scene3d.gestureMoved())return;var r=host.getBoundingClientRect();var tx=ev.clientX-r.left,ty=ev.clientY-r.top;var id=window.__scene3d.pick(tx,ty);if(!id){if(SEL){var ags=window.__scene3d.agents()||[],cur=null;for(var i=0;i<ags.length;i++)if(ags[i].session===SEL.session){cur=ags[i];break}var pp=cur&&window.__scene3d.project(cur.id);if(pp&&Math.hypot(pp.left-tx,pp.top-ty)<180){var fresh=empOfAgent(cur.id);openSheet(fresh||SEL);return}SEL=null;document.querySelectorAll(".sel").forEach(function(n){n.classList.remove("sel")});window.__scene3d.focus(null)}return}tapAgent(id)}'+
+'host.addEventListener("click",hostTap);host.addEventListener("dblclick",hostTap);'+
 'var s=document.createElement("script");s.type="module";s.src="/ui/pwa/boot3d.js";s.onerror=scene3dFailed;document.body.appendChild(s);setTimeout(function(){if(SCENE3D==="pending")scene3dFailed()},4000);return host}'+
 // シーンのagent(id=projectId or session) から /status の社員を引く単一の対応点
 'function empOfAgent(id){if(!window.__scene3d)return null;var ags=window.__scene3d.agents()||[];var ag=null;for(var i=0;i<ags.length;i++)if(ags[i].id===id){ag=ags[i];break}var sess=ag?ag.session:id;var list=officeAgents(LAST_OFFICE)||[];for(var j=0;j<list.length;j++)if(list[j]&&list[j].session===sess)return list[j];return null}'+

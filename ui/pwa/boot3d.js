@@ -115,7 +115,14 @@ if (host && scene) {
       const t0 = ev.touches[0];
       gs.lastX = t0.clientX; gs.lastY = t0.clientY; gs.moved = 0;
       const now = Date.now();
-      if (now - gs.lastTap < 320) { scene.viewReset(); gs.moved = 99; }
+      if (now - gs.lastTap < 320) {
+        // ロボの上の連続タップは「2度目=詳細シート」の操作。全景リセットに化けさせると
+        // タップ動線が丸ごと死ぬ（実機で発覚＝E2Eはタップ間隔900msで見逃した）。
+        const r = host.getBoundingClientRect();
+        let hit = null;
+        try { hit = scene.pickAgent(t0.clientX - r.left, t0.clientY - r.top, 54); } catch (_) { hit = null; }
+        if (!hit) { scene.viewReset(); gs.moved = 99; }
+      }
       gs.lastTap = now;
     } else if (ev.touches.length === 2) {
       const [a, b] = ev.touches;
