@@ -34,7 +34,7 @@ if (host && scene) {
     const h = host.clientHeight || 1;
     const aspect = w / h;
     if (aspect >= 1.5) scene.setViewScale(1, "contain");
-    else scene.setViewScale(1, "balanced");   // 縦長＝余白と見切れの中間で最大に見せる
+    else scene.setViewScale(1.14, "balanced"); // R81-4: 縦長は更に寄せる（上下の殺風景な余白を圧縮）
   };
   fitForPortrait();
 
@@ -93,7 +93,7 @@ if (host && scene) {
   // 覆われている間は描かない。シート/設定/ログは全画面オーバーレイなので、
   // その裏で回し続けるのは電池の丸損（かつテスト環境ではメインスレッドを飽和させ、
   // 他のUI操作の応答が1秒を超えて落ちる＝実際にこれで relay E2E が落ちた）。
-  const covered = () => ["sheetwrap", "setwrap", "logwrap", "runwrap", "lnwrap"].some((id) => {
+  const covered = () => ["sheetwrap", "setwrap", "logwrap", "runwrap", "lnwrap", "reswrap"].some((id) => {
     const n = document.getElementById(id);
     return n && n.classList.contains("open");
   });

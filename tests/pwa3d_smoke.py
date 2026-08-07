@@ -170,6 +170,33 @@ def main(argv):
                 else:
                     print(f"  ✓ ロスター情報カード（述語 {sum(1 for g in glosses if g.strip())}/{len(glosses)} 枚）")
 
+                # R81-4: 殺風景対策の常設ピン＝ライブ活動ティッカー（誰が今なにを）と
+                # ゲージタップ→⚡リソースシート（ゲージの意味とライセンスが読める場所）
+                live = page.evaluate(
+                    """() => ({
+                        ticker: (document.getElementById('ticker')||{}).textContent || '',
+                        gauges: !!document.getElementById('gaugebar'),
+                    })""")
+                if not live["ticker"].strip():
+                    print(f"  ✗ 活動ティッカーが空: {live}")
+                    ng += 1
+                else:
+                    print(f"  ✓ 活動ティッカー（{live['ticker'][:28]}…）")
+                page.evaluate("openRes()")
+                page.wait_for_timeout(400)
+                res_sheet = page.evaluate(
+                    """() => ({
+                        open: document.getElementById('reswrap').classList.contains('open'),
+                        text: (document.getElementById('rs_body')||{}).textContent || '',
+                    })""")
+                if not res_sheet["open"] or "ライセンス" not in res_sheet["text"]                         or "中継" not in res_sheet["text"]:
+                    print(f"  ✗ ⚡リソースシートが開かない/説明が無い: {res_sheet['text'][:60]}")
+                    ng += 1
+                else:
+                    print("  ✓ ⚡リソースシート（中継の説明＋ライセンス到達）")
+                page.evaluate("closeRes()")
+                page.wait_for_timeout(300)
+
                 # R79-5: 骨格ピン＝3Dはフルブリード背景・officeタブは一切スクロールしない・
                 # タブ3つ・❗/ロスターは下部ドック（親指圏）・statbar/deptbar常設2段は廃止
                 skel = page.evaluate(
@@ -431,6 +458,16 @@ def main(argv):
                 else:
                     print("  ✓ console error 0")
                 break
+            except Exception as exc:
+                # SwiftShader稀死は canvas 待ちだけでなく**実行途中でもブラウザごと落ちる**
+                # （load20超のスクショ中に実測）。試行全体を1回だけ再試行の対象にする。
+                # アサーション失敗（ng加算）は例外ではないのでリトライで隠れない。
+                if attempt == 1:
+                    print(f"  - ブラウザが途中で死んだ → SwiftShader稀死とみなし1回だけ再試行: "
+                          f"{type(exc).__name__}")
+                    continue
+                print(f"  ✗ ブラウザが2回連続で途中死: {type(exc).__name__}: {exc}")
+                return 1
             finally:
                 browser.close()
 

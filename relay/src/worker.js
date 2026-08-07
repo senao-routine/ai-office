@@ -998,11 +998,11 @@ const APP_HTML = "<!doctype html><html lang=ja><head>" +
 '#logwrap.open .sheet{transform:translateY(0)}' +
 /* ⚙️設定シート（フッター4ボタン化） */
 '#scene3dwrap,#scene3d{touch-action:none}' +
-'#runwrap,#lnwrap{position:fixed;inset:0;z-index:112;pointer-events:none}' +
-'#runwrap.open,#lnwrap.open{pointer-events:auto}' +
-'#runwrap .mask,#lnwrap .mask{position:absolute;inset:0;background:rgba(20,16,10,.5);opacity:0;transition:opacity .28s ease}' +
-'#runwrap.open .mask,#lnwrap.open .mask{opacity:1}' +
-'#runwrap.open .sheet,#lnwrap.open .sheet{transform:translateY(0)}' +
+'#runwrap,#lnwrap,#reswrap{position:fixed;inset:0;z-index:112;pointer-events:none}' +
+'#runwrap.open,#lnwrap.open,#reswrap.open{pointer-events:auto}' +
+'#runwrap .mask,#lnwrap .mask,#reswrap .mask{position:absolute;inset:0;background:rgba(20,16,10,.5);opacity:0;transition:opacity .28s ease}' +
+'#runwrap.open .mask,#lnwrap.open .mask,#reswrap.open .mask{opacity:1}' +
+'#runwrap.open .sheet,#lnwrap.open .sheet,#reswrap.open .sheet{transform:translateY(0)}' +
 '#rn_list .qopt{margin-bottom:8px}' +
 '#setwrap{position:fixed;inset:0;z-index:115;pointer-events:none}' +
 '#setwrap.open{pointer-events:auto}' +
@@ -1187,14 +1187,40 @@ const APP_HTML = "<!doctype html><html lang=ja><head>" +
 // ❗カードは下（親指圏）のまま＝縦の取り合いが消えたので圧縮モードは廃止。
 '#topdock{position:absolute;left:8px;right:8px;top:calc(58px + env(safe-area-inset-top));z-index:6}' +
 '#gaugebar{display:flex;gap:10px;align-items:center;padding:7px 12px;background:rgba(255,255,255,.72);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border:1px solid var(--line);border-radius:13px;box-shadow:0 2px 8px rgba(64,52,140,.08)}' +
+'#gaugebar{color:var(--ink);min-height:0;margin:0;width:100%;text-align:left;font-weight:800}' +
+'#gaugebar .gg b{color:var(--ink)}' +
+'body.th-dark #gaugebar{background:rgba(30,28,58,.80);border-color:rgba(160,140,255,.20);color:#e8e6f6}' +
+'body.th-dark #gaugebar .gg b{color:#e8e6f6}' +
 '#gaugebar:empty{display:none}' +
-'#gaugebar .gg{flex:1;display:flex;align-items:center;gap:6px;min-width:0}' +
-'#gaugebar .gg .lb{font-size:9.5px;font-weight:800;color:var(--muted);flex:none}' +
-'#gaugebar .gg .tr{flex:1;height:6px;border-radius:99px;background:rgba(124,92,255,.12);overflow:hidden}' +
+'#ticker{display:flex;align-items:center;gap:8px;padding:8px 12px;margin:0;width:100%;text-align:left;background:rgba(255,255,255,.72);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border:1px solid var(--line);border-radius:13px;box-shadow:0 2px 8px rgba(64,52,140,.08);color:var(--ink);font-weight:700;transition:opacity .35s}' +
+'#ticker:empty{display:none}' +
+'#ticker.fade{opacity:0}' +
+'#ticker .mono{--asz:22px;flex:none}' +
+'#ticker .tk-nm{flex:none;font-size:12px;max-width:34%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
+'#ticker .tk-act{flex:1;min-width:0;font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}' +
+'#ticker .tk-n{flex:none;font-size:10px;color:var(--muted);font-weight:800}' +
+'body.th-dark #ticker{background:rgba(30,28,58,.80);border-color:rgba(160,140,255,.20);color:#e8e6f6}' +
+'#gaugebar .gg{flex:1;display:grid;grid-template-columns:1fr auto;grid-template-areas:"lb pct" "bar bar";column-gap:6px;row-gap:3px;min-width:0;align-items:center}' +
+'#gaugebar .gg .lb{grid-area:lb;font-size:9.5px;font-weight:800;color:var(--muted);overflow:hidden;white-space:nowrap}' +
+'#gaugebar .gg .tr{grid-area:bar;height:6px;border-radius:99px;background:rgba(124,92,255,.12);overflow:hidden}' +
 '#gaugebar .gg .tr i{display:block;height:100%;border-radius:99px;background:var(--sage)}' +
 '#gaugebar .gg.warn .tr i{background:var(--amber)}' +
 '#gaugebar .gg.hot .tr i{background:var(--alert)}' +
-'#gaugebar .gg b{font-size:10px;font-weight:800;flex:none}' +
+'#gaugebar .gg b{grid-area:pct;font-size:10px;font-weight:800}' +
+'#gaugebar .gg-t{display:flex;flex:none;align-items:center}' +
+'#reswrap .sheet{background:rgba(255,255,255,.97)}' +
+'body.th-dark #reswrap .sheet{background:rgba(26,24,50,.97)}' +
+'#rs_body .rs-sec{font-weight:800;font-size:13px;margin:14px 0 6px}' +
+'#rs_body .rs-sec:first-child{margin-top:2px}' +
+'#rs_body .rs-bar{display:flex;align-items:center;gap:9px;margin:7px 0}' +
+'#rs_body .rs-bar .lb{flex:none;width:86px;font-size:12px;font-weight:700}' +
+'#rs_body .rs-bar .tr{flex:1;height:9px;border-radius:99px;background:rgba(124,92,255,.12);overflow:hidden}' +
+'#rs_body .rs-bar .tr i{display:block;height:100%;border-radius:99px;background:var(--sage)}' +
+'#rs_body .rs-bar.warn .tr i{background:var(--amber)}' +
+'#rs_body .rs-bar.hot .tr i{background:var(--alert)}' +
+'#rs_body .rs-bar b{flex:none;font-size:12px;font-weight:800}' +
+'#rs_body .rs-note{font-size:11.5px;color:#6c6890;font-weight:600;margin:2px 0 4px;line-height:1.6}' +
+'body.th-dark #rs_body .rs-note{color:#8f8ab5}' +
 'body.th-dark #gaugebar{background:rgba(30,28,58,.80);border-color:rgba(160,140,255,.20)}' +
 '#roster{flex:none;display:flex;gap:8px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding:2px;scrollbar-width:none}' +
 '#roster::-webkit-scrollbar{display:none}' +
@@ -1259,6 +1285,10 @@ const APP_HTML = "<!doctype html><html lang=ja><head>" +
 '<p class=hint id=ln_hint style="font-size:11.5px;color:#6c6890;font-weight:600;margin:0 0 10px">過去にMacで開いたことのあるプロジェクトだけが対象です（スマホから新しいフォルダは登録できません）</p>' +
 '<div id=ln_list></div>' +
 '<button class=sub id=ln_close onclick="closeLaunch()">閉じる</button></div></div>' +
+'<div id=reswrap><div class=mask onclick="closeRes()"></div><div class="sheet">' +
+'<h3 style="margin-bottom:6px" id=rs_title>⚡ リソースとライセンス</h3>' +
+'<div id=rs_body></div>' +
+'<button class=sub id=rs_close onclick="closeRes()">閉じる</button></div></div>' +
 '<div id=setwrap><div class=mask onclick="closeSettings()"></div><div class="sheet">' +
 '<h3 style="margin-bottom:10px" id=st_title>⚙️ 設定</h3>' +
 '<div class=setrow><div><div class=lb id=st_th_lb>🎨 テーマ</div><div class=hint id=st_th_hint>配色を切り替えます</div></div>' +
@@ -1273,7 +1303,7 @@ const APP_HTML = "<!doctype html><html lang=ja><head>" +
 '<div class=seg><button id=st_rn_btn onclick="closeSettings();openRun()">開く</button></div></div>' +
 '<div class=setrow><div><div class=lb id=st_ln_lb>▶ プロジェクトを起動</div><div class=hint id=st_ln_hint>休眠中のプロジェクトのセッションをMacで開きます</div></div>' +
 '<div class=seg><button id=st_ln_btn onclick="closeSettings();openLaunch()">開く</button></div></div>' +
-'<div class=setrow><div><div class=lb id=st_res_lb>⚡ リソース</div><div class=hint id=st_res_hint>読み込み中…</div></div></div>' +
+'<div class=setrow><div><div class=lb id=st_res_lb>⚡ リソース</div><div class=hint id=st_res_hint>読み込み中…</div></div><div class=seg><button id=st_res_btn onclick="closeSettings();openRes()">開く</button></div></div>' +
 '<div class=setrow><div><div class=lb id=st_lic_lb>🧾 ライセンス</div><div class=hint id=st_lic_hint>読み込み中…</div></div></div>' +
 '<div class=setrow style="border-bottom:0"><div><div class=lb id=st_rp_lb>🔗 再ペアリング</div><div class=hint id=st_rp_hint>この端末の登録をやり直します</div></div>' +
 '<div class=seg><button class=r id=st_rp_btn style="background:var(--danger);color:#fff" onclick="repair()">解除</button></div></div>' +
@@ -1435,12 +1465,51 @@ PWA_GLOSS_SOURCE +
 // ライセンス=edition.features から導出／リソース=office_json.res(Claude枠%)+relay(中継使用量)。
 // どちらも新しい秘密は運ばない（%とレベルの整数だけ＝redaction設計の内側）。
 // R80.7: 下部ゲージ帯（ユーザーFB「下にゲージ・消費クレジットとか」）。Claude枠%と中継%。
-'function paintGauges(){var gb=document.getElementById("gaugebar");if(!gb)return;var o=LAST_OFFICE||{};var res=o.res||{};var rl=o.relay||{};'+
+'function paintGauges(){var gb=document.getElementById("gaugebar");if(!gb)return;var o=LAST_OFFICE||{};var res=o.res||{};var rl=o.relay||{};var tk0=o.tasks||{};'+
 'function bar(lb,pct){var cls=pct>=90?" hot":pct>=70?" warn":"";return \'<div class="gg\'+cls+\'"><span class=lb>\'+lb+\'</span><span class=tr><i style="width:\'+Math.max(2,Math.min(100,Math.round(pct)))+\'%"></i></span><b>\'+Math.round(pct)+\'%</b></div>\'}'+
-'var h="";if(typeof res.fiveHour==="number")h+=bar(T("Claude 5h","Claude 5h"),res.fiveHour);'+
-'if(typeof res.sevenDay==="number")h+=bar(T("7日","7d"),res.sevenDay);'+
-'if(typeof rl.pct==="number")h+=bar(T("中継","Relay"),rl.pct);'+
-'if(gb.innerHTML!==h)gb.innerHTML=h}'+
+'var h="";var tot=(tk0.pending||0)+(tk0.inProgress||0)+(tk0.completed||0);'+
+'if(tot)h+=\'<div class="gg gg-t"><span class=lb>📋\'+(tk0.completed||0)+"/"+tot+\'</span></div>\';'+
+'if(typeof res.fiveHour==="number")h+=bar("⚡5h",res.fiveHour);'+
+'if(typeof res.sevenDay==="number")h+=bar(T("⚡7日","⚡7d"),res.sevenDay);'+
+'if(typeof rl.pct==="number")h+=bar(T("📡中継","📡Relay"),rl.pct);'+
+'if(gb.innerHTML!==h)gb.innerHTML=h;paintTicker(false)}'+
+// R81-4: ライブ活動ティッカー（殺風景対策の本体＝「誰が今なにを」が常に流れる）。
+// 4.5秒ローテ・フェード・タップでそのプロジェクトのシート。reduced-motionは即時切替。
+'var TICKER_I=0,TICKER_CUR=null;'+
+'function paintTicker(adv){var tk=document.getElementById("ticker");if(!tk)return;var emps=officeAgents(LAST_OFFICE)||[];if(!emps.length){tk.innerHTML="";TICKER_CUR=null;return}'+
+'if(adv)TICKER_I=(TICKER_I+1)%emps.length;if(TICKER_I>=emps.length)TICKER_I=0;'+
+'var e=emps[TICKER_I];if(!e)return;var sess=e.session||"";if(!adv&&TICKER_CUR===sess){var ga=tk.querySelector(".tk-act");if(ga){var g2=activityGlossPWA(e,LANG)||"";if(ga.textContent!==g2)ga.textContent=g2}return}'+
+'TICKER_CUR=sess;'+
+'function swap(){tk.innerHTML="";var m=el("span","mono");setMono(m,e);tk.appendChild(m);'+
+'tk.appendChild(el("span","tk-nm",dispCrew(e)));'+
+'tk.appendChild(el("span","tk-act",activityGlossPWA(e,LANG)||""));'+
+'tk.appendChild(el("span","tk-n",(TICKER_I+1)+"/"+emps.length));'+
+'tk.classList.remove("fade")}'+
+'if(adv&&!(window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches)){tk.classList.add("fade");setTimeout(swap,300)}else swap()}'+
+'setInterval(function(){if(document.hidden||VIEW!=="office")return;paintTicker(true)},4500);'+
+// R81-4: ⚡リソースシート＝ゲージの意味を全部ここで説明する（「謎の中継ゲージ」FB対策）
+'function paintRes(){var b=document.getElementById("rs_body");if(!b)return;b.innerHTML="";var o=LAST_OFFICE||{};var res=o.res||{};var rl=o.relay||{};var tk0=o.tasks||{};'+
+'function sec(s){b.appendChild(el("div","rs-sec",s))}'+
+'function note(s){b.appendChild(el("div","rs-note",s))}'+
+'function bar(lb,pct){var d=el("div","rs-bar"+(pct>=90?" hot":pct>=70?" warn":""));d.appendChild(el("span","lb",lb));var tr=el("span","tr");var i=el("i");i.style.width=Math.max(2,Math.min(100,Math.round(pct)))+"%";tr.appendChild(i);d.appendChild(tr);d.appendChild(el("b","",Math.round(pct)+"%"));b.appendChild(d)}'+
+'sec(T("⚡ Claudeの利用枠（実測）","⚡ Claude quota (measured)"));'+
+'if(typeof res.fiveHour==="number"||typeof res.sevenDay==="number"){'+
+'if(typeof res.fiveHour==="number")bar(T("5時間枠","5-hour"),res.fiveHour);'+
+'if(typeof res.sevenDay==="number")bar(T("7日枠","7-day"),res.sevenDay);'+
+'note(T("サブスクの利用枠をどれだけ使ったか（"+Math.max(0,Math.round((res.staleSec||0)/60))+"分前の実測）。100%に達すると枠がリセットされるまでClaudeは応答しません。","How much of your subscription window is used (measured "+Math.max(0,Math.round((res.staleSec||0)/60))+" min ago)."))}'+
+'else note(T("MacのAI Officeを最新版に更新すると表示されます。","Update AI Office on your Mac to see this."));'+
+'sec(T("📡 スマホ中継の使用量","📡 Relay usage"));'+
+'if(typeof rl.pct==="number"){bar(T("今日","Today"),rl.pct);'+
+'note(T("このスマホ連携が使うあなたのCloudflare無料枠の消費量（毎日リセット）。80%を超えると自動で通信を減らし、枠切れを防ぎます。","How much of your Cloudflare free tier this phone link used today. Above 80% it slows itself down."))}'+
+'else note(T("接続が確立すると表示されます。","Shown once the relay is connected."));'+
+'var tot=(tk0.pending||0)+(tk0.inProgress||0)+(tk0.completed||0);'+
+'if(tot){sec(T("📋 タスクの進み","📋 Task progress"));'+
+'note(T("完了 "+(tk0.completed||0)+" ・ 進行中 "+(tk0.inProgress||0)+" ・ 未着手 "+(tk0.pending||0),"Done "+(tk0.completed||0)+" · In progress "+(tk0.inProgress||0)+" · Pending "+(tk0.pending||0)))}'+
+'sec(T("🧾 ライセンス","🧾 License"));'+
+'var ed=(o.edition&&o.edition.edition)||"";'+
+'note(featOn("relayPwa")?T("Pro 有効 — スマホ連携・プッシュ通知・遠隔実行・コスト表示が使えます"+(ed?"（"+ed+"）":""),"Pro active — phone link, push, remote actions, cost view"+(ed?" ("+ed+")":"")):T("無料版 — スマホ連携はProライセンスで解錠します","Free — phone link unlocks with a Pro license"))}'+
+'function openRes(){paintRes();playSE("select");document.getElementById("reswrap").classList.add("open")}'+
+'function closeRes(){var w=document.getElementById("reswrap");if(w&&w.classList.contains("open"))playSE("cursor");if(w)w.classList.remove("open")}'+
 'function paintSettingsInfo(){var o=LAST_OFFICE||{};'+
 'var lic=document.getElementById("st_lic_hint");if(lic){var ed=(o.edition&&o.edition.edition)||"";'+
 'lic.textContent=featOn("relayPwa")?T("Pro 有効（スマホ連携・通知・遠隔実行）","Pro active (phone link, push, remote actions)")+(ed?" · "+ed:""):T("無料版（スマホ連携はProで解錠）","Free (phone link unlocks with Pro)")}'+
@@ -1555,7 +1624,8 @@ PWA_GLOSS_SOURCE +
 // R79-5: ❗トリアージとロスターは下部ドック（親指圏）。既存ノードは移設＝id重複(B7)を再発させない
 'var top=el("div",null);top.id="topdock";var rs=document.getElementById("roster");if(!rs){rs=el("div",null);rs.id="roster"}top.appendChild(rs);room.appendChild(top);'+
 'var dock=el("div",null);dock.id="dock";var cards=document.getElementById("attncards");if(!cards){cards=el("section",null);cards.id="attncards";cards.setAttribute("aria-live","polite")}dock.appendChild(cards);'+
-'var gb=el("div",null);gb.id="gaugebar";dock.appendChild(gb);room.appendChild(dock);'+
+'var tk=el("button",null);tk.id="ticker";tk.type="button";tk.addEventListener("click",function(){var e=TICKER_CUR&&officeAgents(LAST_OFFICE).filter(function(x){return x&&x.session===TICKER_CUR})[0];if(e)openSheet(e)});dock.appendChild(tk);'+
+'var gb=el("button",null);gb.id="gaugebar";gb.type="button";gb.title=T("タップで詳細（AI利用枠・中継・ライセンス）","Tap for details (AI quota, relay, license)");gb.addEventListener("click",openRes);dock.appendChild(gb);room.appendChild(dock);'+
 // R80.6: タップは2段（ユーザーFB「いきなりウィンドウでなく、まずフォーカスして
 // どういう作業のアバターか浮かび上がってほしい」）。1度目=カメラが寄る+選択名札+
 // 「誰が・何を」トースト。同じロボの2度目=シート。空きタップ=選択解除+カメラ戻し。
@@ -1563,7 +1633,7 @@ PWA_GLOSS_SOURCE +
 // 2度目の空振り救済: 1度目でカメラが寄る＝ロボが画面上を移動するので、同じ場所への
 // 2度目タップはpickを外しやすい（実機で「タップが効かない」と見えた本体）。
 // 選択中ロボの現在位置から180px以内なら「2度目=詳細」とみなす。遠い空タップ=選択解除。
-'function hostTap(ev){if(!window.__scene3d)return;if(window.__scene3d.gestureMoved&&window.__scene3d.gestureMoved())return;var r=host.getBoundingClientRect();var tx=ev.clientX-r.left,ty=ev.clientY-r.top;var id=window.__scene3d.pick(tx,ty);if(!id){if(SEL){var ags=window.__scene3d.agents()||[],cur=null;for(var i=0;i<ags.length;i++)if(ags[i].session===SEL.session){cur=ags[i];break}var pp=cur&&window.__scene3d.project(cur.id);if(pp&&Math.hypot(pp.left-tx,pp.top-ty)<180){var fresh=empOfAgent(cur.id);openSheet(fresh||SEL);return}SEL=null;document.querySelectorAll(".sel").forEach(function(n){n.classList.remove("sel")});window.__scene3d.focus(null)}return}tapAgent(id)}'+
+'function hostTap(ev){if(!window.__scene3d)return;if(window.__scene3d.gestureMoved&&window.__scene3d.gestureMoved())return;var r=host.getBoundingClientRect();var tx=ev.clientX-r.left,ty=ev.clientY-r.top;var id=window.__scene3d.pick(tx,ty);if(!id){if(SEL){var ags=window.__scene3d.agents()||[],cur=null;for(var i=0;i<ags.length;i++)if(ags[i].session===SEL.session){cur=ags[i];break}var pp=cur&&window.__scene3d.project(cur.id);if((Date.now()-SEL_AT<2500)||(pp&&Math.hypot(pp.left-tx,pp.top-ty)<180)){var fresh=cur&&empOfAgent(cur.id);openSheet(fresh||SEL);return}SEL=null;document.querySelectorAll(".sel").forEach(function(n){n.classList.remove("sel")});window.__scene3d.focus(null)}return}tapAgent(id)}'+
 'host.addEventListener("click",hostTap);host.addEventListener("dblclick",hostTap);'+
 'var s=document.createElement("script");s.type="module";s.src="/ui/pwa/boot3d.js";s.onerror=scene3dFailed;document.body.appendChild(s);setTimeout(function(){if(SCENE3D==="pending")scene3dFailed()},4000);return host}'+
 // シーンのagent(id=projectId or session) から /status の社員を引く単一の対応点
@@ -1574,7 +1644,8 @@ PWA_GLOSS_SOURCE +
 // ノードはid keyedで再利用＝毎フレームの全DOM走査をやめる（B12）。重なりは下へ逃がして解消（デスクトップpaintLabelsと同型）
 // R80.6: 2段タップの単一実装（canvas・名札の両方から呼ぶ）。1度目=フォーカス+選択+
 // 「誰が・何を」トースト（まず注目させる）。同じ対象の2度目=詳細シート。
-'function tapAgent(id){var e=empOfAgent(id);if(!e)return;if(SEL&&SEL.session===e.session){openSheet(e);return}SEL=e;playSE("select");document.querySelectorAll(".sel").forEach(function(n){n.classList.remove("sel")});document.querySelectorAll("[data-sess]").forEach(function(n){if(n.getAttribute("data-sess")===e.session)n.classList.add("sel")});if(window.__scene3d&&window.__scene3d.focus)window.__scene3d.focus(id);if(window.__scene3d&&window.__scene3d.greet)window.__scene3d.greet(id);note(dispCrew(e)+" \u2014 "+activityGlossPWA(e,LANG)+T("（もう一度タップで詳細）"," (tap again for details)"))}'+
+'var SEL_AT=0;'+
+'function tapAgent(id){var e=empOfAgent(id);if(!e)return;if(SEL&&SEL.session===e.session){openSheet(e);return}SEL=e;SEL_AT=Date.now();playSE("select");document.querySelectorAll(".sel").forEach(function(n){n.classList.remove("sel")});document.querySelectorAll("[data-sess]").forEach(function(n){if(n.getAttribute("data-sess")===e.session)n.classList.add("sel")});if(window.__scene3d&&window.__scene3d.focus)window.__scene3d.focus(id);if(window.__scene3d&&window.__scene3d.greet)window.__scene3d.greet(id);note(dispCrew(e)+" \u2014 "+activityGlossPWA(e,LANG)+T("（もう一度タップで詳細）"," (tap again for details)"))}'+
 'var PLATE_NODES={};'+
 'function paintPlates(){var layer=document.getElementById("plates");var s3=window.__scene3d;if(!layer||!s3)return;var ags=s3.agents()||[];var W=layer.clientWidth||0;'+
 'var emps=officeAgents(LAST_OFFICE)||[],bySess={};emps.forEach(function(x){if(x&&x.session)bySess[x.session]=x});'+
@@ -1685,7 +1756,7 @@ PWA_GLOSS_SOURCE +
 'if(lived>=WS_MIN_ALIVE)WS_TRY=0;wsStop();if(!document.hidden)wsRetry()}}' +
 'window.__office_ws={get on(){return WS_ON},get tries(){return WS_TRY},' +
 'get attempts(){return WS_STAMPS.length},budgetDelay:wsBudgetDelay};' +
-'document.addEventListener("keydown",function(ev){if(ev.key!=="Escape")return;if(document.getElementById("logwrap").classList.contains("open"))closeLog();else if(document.getElementById("runwrap").classList.contains("open"))closeRun();else if(document.getElementById("lnwrap").classList.contains("open"))closeLaunch();else if(document.getElementById("setwrap").classList.contains("open"))closeSettings();else closeSheet()});' +
+'document.addEventListener("keydown",function(ev){if(ev.key!=="Escape")return;if(document.getElementById("logwrap").classList.contains("open"))closeLog();else if(document.getElementById("runwrap").classList.contains("open"))closeRun();else if(document.getElementById("lnwrap").classList.contains("open"))closeLaunch();else if(document.getElementById("reswrap").classList.contains("open"))closeRes();else if(document.getElementById("setwrap").classList.contains("open"))closeSettings();else closeSheet()});' +
 // R51: 基本ポーリング 5秒→20秒（CF無料枠対策）。R79-7: 表示中はWSが主役＝復帰時は即poll1発
 // →WS再接続（openでポーリング停止）。非表示はWSも切る（iOSはどのみち凍結する＝電池）。
 'document.addEventListener("visibilitychange",function(){if(document.hidden){stopPolling();wsStop()}else if(getCred()&&!document.getElementById("app").classList.contains("hidden")){poll();startPolling();wsConnect()}});' +
