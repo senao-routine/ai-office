@@ -16,6 +16,8 @@ const PARTS = [
   "head", "visor", "eye", "ear", "antStem", "antTip", "collar", "chest",
   "torso", "pelvis", "upper", "fore", "hand", "thigh", "shin", "foot",
   "claw",
+  // R80.7: 職業アクセサリ（core/archetype.js が決める）。各1 InstancedMesh=+5ドロー上限
+  "phones", "cap", "beret", "pencil", "bowtie",
 ];
 
 /** R75: ロブスターbot（OpenClaw社員）の見た目＝殻の色。
@@ -53,7 +55,64 @@ export function buildPartGeometries() {
     shin: new THREE.CapsuleGeometry(0.070, 0.10, 6, 18),
     foot: new THREE.BoxGeometry(0.15, 0.08, 0.22),
     claw: clawGeometry(),
+    phones: phonesGeometry(),
+    cap: capGeometry(),
+    beret: beretGeometry(),
+    pencil: pencilGeometry(),
+    bowtie: bowtieGeometry(),
   };
+}
+
+// ── R80.7 職業アクセサリ（頭中心=原点にベイク。かわいさの本体=比率は触らない） ──
+function bake(g, x, y, z) { g.translate(x, y, z); return g; }
+
+/** 🎧 動画編集: ヘッドホン（左右カップ＋頭上バンド） */
+function phonesGeometry() {
+  const parts = [new THREE.TorusGeometry(0.375, 0.030, 10, 26, Math.PI)];
+  for (const s of [-1, 1]) {
+    const cup = new THREE.CylinderGeometry(0.115, 0.115, 0.075, 20);
+    cup.rotateZ(Math.PI / 2);
+    parts.push(bake(cup, s * 0.375, 0.02, 0));
+  }
+  return mergeGeometries(parts);
+}
+
+/** 🧢 開発: キャップ（ドーム＋前ツバ。バイザーの上に浅く載せる） */
+function capGeometry() {
+  const dome = new THREE.SphereGeometry(0.35, 28, 14, 0, Math.PI * 2, 0, 0.62);
+  const brim = new THREE.BoxGeometry(0.30, 0.032, 0.20);
+  return mergeGeometries([bake(dome, 0, 0.045, 0), bake(brim, 0, 0.185, 0.335)]);
+}
+
+/** 🎨 デザイン: ベレー帽（斜めの平たい円＋ちょこん） */
+function beretGeometry() {
+  const disk = new THREE.SphereGeometry(0.30, 24, 12);
+  disk.scale(1, 0.34, 1);
+  disk.rotateZ(0.24);
+  const stem = new THREE.SphereGeometry(0.035, 10, 8);
+  return mergeGeometries([bake(disk, 0.06, 0.295, 0), bake(stem, 0.13, 0.40, 0)]);
+}
+
+/** ✏️ 執筆: 耳の上の鉛筆（軸＋先端コーン） */
+function pencilGeometry() {
+  const body = new THREE.CylinderGeometry(0.028, 0.028, 0.24, 10);
+  const tip = new THREE.ConeGeometry(0.028, 0.075, 10);
+  tip.translate(0, 0.155, 0);
+  const g = mergeGeometries([body, tip]);
+  g.rotateZ(1.15);
+  g.translate(0.315, 0.235, 0.04);
+  return g;
+}
+
+/** 🎀 運用/事務: 蝶ネクタイ（襟元。左右の羽＋結び目） */
+function bowtieGeometry() {
+  const parts = [new THREE.SphereGeometry(0.030, 10, 8)];
+  for (const s of [-1, 1]) {
+    const wing = new THREE.BoxGeometry(0.095, 0.058, 0.026);
+    wing.rotateZ(s * 0.35);
+    parts.push(bake(wing, s * 0.062, 0, 0));
+  }
+  return mergeGeometries(parts);
 }
 
 /** R75: ハサミ（手の代わり）。付け根の球＋開いた2本の爪を1ジオメトリへ統合＝
@@ -98,6 +157,13 @@ export function makeSkeleton() {
     visor: attach(neck, 0, 0.16, 0, 0, -Math.PI / 2),
     antStem: attach(neck, 0, 0.50, 0),
     antTip: attach(neck, 0, 0.565, 0),
+    acc: {
+      phones: attach(neck, 0, 0.16, 0),
+      cap: attach(neck, 0, 0.16, 0),
+      beret: attach(neck, 0, 0.16, 0),
+      pencil: attach(neck, 0, 0.16, 0),
+      bowtie: attach(hip, 0, 0.275, 0.168),
+    },
     eyes: [], ears: [], arms: [], legs: [],
   };
   // 目: バイザーの中で光る2つの楕円（かわいさの第2要素）
@@ -227,6 +293,8 @@ export class RobotBatch {
       torso: "shell", pelvis: "shell", upper: "white", fore: "shell",
       hand: "white", thigh: "shell", shin: "white", foot: "dark",
       claw: "shell",
+      phones: "white", cap: "white", beret: "white", pencil: "white",
+      bowtie: "white",
     };
     this.perBody = {
       eye: 2, ear: 2, upper: 2, fore: 2, hand: 2, thigh: 2, shin: 2, foot: 2,
@@ -254,8 +322,9 @@ export class RobotBatch {
    *  accent は胸リング・アンテナ先端のインスタンスカラー（HUDの状態ドットと同じ意味色）。
    *  R75: tint を渡すと殻の色をインスタンス単位で差し替え、手をハサミに替える
    *  （＝ロブスターbot。マテリアルもバッチも増やさないので drawCalls はハサミの+1だけ）。 */
-  push(nodes, accent = null, tint = null) {
+  push(nodes, accent = null, tint = null, arch = null) {
     nodes.root.updateMatrixWorld(true);
+    const bodyTint = tint || (arch && arch.tintC) || null;
     const put = (part, obj) => {
       const i = this.counts[part];
       if (i >= this.capacity * (this.perBody[part] || 1)) return;
@@ -264,7 +333,7 @@ export class RobotBatch {
         this.meshes[part].setColorAt(i, accent);
       } else if (TINT_PARTS.has(part)) {
         // 通常ロボは白(1,1,1)を明示的に書く＝前フレームの色が残らない
-        this.meshes[part].setColorAt(i, tint || WHITE);
+        this.meshes[part].setColorAt(i, bodyTint || WHITE);
       }
       this.counts[part] = i + 1;
     };
@@ -283,6 +352,16 @@ export class RobotBatch {
       put("thigh", leg.thigh);
       put("shin", leg.shin);
       put("foot", leg.foot);
+    }
+    // R80.7: 職業アクセサリ（該当アーキタイプのロボにだけ1個・専用色）
+    if (arch && arch.part && nodes.acc && nodes.acc[arch.part]) {
+      const part = arch.part;
+      const i = this.counts[part];
+      if (i < this.capacity) {
+        this.meshes[part].setMatrixAt(i, nodes.acc[part].matrixWorld);
+        this.meshes[part].setColorAt(i, arch.accC || WHITE);
+        this.counts[part] = i + 1;
+      }
     }
   }
 

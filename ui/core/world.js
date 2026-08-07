@@ -9,6 +9,8 @@
 //     tools/js_layer_lint.py が機械で落とす。
 // ──────────────────────────────────────────────────────────────
 
+import { archetypeFor } from "./archetype.js";
+
 /** 席の数。使われないスロットは机ごと描かない＝空席を作らないための上限。 */
 export const DESK_SLOTS = 12;
 export const QUEUE_SLOTS = 12;  // R70: 机12台ぶん＝❗が大量でも2列×6で整列（ユーザーFB）
@@ -29,6 +31,8 @@ export function buildWorld(office) {
     id: p.projectId || p.session || "",
     session: p.session || "",
     name: p.disp || p.name || p.dept || "",
+    role: p.role || "",
+    dept: p.dept || "",
     crew: Number(p.crew) || 1,
     state: p.state || "idle",
     kind: p.kind || "idle",
@@ -47,6 +51,7 @@ export function buildWorld(office) {
     feed: Array.isArray(p.feed) ? p.feed : [],
     work: p.work || null,
   }));
+  for (const a of agents) a.arch = archetypeFor(a);   // R80.7: 職業アーキタイプ
 
   return {
     officeName: office.officeName || "",

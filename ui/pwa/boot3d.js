@@ -76,6 +76,10 @@ if (host && scene) {
     focus(id) {
       try { if (id) scene.focusOn(id); else scene.focusOff(); } catch (_) { /* 非対応でも操作は続行 */ }
     },
+    /** R80.7: タップ挨拶（手を振る）。 */
+    greet(id) {
+      try { if (id) scene.greet(id); } catch (_) { /* 非対応でも操作は続行 */ }
+    },
     stats() {
       try { return scene.stats ? scene.stats() : null; } catch (_) { return null; }
     },

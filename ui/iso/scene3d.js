@@ -903,6 +903,24 @@ export class IsoScene {
         smoothstep(0, 0.45, t - (actor.poseChangedAt ?? -Infinity)));
       actor.lastPose = blended;
       applyPose(actor.nodes, blended);
+      // R80.7: タップ挨拶＝腕を上げて振る＋ぴょこ＋首かしげ（0.9秒・タップ起点のみ
+      // ＝goldenは不変）。ポーズ適用の直後・root配置の前に上書きする。
+      actor.agentArch = agent.arch || null;
+      if (this._greet && this._greet.has(agent.id)) {
+        let gt = this._greet.get(agent.id);
+        if (gt === null) { gt = t; this._greet.set(agent.id, t); }
+        const u = (t - gt) / 0.9;
+        if (u >= 1) {
+          this._greet.delete(agent.id);
+        } else if (u >= 0) {
+          const arm = actor.nodes.arms[1];
+          arm.shoulder.rotation.x = -2.5;
+          arm.shoulder.rotation.z = arm.side * 0.07 + Math.sin(u * Math.PI * 5) * 0.38;
+          arm.elbow.rotation.x = -0.45;
+          actor.nodes.neck.rotation.z = 0.14 * Math.sin(Math.min(u * 1.4, 1) * Math.PI);
+          actor.nodes.hip.position.y += 0.06 * Math.sin(Math.min(u * 2, 1) * Math.PI);
+        }
+      }
 
       const SIT_DROP = 0.24;          // 腰が座面に載る高さ（scale 1.62 に合わせ再調整）
       const standingRole = target.role === "present" || target.role === "stand";
@@ -969,10 +987,11 @@ export class IsoScene {
 
     this.robots.begin();
     let n = 0;
-    for (const actor of this.actors.values()) {
+    for (const [aid, actor] of this.actors) {
       if (n++ >= CAPACITY) break;
       this.robots.push(actor.nodes, actor.accent || null,
-        actor.lobster ? LOBSTER_TINT : null);
+        actor.lobster ? LOBSTER_TINT : null,
+        actor.lobster ? null : this._archFor(actor.agentArch, aid));
     }
     // ボス: 普段は壇上で悠然と頷き、300秒周期で20秒だけ北通路を見回る（R68・t>=30）。
     // 巡回路は BOSS_WALK（既存レーン上＝交差0を nav.test がピン）。壇との段差は
@@ -1194,6 +1213,30 @@ export class IsoScene {
     if (!actor) return null;
     const p = actor.nodes.root.position;
     return this.project(p.x, p.y + 1.1, p.z);
+  }
+
+  /** R80.7: タップ挨拶。次のupdateで0.9秒の手振りアクションが走る（タップ起点のみ）。 */
+  greet(agentId) {
+    if (!agentId) return;
+    (this._greet = this._greet || new Map()).set(agentId, null);
+  }
+
+  /** core/archetype.js の {kind,tint,acc} を THREE.Color 化してキャッシュ（毎フレーム確保しない）。 */
+  _archFor(arch, cacheKey) {
+    if (!arch) return null;
+    this._archCache = this._archCache || new Map();
+    const hit = this._archCache.get(cacheKey);
+    if (hit && hit.kind === arch.kind) return hit;
+    const KIND_PART = { video: "phones", dev: "cap", design: "beret",
+      writer: "pencil", ops: "bowtie" };
+    const built = {
+      kind: arch.kind,
+      part: KIND_PART[arch.kind] || null,
+      tintC: new THREE.Color(arch.tint[0], arch.tint[1], arch.tint[2]),
+      accC: arch.acc ? new THREE.Color(arch.acc[0], arch.acc[1], arch.acc[2]) : null,
+    };
+    this._archCache.set(cacheKey, built);
+    return built;
   }
 
   /** R80.6: ピンチズーム。factor>1=寄る。pxX/pxY=ピボット（canvas px・省略時は中央）。

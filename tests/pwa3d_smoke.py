@@ -134,16 +134,29 @@ def main(argv):
                 else:
                     print(f"  ✓ 名札（ピン{len(marks['pins'])}＋名札{len(marks['plates'])}"
                           f"＝ロボ{marks['robots']}体・{'全員名札' if few else '二段'}・≤20px）")
-                # R80-A16: ❗表示中もロスターは**消さず圧縮**する（一番「誰が何を」を知りたい
-                # 瞬間に述語が全滅していたため）。ドックが3Dを覆わないよう高さは詰める。
-                if marks["attnOn"] and marks["rosterH"] > 46:
-                    print(f"  ✗ ❗表示中にロスターが圧縮されていない: {marks}")
+                # R80.7: ロスターは上部帯へ（ユーザーFB「スライドできる項目は上に」）。
+                # ❗カードは下（親指圏）のまま＝両方が同時に見える。ゲージ帯は下ドック。
+                layout = page.evaluate(
+                    """() => ({
+                        rosterTop: (() => { const c = document.querySelector('#topdock #roster .rchip');
+                            return c ? Math.round(c.getBoundingClientRect().top) : -1; })(),
+                        gaugebar: !!document.getElementById('gaugebar'),
+                        attnBottom: (() => { const c = document.querySelector('#attncards.on');
+                            return c ? Math.round(c.getBoundingClientRect().bottom) : -1; })(),
+                    })""")
+                ih = 844
+                if layout["rosterTop"] < 40 or layout["rosterTop"] > 260:   # <40=ヘッダー裏に潜った
+                    print(f"  ✗ ロスターが上部帯に居ない: {layout}")
                     ng += 1
-                elif marks["attnOn"] and marks["rosterH"] == 0:
-                    print("  ✗ ❗表示中にロスターが消えている（誰が何をしているかが全滅）")
+                elif not layout["gaugebar"]:
+                    print("  ✗ 下部ゲージ帯（#gaugebar）が無い")
                     ng += 1
-                elif marks["attnOn"]:
-                    print(f"  ✓ ❗表示中もロスターを圧縮して残す（{marks['rosterH']}px）")
+                elif marks["attnOn"] and not (layout["attnBottom"] > ih / 2):
+                    print(f"  ✗ ❗カードが下部に居ない: {layout}")
+                    ng += 1
+                else:
+                    print(f"  ✓ レイアウト（ロスター上 top={layout['rosterTop']}・"
+                          f"❗下 bottom={layout['attnBottom']}・ゲージ帯あり）")
 
                 # R80.5: ロスターは情報カード＝各チップに述語（activityGloss）が入っている
                 # （圧縮中はCSSで隠れるが内容は常に供給＝タップ不要で「誰が・何を」）
@@ -323,6 +336,13 @@ def main(argv):
                         const s2 = v.state().scale;
                         return {s0, s1, panX: p1.panX, s2};
                     }""")
+                has_greet = page.evaluate(
+                    "() => !!(window.__scene3d && window.__scene3d.greet)")
+                if not has_greet:
+                    print("  ✗ タップ挨拶API（__scene3d.greet）が無い")
+                    ng += 1
+                else:
+                    print("  ✓ タップ挨拶API（greet）")
                 if not view:
                     print("  ✗ ズーム/パンAPI（__scene3d.view）が無い")
                     ng += 1

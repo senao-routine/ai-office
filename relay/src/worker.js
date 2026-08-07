@@ -997,6 +997,7 @@ const APP_HTML = "<!doctype html><html lang=ja><head>" +
 '#logwrap.open .mask{opacity:1}' +
 '#logwrap.open .sheet{transform:translateY(0)}' +
 /* ⚙️設定シート（フッター4ボタン化） */
+'#scene3dwrap,#scene3d{touch-action:none}' +
 '#runwrap,#lnwrap{position:fixed;inset:0;z-index:112;pointer-events:none}' +
 '#runwrap.open,#lnwrap.open{pointer-events:auto}' +
 '#runwrap .mask,#lnwrap .mask{position:absolute;inset:0;background:rgba(20,16,10,.5);opacity:0;transition:opacity .28s ease}' +
@@ -1182,13 +1183,19 @@ const APP_HTML = "<!doctype html><html lang=ja><head>" +
 '#emptyhint .eh-s{font-size:12px;line-height:1.7;color:var(--muted)}' +
 'body.th-dark #emptyhint{background:rgba(30,28,58,.86);border-color:rgba(160,140,255,.22)}' +
 '#dock{position:absolute;left:8px;right:8px;bottom:calc(78px + env(safe-area-inset-bottom));z-index:6;display:flex;flex-direction:column;gap:6px}' +
-// R80-A16: ❗が出ている＝**いちばん「誰が何をしているか」を知りたい瞬間**なのに、
-// 旧実装はロスターを丸ごと消していた（残るのは1文字ピンだけで述語が全滅）。
-// 消さずに1行へ圧縮する（高さを 56→40px・名前だけ）＝❗カードの場所は保ちつつ情報を残す。
-'#attncards.on~#roster .rchip{flex-direction:column;text-align:center;min-height:40px;min-width:0;max-width:none;width:54px;padding:4px 3px;gap:2px}' +
-'#attncards.on~#roster .rchip .mono{--asz:18px}' +
-'#attncards.on~#roster .rchip .nm{font-size:9px;max-width:48px}' +
-'#attncards.on~#roster .rchip .gl{display:none}' +
+// R80.7: ロスターは**上部の常設帯**へ（ユーザーFB「下のスライドできる項目は上に」）。
+// ❗カードは下（親指圏）のまま＝縦の取り合いが消えたので圧縮モードは廃止。
+'#topdock{position:absolute;left:8px;right:8px;top:calc(58px + env(safe-area-inset-top));z-index:6}' +
+'#gaugebar{display:flex;gap:10px;align-items:center;padding:7px 12px;background:rgba(255,255,255,.72);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border:1px solid var(--line);border-radius:13px;box-shadow:0 2px 8px rgba(64,52,140,.08)}' +
+'#gaugebar:empty{display:none}' +
+'#gaugebar .gg{flex:1;display:flex;align-items:center;gap:6px;min-width:0}' +
+'#gaugebar .gg .lb{font-size:9.5px;font-weight:800;color:var(--muted);flex:none}' +
+'#gaugebar .gg .tr{flex:1;height:6px;border-radius:99px;background:rgba(124,92,255,.12);overflow:hidden}' +
+'#gaugebar .gg .tr i{display:block;height:100%;border-radius:99px;background:var(--sage)}' +
+'#gaugebar .gg.warn .tr i{background:var(--amber)}' +
+'#gaugebar .gg.hot .tr i{background:var(--alert)}' +
+'#gaugebar .gg b{font-size:10px;font-weight:800;flex:none}' +
+'body.th-dark #gaugebar{background:rgba(30,28,58,.80);border-color:rgba(160,140,255,.20)}' +
 '#roster{flex:none;display:flex;gap:8px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding:2px;scrollbar-width:none}' +
 '#roster::-webkit-scrollbar{display:none}' +
 '#roster:empty{display:none}' +
@@ -1427,6 +1434,13 @@ PWA_GLOSS_SOURCE +
 // R80.6: 設定を「状態が読める場所」へ（ユーザーFB「PC版にあるリソースやライセンスが無い」）。
 // ライセンス=edition.features から導出／リソース=office_json.res(Claude枠%)+relay(中継使用量)。
 // どちらも新しい秘密は運ばない（%とレベルの整数だけ＝redaction設計の内側）。
+// R80.7: 下部ゲージ帯（ユーザーFB「下にゲージ・消費クレジットとか」）。Claude枠%と中継%。
+'function paintGauges(){var gb=document.getElementById("gaugebar");if(!gb)return;var o=LAST_OFFICE||{};var res=o.res||{};var rl=o.relay||{};'+
+'function bar(lb,pct){var cls=pct>=90?" hot":pct>=70?" warn":"";return \'<div class="gg\'+cls+\'"><span class=lb>\'+lb+\'</span><span class=tr><i style="width:\'+Math.max(2,Math.min(100,Math.round(pct)))+\'%"></i></span><b>\'+Math.round(pct)+\'%</b></div>\'}'+
+'var h="";if(typeof res.fiveHour==="number")h+=bar(T("Claude 5h","Claude 5h"),res.fiveHour);'+
+'if(typeof res.sevenDay==="number")h+=bar(T("7日","7d"),res.sevenDay);'+
+'if(typeof rl.pct==="number")h+=bar(T("中継","Relay"),rl.pct);'+
+'if(gb.innerHTML!==h)gb.innerHTML=h}'+
 'function paintSettingsInfo(){var o=LAST_OFFICE||{};'+
 'var lic=document.getElementById("st_lic_hint");if(lic){var ed=(o.edition&&o.edition.edition)||"";'+
 'lic.textContent=featOn("relayPwa")?T("Pro 有効（スマホ連携・通知・遠隔実行）","Pro active (phone link, push, remote actions)")+(ed?" · "+ed:""):T("無料版（スマホ連携はProで解錠）","Free (phone link unlocks with Pro)")}'+
@@ -1539,8 +1553,9 @@ PWA_GLOSS_SOURCE +
 'function sceneShell3D(){var room=document.getElementById("room");if(!room)return null;'+
 'var wrap=el("div",null);wrap.id="scene3dwrap";var host=el("div",null);host.id="scene3d";var plates=el("div",null);plates.id="plates";wrap.appendChild(host);wrap.appendChild(plates);room.appendChild(wrap);'+
 // R79-5: ❗トリアージとロスターは下部ドック（親指圏）。既存ノードは移設＝id重複(B7)を再発させない
+'var top=el("div",null);top.id="topdock";var rs=document.getElementById("roster");if(!rs){rs=el("div",null);rs.id="roster"}top.appendChild(rs);room.appendChild(top);'+
 'var dock=el("div",null);dock.id="dock";var cards=document.getElementById("attncards");if(!cards){cards=el("section",null);cards.id="attncards";cards.setAttribute("aria-live","polite")}dock.appendChild(cards);'+
-'var rs=document.getElementById("roster");if(!rs){rs=el("div",null);rs.id="roster"}dock.appendChild(rs);room.appendChild(dock);'+
+'var gb=el("div",null);gb.id="gaugebar";dock.appendChild(gb);room.appendChild(dock);'+
 // R80.6: タップは2段（ユーザーFB「いきなりウィンドウでなく、まずフォーカスして
 // どういう作業のアバターか浮かび上がってほしい」）。1度目=カメラが寄る+選択名札+
 // 「誰が・何を」トースト。同じロボの2度目=シート。空きタップ=選択解除+カメラ戻し。
@@ -1554,7 +1569,7 @@ PWA_GLOSS_SOURCE +
 // ノードはid keyedで再利用＝毎フレームの全DOM走査をやめる（B12）。重なりは下へ逃がして解消（デスクトップpaintLabelsと同型）
 // R80.6: 2段タップの単一実装（canvas・名札の両方から呼ぶ）。1度目=フォーカス+選択+
 // 「誰が・何を」トースト（まず注目させる）。同じ対象の2度目=詳細シート。
-'function tapAgent(id){var e=empOfAgent(id);if(!e)return;if(SEL&&SEL.session===e.session){openSheet(e);return}SEL=e;playSE("select");document.querySelectorAll(".sel").forEach(function(n){n.classList.remove("sel")});document.querySelectorAll("[data-sess]").forEach(function(n){if(n.getAttribute("data-sess")===e.session)n.classList.add("sel")});if(window.__scene3d&&window.__scene3d.focus)window.__scene3d.focus(id);note(dispCrew(e)+" \u2014 "+activityGlossPWA(e,LANG)+T("（もう一度タップで詳細）"," (tap again for details)"))}'+
+'function tapAgent(id){var e=empOfAgent(id);if(!e)return;if(SEL&&SEL.session===e.session){openSheet(e);return}SEL=e;playSE("select");document.querySelectorAll(".sel").forEach(function(n){n.classList.remove("sel")});document.querySelectorAll("[data-sess]").forEach(function(n){if(n.getAttribute("data-sess")===e.session)n.classList.add("sel")});if(window.__scene3d&&window.__scene3d.focus)window.__scene3d.focus(id);if(window.__scene3d&&window.__scene3d.greet)window.__scene3d.greet(id);note(dispCrew(e)+" \u2014 "+activityGlossPWA(e,LANG)+T("（もう一度タップで詳細）"," (tap again for details)"))}'+
 'var PLATE_NODES={};'+
 'function paintPlates(){var layer=document.getElementById("plates");var s3=window.__scene3d;if(!layer||!s3)return;var ags=s3.agents()||[];var W=layer.clientWidth||0;'+
 'var emps=officeAgents(LAST_OFFICE)||[],bySess={};emps.forEach(function(x){if(x&&x.session)bySess[x.session]=x});'+
@@ -1605,7 +1620,7 @@ PWA_GLOSS_SOURCE +
 // フルブリード化で置き場所が消えていたので、シーンの上に浮かせる。
 'paintEmptyHint(officeAgents(office).length);'+
 'if(window.__scene3d&&window.__scene3d.ready){var n3=document.getElementById("no3d");if(n3)n3.remove();'+
-'window.__scene3d.apply(office);paintPlates();paintRoster(office);return}'+
+'window.__scene3d.apply(office);paintPlates();paintRoster(office);paintGauges();return}'+
 'if(SCENE3D==="pending")return;'+
 'if(!document.getElementById("no3d")){var nt=el("div","empty");nt.id="no3d";nt.textContent=T("この端末では3D表示を利用できません。操作はすべて☰リストからできます。","3D view is unavailable on this device. Everything works from the List tab.");if(room)room.appendChild(nt)}}'+
 // R79-5: ヘッダー統合＝統計は右肩に3つだけ（❗/稼働/待機）。横スクロールしないと見えない数値は
