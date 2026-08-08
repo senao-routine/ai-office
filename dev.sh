@@ -58,7 +58,7 @@ start_server() {
   trap 'kill $SPID 2>/dev/null; rm -rf "$VHOME"' EXIT
   trap 'exit 130' INT TERM
   for _ in $(seq 40); do
-    curl -sf -o /dev/null "http://127.0.0.1:$PORT/api/office" && break
+    curl -sf -o /dev/null -H "X-Office-Local: 1" "http://127.0.0.1:$PORT/api/office" && break
     sleep .1
   done
   ok "fixtureサーバー :$PORT (log: logs/dev.log)"

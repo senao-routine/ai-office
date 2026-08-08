@@ -5,7 +5,7 @@
 # SwiftBar プラグイン（.5s = 5秒更新。サーバー側 /api/office は2秒キャッシュなので過負荷なし）
 # 依存: bash + curl + python3(標準ライブラリのみ)。127.0.0.1固定（不変条件）。
 PY="$(command -v python3 || echo /usr/bin/python3)"
-JSON="$(curl -s --max-time 2 http://127.0.0.1:4780/api/office 2>/dev/null)"
+JSON="$(curl -s --max-time 2 -H "X-Office-Local: 1" http://127.0.0.1:4780/api/office 2>/dev/null)"
 if [ -z "$JSON" ]; then
   echo "🏢 — | color=gray"
   echo "---"

@@ -362,6 +362,29 @@ class RelayAgentTest(unittest.TestCase):
         self.assertEqual(e["minions"], 2)
         self.assertEqual(e["skills"], ["x-post", "video-edit"])
 
+    def test_redact_scrubs_paths_and_urls_in_feed(self):
+        """S3: feed の動作ログ行にもパス縮約・URLホスト化・切り詰めが掛かる
+        （target と同じ値が feed にも入る自己矛盾＝中継への本文/パス漏れを塞ぐ）。"""
+        snap = {"employees": [{
+            "disp": "P", "session": "s", "state": "working", "verb": "実行中",
+            "feed": ["実行中 cd /Users/alice/Documents/AmexTax-2026 && ls",
+                     "調査中 https://internal.example.com/customers/acme?token=secret",
+                     "部下に指示中 ~/work/nda/顧客名リストを要約して次の章を書き出す長い長い指示文",
+                     "💬 これは発言なので消える"],
+        }]}
+        out = ra._redact_office_for_relay(snap)
+        feed = out["employees"][0]["feed"]
+        joined = " / ".join(feed)
+        self.assertNotIn("/Users/alice", joined)          # 絶対パスが消える
+        self.assertNotIn("Documents", joined)
+        self.assertNotIn("internal.example.com/customers", joined)  # URLのパス/クエリが消える
+        self.assertNotIn("token=secret", joined)
+        self.assertNotIn("~/work/nda", joined)            # チルダパスが消える
+        for ln in feed:
+            self.assertLessEqual(len(ln), 60)             # 長い指示文の切り詰め
+        self.assertTrue(any("実行中" in ln for ln in feed))  # 動詞ラベルは残る
+        self.assertFalse(any("💬" in ln for ln in feed))
+
     def test_redact_covers_projects_array(self):
         """R50: roster[] も employees[] と同じ規則で本文/パスを落とす。
         新フィールドを office_json に足したら redaction を通す＝掟の機械化。"""
@@ -445,6 +468,22 @@ class RelayAgentTest(unittest.TestCase):
                    "employees": [], "generatedAt": 100}
         self.assertEqual(ra._status_fingerprint(base), ra._status_fingerprint(drift))
         self.assertNotEqual(ra._status_fingerprint(base), ra._status_fingerprint(changed))
+
+    def test_fingerprint_ignores_relay_usage_and_res_stale(self):
+        """S2: 中継使用量(relay.rows)とres.staleSecは毎sync増える揮発値。指紋に含めると
+        『1回syncするたび指紋が変わり→また送信』の自己参照ループで無料枠を食う。除外を固定。"""
+        a = {"roster": [], "employees": [], "generatedAt": 1,
+             "relay": {"rows": 100, "pct": 3, "level": 0},
+             "res": {"fiveHour": 20, "sevenDay": 40, "staleSec": 5}}
+        b = {"roster": [], "employees": [], "generatedAt": 99,
+             "relay": {"rows": 900, "pct": 9, "level": 0},          # rows激増でも
+             "res": {"fiveHour": 20, "sevenDay": 40, "staleSec": 55}}  # staleドリフトでも
+        self.assertEqual(ra._status_fingerprint(a), ra._status_fingerprint(b))
+        # 実データ（枠%）が動いたら指紋は変わる（＝本当の変化は拾う）
+        c = {"roster": [], "employees": [], "generatedAt": 1,
+             "relay": {"rows": 100, "pct": 3, "level": 0},
+             "res": {"fiveHour": 55, "sevenDay": 40, "staleSec": 5}}
+        self.assertNotEqual(ra._status_fingerprint(a), ra._status_fingerprint(c))
 
     def test_sync_tick_delivers_and_acks_next_round(self):
         """配達→ack持ち越し→次周のackIdsで削除・無変化ならoffice=None（変化時のみpush）。"""

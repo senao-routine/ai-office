@@ -51,9 +51,13 @@ def gen_key(args):
     n, d = grab("modulus"), grab("privateExponent")
     e = int(re.search(r"publicExponent: (\d+)", txt).group(1))
     SIGNING_KEY.parent.mkdir(parents=True, exist_ok=True)
-    SIGNING_KEY.write_text(json.dumps({"v": 1, "alg": "RS256",
-                                       "n": hex(n), "e": e, "d": hex(d)}), encoding="utf-8")
-    os.chmod(SIGNING_KEY, 0o600)
+    # L3: write_text→chmod だと一瞬 0644 の窓が空く（RSA秘密鍵＝全ライセンスの偽造元）。
+    # 書き込み前に 0600 でファイルを開く（office_server.save_devices と同じ手当）。
+    blob = json.dumps({"v": 1, "alg": "RS256", "n": hex(n), "e": e, "d": hex(d)})
+    fd = os.open(SIGNING_KEY, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write(blob)
+    os.chmod(SIGNING_KEY, 0o600)   # 既存ファイル上書き時のため明示（新規は open の mode で確定）
     print(f"署名鍵を保存: {SIGNING_KEY} (600)")
     print("server/license.py へ埋める公開鍵 PUBKEY_N:")
     print(hex(n))

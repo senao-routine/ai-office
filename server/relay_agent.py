@@ -216,8 +216,12 @@ def _deliver_actions(session, g):
                 ok_ids.append(iid)
             print(f"⛔拒否(act-format) id={iid}", flush=True)
             continue
+        # M2: 監査ログには使い捨ての act- session ではなく、verify_envelope が返した
+        # 検証済み device_id を渡す（盗まれた端末を事後に失効特定できるようにする）。
+        _devs = g.get("devices") or []
+        dev = _devs[i] if i < len(_devs) else session
         try:
-            r = _post_action({"action": act, "device_id": session})
+            r = _post_action({"action": act, "device_id": dev or session})
         except urllib.error.HTTPError as e:
             # daemonは**受け取ったうえで拒否**した（denied/形式不正）＝恒久的な結果。
             # 残置すると毎周リトライでキューが詰まるので ack して捨てる（nonceも焼く）。
@@ -271,10 +275,11 @@ def _process_items(items):
         if not isinstance(env, dict):
             # 署名封筒でない ＝ 旧無署名 or ゴミ。既定は拒否。ALLOW_UNSIGNED のみ素通し（移行用）
             if ALLOW_UNSIGNED and it.get("session") and isinstance(raw, str) and raw:
-                g = groups.setdefault(it["session"], {"ids": [], "texts": [], "keys": []})
+                g = groups.setdefault(it["session"], {"ids": [], "texts": [], "keys": [], "devices": []})
                 g["ids"].append(iid)
                 g["texts"].append(raw)
                 g["keys"].append(None)
+                g["devices"].append("unsigned")   # 無署名は端末不明（ALLOW_UNSIGNED時のみ）
                 continue
             if iid is not None:
                 ack_now.append(iid)
@@ -298,10 +303,11 @@ def _process_items(items):
             print(f"⏸延期(rate) id={iid}", flush=True)   # ackせず・nonce焼かず残置→次tickで配達
             continue
         batch.add(key)
-        g = groups.setdefault(sess, {"ids": [], "texts": [], "keys": []})
+        g = groups.setdefault(sess, {"ids": [], "texts": [], "keys": [], "devices": []})
         g["ids"].append(iid)
         g["texts"].append(text)
-        g["keys"].append((key, env["ts"] + WINDOW))   # nonce生存=封筒のverify有効期限（未来ts漏れ穴を塞ぐ）
+        g["keys"].append((key, env["ts"] + WINDOW))
+        g["devices"].append(env["device_id"])   # M2: 監査へ渡す検証済み端末ID   # nonce生存=封筒のverify有効期限（未来ts漏れ穴を塞ぐ）
 
     ack_ids = [x for x in ack_now if x is not None]
     delivered = 0
@@ -387,6 +393,25 @@ def _sanitize_work_for_relay(work):
     return result
 
 
+def _scrub_feed_line(ln):
+    """S3: feed行のパスを末尾名へ縮め、長い本文（コマンド/パターン/URL/指示文）を切り詰める。
+    先頭の動詞ラベル（実行中/編集中…＝describe_tool由来）は保つ＝「何をしているか」は伝わる。"""
+    if not isinstance(ln, str):
+        return ln
+    def replace_path(match):
+        token = match.group(0)
+        trailing = ""
+        while token and token[-1] in ",.;:!?、。)]}」』":
+            trailing = token[-1] + trailing
+            token = token[:-1]
+        return (Path(token).name if token else "") + trailing
+    # URLを先に処理する（パス正規表現が `https://…` の `//…` を先に食うと token/query が残る）。
+    # scheme ごとホスト名だけへ縮める（クエリ/パスに機微が乗りうる）。
+    scrubbed = re.sub(r"https?://([^/\s?#]+)\S*", r"\1", ln)
+    scrubbed = _WORK_PATH_RE.sub(replace_path, scrubbed)
+    return scrubbed[:60]
+
+
 def _redact_entry_for_relay(e):
     """社員/プロジェクト1件から本文・パスを落とす（employees[] と projects[] で共通）。"""
     if not isinstance(e, dict):
@@ -396,8 +421,11 @@ def _redact_entry_for_relay(e):
             e[k] = ""
     fd = e.get("feed")
     if isinstance(fd, list):
-        # 「💬 …」＝発言本文の要約行だけ除去。「実行中/編集中/執筆中…」等の動作ログは残す。
-        e["feed"] = [ln for ln in fd
+        # 「💬 …」＝発言本文の要約行は除去。残す動作ログ行（実行中/編集中…）も、Bashコマンド・
+        # Grepパターン・URL・サブエージェント指示文・絶対/チルダパスを含みうる（describe_tool は
+        # Read/Edit しか basename 化しない）。S3修正: target と同じ値が feed にも入る自己矛盾を塞ぐ
+        # ため、残す行にも _scrub_feed_line でパス縮約＋本文の切り詰めを掛ける（中継＝根元遮断）。
+        e["feed"] = [_scrub_feed_line(ln) for ln in fd
                      if not (isinstance(ln, str) and ln.lstrip().startswith("💬"))]
     if "work" in e:
         e["work"] = _sanitize_work_for_relay(e["work"])
@@ -564,10 +592,21 @@ def _status_fingerprint(snapshot):
     （generatedAt=落とす・age=分単位。ここを量子化しないと毎周「変化あり」になり省略が効かない）。"""
     if not isinstance(snapshot, dict):
         return ""
-    copy = {k: v for k, v in snapshot.items() if k != "generatedAt"}
+    # S2: relay(中継使用量の生rows)を含めると「1回syncするたびにrowsが増えて指紋が変わり→
+    # また送信…」の自己参照ループになり「変化時のみ送信」が無効化する（＝無料枠を食う本丸）。
+    # generatedAt と同じく指紋から外す。res.staleSec も時間ドリフトなので分単位へ量子化。
+    copy = {k: v for k, v in snapshot.items() if k not in ("generatedAt", "relay")}
     for key in ("roster", "employees"):
         if isinstance(copy.get(key), list):
             copy[key] = [_quantize_entry(e) for e in copy[key]]
+    if isinstance(copy.get("res"), dict):
+        r = dict(copy["res"])
+        if "staleSec" in r:
+            try:
+                r["staleSec"] = int(r.get("staleSec") or 0) // 60
+            except (TypeError, ValueError):
+                r["staleSec"] = 0
+        copy["res"] = r
     return hashlib.sha256(
         json.dumps(copy, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
 

@@ -410,14 +410,14 @@ OFFICE_HOME="$ACT_HOME" OFFICE_FAKE_NOTIFY="$ACT_HOME/notify.txt" \
 ACT_PID=$!
 ACT_UP=0
 for i in $(seq 1 30); do
-  curl -s -o /dev/null "http://127.0.0.1:$ACT_PORT/api/office" && { ACT_UP=1; break; }
+  curl -s -o /dev/null -H "X-Office-Local: 1" "http://127.0.0.1:$ACT_PORT/api/office" && { ACT_UP=1; break; }
   sleep 0.5
 done
 [ "$ACT_UP" = "1" ] && ok "R79-10 daemon起動（実行者=office_server）" || ng "R79-10 daemonが起動しない: $(tail -3 /tmp/act_daemon.log)"
 # office_json に許可リストの最小ビューが載る（argv/cwdは載らない＝中継に構成情報を出さない）
 python3 - "$ACT_PORT" <<'EOF' && ok "R79-10 office_json.actions（id/labelのみ・argv非公開）" || ng "R79-10 actionsビュー不正"
 import json, sys, urllib.request
-d = json.loads(urllib.request.urlopen(f"http://127.0.0.1:{sys.argv[1]}/api/office").read())
+d = json.loads(urllib.request.urlopen(urllib.request.Request(f"http://127.0.0.1:{sys.argv[1]}/api/office", headers={"X-Office-Local":"1"})).read())
 a = d["actions"]
 assert a["caps"]["actions"] == 1, a
 assert [r["id"] for r in a["recipes"]] == ["r_e2e"], a
@@ -445,7 +445,7 @@ done
 python3 - "$ACT_PORT" <<'EOF' && ok "R79-10 実行結果がoffice_jsonに反映（出力はscrub済み）" || ng "R79-10 結果が反映されない"
 import json, sys, time, urllib.request
 for _ in range(40):
-    d = json.loads(urllib.request.urlopen(f"http://127.0.0.1:{sys.argv[1]}/api/office").read())
+    d = json.loads(urllib.request.urlopen(urllib.request.Request(f"http://127.0.0.1:{sys.argv[1]}/api/office", headers={"X-Office-Local":"1"})).read())
     rs = [r for r in d["actions"]["results"] if r["reqId"] == "req-e2e00001"]
     if rs and rs[0]["state"] in ("done", "failed", "timeout"):
         r = rs[0]
@@ -467,7 +467,7 @@ OFFICE_HOME="$ACT_HOME" RELAY_URL="$B" RELAY_TOKEN="$TOKEN" OFFICE_PORT=$ACT_POR
 python3 - "$ACT_PORT" <<'EOF' && ok "R79-10 未登録レシピは denied（許可リスト外は実行しない）" || ng "R79-10 未登録レシピの拒否が確認できない"
 import json, sys, time, urllib.request
 for _ in range(20):
-    d = json.loads(urllib.request.urlopen(f"http://127.0.0.1:{sys.argv[1]}/api/office").read())
+    d = json.loads(urllib.request.urlopen(urllib.request.Request(f"http://127.0.0.1:{sys.argv[1]}/api/office", headers={"X-Office-Local":"1"})).read())
     rs = [r for r in d["actions"]["results"] if r["reqId"] == "req-e2e00002"]
     if rs:
         assert rs[0]["state"] == "denied", rs[0]

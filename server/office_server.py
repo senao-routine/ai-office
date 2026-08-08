@@ -2105,6 +2105,12 @@ class Handler(BaseHTTPRequestHandler):
         if not self._host_ok():
             return self._deny(403, "invalid host")
         if self.path.startswith("/api/office"):
+            # M4: 他GETと同様CSRFゲートを掛ける。office_json は templates全文・recipes・
+            # results.output・question本文を含み、かつ res_summary() が**ユーザーのAPIキーで
+            # 外部HTTP**を誘発する（純粋な読取ではない）＝任意Webページからの副作用を防ぐ。
+            # ローカルUIの api() は GET にも X-Office-Local を付けるのでUI側の変更は不要。
+            if not self._csrf_ok():
+                return self._deny(403, "cross-site request blocked")
             self._send(200, json.dumps(office_json(), ensure_ascii=False).encode("utf-8"),
                        "application/json; charset=utf-8")
         elif self.path.split("?", 1)[0] == "/api/external/openclaw":

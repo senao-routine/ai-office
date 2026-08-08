@@ -268,6 +268,26 @@ def main(argv):
                     ng += 1
                 else:
                     print("  ✓ ゲージのプロバイダ切替（チップ→バー反映＋永続）")
+                # S1: ゲージのプロバイダlabelにHTMLを入れても実行されない（innerHTML→textContent化）
+                xss = page.evaluate(
+                    """() => {
+                        window.__xss = 0;
+                        const o = JSON.parse(JSON.stringify(LAST_OFFICE || {}));
+                        o.res = o.res || {};
+                        o.res.providers = [{id:'claude', label:'<img src=x onerror=\"window.__xss=1\">',
+                            bars:[{k:'<b>5h</b>', pct:20}]}];
+                        localStorage.setItem('aioffice.gaugePin','claude');
+                        LAST_OFFICE = o; paintGauges();
+                        const gb = document.getElementById('gaugebar');
+                        return {fired: window.__xss, imgs: gb.querySelectorAll('img').length,
+                                litem: gb.textContent.indexOf('<img') >= 0};
+                    }""")
+                if xss["fired"] or xss["imgs"] > 0 or not xss["litem"]:
+                    print(f"  ✗ ゲージにHTMLインジェクション（XSS掟の破れ）: {xss}")
+                    ng += 1
+                else:
+                    print("  ✓ ゲージlabelはtextContent化（<img>は文字列・onerror不発）")
+                page.evaluate("localStorage.setItem('aioffice.gaugePin','claude')")
                 page.evaluate("localStorage.setItem('aioffice.gaugePin','claude');paintGauges()")
                 # 今日のまとめ: リストタブの最上部カード
                 daysum = page.evaluate(

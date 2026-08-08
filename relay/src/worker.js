@@ -522,16 +522,26 @@ export default {
     // ETag + must-revalidate なら「変わっていなければ304（数百バイト）」で済む。
     // 秘密は含まない（資格情報はlocalStorage・APP_HTMLはシェルのみ）ので公開キャッシュ可。
     const APP_ETAG = 'W/"app-' + APP_BUILD + '"';
+    // R82-sec(F7): 承認/停止/▶実行ボタンを持つ画面なのでクリックジャッキングを塞ぐ。
+    // PWAはインライン onclick を多用するため script-src は縛らない（S1でXSSの発生源は
+    // 既に除去済み）。ここは機能に影響しない frame/object/base の封じ込めと nosniff だけ。
+    const SEC_HEADERS = {
+      "Content-Security-Policy": "frame-ancestors 'none'; object-src 'none'; base-uri 'none'",
+      "X-Frame-Options": "DENY",
+      "X-Content-Type-Options": "nosniff",
+      "Referrer-Policy": "no-referrer",
+    };
     const shell = (body, type) => {
       if (request.headers.get("If-None-Match") === APP_ETAG) {
         return new Response(null, {
           status: 304,
-          headers: { ETag: APP_ETAG, "Cache-Control": "public, max-age=0, must-revalidate" },
+          headers: { ETag: APP_ETAG, "Cache-Control": "public, max-age=0, must-revalidate",
+                     ...SEC_HEADERS },
         });
       }
       return new Response(body, {
         headers: { "Content-Type": type, "Cache-Control": "public, max-age=0, must-revalidate",
-                   ETag: APP_ETAG },
+                   ETag: APP_ETAG, ...SEC_HEADERS },
       });
     };
     if (method === "GET" && (path === "/app" || path === "/app/")) {
@@ -1507,13 +1517,15 @@ PWA_GLOSS_SOURCE +
 'function pinnedProvider(){var ps=resProviders();if(!ps.length)return null;var want=localStorage.getItem("aioffice.gaugePin")||"claude";'+
 'for(var i=0;i<ps.length;i++)if(ps[i].id===want&&ps[i].bars.length)return ps[i];'+
 'for(var j=0;j<ps.length;j++)if(ps[j].bars.length)return ps[j];return ps[0]}'+
-'function paintGauges(){var gb=document.getElementById("gaugebar");if(!gb)return;var o=LAST_OFFICE||{};var rl=o.relay||{};var tk0=o.tasks||{};'+
-'function bar(lb,pct){var cls=pct>=90?" hot":pct>=70?" warn":"";return \'<div class="gg\'+cls+\'"><span class=lb>\'+lb+\'</span><span class=tr><i style="width:\'+Math.max(2,Math.min(100,Math.round(pct)))+\'%"></i></span><b>\'+Math.round(pct)+\'%</b></div>\'}'+
-'var h="";var pv=pinnedProvider();'+
-'if(pv){h+=\'<div class="gg gg-p"><span class=lb>⚡\'+pv.label+\'</span></div>\';'+
-'pv.bars.slice(0,2).forEach(function(b0){h+=bar(b0.k,b0.pct)})}'+
-'if(typeof rl.pct==="number")h+=bar(T("📡中継","📡Relay"),rl.pct);'+
-'if(gb.innerHTML!==h)gb.innerHTML=h;paintTicker(false)}'+
+// R82-sec(S1): サーバー由来の pv.label/b0.k を innerHTML 連結していた＝XSS掟の唯一の破れ。
+// paintRes と同じ el()＝textContent 構築へ統一（label/kは中継経由で攻撃者制御可能なため）。
+'function paintGauges(){var gb=document.getElementById("gaugebar");if(!gb)return;var o=LAST_OFFICE||{};var rl=o.relay||{};'+
+'function bar(lb,pct){var p=Math.max(0,Math.min(100,Math.round(pct)));var d=el("div","gg"+(p>=90?" hot":p>=70?" warn":""));d.appendChild(el("span","lb",lb));var tr=el("span","tr");var i=el("i");i.style.width=Math.max(2,p)+"%";tr.appendChild(i);d.appendChild(tr);d.appendChild(el("b","",p+"%"));gb.appendChild(d)}'+
+'gb.innerHTML="";var pv=pinnedProvider();'+
+'if(pv){var pc=el("div","gg gg-p");pc.appendChild(el("span","lb","⚡"+pv.label));gb.appendChild(pc);'+
+'pv.bars.slice(0,2).forEach(function(b0){bar(b0.k,b0.pct)})}'+
+'if(typeof rl.pct==="number")bar(T("📡中継","📡Relay"),rl.pct);'+
+'paintTicker(false)}'+
 // R81-4: ライブ活動ティッカー（殺風景対策の本体＝「誰が今なにを」が常に流れる）。
 // 4.5秒ローテ・フェード・タップでそのプロジェクトのシート。reduced-motionは即時切替。
 'var TICKER_I=0,TICKER_CUR=null;'+

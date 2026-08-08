@@ -58,7 +58,7 @@ if [ "$MODE" = "--check" ]; then
     && good "Stop hook が settings.json に配線済み" || bad "Stop hook が未配線"
   launchctl print "gui/$UID_NUM/com.senao.aioffice" >/dev/null 2>&1 \
     && good "常駐（オフィス本体）が登録済み" || info "常駐は未登録（この場で起動する運用も可）"
-  if curl -sf -o /dev/null "http://127.0.0.1:$PORT/api/office"; then
+  if curl -sf -o /dev/null -H "X-Office-Local: 1" "http://127.0.0.1:$PORT/api/office"; then
     good "サーバー応答あり（http://localhost:${PORT}）"
   else
     info "サーバーは停止中"
@@ -116,7 +116,7 @@ say ""
 say "4. 動作を確認します"
 up=""
 for _ in $(seq 1 20); do
-  if curl -sf -o /dev/null "http://127.0.0.1:$PORT/api/office"; then up=1; break; fi
+  if curl -sf -o /dev/null -H "X-Office-Local: 1" "http://127.0.0.1:$PORT/api/office"; then up=1; break; fi
   sleep 0.5
 done
 if [ -n "$up" ]; then

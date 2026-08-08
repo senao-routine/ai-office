@@ -137,7 +137,7 @@ OFFICE_HOME="$VHOME" OFFICE_CONFIG="$VHOME/office_config.json" OFFICE_PICK_DIR="
   python3 server/office_server.py --port $TPORT >/dev/null 2>&1 &
 SPID=$!
 sleep 1.2
-API=$(curl -s http://127.0.0.1:$TPORT/api/office)
+API=$(curl -s -H "X-Office-Local: 1" http://127.0.0.1:$TPORT/api/office)
 python3 - "$API" <<'EOF' || ng "APIスキーマ検証失敗"
 import json, sys
 d = json.loads(sys.argv[1])
@@ -175,6 +175,11 @@ CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://127.0.0.1:$TPORT/ap
 # DNSリバインディングガード: ループバック以外のHostは403
 CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "Host: evil.example" http://127.0.0.1:$TPORT/api/office)
 [ "$CODE" = "403" ] && ok "Hostガード: 非ループバックHost拒否 (403)" || ng "Hostガード失敗 (code=$CODE)"
+# M4: GET /api/office もCSRFゲート（ヘッダ無し＝別オリジンのdrive-byを拒否・res_summaryの外部HTTP副作用を防ぐ）
+CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:$TPORT/api/office)
+[ "$CODE" = "403" ] && ok "M4 GET /api/office CSRFガード (ヘッダ無403)" || ng "M4 /api/office CSRF失敗 (code=$CODE)"
+CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "X-Office-Local: 1" http://127.0.0.1:$TPORT/api/office)
+[ "$CODE" = "200" ] && ok "M4 GET /api/office ヘッダ有り200" || ng "M4 /api/office 正常系失敗 (code=$CODE)"
 curl -s http://127.0.0.1:$TPORT/ | grep -q "AI Office" && ok "GET / 200+HTMLマーカー" || ng "トップページ異常"
 # R52: 旧UIは削除済み＝?ui=legacy でも新UI(boot.html)が返ること（旧ページの残骸を配らない）
 curl -s http://127.0.0.1:$TPORT/ | grep -q 'id="bootstate"' \
@@ -248,7 +253,7 @@ CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://127.0.0.1:$TPORT/ap
 
 # R42.1 エディション: config差し替えで同一サーバーのまま検査（editionは毎スキャンでconfig再読込・cache 2秒）。
 # 検査後は必ず元configへ復元＋cache失効待ち（▶7 UIスモークは既定hybrid前提のため）。
-API=$(curl -s http://127.0.0.1:$TPORT/api/office)
+API=$(curl -s -H "X-Office-Local: 1" http://127.0.0.1:$TPORT/api/office)
 echo "$API" | python3 -c 'import sys,json; d=json.load(sys.stdin); e=d["edition"]; f=e["features"]; assert e["id"]=="hybrid" and f["claudeSessions"] and f["openclaw"] and f["costDash"], e; print("  ✓ R42.1+R42.2 edition既定=hybrid (fixtureライセンスでfeatures全開)")' \
   || ng "R42.1 edition既定がhybridでない: $(echo "$API" | head -c 160)"
 CFG_ORIG=$(cat "$VHOME/office_config.json")
@@ -259,7 +264,7 @@ d = json.loads(open(p, encoding="utf-8").read()); d["edition"] = ed
 open(p, "w", encoding="utf-8").write(json.dumps(d, ensure_ascii=False))
 EOF
 sleep 2.2
-API=$(curl -s http://127.0.0.1:$TPORT/api/office)
+API=$(curl -s -H "X-Office-Local: 1" http://127.0.0.1:$TPORT/api/office)
 echo "$API" | python3 -c 'import sys,json; d=json.load(sys.stdin); e=d["edition"]; assert e["id"]=="claude" and e["features"]["openclaw"] is False, e; assert len(d["employees"])==2, len(d["employees"]); print("  ✓ R42.1 edition=claude (openclaw閉・claude社員は出る)")' \
   || ng "R42.1 edition=claude 検査失敗: $(echo "$API" | head -c 160)"
 CODE=$(curl -s -o /dev/null -w "%{http_code}" $H_LOCAL http://127.0.0.1:$TPORT/api/external/openclaw)
@@ -271,7 +276,7 @@ d = json.loads(open(p, encoding="utf-8").read()); d["edition"] = ed
 open(p, "w", encoding="utf-8").write(json.dumps(d, ensure_ascii=False))
 EOF
 sleep 2.2
-API=$(curl -s http://127.0.0.1:$TPORT/api/office)
+API=$(curl -s -H "X-Office-Local: 1" http://127.0.0.1:$TPORT/api/office)
 echo "$API" | python3 -c 'import sys,json; d=json.load(sys.stdin); e=d["edition"]; assert e["id"]=="openclaw" and e["features"]["claudeSessions"] is False, e; assert d["employees"]==[], "openclaw版でclaude社員が出ている"; print("  ✓ R42.1 edition=openclaw (transcriptスキャン停止=社員0)")' \
   || ng "R42.1 edition=openclaw 検査失敗: $(echo "$API" | head -c 160)"
 CODE=$(curl -s -o /dev/null -w "%{http_code}" $H_LOCAL http://127.0.0.1:$TPORT/api/external/openclaw)
@@ -313,7 +318,7 @@ p.parent.mkdir(parents=True, exist_ok=True)
 p.write_text(json.dumps(raw), encoding="utf-8")
 EOF
 sleep 2.2
-API=$(curl -s http://127.0.0.1:$TPORT/api/office)
+API=$(curl -s -H "X-Office-Local: 1" http://127.0.0.1:$TPORT/api/office)
 echo "$API" | python3 -c 'import sys,json; d=json.load(sys.stdin); oc=[e for e in d["employees"] if e.get("external")=="openclaw"]; assert len(oc)==3, [e.get("session") for e in d["employees"]]; assert all(e["session"].startswith("oc-") and e["lastSaid"]=="" and e["cwd"]=="" for e in oc), oc; print("  ✓ R42.3 oc-社員3体がoffice_jsonへマージ (本文フィールドは空)")' \
   || ng "R42.3 oc-社員マージ失敗: $(echo "$API" | head -c 200)"
 rm -f "$VHOME/.claude/openclaw_status.json"
@@ -455,7 +460,7 @@ OFFICE_HOME="$DHOME" OFFICE_DATA="$DTMP/data" python3 "$DTMP/app/server/office_s
 DPID=$!
 sleep 1.2
 kill -0 $DPID 2>/dev/null || ng "P4 コピー先サーバー即死 (${TPORT}先客/EADDRINUSE?)"
-D_API=$(curl -s http://127.0.0.1:$TPORT/api/office)
+D_API=$(curl -s -H "X-Office-Local: 1" http://127.0.0.1:$TPORT/api/office)
 echo "$D_API" | grep -q '"employees"' && ok "P4 コピー先サーバー起動+API応答" || ng "P4 コピー先起動失敗: $(echo "$D_API" | head -c 120)"
 kill $DPID 2>/dev/null; wait $DPID 2>/dev/null; DPID=""
 # (d) plist 妥当性（lint+中身+実行子の存在）

@@ -30,24 +30,16 @@ AI Office はそのループを閉じる:
 - **🔒 プライバシー設計** — 127.0.0.1のみ・transcripts読み取り専用・**本文はMac側で除去してから中継**
 - **依存ゼロ** — サーバーはPython標準ライブラリのみ。クローンして即動く
 
-## クイックスタート
+## クイックスタート（1コマンド）
 
 ```bash
 git clone https://github.com/senao-routine/ai-office.git && cd ai-office
-python3 server/office_server.py
+bash setup.sh
 ```
 
-<http://localhost:4780> を開く。**指示配達の有効化**（これが本体・1分）:
-
-```bash
-bash hooks/install.sh --wire   # ~/.claude/settings.json へ Stop hook を自動配線（バックアップ作成・冪等）
-```
-
-常駐化（ログイン時自動起動・再起動後も生存）:
-
-```bash
-bash macapp/install.sh
-```
+`setup.sh` が **指示配達の配線 → 常駐登録（launchctl まで実行）→ 起動確認 → 画面を開く** まで
+最後まで通します（手動の launchctl 手打ちは不要）。動作確認だけしたいときは `bash setup.sh --no-daemon`、
+状態診断は `bash setup.sh --check`。
 
 MCP登録（任意）:
 
@@ -68,9 +60,12 @@ claude mcp list   # → aioffice: connected
 
 中継は**自分の Cloudflare アカウント**で動く（無料枠で十分・ポート開放なし・Macは完全アウトバウンド）。
 
-1. `bash relay/deploy.sh`（Worker + Durable Object をデプロイ）
-2. オフィスUI → 📱 → デバイス発行 → QRペアリング
-3. ホーム画面に追加（iOS 16.4+）→ 🔔 でPush有効化
+```bash
+bash relay/setup.sh   # ログイン確認 → トークン/通知鍵(VAPID)を自動生成 → デプロイ → 設定書込 → 疎通確認
+```
+
+そのあと: オフィスUI → 📱 → デバイス発行 → QRペアリング → iPhoneでホーム画面に追加（iOS 16.4+）→ 🔔 でPush有効化。
+（VAPIDを設定しないと🔔を押しても通知が来ません。`relay/setup.sh` はここまで自動でやります。）
 
 中継は輸送トークンしか持たず**指示を偽造できない**（真正性は per-device HMAC 署名を Mac 側で検証する二層認証）。
 
@@ -78,17 +73,17 @@ claude mcp list   # → aioffice: connected
 
 | | 価格 | 内容 |
 |---|---|---|
-| **Free** | $0 | ローカルオフィス全機能（3D表示・デスクトップからの指示・デモ・MCP） |
-| **Pro** | $12.99 買い切り | スマホPWA配達・プッシュ通知・コストダッシュボード |
-| **Hybrid** | $29 買い切り | Pro＋外部エージェント（OpenClawノード）を同じオフィスに表示 |
+| **Free** | ¥0 | ローカルオフィス全機能（3D表示・デスクトップからの指示・デモ・MCP） |
+| **Pro** | ¥980 買い切り | スマホPWA配達・プッシュ通知・遠隔実行・コストダッシュボード |
 
-オフラインライセンスファイル。サブスク無し・アカウント無し・テレメトリ無し。販売リンクは公開時に掲載（このリポジトリを Watch）。
+オフラインライセンスファイル。サブスク無し・アカウント無し・テレメトリ無し。
+購入・アップデートは[特設ページ](https://routinelabo-lp.routinelabo-senao.workers.dev)から。
 
 ## 動作環境
 
 - macOS（Apple Silicon / Intel）・Python 3.9+（システムの `python3` でOK）
 - [Claude Code](https://claude.com/claude-code)
-- UI言語: 日本語/英語（ロケール自動判定・`office_config.json` の `"lang"` で固定可）
+- UI言語: 日本語/英語（ロケール自動判定・`office_config.json` の `"lang"` で固定可。常駐インストール時の編集先は `~/Library/Application Support/AIOffice/data/office_config.json`）
 
 ## 開発者向け
 

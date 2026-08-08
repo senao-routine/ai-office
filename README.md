@@ -26,7 +26,7 @@ Plenty of tools *show* your agents. Almost none let you *run* them:
 |---|---|---|---|
 | Pixel-office viewers | ✅ cute | ❌ watch-only | one machine |
 | Claude Code Agent View | table UI | peek & reply | one machine, Claude only |
-| **AI Office** | ✅ live 3D office | ✅ answer / approve / instruct — from tray, list, 3D floor, or phone | Claude Code today, external agents (OpenClaw) in the same office, multi-Mac aggregation in progress |
+| **AI Office** | ✅ live 3D office | ✅ answer / approve / instruct — from tray, list, 3D floor, or phone | Claude Code sessions on your Mac |
 
 And privacy is structural, not a setting: message bodies are stripped **on your Mac** before anything reaches the relay — the relay carries states, activity verbs and questions, never your code or conversations. Instructions are HMAC-signed per device; the relay **cannot forge them**. Your own Cloudflare account, no vendor server, no account, one-time license.
 
@@ -39,7 +39,7 @@ And privacy is structural, not a setting: message bodies are stripped **on your 
 - **🎬 Demo mode** — `/?demo=1`, no sessions needed
 - **🔔 Desktop notifications + daily report** — new ❗ pings you; at 18:00 a one-file daily summary of what your fleet shipped
 - **📱 Phone PWA + Web Push** (Pro) — QR pairing, per-device HMAC signing, one-tap approve / stop / free-form replies
-- **💸 Cost gauges** (Pro) — Claude / Codex / Gemini credit usage and monthly spend
+- **💸 Cost gauges** (Pro) — Claude / Codex and other providers' quota usage and monthly spend
 - **🔌 MCP tools** — `office_status` / `office_instruct`, so agents can read and drive the office too
 - **🔒 Private by design** — `127.0.0.1` bind only, transcripts read-only, bodies redacted at source
 - **Zero dependencies** — server is Python standard library only. Clone and run
@@ -102,24 +102,18 @@ Security model: the relay carries a transport token only and **cannot forge inst
 
 | | Price | What you get |
 |---|---|---|
-| **Free** | $0 | The full local office — live 3D visualization, instruct from the desktop UI, demo mode, MCP |
-| **Pro** | $12.99 one-time | Phone PWA delivery, push notifications, cost dashboard |
-| **OpenClaw** | $0 | For OpenClaw users: your agents work in a dark-themed office as red lobster bots, phone PWA and push included |
-| **Hybrid** | $29 one-time | Pro + external agents (OpenClaw nodes) working in the same office |
+| **Free** | ¥0 | The full local office — live 3D visualization, instruct from the desktop UI, demo mode, MCP |
+| **Pro** | ¥980 one-time | Phone PWA delivery, push notifications, remote actions, cost dashboard |
 
-Offline license file. No subscription, no account, no telemetry. Purchase links are coming at launch — **Watch this repo** for the release.
-
-The OpenClaw edition is **not a trial and does not expire** — start it with
-`bash macapp/install.sh --edition openclaw` (or set `"edition": "openclaw"` in
-`office_config.json`). It runs without Claude Code.
+Offline license file. No subscription, no account, no telemetry. See the
+[product page](https://routinelabo-lp.routinelabo-senao.workers.dev) for purchase and updates.
 
 ## Requirements
 
 - macOS (Apple Silicon or Intel), Python 3.9+ (the system `python3` works)
 - Node.js — only for the optional phone relay (`wrangler` runs through `npx`)
 - [Claude Code](https://claude.com/claude-code) — the office visualizes its local sessions
-  (not required for the OpenClaw edition, which shows agents from your OpenClaw machine instead)
-- UI language: English / Japanese (auto-detected from your locale; set `"lang"` in `office_config.json` to pin)
+- UI language: English / Japanese (auto-detected; to pin, set `"lang"` in `office_config.json` — when installed as a resident app, that file lives at `~/Library/Application Support/AIOffice/data/office_config.json`)
 
 ## 日本語ドキュメント
 

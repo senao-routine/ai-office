@@ -43,7 +43,7 @@ case "${1:-status}" in
     ;;
   status)
     if lsof -ti tcp:$PORT -sTCP:LISTEN >/dev/null 2>&1; then
-      curl -s "http://127.0.0.1:$PORT/api/office" | python3 -c \
+      curl -s -H "X-Office-Local: 1" "http://127.0.0.1:$PORT/api/office" | python3 -c \
         'import json,sys; d=json.load(sys.stdin); c=d["counts"]; print("🏢 稼働中: 出勤%d 作業中%d 待機%d" % (len(d["employees"]), c["working"], c["waiting"]))'
     else
       echo "停止中 (start で起動)"
