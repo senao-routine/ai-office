@@ -879,3 +879,15 @@
    従来はシート(z:7・幅320px)がトレイ(z:5)の右側＝回答ボタン群を丸ごと覆い、
    同時に数字キーも無効化されるので「シートを開いた瞬間トレイに戻れない」行き止まりだった。 */
 .ui-iso.sheet-open #attn.tray { right: 348px; }
+
+/* R82: 定型文エディタ（クイック定型のユーザー定義） */
+.tplchip .qicon { color: var(--iso-accent, #7c5cff); }
+.tplrow {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 2px; border-bottom: 1px dashed rgba(124, 92, 255, .18);
+  font-size: 12.5px;
+}
+.tplrow b { flex: none; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tplrow .tpltext { flex: 1; min-width: 0; color: var(--iso-muted, #6a6584); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tplrow .tpldel { flex: none; width: auto; margin: 0; padding: 4px 10px; font-size: 11px; }
+.tpladdrow { margin-top: 6px; }

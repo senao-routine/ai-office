@@ -1282,7 +1282,10 @@ def scan_office():
         "edition": edition_info,
         "actions": actions_view,
         "relay": relay_view,
-        "res": status_board.claude_gauge_public(now),
+        "res": res_summary(now),
+        # R82: 定型文は「遠隔から使うために自分で保存した再利用フレーズ」＝中継搬送が目的。
+        # feed/history系のredaction対象にしない（上限8件×120字・label/textのみ）
+        "templates": load_templates(),
         "launchable": launchable_projects(now),
         "lang": _LANG,
         "counts": {
@@ -2151,6 +2154,14 @@ class Handler(BaseHTTPRequestHandler):
                 return self._deny(403, "cross-site request blocked")
             self._send(200, json.dumps(projects_index.projects_json(), ensure_ascii=False).encode("utf-8"),
                        "application/json; charset=utf-8")
+        elif self.path.split("?", 1)[0] == "/api/templates":
+            # R82: 定型文の全文はローカルUIとoffice_json両方に出る（ユーザーが遠隔利用の
+            # ために自分で保存した再利用フレーズ＝中継搬送は設計意図）。編集はローカルのみ。
+            if not self._csrf_ok():
+                return self._deny(403, "cross-site request blocked")
+            self._send(200, json.dumps({"templates": load_templates()},
+                                       ensure_ascii=False).encode("utf-8"),
+                       "application/json; charset=utf-8")
         elif self.path.split("?", 1)[0] == "/api/recipes":
             # R79-10: 許可リストの全文（argv/cwd/env入り）はローカルUI専用。
             # 中継へ出るのは office_json の recipes_public（id/label/dangerousのみ）だけ。
@@ -2247,6 +2258,10 @@ class Handler(BaseHTTPRequestHandler):
         elif self.path.startswith("/api/pair/revoke"):
             ok = revoke_device(data.get("device_id", ""))
             msg = "失効しました" if ok else "端末が見つかりません"
+        elif self.path.startswith("/api/templates/set"):
+            ok, msg = save_templates(data.get("templates"))
+            if ok:
+                extra = {"templates": load_templates(), "message": msg}
         elif self.path.startswith("/api/recipes/set"):
             # R79-10: 許可リストの編集は**ここだけ**（loopback+CSRF＝Macの前の人間のみ）。
             # 遠隔からレシピを作る/変える経路は存在しない（電話が持てるのは登録済みidへの参照だけ）。
@@ -2372,6 +2387,86 @@ def set_relay_usage(usage):
         return True
     except (OSError, TypeError, ValueError):
         return False
+
+
+TEMPLATES_FILE = _HOME / ".claude" / "office_templates.json"
+TEMPLATE_MAX = 8
+TEMPLATE_LABEL_MAX = 20
+TEMPLATE_TEXT_MAX = 120
+
+
+def load_templates():
+    """R82: ユーザー定義のクイック定型文（label/textのみ・上限つき）。壊れていれば空。"""
+    try:
+        raw = json.loads(TEMPLATES_FILE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, UnicodeError):
+        return []
+    out = []
+    if isinstance(raw, list):
+        for item in raw[:TEMPLATE_MAX]:
+            if not isinstance(item, dict):
+                continue
+            label = str(item.get("label") or "").strip()[:TEMPLATE_LABEL_MAX]
+            text = str(item.get("text") or "").strip()[:TEMPLATE_TEXT_MAX]
+            if label and text:
+                out.append({"label": label, "text": text})
+    return out
+
+
+def save_templates(items):
+    """編集は loopback+CSRF のローカルUIのみ（レシピと同じ「作るのはMacの前だけ」）。"""
+    if not isinstance(items, list):
+        return False, "形式が不正です"
+    if len(items) > TEMPLATE_MAX:
+        return False, f"定型文は{TEMPLATE_MAX}件までです"
+    clean = []
+    for item in items:
+        if not isinstance(item, dict):
+            return False, "形式が不正です"
+        label = str(item.get("label") or "").strip()
+        text = str(item.get("text") or "").strip()
+        if not label or not text:
+            return False, "ラベルと本文の両方が必要です"
+        if len(label) > TEMPLATE_LABEL_MAX or len(text) > TEMPLATE_TEXT_MAX:
+            return False, f"ラベル{TEMPLATE_LABEL_MAX}字・本文{TEMPLATE_TEXT_MAX}字までです"
+        clean.append({"label": label, "text": text})
+    tmp = TEMPLATES_FILE.with_name(TEMPLATES_FILE.name + ".tmp")
+    try:
+        TEMPLATES_FILE.parent.mkdir(parents=True, exist_ok=True)
+        tmp.write_text(json.dumps(clean, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, TEMPLATES_FILE)
+    except OSError as e:
+        return False, f"保存できません: {e}"
+    return True, f"{len(clean)}件を保存しました"
+
+
+_RES_CACHE = {"ts": 0.0, "data": None}
+
+
+def res_summary(now=None):
+    """R82: office_json["res"] v2。旧キー(fiveHour/sevenDay/staleSec)は後方互換で温存し、
+    providers[]（多プロバイダ最小ゲージ）を追加。60秒キャッシュ・fail-soft
+    （補助データが office_json 本体を殺さない）。"""
+    now = time.time() if now is None else now
+    cache = _RES_CACHE
+    if now - cache["ts"] < 60:
+        return cache["data"]
+    data = None
+    try:
+        data = status_board.claude_gauge_public(now)
+    except Exception:
+        data = None
+    try:
+        g = status_board.gauges_public(now)
+        if g and g.get("providers"):
+            data = dict(data or {})
+            data["providers"] = g["providers"]
+    except Exception:
+        pass
+    cache["ts"] = now
+    cache["data"] = data
+    return data
 
 
 _LAUNCHABLE_CACHE = {"ts": 0.0, "data": []}

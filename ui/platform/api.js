@@ -77,6 +77,11 @@ export const pairList = () => api("/api/pair/list");
 export const pairRevoke = (deviceId) =>
   api("/api/pair/revoke", { method: "POST", body: { device_id: deviceId } });
 
+/** R82 クイック定型文（作成はローカルUIのみ・スマホへは office_json.templates で同期）。 */
+export const getTemplates = () => api("/api/templates");
+export const setTemplates = (templates) =>
+  api("/api/templates/set", { method: "POST", body: { templates } });
+
 /** R79-10 遠隔実行の許可リスト（ローカルUI専用＝ここでしか作れない・スマホからは参照のみ）。 */
 export const getRecipes = () => api("/api/recipes");
 export const setRecipes = (recipes) =>

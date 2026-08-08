@@ -1113,7 +1113,9 @@ const APP_HTML = "<!doctype html><html lang=ja><head>" +
 /* 🔔はヘッダー右端（タブは3つに集約）。汎用button{}の後勝ちに負けないようid込みで上書き */
 '.hdr2 #ntog{width:auto;flex:none;margin:0;padding:0;min-height:40px;min-width:44px;display:inline-flex;align-items:center;justify-content:center;background:transparent;border-radius:11px;color:var(--ink);font-size:18px}' +
 '.hdr2 #ntog.on{background:rgba(124,92,255,.12)}' +
-'.hdr2 .ttl{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;font-size:15px}' +
+'.hdr2 .ttl{min-width:0;flex:1;display:flex;flex-direction:column;gap:1px;line-height:1.25}' +
+'.hdr2 .ttl .tname{font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
+'.hdr2 .ttl .tsub{font-size:10px;font-weight:700;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
 '.deptbar{display:flex;gap:7px;overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch;padding:6px 10px;background:rgba(255,255,255,.55);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);border-bottom:1px solid var(--line);height:47px;min-height:47px;scrollbar-width:none}' +
 '.deptbar::-webkit-scrollbar{display:none}' +
 '.deptbar:empty{display:none}' +
@@ -1204,13 +1206,15 @@ const APP_HTML = "<!doctype html><html lang=ja><head>" +
 '#ticker .tk-n{flex:none;font-size:10px;color:var(--muted);font-weight:800;background:rgba(124,92,255,.10);border-radius:99px;padding:2px 7px}' +
 'body.th-dark #ticker{color:#e8e6f6}' +
 '#gaugebar .gg{flex:1;display:grid;grid-template-columns:1fr auto;grid-template-areas:"lb pct" "bar bar";column-gap:7px;row-gap:4px;min-width:0;align-items:center}' +
-'#gaugebar .gg .lb{grid-area:lb;font-size:11.5px;font-weight:800;color:var(--muted);overflow:hidden;white-space:nowrap;letter-spacing:.02em}' +
+'#gaugebar .gg .lb{grid-area:lb;font-size:10.5px;font-weight:800;color:var(--muted);overflow:hidden;white-space:nowrap;letter-spacing:.01em}' +
 '#gaugebar .gg .tr{grid-area:bar;height:10px;border-radius:99px;background:rgba(124,92,255,.12);overflow:hidden;box-shadow:inset 0 1px 2px rgba(64,52,140,.10)}' +
 '#gaugebar .gg .tr i{display:block;height:100%;border-radius:99px;background:var(--sage)}' +
 '#gaugebar .gg.warn .tr i{background:var(--amber)}' +
 '#gaugebar .gg.hot .tr i{background:var(--alert)}' +
-'#gaugebar .gg b{grid-area:pct;font-size:15px;font-weight:800;letter-spacing:.01em}' +
-'#gaugebar .gg-t{display:flex;flex:none;align-items:center;background:rgba(124,92,255,.10);border-radius:12px;padding:7px 11px}' +
+'#gaugebar .gg b{grid-area:pct;font-size:13.5px;font-weight:800;letter-spacing:.01em}' +
+'#gaugebar .gg-t,#gaugebar .gg-p{display:flex;flex:none;align-items:center;background:rgba(124,92,255,.10);border-radius:12px;padding:7px 11px}' +
+'#gaugebar .gg-p .lb{font-size:12px;color:var(--ink);max-width:96px}' +
+'body.th-dark #gaugebar .gg-p .lb{color:#e8e6f6}' +
 '#gaugebar .gg-t .lb{font-size:12.5px;color:var(--ink)}' +
 'body.th-dark #gaugebar .gg-t .lb{color:#e8e6f6}' +
 '#reswrap .sheet{background:rgba(255,255,255,.97)}' +
@@ -1225,6 +1229,11 @@ const APP_HTML = "<!doctype html><html lang=ja><head>" +
 '#rs_body .rs-bar.hot .tr i{background:var(--alert)}' +
 '#rs_body .rs-bar b{flex:none;font-size:12px;font-weight:800}' +
 '#rs_body .rs-note{font-size:11.5px;color:#6c6890;font-weight:600;margin:2px 0 4px;line-height:1.6}' +
+'#rs_body .rs-chips{display:flex;gap:8px;flex-wrap:wrap;margin:4px 0 10px}' +
+'#rs_body .rs-chip{width:auto;margin:0;background:#eeecf9;color:#514d78;border:1px solid transparent;border-radius:999px;padding:7px 14px;font-size:12.5px;font-weight:800;min-height:36px}' +
+'#rs_body .rs-chip.on{background:var(--sage);color:#fff}' +
+'body.th-dark #rs_body .rs-chip{background:rgba(124,92,255,.16);color:#d9ceff}' +
+'body.th-dark #rs_body .rs-chip.on{background:var(--sage);color:#fff}' +
 'body.th-dark #rs_body .rs-note{color:#8f8ab5}' +
 'body.th-dark #gaugebar{background:rgba(30,28,58,.80);border-color:rgba(160,140,255,.20)}' +
 '#roster{flex:none;display:flex;gap:8px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding:2px;scrollbar-width:none}' +
@@ -1277,6 +1286,7 @@ const APP_HTML = "<!doctype html><html lang=ja><head>" +
 '<nav class="tabbar hidden" id=tabbar>' +
 '<button id=tb_office onclick="setView(\'office\')"><span class=ic>🏢</span><span id=tb_office_lb>オフィス</span></button>' +
 '<button id=tb_list onclick="setView(\'list\')"><span class=ic>☰</span><span id=tb_list_lb>リスト</span></button>' +
+'<button id=tb_run onclick="openRun()"><span class=ic>▶</span><span id=tb_run_lb>実行</span></button>' +
 '<button id=tb_set onclick="openSettings()"><span class=ic>⚙️</span><span id=tb_set_lb>設定</span></button>' +
 '</nav>' +
 // R79-10: ▶実行シート（許可リスト方式）。ここに出るのは**Macの前で登録したレシピ**だけ＝
@@ -1304,8 +1314,6 @@ const APP_HTML = "<!doctype html><html lang=ja><head>" +
 '<div class=seg><button id=sg_sd_on onclick="setSound(true)">ON</button><button id=sg_sd_off onclick="setSound(false)">OFF</button></div></div>' +
 '<div class=setrow><div><div class=lb id=st_pt_lb>🔔 通知テスト</div><div class=hint id=st_pt_hint>登録済みの全端末へテスト通知。購読時のフィルタが通知対象になります（全部=すべて）</div></div>' +
 '<div class=seg><button id=st_pt_btn onclick="sendTestPush()">送信</button></div></div>' +
-'<div class=setrow><div><div class=lb id=st_rn_lb>▶ 遠隔実行</div><div class=hint id=st_rn_hint>Macに登録した操作を実行します（登録はMacの前でのみ）</div></div>' +
-'<div class=seg><button id=st_rn_btn onclick="closeSettings();openRun()">開く</button></div></div>' +
 '<div class=setrow><div><div class=lb id=st_ln_lb>▶ プロジェクトを起動</div><div class=hint id=st_ln_hint>休眠中のプロジェクトのセッションをMacで開きます</div></div>' +
 '<div class=seg><button id=st_ln_btn onclick="closeSettings();openLaunch()">開く</button></div></div>' +
 '<div class=setrow><div><div class=lb id=st_res_lb>⚡ リソース</div><div class=hint id=st_res_hint>読み込み中…</div></div><div class=seg><button id=st_res_btn onclick="closeSettings();openRes()">開く</button></div></div>' +
@@ -1364,7 +1372,13 @@ PWA_GLOSS_SOURCE +
 // R51: ❗回答済みフラグは localStorage 永続（再訪しても「送信済み」が残り、消えたら✅ answeredトースト）
 'var ATTN_SENT=(function(){try{return JSON.parse(localStorage.getItem("aioffice.attnSent")||"{}")||{}}catch(_){return {}}})();' +
 'function saveAttnSent(){try{localStorage.setItem("aioffice.attnSent",JSON.stringify(ATTN_SENT))}catch(_){}}' +
-'function checkAnswered(agents){var live={};(Array.isArray(agents)?agents:[]).forEach(function(e){if(e&&needsAttn(e)){var k=attnKey(e);if(k)live[k]=1}});var done=[];Object.keys(ATTN_SENT).forEach(function(k){if(!live[k]){done.push(k);delete ATTN_SENT[k]}});if(!done.length)return;saveAttnSent();var names=[];(Array.isArray(agents)?agents:[]).forEach(function(e){if(done.indexOf(attnKey(e))>=0){var n=e.disp||e.session;if(n)names.push(n)}});note(T("✅ 回答済み: ","✅ Answered: ")+(names.join(", ")||T("対応完了","resolved")))}' +
+// R82: 今日のまとめ用の軽量カウンタ（端末ローカル・日付キー・7日分だけ保持）
+'function todayKey(){var d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")}'+
+'function bumpSentLog(){try{var log=JSON.parse(localStorage.getItem("aioffice.sentlog")||"{}")||{};var k=todayKey();log[k]=(log[k]||0)+1;var keys=Object.keys(log).sort();while(keys.length>7){delete log[keys.shift()]}localStorage.setItem("aioffice.sentlog",JSON.stringify(log))}catch(_){}}'+
+'function sentToday(){try{return (JSON.parse(localStorage.getItem("aioffice.sentlog")||"{}")||{})[todayKey()]||0}catch(_){return 0}}'+
+'function bumpAnsLog(){try{var log=JSON.parse(localStorage.getItem("aioffice.anslog")||"{}")||{};var k=todayKey();log[k]=(log[k]||0)+1;var keys=Object.keys(log).sort();while(keys.length>7){delete log[keys.shift()]}localStorage.setItem("aioffice.anslog",JSON.stringify(log))}catch(_){}}'+
+'function answeredToday(){var n=0;try{n=(JSON.parse(localStorage.getItem("aioffice.anslog")||"{}")||{})[todayKey()]||0}catch(_){n=0}var t0=new Date();t0.setHours(0,0,0,0);Object.keys(ATTN_SENT).forEach(function(k){var v=ATTN_SENT[k];if(typeof v==="number"&&v>=t0.getTime())n++});return n}'+
+'function checkAnswered(agents){var live={};(Array.isArray(agents)?agents:[]).forEach(function(e){if(e&&needsAttn(e)){var k=attnKey(e);if(k)live[k]=1}});var done=[];Object.keys(ATTN_SENT).forEach(function(k){if(!live[k]){done.push(k);if(typeof ATTN_SENT[k]==="number")bumpAnsLog();delete ATTN_SENT[k]}});if(!done.length)return;saveAttnSent();var names=[];(Array.isArray(agents)?agents:[]).forEach(function(e){if(done.indexOf(attnKey(e))>=0){var n=e.disp||e.session;if(n)names.push(n)}});note(T("✅ 回答済み: ","✅ Answered: ")+(names.join(", ")||T("対応完了","resolved")))}' +
 // R51: 配達往復の可視化＝pending(📨 queued)が消えた瞬間を捉えて ✓ delivered チップを短時間出す
 'var PEND_PREV={},DELIVERED={};' +
 'function checkDelivery(agents){var now=Date.now(),cur={};(Array.isArray(agents)?agents:[]).forEach(function(e){if(e&&e.pending){var k=attnKey(e);if(k)cur[k]=1}});Object.keys(PEND_PREV).forEach(function(k){if(!cur[k])DELIVERED[k]=now+25000});PEND_PREV=cur;Object.keys(DELIVERED).forEach(function(k){if(DELIVERED[k]<now)delete DELIVERED[k]})}' +
@@ -1393,6 +1407,17 @@ PWA_GLOSS_SOURCE +
 'function refreshAges(emps){var m={};for(var j=0;j<emps.length;j++)m[emps[j].session||""]=emps[j];var ns=document.querySelectorAll("[data-agesess]");for(var i=0;i<ns.length;i++){var e=m[ns[i].getAttribute("data-agesess")];if(!e)continue;ns[i].textContent=fmtAge(e.age);if(e.age!=null&&e.age<30)ns[i].classList.add("fresh");else ns[i].classList.remove("fresh")}}' +
 'function renderList(office){var list=document.getElementById("list");list.innerHTML="";var emps=filterEmps(officeAgents(office));' +
 'if(!emps.length){list.appendChild(el("div","empty",PREF.deptFilter?T("（選択中の絞り込みに該当するプロジェクトがありません）","(No projects match the current filter)"):T("（出勤中のプロジェクトがありません）","(No projects are on duty right now)")));return}' +
+// R82: 今日のまとめ（サーバー無改修＝既存office_json+端末ローカルの実数だけで正直に）
+'var sm=el("div","card daysum");var smHead=el("div","nm",T("📅 今日のまとめ","📅 Today"));sm.appendChild(smHead);'+
+'var tk0=office.tasks||{};var tot=(tk0.pending||0)+(tk0.inProgress||0)+(tk0.completed||0);'+
+'var lines=[];if(tot)lines.push(T("📋 タスク: 完了"+(tk0.completed||0)+" ・ 進行中"+(tk0.inProgress||0)+" ・ 未着手"+(tk0.pending||0),"📋 Tasks: done "+(tk0.completed||0)+" · doing "+(tk0.inProgress||0)+" · todo "+(tk0.pending||0)));'+
+'var st0=sentToday();if(st0)lines.push(T("📨 今日送った指示: "+st0+"件","📨 Instructions sent today: "+st0));'+
+'var an0=answeredToday();if(an0)lines.push(T("✅ 今日answerした❗: "+an0+"件","✅ Alerts answered today: "+an0));'+
+'var doneRows=[];emps.forEach(function(e){var dn=(e.work&&Array.isArray(e.work.done))?e.work.done.filter(function(s){return s&&s.trim()}):[];if(dn.length)doneRows.push({name:dispCrew(e),items:dn.slice(0,3)})});'+
+'if(!lines.length&&!doneRows.length){sm.appendChild(el("div","st",T("まだ今日の動きがありません","No activity yet today")))}'+
+'else{lines.forEach(function(l){sm.appendChild(el("div","st",l))});'+
+'doneRows.slice(0,4).forEach(function(r){var d=el("div","st");d.appendChild(el("b","",r.name+": "));d.appendChild(document.createTextNode("✅ "+r.items.join(" / ")));sm.appendChild(d)})}'+
+'list.appendChild(sm);'+
 'emps.slice().sort(triageSort).forEach(function(e){var card=el("div","card"+(needsAttn(e)?" alert":isPend(e)?" pend":""));card.setAttribute("data-sess",e.session||"");card.setAttribute("role","button");card.tabIndex=0;card.addEventListener("keydown",function(ev){if(ev.key==="Enter"||ev.key===" "){ev.preventDefault();openSheet(e)}});' +
 'var meta=el("div","meta");meta.appendChild(avatarNode(e,36));' +
 'meta.appendChild(el("div","nm",(needsAttn(e)?"❗ ":isPend(e)?"📨 ":"")+dispCrew(e)));' +
@@ -1421,7 +1446,11 @@ PWA_GLOSS_SOURCE +
 'var fd=(e.feed||[]);if(fd.length){dt.appendChild(el("div","sec",T("📋 最近の動き（"+fd.length+"件）— タップで全文を拡大","📋 Recent activity ("+fd.length+") — tap to expand")));var fb=el("div","feedbox");fb.setAttribute("role","button");fb.tabIndex=0;fd.slice(0,16).forEach(function(l){fb.appendChild(el("div","feedline",l))});fb.addEventListener("click",openLog);dt.appendChild(fb)}' +
 'if(e.lastSaid){dt.appendChild(el("div","sec",T("💬 直近の発言","💬 Latest message")));dt.appendChild(el("div","said",e.lastSaid))}' +
 'var q=document.getElementById("quickbtns");q.innerHTML="";if(canAct()&&e&&e.projectId&&(e.state==="resting"||!e.state)){var lb=el("button","sub",T("▶ このプロジェクトを起動","▶ Launch this project"));lb.title=T("Macでこのプロジェクトのセッションを開きます","Opens a session for this project on your Mac");lb.addEventListener("click",function(){launchProject(e)});q.appendChild(lb)}if(e.question&&questionOptionEntries(e).length){var qo=el("div","quickoptions");appendQuestionOptions(qo,e,"quickoption");q.appendChild(qo)}QUICK().forEach(function(it){var b=el("button",it.c,it.l);' +
-'b.onclick=function(){send(it.t)};q.appendChild(b)});document.getElementById("freetext").value="";' +
+'b.onclick=function(){send(it.t)};q.appendChild(b)});'+
+// R82: ユーザー定義の定型文（Macの定型ボードで作成→office_json.templatesで同期）
+'((LAST_OFFICE&&LAST_OFFICE.templates)||[]).slice(0,8).forEach(function(tp){'+
+'if(!tp||!tp.label||!tp.text)return;var b=el("button","sub","✳ "+tp.label);b.title=tp.text;'+
+'b.onclick=function(){send(tp.text)};q.appendChild(b)});document.getElementById("freetext").value="";' +
 'document.getElementById("sheetwrap").classList.add("open")}' +
 'function closeSheet(){var wrap=document.getElementById("sheetwrap");if(wrap&&wrap.classList.contains("open"))playSE("cursor");if(SHSAY_IV){clearInterval(SHSAY_IV);SHSAY_IV=null}if(wrap)wrap.classList.remove("open");document.querySelectorAll(".sel").forEach(function(n){n.classList.remove("sel")})}' +
 // 全文ログビューア: 「最近の動き」タップで開く（feed全件+質問+発言を大きな文字で・承認判断の材料）
@@ -1441,7 +1470,7 @@ PWA_GLOSS_SOURCE +
 // R42.2d-2 静的チローム再適用: 焼き込みHTMLの日本語をtextContent/placeholderで差し替え（innerHTML禁止=XSS掟）
 'var NTOG_STATE=false;' +
 'function applyLangChrome(){document.documentElement.lang=LANG;function st(id,ja,en){var n=document.getElementById(id);if(n)n.textContent=T(ja,en)}' +
-'st("banner","⚠️ オフライン・再接続中…","⚠️ Offline — reconnecting…");st("tb_office_lb","オフィス","Office");st("tb_list_lb","リスト","List");st("tb_set_lb","設定","Settings");' +
+'st("banner","⚠️ オフライン・再接続中…","⚠️ Offline — reconnecting…");st("tb_office_lb","オフィス","Office");st("tb_list_lb","リスト","List");st("tb_run_lb","実行","Run");st("tb_set_lb","設定","Settings");' +
 'st("st_title","⚙️ 設定","⚙️ Settings");st("st_th_lb","🎨 テーマ","🎨 Theme");st("st_th_hint","配色を切り替えます","Switch the color scheme");st("sg_th_c","クラシック","Classic");st("sg_th_d","ダーク","Dark");' +
 'st("st_fs_lb","🔎 文字サイズ","🔎 Text size");st("sg_fs_s","標準","Normal");st("sg_fs_b","大きめ","Large");' +
 'st("st_sd_lb","🔊 効果音","🔊 Sound effects");st("st_sd_hint","ロボット風の効果音（初期OFF）","Robot-style sound effects (off by default)");st("st_pt_lb","🔔 通知テスト","🔔 Test notification");' +
@@ -1470,12 +1499,19 @@ PWA_GLOSS_SOURCE +
 // ライセンス=edition.features から導出／リソース=office_json.res(Claude枠%)+relay(中継使用量)。
 // どちらも新しい秘密は運ばない（%とレベルの整数だけ＝redaction設計の内側）。
 // R80.7: 下部ゲージ帯（ユーザーFB「下にゲージ・消費クレジットとか」）。Claude枠%と中継%。
-'function paintGauges(){var gb=document.getElementById("gaugebar");if(!gb)return;var o=LAST_OFFICE||{};var res=o.res||{};var rl=o.relay||{};var tk0=o.tasks||{};'+
+// R82: res v2（providers[]）対応。旧サーバー（fiveHour/sevenDayのみ）はclaude行を合成=版ズレ両対応
+'function resProviders(){var res=(LAST_OFFICE||{}).res||{};if(Array.isArray(res.providers)&&res.providers.length)return res.providers;'+
+'var bars=[];if(typeof res.fiveHour==="number")bars.push({k:"5h",pct:Math.round(res.fiveHour)});'+
+'if(typeof res.sevenDay==="number")bars.push({k:T("7日","7d"),pct:Math.round(res.sevenDay)});'+
+'return bars.length?[{id:"claude",label:"Claude",bars:bars,staleSec:res.staleSec}]:[]}'+
+'function pinnedProvider(){var ps=resProviders();if(!ps.length)return null;var want=localStorage.getItem("aioffice.gaugePin")||"claude";'+
+'for(var i=0;i<ps.length;i++)if(ps[i].id===want&&ps[i].bars.length)return ps[i];'+
+'for(var j=0;j<ps.length;j++)if(ps[j].bars.length)return ps[j];return ps[0]}'+
+'function paintGauges(){var gb=document.getElementById("gaugebar");if(!gb)return;var o=LAST_OFFICE||{};var rl=o.relay||{};var tk0=o.tasks||{};'+
 'function bar(lb,pct){var cls=pct>=90?" hot":pct>=70?" warn":"";return \'<div class="gg\'+cls+\'"><span class=lb>\'+lb+\'</span><span class=tr><i style="width:\'+Math.max(2,Math.min(100,Math.round(pct)))+\'%"></i></span><b>\'+Math.round(pct)+\'%</b></div>\'}'+
-'var h="";var tot=(tk0.pending||0)+(tk0.inProgress||0)+(tk0.completed||0);'+
-'if(tot)h+=\'<div class="gg gg-t"><span class=lb>📋\'+(tk0.completed||0)+"/"+tot+\'</span></div>\';'+
-'if(typeof res.fiveHour==="number")h+=bar("⚡5h",res.fiveHour);'+
-'if(typeof res.sevenDay==="number")h+=bar(T("⚡7日","⚡7d"),res.sevenDay);'+
+'var h="";var pv=pinnedProvider();'+
+'if(pv){h+=\'<div class="gg gg-p"><span class=lb>⚡\'+pv.label+\'</span></div>\';'+
+'pv.bars.slice(0,2).forEach(function(b0){h+=bar(b0.k,b0.pct)})}'+
 'if(typeof rl.pct==="number")h+=bar(T("📡中継","📡Relay"),rl.pct);'+
 'if(gb.innerHTML!==h)gb.innerHTML=h;paintTicker(false)}'+
 // R81-4: ライブ活動ティッカー（殺風景対策の本体＝「誰が今なにを」が常に流れる）。
@@ -1488,6 +1524,8 @@ PWA_GLOSS_SOURCE +
 'function swap(){tk.innerHTML="";var m=el("span","mono");setMono(m,e);tk.appendChild(m);'+
 'tk.appendChild(el("span","tk-nm",dispCrew(e)));'+
 'tk.appendChild(el("span","tk-act",activityGlossPWA(e,LANG)||""));'+
+'var tk1=(LAST_OFFICE||{}).tasks||{};var tot1=(tk1.pending||0)+(tk1.inProgress||0)+(tk1.completed||0);'+
+'if(tot1)tk.appendChild(el("span","tk-n","📋"+(tk1.completed||0)+"/"+tot1));'+
 'tk.appendChild(el("span","tk-n",(TICKER_I+1)+"/"+emps.length));'+
 'tk.classList.remove("fade")}'+
 'if(adv&&!(window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches)){tk.classList.add("fade");setTimeout(swap,180)}else swap()}'+
@@ -1497,11 +1535,19 @@ PWA_GLOSS_SOURCE +
 'function sec(s){b.appendChild(el("div","rs-sec",s))}'+
 'function note(s){b.appendChild(el("div","rs-note",s))}'+
 'function bar(lb,pct){var d=el("div","rs-bar"+(pct>=90?" hot":pct>=70?" warn":""));d.appendChild(el("span","lb",lb));var tr=el("span","tr");var i=el("i");i.style.width=Math.max(2,Math.min(100,Math.round(pct)))+"%";tr.appendChild(i);d.appendChild(tr);d.appendChild(el("b","",Math.round(pct)+"%"));b.appendChild(d)}'+
-'sec(T("⚡ Claudeの利用枠（実測）","⚡ Claude quota (measured)"));'+
-'if(typeof res.fiveHour==="number"||typeof res.sevenDay==="number"){'+
-'if(typeof res.fiveHour==="number")bar(T("5時間枠","5-hour"),res.fiveHour);'+
-'if(typeof res.sevenDay==="number")bar(T("7日枠","7-day"),res.sevenDay);'+
-'note(T("サブスクの利用枠をどれだけ使ったか（"+Math.max(0,Math.round((res.staleSec||0)/60))+"分前の実測）。100%に達すると枠がリセットされるまでClaudeは応答しません。","How much of your subscription window is used (measured "+Math.max(0,Math.round((res.staleSec||0)/60))+" min ago)."))}'+
+// R82: 多プロバイダ＝チップでピン切替（下のバーに表示）＋全プロバイダのセクション
+'var ps=resProviders();'+
+'if(ps.length){'+
+'sec(T("⚡ AIの利用枠 — バーに表示する枠を選べます","⚡ AI quotas — pick one for the bar"));'+
+'var pinId=(pinnedProvider()||{}).id;var chips=el("div","rs-chips");'+
+'ps.forEach(function(pv){var c=el("button","rs-chip"+(pv.id===pinId?" on":""),pv.label);c.type="button";'+
+'c.addEventListener("click",function(){localStorage.setItem("aioffice.gaugePin",pv.id);paintGauges();paintRes();note(T("⚡ バーに「"+pv.label+"」を表示します","⚡ Bar now shows "+pv.label))});'+
+'chips.appendChild(c)});b.appendChild(chips);'+
+'ps.forEach(function(pv){'+
+'if(pv.bars.length){pv.bars.forEach(function(b0){bar(pv.label+" "+b0.k,b0.pct)})}'+
+'else if(pv.note==="cap-none")note(pv.label+T(": 上限が設定されていません（実額はMacの⚡リソースで確認）",": no cap set — see the Mac dashboard for spend"));'+
+'if(typeof pv.staleSec==="number"&&pv.staleSec>120)note(pv.label+T("は"+Math.round(pv.staleSec/60)+"分前の実測です",": measured "+Math.round(pv.staleSec/60)+" min ago"))});'+
+'note(T("100%に達すると、その枠がリセットされるまで応答しません。","At 100% the provider stops responding until the window resets."))}'+
 'else note(T("MacのAI Officeを最新版に更新すると表示されます。","Update AI Office on your Mac to see this."));'+
 'sec(T("📡 スマホ中継の使用量","📡 Relay usage"));'+
 'if(typeof rl.pct==="number"){bar(T("今日","Today"),rl.pct);'+
@@ -1579,7 +1625,7 @@ PWA_GLOSS_SOURCE +
 'SENDING=true;var session=target.session;closeSheet();' +
 'note(T("送信中…","Sending…"));sign(cred,session,text).then(function(env){' +
 'return fetch("/instruct",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+cred.t},body:JSON.stringify(env)})})' +
-'.then(function(r){return r.json()}).then(function(d){if(d&&d.ok){note(T("📨 Macへ送信しました","📨 Sent to your Mac"));if(needsAttn(target)){ATTN_SENT[attnKey(target)]=1;saveAttnSent();updateAttnCards(officeAgents(LAST_OFFICE))}playSE("send");setTimeout(function(){poll()},1200)}else note("⚠ "+((d&&d.error)||T("失敗","failed")))})' +
+'.then(function(r){return r.json()}).then(function(d){if(d&&d.ok){note(T("📨 Macへ送信しました","📨 Sent to your Mac"));bumpSentLog();if(needsAttn(target)){ATTN_SENT[attnKey(target)]=Date.now();saveAttnSent();updateAttnCards(officeAgents(LAST_OFFICE))}playSE("send");setTimeout(function(){poll()},1200)}else note("⚠ "+((d&&d.error)||T("失敗","failed")))})' +
 '.catch(function(){note(T("⚠ 送信できませんでした","⚠ Could not send"))}).then(function(){SENDING=false})}' +
 'function note(m){var n=document.getElementById("note");if(!n)return;n.textContent=m;var err=m.indexOf("⚠")===0;n.className="show"+(err?" err":"");if(n._t){clearTimeout(n._t);n._t=null}if(m.indexOf(T("送信中","Sending"))<0){n._t=setTimeout(function(){n.className=""},err?4200:5200)}}' +
 'var VIEW=(localStorage.getItem("aioffice.view")||"office");' +
@@ -1715,7 +1761,7 @@ PWA_GLOSS_SOURCE +
 'var hs=document.getElementById("hstats");if(!hs)return;hs.innerHTML="";function mk(cls,lb,n,tip){var s=el("span","hstat"+(cls?" "+cls:""));s.appendChild(document.createTextNode(lb));s.appendChild(el("b",null,String(n)));s.title=tip;s.addEventListener("click",function(){note(tip)});hs.appendChild(s)}' +
 // R80-A10: タッチ端末に title は出ないので、タップで内訳（作業中N + サブエージェントM）を言う。
 // 「稼働12」が実は3+9だった、という一目の誤解を潰す。
-'var tl=document.querySelector(".hdr2 .ttl");if(tl){var htxt=emps.length?("🏢 "+emps.length+T("プロジェクト"," projects")):"🏢 AI Office";if(tl.textContent!==htxt)tl.textContent=htxt}if(al)mk("attn","❗",al,T("要対応（承認/質問まち）","Needs attention (approvals/questions)"));mk("",T("稼働","Active"),w+mn,T("作業中セッション"+w+" + サブエージェント"+mn,"Working sessions "+w+" + subagents "+mn));mk("",T("待機","Idle"),wa,T("指示待ちセッション","Sessions waiting for instructions"))}' +
+'var tl=document.querySelector(".hdr2 .ttl");if(tl){var on0=(LAST_OFFICE&&LAST_OFFICE.officeName)||"AI Office";var sub0=emps.length?(emps.length+T("プロジェクト"," projects")):"";var sig0=on0+"|"+sub0;if(tl.getAttribute("data-sig")!==sig0){tl.setAttribute("data-sig",sig0);tl.innerHTML="";var nm0=el("span","tname","🏢 "+on0);tl.appendChild(nm0);if(sub0)tl.appendChild(el("span","tsub",sub0))}}if(al)mk("attn","❗",al,T("要対応（承認/質問まち）","Needs attention (approvals/questions)"));mk("",T("稼働","Active"),w+mn,T("作業中セッション"+w+" + サブエージェント"+mn,"Working sessions "+w+" + subagents "+mn));mk("",T("待機","Idle"),wa,T("指示待ちセッション","Sessions waiting for instructions"))}' +
 'function dispatch(){var off=LAST_OFFICE;var emps=officeAgents(off);var sig=sceneSig(emps);if(sig===LAST_SIG&&VIEW===LAST_VIEW)return;var sy=window.scrollY;LAST_SIG=sig;LAST_VIEW=VIEW;buildHeader(emps);buildDeptbar(emps);var room=document.getElementById("room"),list=document.getElementById("list");var to=document.getElementById("tb_office"),tl=document.getElementById("tb_list");if(to)to.classList.toggle("on",VIEW==="office");if(tl)tl.classList.toggle("on",VIEW!=="office");if(VIEW==="office"){room.classList.remove("hidden");list.classList.add("hidden");renderScene(off)}else{list.classList.remove("hidden");room.classList.add("hidden");renderList(off)}window.scrollTo(0,sy)}' +
 'function setView(v){if(VIEW!==v)playSE("cursor");VIEW=v;localStorage.setItem("aioffice.view",VIEW);dispatch()}' +
 // R79-7: status適用の単一路。HTTPポーリング応答もWS pushフレームも必ずここを通る

@@ -137,9 +137,10 @@ class ProjectsIndexTests(unittest.TestCase):
         # R50: roster/rosterCounts/tasks は新UIの集約ビュー（中継へは relay_agent が redact する）。
         # "projects" だけは**入れてはいけない**＝projects_index が返すローカルパス一覧のキー名。
         # R80.6: res(Claude枠%の最小ゲージ)・launchable(projectId+名前のみ)を意図的に追加。
+        # R82: templates（ユーザー定義定型文=遠隔利用が目的の意図的搬送）も追加。
         self.assertEqual({"officeName", "employees", "history", "generatedAt", "setup",
                           "counts", "edition", "lang", "roster", "rosterCounts", "tasks",
-                          "actions", "relay", "res", "launchable"},
+                          "actions", "relay", "res", "launchable", "templates"},
                          set(data))
         self.assertNotIn("projects", data)
         # launchable は中継へ流れる前提＝ローカルパスを1バイトも運ばない（projectIdはハッシュ）

@@ -408,6 +408,8 @@ def _redact_office_for_relay(office_snapshot):
     残す=state/kind/verb/feedの動作ログ(実行中・編集中…)/question/disp/dept/role/age/minions/approvalMin/stuckTool。
     落とす=lastSaid・target(本文由来)・lastOrder・cwd・branch、および feed の「💬 発言」行。
 
+    R82: templates（ユーザー定義定型文）は**意図的に素通し**＝スマホから使うために保存する
+    再利用フレーズであり、上限8件×120字・label/textのみ（office_server.load_templates が正規化）。
     R50: roster[] も同じ規則で落とす。projectId は cwd のハッシュ（パスを含まない）なので残す。
     sessions[] は _session_brief が本文を構造的に持たない形で作っているのでそのまま通す。"""
     if not isinstance(office_snapshot, dict):

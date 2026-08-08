@@ -710,6 +710,65 @@ def claude_gauge_public(now=None):
     return out
 
 
+_GAUGE_WINDOW_LABELS = {300: "5h", 10080: "7d"}
+
+
+def _gauges_from_providers(providers):
+    """R82: providers[] → スマホ用最小ゲージ行の純関数（テストはここを直接叩く）。
+    許可キー= id/label/bars[{k,pct}]/staleSec/note のみ。pctは整数。
+    USD額・キー・email・account は**構造的に**出さない（中継搬送前提）。
+    嘘%禁止: 上限が取れないものにバーを出さない（openaiは note="cap-none" で正直に）。"""
+    out = []
+    for p in providers or []:
+        if not isinstance(p, dict):
+            continue
+        pid = str(p.get("id") or "")
+        row = {"id": pid, "label": str(p.get("label") or pid)[:24], "bars": []}
+        if pid == "claude":
+            sub = p.get("subscription")
+            if not isinstance(sub, dict):
+                continue
+            for key, k in (("fiveHour", "5h"), ("sevenDay", "7d")):
+                w = sub.get(key)
+                if isinstance(w, dict) and isinstance(w.get("pct"), (int, float))                         and not isinstance(w.get("pct"), bool):
+                    row["bars"].append({"k": k, "pct": int(round(w["pct"]))})
+            if isinstance(sub.get("staleSec"), (int, float)):
+                row["staleSec"] = int(sub["staleSec"])
+        elif pid == "codex":
+            used = p.get("usedPercent")
+            if not isinstance(used, (int, float)) or isinstance(used, bool):
+                continue
+            k = _GAUGE_WINDOW_LABELS.get(p.get("windowMinutes"), "枠")
+            row["bars"].append({"k": k, "pct": int(round(used))})
+            sec = p.get("secondary")
+            if isinstance(sec, dict) and isinstance(sec.get("usedPercent"), (int, float))                     and not isinstance(sec.get("usedPercent"), bool):
+                k2 = _GAUGE_WINDOW_LABELS.get(sec.get("windowMinutes"), "枠2")
+                row["bars"].append({"k": k2, "pct": int(round(sec["usedPercent"]))})
+        else:
+            if p.get("connected") is False:
+                continue
+            pct = p.get("pct")
+            if isinstance(pct, (int, float)) and not isinstance(pct, bool):
+                k = "予算" if p.get("limitSource") == "budget" else "月"
+                row["bars"].append({"k": k, "pct": int(round(max(0, min(100, pct))))})
+            elif pid == "openai" and p.get("connected"):
+                row["note"] = "cap-none"
+            else:
+                continue        # ゲージ材料なし（gemini等）は行ごと出さない
+        if not row["bars"] and "note" not in row:
+            continue
+        out.append(row)
+    return out[:8]
+
+
+def gauges_public(now=None):
+    """R82: スマホPWA用の多プロバイダゲージ。status_board_json は
+    stale-while-revalidate キャッシュ＝ここからの呼び出しはブロックしない。"""
+    now = _now_value(now)
+    board = status_board_json(now)
+    return {"providers": _gauges_from_providers(board.get("providers"))}
+
+
 def collect_claude(now):
     """Claude transcript を増分・読み取り専用で集計する。"""
     now = _now_value(now)

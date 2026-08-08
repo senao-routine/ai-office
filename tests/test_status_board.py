@@ -963,10 +963,14 @@ class PrivacyIsolationRegressionTest(unittest.TestCase):
             self.assertEqual(set(snapshot), {"officeName", "employees", "history", "generatedAt",
                                              "setup", "counts", "edition", "lang",
                                              "roster", "rosterCounts", "tasks", "actions",
-                                             "relay", "res", "launchable"})
+                                             "relay", "res", "launchable", "templates"})
+            for tp in snapshot["templates"]:
+                self.assertEqual({"label", "text"}, set(tp))
             if snapshot["res"] is not None:
                 self.assertLessEqual(set(snapshot["res"]),
-                                     {"fiveHour", "sevenDay", "staleSec"})
+                                     {"fiveHour", "sevenDay", "staleSec", "providers"})
+                for row in snapshot["res"].get("providers", []):
+                    self.assertLessEqual(set(row), {"id", "label", "bars", "staleSec", "note"})
 
             relay = _exec_module(ROOT / "server" / "relay_agent.py", "relay_status_isolation")
             relay.office = office
@@ -1000,6 +1004,45 @@ class PrivacyIsolationRegressionTest(unittest.TestCase):
                 else:
                     os.environ[key] = value
             shutil.rmtree(fake_home, ignore_errors=True)
+
+
+class GaugesPublicShapeTest(unittest.TestCase):
+    """R82: スマホへ渡す多プロバイダゲージの最小形ピン（USD/email/キーを構造的に出さない）。"""
+
+    def _load(self):
+        return _exec_module(ROOT / "server" / "status_board.py", "sb_gauges_shape")
+
+    def test_redacted_shape_and_lie_free_bars(self):
+        sb = self._load()
+        rows = sb._gauges_from_providers([
+            {"id": "claude", "label": "Claude", "kind": "sub",
+             "subscription": {"fiveHour": {"pct": 21.4, "resetsAt": 1}, "sevenDay": {"pct": 58.0},
+                              "staleSec": 90,
+                              "account": {"id": "secret-acct", "email": "leak@example.com"}},
+             "tokens": {"usd": 12.3}},
+            {"id": "codex", "label": "Codex", "usedPercent": 7.4, "windowMinutes": 10080,
+             "secondary": None},
+            {"id": "openrouter", "label": "OpenRouter", "connected": True, "pct": 35.5,
+             "limit": 10.0, "limitSource": "api", "spentMonth": 3.55},
+            {"id": "openai", "label": "OpenAI", "connected": True, "monthUsd": 42.0},
+            {"id": "gemini", "label": "Gemini", "loggedIn": True},          # 材料なし→行ごと消える
+            {"id": "kimi", "label": "Kimi", "connected": False, "pct": 50},  # 未接続→消える
+        ])
+        ids = [r["id"] for r in rows]
+        self.assertEqual(ids, ["claude", "codex", "openrouter", "openai"])
+        for row in rows:
+            self.assertLessEqual(set(row), {"id", "label", "bars", "staleSec", "note"})
+            for bar in row["bars"]:
+                self.assertEqual({"k", "pct"}, set(bar))
+                self.assertIsInstance(bar["pct"], int)
+        self.assertEqual(rows[0]["bars"], [{"k": "5h", "pct": 21}, {"k": "7d", "pct": 58}])
+        self.assertEqual(rows[1]["bars"], [{"k": "7d", "pct": 7}])
+        self.assertEqual(rows[2]["bars"], [{"k": "月", "pct": 36}])
+        self.assertEqual(rows[3]["bars"], [])
+        self.assertEqual(rows[3]["note"], "cap-none")   # 上限なし=嘘%を出さない
+        blob = json.dumps(rows, ensure_ascii=False)
+        for banned in ("leak@example.com", "secret-acct", "12.3", "42.0", "spentMonth", "usd"):
+            self.assertNotIn(banned, blob)
 
 
 if __name__ == "__main__":

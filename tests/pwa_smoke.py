@@ -137,7 +137,7 @@ def main(argv):
                     """() => ({
                         view: VIEW,
                         twoD: document.querySelectorAll('#map,#mapframe,.openclaw').length,
-                        cards: document.querySelectorAll('#list .card').length,
+                        cards: document.querySelectorAll('#list .card:not(.daysum)').length,
                         lastOffice: !!localStorage.getItem('aioffice.lastOffice'),
                     })""")
                 assert fb["view"] == "list", f"3D不可でリストへ自動退避していない: {fb}"
@@ -154,7 +154,7 @@ def main(argv):
                 # R79: 2D撤去後は OpenClaw 帯そのものが無い。外部(OpenClaw)社員は
                 # リストに出る（「3Dに居るものは必ず一覧にも居る」の退避側の相方）。
                 # 退避で既にリスト表示なのでタブ操作は不要（viewを動かさない＝後続検査の前提を守る）
-                list_texts = page.locator("#list .card").all_inner_texts()
+                list_texts = page.locator("#list .card:not(.daysum)").all_inner_texts()
                 assert any("OpenClaw" in s for s in list_texts), (
                     "外部(OpenClaw)社員がリストに出ていません: " + repr(list_texts[:5])
                 )
@@ -227,7 +227,7 @@ def main(argv):
                 # シートのタイプライター検査＝リストのカードから開く（2Dキャラは撤去済み）
                 page.locator("#tb_list").click()
                 page.wait_for_timeout(300)
-                page.locator("#list .card").first.click()
+                page.locator("#list .card:not(.daysum)").first.click()
                 page.locator("#sheetwrap.open").wait_for(state="visible", timeout=5000)
                 for _ in range(50):
                     if page.locator("#shsay").inner_text().strip():
@@ -300,9 +300,12 @@ def main(argv):
                         };
                     }"""
                 )
-                # R79-5: タブは3つ（オフィス/リスト/設定）。🔔はヘッダーへ、統計はヘッダー右肩の3チップへ
-                assert len(chrome_texts["tabbar"]) == 3, (
-                    "EN検査: tabbarが3ボタンではありません: " + repr(chrome_texts["tabbar"])
+                # R82: タブは4つ（オフィス/リスト/▶実行/設定）。全ラベルがENに翻訳されること
+                assert len(chrome_texts["tabbar"]) == 4, (
+                    "EN検査: tabbarが4ボタンではありません: " + repr(chrome_texts["tabbar"])
+                )
+                assert any("Run" in s for s in chrome_texts["tabbar"]), (
+                    "EN検査: ▶実行タブが英訳されていません: " + repr(chrome_texts["tabbar"])
                 )
                 assert len(chrome_texts["header"]) >= 2, (
                     "EN検査: ヘッダー統計チップがありません: " + repr(chrome_texts["header"])
@@ -313,7 +316,7 @@ def main(argv):
                     assert not bad, f"EN検査: {area} に日本語が残存: {bad!r}"
                 page.locator("#tb_list").click()
                 page.wait_for_timeout(300)
-                page.locator("#list .card").first.click()
+                page.locator("#list .card:not(.daysum)").first.click()
                 page.locator("#sheetwrap.open").wait_for(state="visible", timeout=5000)
                 sheet_texts = page.evaluate(
                     """() => {
@@ -328,9 +331,12 @@ def main(argv):
                         };
                     }"""
                 )
-                assert len(sheet_texts["quick"]) == 3, (
-                    "EN検査: QUICKボタンが3個ではありません: " + repr(sheet_texts["quick"])
+                # R82: ✳定型チップはユーザー本文＝翻訳しないのが正。固定QUICKだけ3本を数える
+                fixed_quick = [s for s in sheet_texts["quick"] if not s.startswith("✳")]
+                assert len(fixed_quick) == 3, (
+                    "EN検査: 固定QUICKが3個ではありません: " + repr(sheet_texts["quick"])
                 )
+                sheet_texts["quick"] = fixed_quick
                 for area, values in sheet_texts.items():
                     bad = [v for v in values if jp_re.search(v)]
                     assert not bad, f"EN検査: シート{area} に日本語が残存: {bad!r}"

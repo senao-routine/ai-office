@@ -226,11 +226,61 @@ def main(argv):
                     ng += 1
                 else:
                     print("  ✓ officeタブは一切スクロールしない")
-                if skel["tabs"] != 3 or skel["statbar"] or skel["hstats"] < 2:
-                    print(f"  ✗ ヘッダー統合/タブ3つの骨格が不正: {skel}")
+                # R82: タブは4つ（▶実行を昇格）。ヘッダーはオフィス名入り
+                if skel["tabs"] != 4 or skel["statbar"] or skel["hstats"] < 2:
+                    print(f"  ✗ ヘッダー統合/タブ4つの骨格が不正: {skel}")
                     ng += 1
                 else:
-                    print(f"  ✓ タブ3つ＋ヘッダー統計{skel['hstats']}チップ（statbar廃止）")
+                    print(f"  ✓ タブ4つ＋ヘッダー統計{skel['hstats']}チップ")
+                r82 = page.evaluate(
+                    """() => ({
+                        ttl: (document.querySelector('.hdr2 .ttl')||{}).textContent || '',
+                        runTab: !!document.getElementById('tb_run'),
+                        gauges: (document.getElementById('gaugebar')||{}).textContent || '',
+                    })""")
+                if "E2Eオフィス" not in r82["ttl"]:
+                    print(f"  ✗ ヘッダーにオフィス名が出ない: {r82['ttl']}")
+                    ng += 1
+                elif not r82["runTab"]:
+                    print("  ✗ ▶実行タブが無い")
+                    ng += 1
+                elif "Claude" not in r82["gauges"]:
+                    print(f"  ✗ ゲージ帯にピン留めプロバイダ(Claude)が出ない: {r82['gauges'][:40]}")
+                    ng += 1
+                else:
+                    print(f"  ✓ R82骨格（オフィス名ヘッダー・▶実行タブ・ゲージ帯にClaude）")
+                # プロバイダ切替: リソースシートのチップでCodexへピン→ゲージ帯が追随
+                page.evaluate("openRes()")
+                page.wait_for_timeout(400)
+                switched = page.evaluate(
+                    """() => {
+                        const chips = [...document.querySelectorAll('#rs_body .rs-chip')];
+                        const codex = chips.find(c => c.textContent === 'Codex');
+                        if (!codex) return {ok: false, chips: chips.map(c => c.textContent)};
+                        codex.click();
+                        const gb = (document.getElementById('gaugebar')||{}).textContent || '';
+                        const pin = localStorage.getItem('aioffice.gaugePin');
+                        closeRes();
+                        return {ok: gb.indexOf('Codex') >= 0 && pin === 'codex', gb: gb.slice(0, 40), pin};
+                    }""")
+                if not switched["ok"]:
+                    print(f"  ✗ プロバイダ切替が効かない: {switched}")
+                    ng += 1
+                else:
+                    print("  ✓ ゲージのプロバイダ切替（チップ→バー反映＋永続）")
+                page.evaluate("localStorage.setItem('aioffice.gaugePin','claude');paintGauges()")
+                # 今日のまとめ: リストタブの最上部カード
+                daysum = page.evaluate(
+                    """() => { setView('list');
+                        const c = document.querySelector('#list .daysum');
+                        const txt = c ? c.textContent : '';
+                        setView('office');
+                        return txt; }""")
+                if "タスク" not in daysum or "3" not in daysum:
+                    print(f"  ✗ 今日のまとめカードが無い/タスク実数不一致: {daysum[:50]}")
+                    ng += 1
+                else:
+                    print("  ✓ 今日のまとめカード（タスク実数入り）")
                 if not (0 <= skel["dockBottom"] <= skel["ih"] - 56):
                     print(f"  ✗ 下部ドックがタブバー直上に無い: {skel}")
                     ng += 1
@@ -344,6 +394,14 @@ def main(argv):
                             " return !!n && n.classList.contains('open'); }")
                         if opened:
                             print("  ✓ 2度目のタップ → 詳細シートが開く")
+                            tpl = page.evaluate(
+                                "() => [...document.querySelectorAll('#quickbtns button')]"
+                                ".map(b => b.textContent).filter(s => s.indexOf('✳') === 0)")
+                            if not any("ビルド確認" in s for s in tpl):
+                                print(f"  ✗ 定型文チップがシートに出ない: {tpl}")
+                                ng += 1
+                            else:
+                                print("  ✓ 定型文チップ（Mac保存→スマホ同期）")
                         else:
                             print("  ✗ 2度目のタップでシートが開かない")
                             ng += 1
@@ -358,6 +416,18 @@ def main(argv):
                             window.__tapdbg = [];
                             if (!window.__tapdbg_wired) {
                                 window.__tapdbg_wired = true;
+                                // hostTapはsceneShell3Dローカル＝外から包めない。documentのcapture
+                                // リスナーで「clickの着弾座標とその瞬間のpick結果」を記録する
+                                window.addEventListener("click", (ev) => {
+                                    const host = document.getElementById("scene3d");
+                                    if (!host) return;
+                                    const r = host.getBoundingClientRect();
+                                    const x = ev.clientX - r.left, y = ev.clientY - r.top;
+                                    let pk = null;
+                                    try { pk = window.__scene3d.pick(x, y); } catch (e) { pk = "err"; }
+                                    window.__tapdbg.push(["click", Math.round(x), Math.round(y),
+                                        pk, !!SEL, (ev.target.id || ev.target.tagName)]);
+                                }, true);
                                 const _ta = tapAgent;
                                 tapAgent = function (id) {
                                     window.__tapdbg.push(["tapAgent", id, SEL && SEL.session]);
@@ -374,25 +444,21 @@ def main(argv):
                                     return _cs();
                                 };
                             } }""")
-                    # カメラ整定待ち: focusOff直後は投影が動き続ける（126pxドリフト実測）。
-                    # 2サンプル300ms間隔で5px以内に収まってからタップ座標を確定する
-                    tp = None
-                    prev = None
-                    for _ in range(12):
-                        cur = page.evaluate(
+                    # タップ座標は**直前に毎回取り直す**（整定待ち方式はアニメ停止中の座標を
+                    # 「安定」と誤認するレースがあった＝実測。取得→タップの間は~20ms＝
+                    # カメラが動いていても pick半径54pxに対して十分小さい）
+                    def fresh_tp():
+                        return page.evaluate(
                             """(id) => {
                                 const host = document.getElementById('scene3d');
                                 const r = host.getBoundingClientRect();
                                 const p = window.__scene3d.project(id);
                                 return p ? {x: r.left + p.left, y: r.top + p.top + 30} : null;
                             }""", point["id"])
-                        if prev and cur and abs(cur["x"] - prev["x"]) < 5                                 and abs(cur["y"] - prev["y"]) < 5:
-                            tp = cur
-                            break
-                        prev = cur
-                        page.wait_for_timeout(300)
+                    page.wait_for_timeout(800)
+                    tp = fresh_tp()
                     if not tp:
-                        print("  ✗ タッチ検証用のロボ位置が整定しない")
+                        print("  ✗ タッチ検証用のロボ位置が取れない")
                         ng += 1
                     else:
                         # 高負荷（load25超・別プロセスが多コア占有）ではclick合成自体が
@@ -401,9 +467,11 @@ def main(argv):
                         opened2 = False
                         touch = None
                         for tap_try in (1, 2):
-                            page.touchscreen.tap(tp["x"], tp["y"])
+                            t1 = fresh_tp() or tp
+                            page.touchscreen.tap(t1["x"], t1["y"])
                             page.wait_for_timeout(150)
-                            page.touchscreen.tap(tp["x"], tp["y"])
+                            t2 = fresh_tp() or t1
+                            page.touchscreen.tap(t2["x"], t2["y"])
                             try:
                                 page.wait_for_function(
                                     "() => document.getElementById('sheetwrap')"

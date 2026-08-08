@@ -10,7 +10,7 @@ import {
 } from "/ui/core/world.js";
 import {
   focusTerminal, getKeysStatus, getOffice, getRecipes, getStatusBoard,
-  licenseSet, licenseStatus, setRecipes,
+  getTemplates, licenseSet, licenseStatus, setRecipes, setTemplates,
   newProject, pairList, pairNew, pairRevoke, pickProjectFolder, poll, postInstruction,
   budgetApply, setOfficeKey, spendApply,
 } from "/ui/platform/api.js";
@@ -441,6 +441,23 @@ export async function mount(root) {
       });
       quick.append(b);
     });
+    // R82: ユーザー定義の定型文（保存はMac・スマホへは office_json.templates で同期）
+    for (const tp of TEMPLATES) {
+      const b = sEl("button", "qchip tplchip");
+      b.type = "button";
+      b.title = tp.text;
+      b.append(sEl("i", "qicon", "✳"), sEl("span", "", tp.label));
+      b.addEventListener("click", async () => {
+        if (await send(composeTarget?.session || agent.session, agent.name, tp.text)) closeCompose();
+      });
+      quick.append(b);
+    }
+    const tplBtn = sEl("button", "qchip tpladd");
+    tplBtn.type = "button";
+    tplBtn.title = T("tpl_note");
+    tplBtn.append(sEl("span", "", T("tpl_add")));
+    tplBtn.addEventListener("click", openTemplateEditor);
+    quick.append(tplBtn);
     board.append(quick);
     dock.append(board);
     paintTarget(agent);
@@ -661,6 +678,55 @@ export async function mount(root) {
   const openModal = () => {
     modalWrap.hidden = false;
     requestAnimationFrame(() => modalWrap.classList.add("show"));   // R67: 開きのフェード
+  };
+
+  // R82: 定型文エディタ（8件×120字・保存でスマホにも同期）
+  let TEMPLATES = [];
+  const refreshTemplates = async () => {
+    try { TEMPLATES = (await getTemplates())?.templates || []; } catch { /* 未対応サーバーでも動く */ }
+  };
+  refreshTemplates();
+  const openTemplateEditor = () => {
+    const draft = TEMPLATES.map((tp) => ({ ...tp }));
+    const paint = () => {
+      modal.replaceChildren(mEl("b", "mtitle", T("tpl_title")),
+        mEl("p", "mnote", T("tpl_note")));
+      draft.forEach((tp, i2) => {
+        const row = mEl("div", "tplrow");
+        row.append(mEl("b", "", tp.label), mEl("span", "tpltext", tp.text));
+        const del = mEl("button", "tpldel", T("tpl_del"));
+        del.type = "button";
+        del.addEventListener("click", () => { draft.splice(i2, 1); paint(); });
+        row.append(del);
+        modal.append(row);
+      });
+      const li = mEl("input", "minput");
+      li.type = "text"; li.placeholder = T("tpl_label_ph"); li.maxLength = 20;
+      const ti = mEl("input", "minput");
+      ti.type = "text"; ti.placeholder = T("tpl_text_ph"); ti.maxLength = 120;
+      const add = mEl("button", "sub tpladdrow", T("tpl_add_row"));
+      add.type = "button";
+      add.addEventListener("click", () => {
+        if (!li.value.trim() || !ti.value.trim() || draft.length >= 8) return;
+        draft.push({ label: li.value.trim(), text: ti.value.trim() });
+        paint();
+      });
+      const save = mEl("button", "mgo", T("tpl_save"));
+      save.type = "button";
+      save.addEventListener("click", async () => {
+        try {
+          await setTemplates(draft);
+          TEMPLATES = draft.map((tp) => ({ ...tp }));
+          showToast(T("tpl_saved"));
+          closeModal();
+        } catch (err) {
+          showToast(T("reg_fail", err.message), false);
+        }
+      });
+      modal.append(li, ti, add, save);
+    };
+    paint();
+    openModal();
   };
   const mEl = (tag, cls, text) => {
     const n = document.createElement(tag);
