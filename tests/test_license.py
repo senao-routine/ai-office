@@ -164,56 +164,34 @@ class OfficeLicenseStateTest(unittest.TestCase):
         self.assertTrue(state["valid"], state["reason"])
         self.assertEqual(state.get("product"), "ai-office")
 
+    # 2026-08-10 ライセンス廃止（ユーザー決定・docs/収益化アーキテクチャ）:
+    # 機能ゲートを撤廃し、ライセンスの有無に関わらず全機能が全員に開く。
+    # 価値は配布経路（note/Discord）＋更新＋コミュニティで作る。以下は「全edition・
+    # ライセンス有無を問わず relayPwa/push/costDash が常に True」を固定する。
+
+    def test_features_always_free_regardless_of_license(self):
+        for ed in ("claude", "hybrid", "openclaw"):
+            for state in (None, {"valid": False}, {"valid": True, "edition": "hybrid"}):
+                feats = office.edition_features(ed, state)
+                self.assertTrue(feats["relayPwa"], f"{ed}版 でスマホが開かない")
+                self.assertTrue(feats["push"], f"{ed}版 でPushが開かない")
+                self.assertTrue(feats["costDash"], f"{ed}版 でコストが開かない")
+
+    def test_edition_still_controls_display_mode(self):
+        # editionは有料ゲートではなく「表示モード」として残る（どのエージェントを映すか）
+        self.assertTrue(office.edition_features("claude")["claudeSessions"])
+        self.assertFalse(office.edition_features("claude")["openclaw"])
+        self.assertTrue(office.edition_features("openclaw")["openclaw"])
+        self.assertFalse(office.edition_features("openclaw")["claudeSessions"])
+
     def test_missing_file_is_free_tier(self):
+        # ライセンス機構自体は無害化して残置（license_stateは動くが機能ゲートには使われない）
         state = office.license_state()
         self.assertFalse(state["valid"])
         self.assertEqual(state["reason"], "ライセンス未登録")
         feats = office.edition_features("hybrid", state)
-        self.assertFalse(feats["relayPwa"])
-        self.assertFalse(feats["push"])
-        self.assertFalse(feats["costDash"])
-        self.assertTrue(feats["claudeSessions"] and feats["openclaw"])
-
-    def test_valid_license_unlocks(self):
-        self._write(kat())
-        state = office.license_state()
-        self.assertTrue(state["valid"], state)
-        self.assertEqual(state["edition"], "hybrid")
-        feats = office.edition_features("hybrid", state)
         self.assertTrue(feats["relayPwa"] and feats["push"] and feats["costDash"])
-        # hybridライセンスは①claude利用もカバー（アップグレード動線）
-        self.assertTrue(office.edition_features("claude", state)["costDash"])
-
-    def test_r80_license_unlocks_regardless_of_edition(self):
-        """R80-B1: **買った鍵は、どの版で動かしていても対応機能を開ける**。
-
-        旧仕様は「claude鍵 × hybrid版」を解錠しなかった。新規cloneの既定editionは hybrid
-        なので、**Proを買った人が素のまま使うと解錠されない**という致命的な噛み合わせだった
-        （回避策はconfigへの手書きのみでREADMEにもUIにも記述なし）。ここで全組み合わせを固定する。"""
-        for lic_edition in ("claude", "hybrid"):
-            self._write(signer.build_license(lic_edition, "a@b", TEST_N, TEST_E, TEST_D))
-            state = office.license_state()
-            self.assertTrue(state["valid"], lic_edition)
-            for ed in ("claude", "hybrid"):
-                feats = office.edition_features(ed, state)
-                self.assertTrue(feats["relayPwa"], f"{lic_edition}鍵 × {ed}版 でスマホが開かない")
-                self.assertTrue(feats["push"], f"{lic_edition}鍵 × {ed}版 でPushが開かない")
-                self.assertTrue(feats["costDash"], f"{lic_edition}鍵 × {ed}版 でコストが開かない")
-            # openclaw版は Claude セッションを読まない＝costDash は元から対象外（仕様どおり）
-            self.assertTrue(office.edition_features("openclaw", state)["relayPwa"])
-
-    def test_r80_no_license_keeps_free_tier_closed(self):
-        """鍵が無ければ有料機能は閉じたまま（無料版の境界が壊れていないこと）。"""
-        for ed in ("claude", "hybrid"):
-            feats = office.edition_features(ed, {"valid": False})
-            self.assertFalse(feats["relayPwa"])
-            self.assertFalse(feats["push"])
-            self.assertFalse(feats["costDash"])
-
-    def test_openclaw_edition_free_without_license(self):
-        feats = office.edition_features("openclaw", office.license_state())
-        self.assertTrue(feats["relayPwa"] and feats["push"])
-        self.assertFalse(feats["costDash"])  # ②にclaudeコストダッシュは無い
+        self.assertTrue(feats["claudeSessions"] and feats["openclaw"])
 
     def test_tampered_file_rejected(self):
         self._write(kat(holder="000000000000"))

@@ -101,16 +101,17 @@ class EditionTest(unittest.TestCase):
     # ---- (2) features マトリクス（商売ロジックのピン） ----
 
     def test_features_matrix(self):
-        # 無ライセンス時の全マトリクス（有償系はR42.2で追加・②openclawだけ中継/Pushが無料）
+        # 2026-08-10 ライセンス廃止: 機能ゲート撤廃＝relayPwa/push/costDash は常に全ON
+        # （誰でも無料で全機能を使える）。editionは「表示モード」＝claudeSessions/openclawだけを分ける。
         self.assertEqual(office.edition_features("claude"),
                          {"claudeSessions": True, "openclaw": False,
-                          "relayPwa": False, "push": False, "costDash": False})
+                          "relayPwa": True, "push": True, "costDash": True})
         self.assertEqual(office.edition_features("openclaw"),
                          {"claudeSessions": False, "openclaw": True,
-                          "relayPwa": True, "push": True, "costDash": False})
+                          "relayPwa": True, "push": True, "costDash": True})
         self.assertEqual(office.edition_features("hybrid"),
                          {"claudeSessions": True, "openclaw": True,
-                          "relayPwa": False, "push": False, "costDash": False})
+                          "relayPwa": True, "push": True, "costDash": True})
 
     # ---- (3)(4) scan_office / office_json への搭載とスキャン制御 ----
 

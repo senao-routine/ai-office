@@ -200,18 +200,19 @@ _LICENSE_EDITIONS = ("claude", "hybrid")   # 鍵として受理する edition �
 
 
 def edition_features(ed, lic=None):
-    """機能マトリクス＝商売ロジックの単一集約点。UI/PWA はこの features だけを見て
-    表示分岐する（価格ロジックをUIに持たせない）。lic= license_state() の戻り値（省略=未ライセンス）。
-    ②openclaw版は完全無料（editionだけで全開）・①③の中継/Push/コストダッシュは有償。"""
-    lic = lic if isinstance(lic, dict) else {}
-    licensed = (bool(lic.get("valid"))
-                and str(lic.get("edition") or "") in _LICENSE_EDITIONS)
+    """機能マトリクス＝表示分岐の単一集約点。UI/PWA はこの features だけを見る。
+
+    2026-08-10 ライセンス廃止（ユーザー決定）: 署名鍵による機能ゲートを全廃し、
+    **クローンした全員がスマホ連携・Push・遠隔実行・コスト表示まで使える**。
+    価値は配布経路（note/Discord）＋更新＋コミュニティで作る（詳細= docs/収益化アーキテクチャ）。
+    edition（claude/hybrid/openclaw）は「どの種類のエージェントを表示するか」の**表示モード**として
+    のみ残す＝有料ゲートではない。lic 引数は後方互換のため残すが判定には使わない。"""
     return {
         "claudeSessions": ed in ("claude", "hybrid"),
         "openclaw": ed in ("openclaw", "hybrid"),
-        "relayPwa": ed == "openclaw" or licensed,
-        "push": ed == "openclaw" or licensed,
-        "costDash": ed in ("claude", "hybrid") and licensed,
+        "relayPwa": True,
+        "push": True,
+        "costDash": True,
     }
 
 

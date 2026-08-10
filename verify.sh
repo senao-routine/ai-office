@@ -125,15 +125,9 @@ echo "▶ 5/8 起動スモーク (フィクスチャHOME・:$TPORT)"
 VHOME=$(python3 tests/make_home.py)
 LAUNCH_MARKER="$VHOME/claude_launch.marker"
 mkdir -p "$VHOME/data"
-# R42.2: fixtureサーバーはテスト鍵ライセンスで解錠して起動（既存のstatus_board/pairスモークは
-# 「ライセンス済みの通常挙動」を検証・無ライセンスの403は後段で剥がして検査する）
-LIC_TEST_N=$(python3 -c 'import json;print(json.load(open("tests/fixtures/license_test_key.json"))["n"][2:])')
-OFFICE_LICENSE_SIGNING=tests/fixtures/license_test_key.json \
-  python3 tools/license_sign.py issue --edition hybrid --email verify@fixture \
-  --out "$VHOME/office_license.json" >/dev/null 2>&1 || ng "R42.2 fixtureライセンス発行失敗"
+# 2026-08-10 ライセンス廃止: 機能ゲートが無いので鍵無しで全機能が使える（誰でも即開始）。
 OFFICE_HOME="$VHOME" OFFICE_CONFIG="$VHOME/office_config.json" OFFICE_PICK_DIR="$VHOME/pickme" \
   OFFICE_DATA="$VHOME/data" OFFICE_FAKE_LAUNCH="$LAUNCH_MARKER" \
-  OFFICE_LICENSE="$VHOME/office_license.json" OFFICE_LICENSE_PUBKEY_N="$LIC_TEST_N" \
   python3 server/office_server.py --port $TPORT >/dev/null 2>&1 &
 SPID=$!
 sleep 1.2
@@ -284,27 +278,15 @@ CODE=$(curl -s -o /dev/null -w "%{http_code}" $H_LOCAL http://127.0.0.1:$TPORT/a
 printf '%s' "$CFG_ORIG" > "$VHOME/office_config.json"
 sleep 2.2
 
-# R42.2 ライセンスゲート: 剥がすと403（ゲートは毎リクエスト判定＝sleep不要）・license/setで即復帰
-LIC_BAK=$(cat "$VHOME/office_license.json")
-rm "$VHOME/office_license.json"
+# 2026-08-10 ライセンス廃止: 鍵が無くても有料だった機能（中継/pair/コスト）が全員に開く。
 CODE=$(curl -s -o /dev/null -w "%{http_code}" $H_LOCAL http://127.0.0.1:$TPORT/api/status_board)
-[ "$CODE" = "403" ] && ok "R42.2 無ライセンスで status_board 403" || ng "R42.2 status_boardが閉じない (code=$CODE)"
+[ "$CODE" = "200" ] && ok "ライセンス廃止: 鍵無しで status_board 200" || ng "status_boardが開かない (code=$CODE)"
 CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://127.0.0.1:$TPORT/api/pair/new $H_LOCAL \
-  -H "Content-Type: application/json" -d '{"label":"lic-gate"}')
-[ "$CODE" = "403" ] && ok "R42.2 無ライセンスで pair/new 403" || ng "R42.2 pair/newが閉じない (code=$CODE)"
-R=$(curl -s $H_LOCAL http://127.0.0.1:$TPORT/api/license/status)
-echo "$R" | python3 -c 'import sys,json; d=json.load(sys.stdin); assert d["license"]["valid"] is False and d["features"]["costDash"] is False, d; print("  ✓ R42.2 license/status=未登録・costDash閉")' \
-  || ng "R42.2 license/status異常: $(echo "$R" | head -c 160)"
-CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://127.0.0.1:$TPORT/api/license/set $H_LOCAL \
-  -H "Content-Type: application/json" -d "{\"license\":$LIC_BAK}")
-[ "$CODE" = "200" ] && ok "R42.2 license/set 登録 (200)" || ng "R42.2 license/set失敗 (code=$CODE)"
-PERM=$(stat -f %Lp "$VHOME/office_license.json" 2>/dev/null)
-[ "$PERM" = "600" ] && ok "R42.2 ライセンス保存600" || ng "R42.2 保存権限が600でない ($PERM)"
-CODE=$(curl -s -o /dev/null -w "%{http_code}" $H_LOCAL http://127.0.0.1:$TPORT/api/status_board)
-[ "$CODE" = "200" ] && ok "R42.2 登録後に status_board 復帰 (200)" || ng "R42.2 復帰失敗 (code=$CODE)"
-CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://127.0.0.1:$TPORT/api/license/set $H_LOCAL \
-  -H "Content-Type: application/json" -d '{"license":{"v":1,"edition":"hybrid","sig":"00"}}')
-[ "$CODE" = "400" ] && ok "R42.2 不正ライセンス拒否 (400)" || ng "R42.2 不正ライセンスが通った (code=$CODE)"
+  -H "Content-Type: application/json" -d '{"label":"nolic"}')
+[ "$CODE" = "200" ] && ok "ライセンス廃止: 鍵無しで pair/new 200" || ng "pair/newが開かない (code=$CODE)"
+R=$(curl -s $H_LOCAL http://127.0.0.1:$TPORT/api/office)
+echo "$R" | python3 -c 'import sys,json; d=json.load(sys.stdin); f=d["edition"]["features"]; assert f["relayPwa"] and f["push"] and f["costDash"], f; print("  \u2713 ライセンス廃止: edition.features 全ON")' \
+  || ng "features が全ONでない: $(echo "$R" | head -c 160)"
 
 # R42.3: OpenClaw契約statusを既定パス($VHOME/.claude/openclaw_status.json)へ設置→oc-社員がマージされる
 # （external viewは60秒キャッシュがありレースするため、office_json側の2秒キャッシュだけで検査）
