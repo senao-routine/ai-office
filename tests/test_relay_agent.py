@@ -415,6 +415,13 @@ class RelayAgentTest(unittest.TestCase):
         self.assertEqual(p["work"]["counts"], {"pending": 1, "in_progress": 2, "completed": 3})
         self.assertEqual(p["sessions"][0]["session"], "s1")
 
+    def test_relay_agent_has_no_dialog_route(self):
+        """R86-B: 会話本文API(/api/session/dialog)は中継が構造的に呼ばない＝
+        本文が Cloudflare へ流れる経路が存在しないことをソースで固定する。"""
+        src = Path(ra.__file__).read_text(encoding="utf-8")
+        self.assertNotIn("session/dialog", src)
+        self.assertNotIn("dialog_from_lines", src)
+
     def test_redact_title_default_pass_and_optout_strip(self):
         """R85-1: title（/renameのセッション名）は既定で中継へ通す（ユーザー裁定2026-08-26・
         Push本文にも同じ名前を出す）。OFFICE_RELAY_TITLES=0 なら根元遮断（lastSaidと同流儀）。"""

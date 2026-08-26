@@ -1,0 +1,11 @@
+{"type": "user", "message": {"role": "user", "content": "デプロイを進めてください"}, "cwd": "/Users/test/demo-project"}
+{"type": "assistant", "message": {"role": "assistant", "content": [{"type": "thinking", "thinking": "内部思考は会話に出さない"}, {"type": "text", "text": "了解です。"}, {"type": "text", "text": "まずテストを回します。"}]}}
+{"type": "assistant", "message": {"role": "assistant", "content": [{"type": "tool_use", "name": "Bash", "input": {"command": "secret-cmd --token=xyz"}}]}}
+{"type": "user", "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t1", "content": "秘密のツール結果"}]}}
+{"type": "user", "message": {"role": "user", "content": "<local-command-stdout>コマンドのノイズ出力</local-command-stdout>"}}
+{"type": "user", "message": {"role": "user", "content": "<command-name>/x-post</command-name>\n<command-message>x-post</command-message>"}}
+{"type": "custom-title", "customTitle": "状態ブロック行は無視", "sessionId": "sess-aaaa1111"}
+これは壊れた行（JSONではない）
+{"type": "user", "message": {"role": "user", "content": [{"type": "text", "text": "配列形式の指示です"}, {"type": "image"}]}}
+{"type": "assistant", "message": {"role": "assistant", "content": [{"type": "tool_use", "name": "AskUserQuestion", "input": {"questions": [{"question": "この方針で進めていい?", "options": [{"label": "はい"}, {"label": "いいえ"}]}]}}]}}
+{"type": "assistant", "message": {"role": "assistant", "content": [{"type": "text", "text": "   "}]}}

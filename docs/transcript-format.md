@@ -54,6 +54,16 @@
   判定に使えない。不採用。
 - `{"type":"summary"}` 行は旧世代の遺物（2026-08-26時点の全走査で0件）。
 
+## 会話ビューアの抽出（R86-B・2026-08-27観測）
+
+`dialog_from_lines`（GET /api/session/dialog）が依存する観測事実:
+- user の `content` が**文字列**のとき、人間の生指示のほかに **`<`始まりの注入行**が混在する:
+  `<command-name>…</command-name>`（スラッシュコマンド実行）・`<local-command-stdout>`（その出力）・
+  `<system-reminder>`（ハーネス注入）等。会話としては `<command-name>` のみ「/x-post」の形で残し、他は捨てる
+- user の `content` が**配列**のとき `{type:"tool_result"}` が主（ツール結果返却＝会話でない）。
+  `{type:"text"}` ブロックが人間の発話
+- assistant の thinking / tool_use（AskUserQuestion 以外）は会話に出さない（本文・コマンドの露出面を増やさない）
+
 ## 推定ロジックが依存している暗黙の前提
 
 1. 最後のイベントが assistant の tool_use のまま時間が経つ ＝ ツール実行中 or **権限ダイアログ待ち**（75秒閾値）

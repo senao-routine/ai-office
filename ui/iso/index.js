@@ -10,7 +10,7 @@ import {
 } from "/ui/core/world.js";
 import {
   focusTerminal, getKeysStatus, getOffice, getRecipes, getStatusBoard,
-  getTemplates, setRecipes, setTemplates,
+  getDialog, getTemplates, setRecipes, setTemplates,
   newProject, pairList, pairNew, pairRevoke, pickProjectFolder, poll, postInstruction,
   budgetApply, fxApply, launchProject, setOfficeKey, setServerLang, spendApply,
 } from "/ui/platform/api.js";
@@ -324,8 +324,47 @@ export async function mount(root) {
       ? T("target_rep") : T("target_n", idx + 1);
     el2.hidden = false;
   };
+  // 💬 R86-B: 会話のオンデマンド取得。stale ガード＝取得中に宛先が切り替わったら破棄。
+  let dlgSeq = 0;
+  const loadDialog = async (session, listEl, headEl) => {
+    const seq = ++dlgSeq;
+    listEl.replaceChildren(sEl("div", "dlgnote", T("loading")));
+    let msgs = [];
+    try {
+      msgs = (await getDialog(session)).messages || [];
+    } catch {
+      if (seq === dlgSeq) listEl.replaceChildren(sEl("div", "dlgnote", T("dialog_err")));
+      return;
+    }
+    if (seq !== dlgSeq) return;
+    if (!msgs.length) {
+      listEl.replaceChildren(sEl("div", "dlgnote", T("dialog_empty")));
+      return;
+    }
+    if (headEl) {
+      headEl.querySelector(".seccount")?.remove();
+      headEl.append(sEl("i", "seccount", String(msgs.length)));
+    }
+    const renderMsgs = (items, moreCount) => {
+      listEl.replaceChildren();
+      if (moreCount > 0) {
+        const more = sEl("button", "dlgmore", T("dialog_more", moreCount));
+        more.type = "button";
+        more.addEventListener("click", () => renderMsgs(msgs, 0));
+        listEl.append(more);
+      }
+      for (const m of items) {
+        listEl.append(sEl("div", `dlgmsg ${m.role === "user" ? "user" : "ai"}`, m.text));
+      }
+      listEl.scrollTop = listEl.scrollHeight;   // 最新（下端）を見せる
+    };
+    const over = Math.max(0, msgs.length - 12);
+    renderMsgs(over ? msgs.slice(-12) : msgs, over);
+  };
+
   const openCompose = (agent) => {
     composeTarget = { session: agent.session, name: agent.name, id: agent.id };
+    let dlgListEl = null;                     // R86-B: crewrow の宛先切替から参照する
     shell.querySelector("#sheetname").textContent =
       agent.crew > 1 ? `${agent.name} ×${agent.crew}` : agent.name;
     typewrite(shell.querySelector("#sheetact"), humanSummary(agent));
@@ -361,6 +400,8 @@ export async function mount(root) {
           for (const r of crewWrap.children) r.classList.remove("sel");
           row.classList.add("sel");
           paintTarget(agent);
+          // R86-B: 会話ビューアも切替先セッションのやり取りへ追随
+          if (dlgListEl) loadDialog(s2.session, dlgListEl, dlgListEl.previousSibling);
           composeInput.focus();
         });
         crewWrap.append(row);
@@ -401,6 +442,18 @@ export async function mount(root) {
       }
       sec.append(listEl);
       body.append(sec);
+    }
+    // 💬 セッションのやり取り（R86-B）: 実会話をオンデマンド取得（office_json非搭載＝
+    // 中継へ流れる経路が構造的に無い）。DEMO/外部/oc- はサーバー無し・別Macなので節ごと出さない
+    // （demo golden 不変の条件）。
+    if (!DEMO && !agent.external && !String(agent.session || "").startsWith("oc-")) {
+      const dsec = sEl("div", "sheetsec");
+      const dhead = sEl("b", "sheetsec-head", T("dialog_head"));
+      const dlist = sEl("div", "dlglist");
+      dsec.append(dhead, dlist);
+      body.append(dsec);
+      dlgListEl = dlist;
+      loadDialog(composeTarget?.session || agent.session, dlist, dhead);
     }
     // ⚡ 定型ボード: 回答ボタン＋よく押す定型を compose 直上に常設（本文スクロールでも動かない）
     const dock = shell.querySelector("#quickdock");
@@ -1844,7 +1897,8 @@ function render(shell, w) {
   // ── 中央: 挨拶＋❗トレイ ─────────────────────────────────────
   shell.querySelector("#greet").textContent = w.officeName || T("office_fallback");
   shell.querySelector("#sub").textContent =
-    T("sub_line", w.agents.length,
+    T(w.avatarMode === "session" ? "sub_line_session" : "sub_line",   // R86-A: 粒度で単位語を変える
+      w.agents.length,
       w.agents.filter((a) => a.state === "working").length,   // R69: ゾーン頭数でなく実働数
       z.queue, z.lounge);
 

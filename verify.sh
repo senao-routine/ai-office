@@ -174,6 +174,17 @@ CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:$TPORT/api/office
 [ "$CODE" = "403" ] && ok "M4 GET /api/office CSRFガード (ヘッダ無403)" || ng "M4 /api/office CSRF失敗 (code=$CODE)"
 CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "X-Office-Local: 1" http://127.0.0.1:$TPORT/api/office)
 [ "$CODE" = "200" ] && ok "M4 GET /api/office ヘッダ有り200" || ng "M4 /api/office 正常系失敗 (code=$CODE)"
+# R86-B: 会話ビューア＝本文を返す唯一の経路（office_json非搭載・CSRF配下・未知=200空・不正=400）
+DLG=$(curl -s -H "X-Office-Local: 1" "http://127.0.0.1:$TPORT/api/session/dialog?session=sess-verify0001")
+echo "$DLG" | python3 -c 'import sys,json; d=json.load(sys.stdin); assert d["ok"] and len(d["messages"])>=1 and d["messages"][0]["role"] in ("user","ai"), d' \
+  && ok "R86-B dialog 正常200+messages" || ng "R86-B dialog 取得失敗: $(echo "$DLG" | head -c 80)"
+CODE=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:$TPORT/api/session/dialog?session=sess-verify0001")
+[ "$CODE" = "403" ] && ok "R86-B dialog CSRFガード (ヘッダ無403)" || ng "R86-B dialog CSRF失敗 (code=$CODE)"
+DLG=$(curl -s -H "X-Office-Local: 1" "http://127.0.0.1:$TPORT/api/session/dialog?session=sess-nothere99")
+echo "$DLG" | python3 -c 'import sys,json; d=json.load(sys.stdin); assert d["ok"] and d["messages"]==[], d' \
+  && ok "R86-B dialog 未知session=200+空 (console error回避)" || ng "R86-B dialog 未知sessionの応答が不正"
+CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "X-Office-Local: 1" "http://127.0.0.1:$TPORT/api/session/dialog?session=..%2Fevil")
+[ "$CODE" = "400" ] && ok "R86-B dialog 形式不正=400 (トラバーサル拒否)" || ng "R86-B dialog 不正session拒否失敗 (code=$CODE)"
 curl -s http://127.0.0.1:$TPORT/ | grep -q "AI Office" && ok "GET / 200+HTMLマーカー" || ng "トップページ異常"
 # R52: 旧UIは削除済み＝?ui=legacy でも新UI(boot.html)が返ること（旧ページの残骸を配らない）
 curl -s http://127.0.0.1:$TPORT/ | grep -q 'id="bootstate"' \

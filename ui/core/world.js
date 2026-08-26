@@ -69,6 +69,8 @@ export function buildWorld(office) {
     // R85-3: PC機能パリティ＝スマホだけが読んでいた搬送済みデータをPCへも通す
     relay: (office.relay && typeof office.relay === "object") ? office.relay : null,
     launchable: Array.isArray(office.launchable) ? office.launchable : [],
+    // R86-A: アバター粒度（ヘッダー文言の分岐用。旧serverは未搬送=project）
+    avatarMode: office.avatarMode === "session" ? "session" : "project",
   };
 }
 
@@ -79,7 +81,7 @@ function emptyWorld() {
     agents: [], seats: new Map(), history: [],
     counts: { desk: 0, meeting: 0, queue: 0, lounge: 0, external: 0, attention: 0 },
     tasks: { pending: 0, inProgress: 0, completed: 0 },
-    relay: null, launchable: [],
+    relay: null, launchable: [], avatarMode: "project",
   };
 }
 

@@ -59,6 +59,13 @@ def main():
                           ).read_text(encoding="utf-8")
             page.route("**/api/status_board*", lambda route: route.fulfill(
                 status=200, content_type="application/json; charset=utf-8", body=sb_payload))
+            # R86-B: 会話ビューアのモック（fixture worldのセッションは実transcriptが無い＝
+            # 実サーバーは200+空を返すが、描画ピンには決定論の会話を注入する）
+            dlg_payload = ('{"ok":true,"messages":['
+                           '{"role":"user","text":"スモーク用の指示です"},'
+                           '{"role":"ai","text":"了解しました。作業を進めます。"}]}')
+            page.route("**/api/session/dialog*", lambda route: route.fulfill(
+                status=200, content_type="application/json; charset=utf-8", body=dlg_payload))
             page.goto(f"http://127.0.0.1:{port}/?ui=iso&t=3.2&seed=11")
             page.wait_for_function("window.__office && window.__office.ready", timeout=30000)
             page.wait_for_timeout(300)
@@ -95,6 +102,18 @@ def main():
             # (2) エージェント行クリック → コンポーズ → Enter で投函
             page.click(f'.arow[data-session="{target_session}"]')
             page.wait_for_selector("#sheet:not([hidden])", timeout=3000)
+            # (2a) R86-B: 💬 セッションのやり取り＝user/ai 両バブルが実描画される
+            page.wait_for_selector(".dlgmsg", timeout=5000)
+            dlg = page.evaluate(
+                "() => ({ user: !!document.querySelector('.dlgmsg.user'),"
+                "  ai: !!document.querySelector('.dlgmsg.ai'),"
+                "  text: document.querySelector('.dlglist').textContent })")
+            if dlg["user"] and dlg["ai"] and "スモーク用の指示です" in dlg["text"] \
+                    and "了解しました" in dlg["text"]:
+                print("  ✓ R86-B 💬会話ビューア: user/ai バブル描画")
+            else:
+                print(f"  ✗ 💬会話ビューアが描画されない: {dlg}")
+                ng += 1
             page.fill("#composeinput", "操作系スモークのテスト指示です")
             page.keyboard.press("Enter")
             f2 = INBOX / f"{target_session}.json"

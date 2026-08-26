@@ -184,6 +184,21 @@ def edition(config=None):
     return val if val in VALID_EDITIONS else "claude"
 
 
+AVATAR_MODES = ("session", "project")
+
+
+def avatar_mode(config=None):
+    """R86-A: アバターの粒度。session=1アバター=1セッション（**既定**・ユーザー裁定2026-08-26
+    「worksで並走する3〜4セッションを個別に認識したい」）／project=1アバター=1プロジェクト
+    （R50-P1の集約表示・旧既定）。env OFFICE_AVATAR_MODE はテスト/一時切替の注入口。不正値=session。"""
+    raw = os.environ.get("OFFICE_AVATAR_MODE")
+    if raw is None or not str(raw).strip():
+        cfg = config if isinstance(config, dict) else load_config()
+        raw = cfg.get("avatarMode")
+    val = str(raw or "").strip().lower()
+    return val if val in AVATAR_MODES else "session"
+
+
 def edition_features(ed):
     """機能マトリクス＝表示分岐の単一集約点。UI/PWA はこの features だけを見る。
 
@@ -705,6 +720,74 @@ def _work_from_tasks(tasks):
     }
 
 
+# ── R86-B: シート会話ビューア ─────────────────────────────────────
+# 会話本文を返すのは GET /api/session/dialog（loopback+CSRF配下）だけ。
+# office_json には載せない＝中継(push_status)へ乗る経路が構造的に存在しない（R83思想・
+# redaction 非依存）。スマホ向けは E2EE 化（R87候補）まで出さない。
+DIALOG_TAIL_BYTES = 300_000     # シートを開いた時だけの単発読み（TASK_TAIL_BYTES 8MB の前例あり）
+DIALOG_LIMIT = 30               # 返す最大件数（UIは直近12件＋「もっと見る」で全件）
+DIALOG_CLAMP = 400              # 1メッセージの最大文字数
+_SESSION_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")   # `.`/`/` を排除＝トラバーサル不能
+
+
+def dialog_from_lines(lines, limit=DIALOG_LIMIT, clamp=DIALOG_CLAMP):
+    """transcript行 → [{"role": "user"|"ai", "text": …}]（時系列・末尾limit件）。
+
+    採用: user の文字列content（人間の指示）／user 配列の text ブロック／
+          assistant の text ブロック連結／AskUserQuestion（❓質問+選択肢）。
+    除外: thinking・tool_use（質問以外）・tool_result・`<`始まりの注入行
+          （<local-command-stdout>/<system-reminder> 等。ただし <command-name> は
+          「/x-post」の形で1行残す＝何を実行したかは会話の一部）・状態ブロック行・壊れ行。"""
+    msgs = []
+    for ln in lines:
+        try:
+            d = json.loads(ln)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(d, dict) or d.get("type") not in ("user", "assistant"):
+            continue
+        content = (d.get("message") or {}).get("content")
+        role = "user" if d["type"] == "user" else "ai"
+        if role == "user" and isinstance(content, str):
+            text = content.strip()
+            if not text:
+                continue
+            if text.startswith("<"):
+                m = _COMMAND_NAME_RE.search(text)
+                if not m:
+                    continue
+                text = "/" + m.group(1)
+            msgs.append({"role": role, "text": short(text, clamp)})
+            continue
+        if not isinstance(content, list):
+            continue
+        parts = []
+        for b in content:
+            if not isinstance(b, dict):
+                continue
+            if b.get("type") == "text" and str(b.get("text", "")).strip():
+                parts.append(str(b["text"]))
+            elif (role == "ai" and b.get("type") == "tool_use"
+                    and b.get("name") == "AskUserQuestion"):
+                q = _question_text(b)
+                if q:
+                    parts.append("❓ " + q)
+        if parts:
+            msgs.append({"role": role, "text": short("\n".join(parts), clamp)})
+    return msgs[-limit:]
+
+
+def _session_transcript(session):
+    """sessionId → 実transcriptパス（PROJECTS配下の glob のみ＝閉じ込め）。無ければ None。
+    呼び出し側が _SESSION_ID_RE を通してから呼ぶ（形式不正は400・不在は200+空）。"""
+    try:
+        for p in PROJECTS.glob(f"*/{session}.jsonl"):
+            return p
+    except OSError:
+        pass
+    return None
+
+
 def parse_session(path, now):
     """1セッションのjsonl末尾から社員カード情報を作る"""
     mtime = path.stat().st_mtime
@@ -1028,11 +1111,13 @@ def _session_brief(e):
     }
 
 
-def group_by_project(employees, lang="ja"):
-    """employees[] を cwd 単位に畳んで projects[] を作る（employees は破壊しない）。
+def group_by_project(employees, lang="ja", mode="project"):
+    """employees[] を roster[] へ畳む（employees は破壊しない）。
 
-    代表セッション = ❗を出している中で最新 → 居なければ全体で最新。
-    これが projects[].session になるので、投函・hook・MCP・署名の経路は無改造で動く。
+    mode="project"（関数既定＝既存テスト互換）: cwd 単位に集約＝1アバター=1プロジェクト。
+    mode="session"（R86-A・scan_office の実既定）: 全セッションを単独グループへ＝
+    1アバター=1セッション。session=自分なので投函・❗・Pushがそのセッションへ直接届く。
+    代表セッション = ❗を出している中で最新 → 居なければ全体で最新（sessionモードでは自明に自分）。
     """
     order = []
     groups = {}
@@ -1040,6 +1125,9 @@ def group_by_project(employees, lang="ja"):
         if e.get("external"):
             # 別Macの稼働体。まとめず1体1プロジェクトとして扱う（専用区画に置くため）。
             key = f"ext:{e.get('session', '')}"
+        elif mode == "session":
+            # R86-A: 1アバター=1セッション（ext: と同じ流儀の単独グループ）
+            key = f"ses:{e.get('session', '')}"
         else:
             key = f"cwd:{nfc(e.get('cwd') or '') or 'dept:' + nfc(e.get('dept') or '')}"
         if key not in groups:
@@ -1055,9 +1143,18 @@ def group_by_project(employees, lang="ja"):
         lead = min(pool, key=lambda m: (int(m.get("age") or 0), m.get("session", "")))
         state = min((m.get("state", "resting") for m in members),
                     key=lambda s: _STATE_RANK.get(s, 9))
+        if lead.get("external"):
+            pid = lead.get("session", "")
+        elif key.startswith("ses:"):
+            # R86-A: セッション単独アバターの派生ID= sha1(nfc(cwd+"\n"+session))[:12]。
+            # `\n` はパスに出現しない＝cwdグループのIDと衝突不能。パス/セッションID平文を
+            # 含まないので中継搬送可。席の永続化・PWAの回答済みフラグ・Push attnstate が独立キー化。
+            pid = project_id_for(f"{lead.get('cwd', '')}\n{lead.get('session', '')}",
+                                 lead.get("dept", ""))
+        else:
+            pid = project_id_for(lead.get("cwd", ""), lead.get("dept", ""))
         proj = {
-            "projectId": (lead.get("session", "") if lead.get("external")
-                          else project_id_for(lead.get("cwd", ""), lead.get("dept", ""))),
+            "projectId": pid,
             "session": lead.get("session", ""),          # 代表＝指示の宛先
             "name": lead.get("dept", ""),
             "role": lead.get("role", ""),
@@ -1194,7 +1291,9 @@ def scan_office():
     # R50: 新UIが読む集約ビュー。employees[] は旧UIのために無改造で残す。
     # キー名は roster（"projects" は projects_index のローカルパス一覧が持つ名前。
     # 「office_json に projects を混ぜない」既存の privacy 番人と衝突させない）。
-    roster = group_by_project(employees, _LANG)
+    # R86-A: 粒度は avatarMode（既定 session=1アバター=1セッション・ユーザー裁定）。
+    mode = avatar_mode(config)
+    roster = group_by_project(employees, _LANG, mode=mode)
 
     # R79-10 遠隔実行: 許可リスト（表示用の最小ビュー＝argv/cwd/envは載せない）と実行結果。
     # caps はUIの機能ゲート（旧Macでは▶実行ボタンを出さない＝版ズレ耐性）。
@@ -1223,6 +1322,7 @@ def scan_office():
         "templates": load_templates(),
         "launchable": launchable_projects(now),
         "lang": _LANG,
+        "avatarMode": mode,          # R86-A: UIの文言分岐用（session/project・機微なし）
         # counts は MCP office_status の出勤サマリが読む（UI/PWAは world 側で再計算＝読まない）
         "counts": {
             "working": sum(1 for e in employees if e["state"] == "working"),
@@ -2071,6 +2171,21 @@ class Handler(BaseHTTPRequestHandler):
                 return self._deny(403, "cross-site request blocked")
             self._send(200, json.dumps(status_board.status_board_json(), ensure_ascii=False).encode("utf-8"),
                        "application/json; charset=utf-8")
+        elif self.path.startswith("/api/session/dialog"):
+            # R86-B: セッションの実やり取り（シート会話ビューア）。会話本文を返す唯一の経路＝
+            # loopback+CSRF配下のみ・office_json 非搭載（中継へ流れる経路が構造的に無い）。
+            # 未知sessionは 200+空（fixture worldのシート開でも console error を出さない）。
+            if not self._csrf_ok():
+                return self._deny(403, "cross-site request blocked")
+            qs = parse_qs(self.path.split("?", 1)[1] if "?" in self.path else "")
+            session = (qs.get("session") or [""])[0]
+            if not _SESSION_ID_RE.fullmatch(session or ""):
+                return self._deny(400, "bad session")
+            p = _session_transcript(session)
+            msgs = dialog_from_lines(tail_lines(p, DIALOG_TAIL_BYTES)) if p else []
+            self._send(200, json.dumps({"ok": True, "messages": msgs},
+                                       ensure_ascii=False).encode("utf-8"),
+                       "application/json; charset=utf-8")
         elif self.path.split("?", 1)[0] == "/api/projects":
             # cwd を含むローカルパス一覧なので、別オリジンGETには公開しない。
             if not self._csrf_ok():
@@ -2430,6 +2545,27 @@ def relay_usage():
             "pct": d.get("pct"), "level": d.get("level")}
 
 
+def _launch_target_for(project_id):
+    """launch の cwd 引き当て。(target_cwd, label) を返す（不明は ("","")）。
+
+    1) projects_index の cwd 直一致（従来）。
+    2) R86-A: セッション単独アバターの派生projectId（sha1(cwd+"\\n"+session)）は index に
+       無い → roster から cwd を引き当てる。ただし採用するのは **その cwd が projects_index
+       の cwd 集合に在るときだけ**＝「遠隔から任意パスは起動できない」不変条件を維持
+       （roster の cwd はローカル scan 由来で遠隔入力ではない）。"""
+    index_rows = projects_index.projects_json().get("projects") or []
+    for prj in index_rows:
+        path = prj.get("cwd") or ""
+        if path and project_id_for(path) == project_id:
+            return path, prj.get("name") or Path(path).name
+    known = {prj.get("cwd") for prj in index_rows if prj.get("cwd")}
+    for p in (office_json().get("roster") or []):
+        cwd0 = p.get("cwd") or ""
+        if p.get("projectId") == project_id and cwd0 in known:
+            return cwd0, p.get("title") or p.get("disp") or Path(cwd0).name
+    return "", ""
+
+
 def _action_exec(data):
     """R79-10: act-封筒の中身（署名検証は relay_agent 側で完了済み）を実行する。
     (ok, msg, extra) を返す。**必ず1つの終了状態に落ちる**（denied/busy/running/…）。
@@ -2458,12 +2594,7 @@ def _action_exec(data):
                 return True, r["state"], {"state": r["state"], "reqId": r["reqId"]}
         # 引き当ては projects_index（実在する Claude プロジェクトの cwd 一覧）。
         # 「過去に本当に開かれたプロジェクト」だけが対象＝遠隔から任意パスは起動できない。
-        target, label = "", ""
-        for prj in (projects_index.projects_json().get("projects") or []):
-            path = prj.get("cwd") or ""
-            if path and project_id_for(path) == act["project"]:
-                target, label = path, prj.get("name") or Path(path).name
-                break
+        target, label = _launch_target_for(act["project"])
         if not target or not Path(target).is_dir():
             rec = office_actions.register_result(act["reqId"], "launch", act["project"],
                                                  "denied", reason="unknown-project",

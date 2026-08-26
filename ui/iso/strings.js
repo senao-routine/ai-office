@@ -131,6 +131,10 @@ const DICT = {
     // シート
     work_now: "▶ いま", work_next: "⏭ 次", work_done: "✅ 完了",
     recent_moves: "最近の動き",
+    dialog_head: "💬 セッションのやり取り",
+    dialog_empty: "まだ会話がありません",
+    dialog_err: "会話を取得できませんでした",
+    dialog_more: (n) => `▲ もっと見る（前の${n}件）`,
     crew_head: (n) => `セッション内訳（${n}）`,
     crew_n: (i) => `${i}号`,
     crew_rep: "（代表）",
@@ -233,6 +237,8 @@ const DICT = {
     setup_hook_copied: "コピーしました",
     sub_line: (n, work, queue, rest) =>
       `${n} プロジェクトが出勤中 — 作業 ${work} · あなた待ち ${queue} · 休憩 ${rest}`,
+    sub_line_session: (n, work, queue, rest) =>
+      `${n} セッションが出勤中 — 作業 ${work} · あなた待ち ${queue} · 休憩 ${rest}`,
     ob_title: "まだ誰も出勤していません",
     ob_p1: "ターミナルで claude を起動すると、そのプロジェクトが1体のロボットとして出勤します。",
     ob_p2: "左の「➕ 新プロジェクト」からフォルダを選んで、最初のプロジェクトを登録することもできます。",
@@ -345,6 +351,10 @@ const DICT = {
     quick: ["Keep going", "This approach is fine", "Fix the tests, then push", "Pause for now"],
     work_now: "▶ Now", work_next: "⏭ Next", work_done: "✅ Done",
     recent_moves: "Recent activity",
+    dialog_head: "💬 Session conversation",
+    dialog_empty: "No conversation yet",
+    dialog_err: "Couldn't load the conversation",
+    dialog_more: (n) => `▲ Show ${n} earlier`,
     crew_head: (n) => `Sessions (${n})`,
     crew_n: (i) => `#${i}`,
     crew_rep: " (lead)",
@@ -438,6 +448,8 @@ const DICT = {
     setup_hook_copied: "Copied",
     sub_line: (n, work, queue, rest) =>
       `${n} projects on duty — working ${work} · waiting on you ${queue} · resting ${rest}`,
+    sub_line_session: (n, work, queue, rest) =>
+      `${n} sessions on duty — working ${work} · waiting on you ${queue} · resting ${rest}`,
     ob_title: "Nobody's in the office yet",
     ob_p1: "Start claude in any terminal and that session walks in as a robot.",
     ob_p2: "You can also pick a folder from “➕ New project” on the left to create your first department.",

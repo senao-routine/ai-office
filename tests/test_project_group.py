@@ -44,11 +44,16 @@ def projects_of(data):
 
 
 class ProjectGroupTest(unittest.TestCase):
+    """R50-P1 の集約（1アバター=1プロジェクト）。R86-A で実既定は session になったため、
+    このクラスは avatarMode=project を明示して集約仕様をピンし続ける。"""
+
     def setUp(self):
         proj_root = _home / ".claude" / "projects"
         if proj_root.exists():
             shutil.rmtree(proj_root)
         office._cache["t"] = 0.0
+        os.environ["OFFICE_AVATAR_MODE"] = "project"
+        self.addCleanup(os.environ.pop, "OFFICE_AVATAR_MODE", None)
 
     # ── 集約の本体 ────────────────────────────────────────────
     def test_same_cwd_sessions_collapse_into_one_project(self):
@@ -252,3 +257,115 @@ class R69GroupTest(unittest.TestCase):
         b = self._emp("sess-bbb", "/w/beta", "制作本部", age=50)
         d = {p["cwd"]: p["disp"] for p in office.group_by_project([a, b])}
         self.assertEqual(sorted(d.values()), ["制作本部", "制作本部 2号"])
+
+
+class R86SessionModeTest(unittest.TestCase):
+    """R86-A: 1アバター=1セッション（mode="session"・scan_office の実既定＝ユーザー裁定2026-08-26）。
+    group_by_project 直呼び。関数既定は "project" のまま＝上のクラス群が集約仕様をピンし続ける。"""
+
+    _emp = staticmethod(R69GroupTest._emp)
+
+    def test_every_session_gets_own_entry(self):
+        """同一cwdの3セッション → roster 3件・crew=1・session=自分・titleは自分のもの。"""
+        emps = [self._emp("sess-a1", "/w/x", "制作本部", age=5, title="PollAI"),
+                self._emp("sess-a2", "/w/x", "制作本部", age=50),
+                self._emp("sess-a3", "/w/x", "制作本部", age=99, title="AKOOL")]
+        roster = office.group_by_project(emps, mode="session")
+        self.assertEqual(len(roster), 3)
+        by_sess = {p["session"]: p for p in roster}
+        self.assertEqual(set(by_sess), {"sess-a1", "sess-a2", "sess-a3"})
+        for p in roster:
+            self.assertEqual(p["crew"], 1)
+            self.assertEqual(len(p["sessions"]), 1)
+            self.assertEqual(p["sessions"][0]["session"], p["session"])
+        self.assertEqual(by_sess["sess-a1"]["title"], "PollAI")
+        self.assertEqual(by_sess["sess-a2"]["title"], "")
+        self.assertEqual(by_sess["sess-a3"]["title"], "AKOOL")
+
+    def test_derived_projectid_unique_stable_and_opaque(self):
+        """派生ID: 12hex・同cwd内でも一意・呼び直しで不変・cwd/セッションID平文を含まない・
+        projectモードのcwdハッシュとも衝突しない。"""
+        emps = [self._emp("sess-a1", "/w/x", "開発", age=5),
+                self._emp("sess-a2", "/w/x", "開発", age=50)]
+        r1 = office.group_by_project(emps, mode="session")
+        r2 = office.group_by_project(emps, mode="session")
+        ids = [p["projectId"] for p in r1]
+        self.assertEqual(len(set(ids)), 2, "同一cwd内で派生IDが衝突")
+        for pid in ids:
+            self.assertRegex(pid, r"^[0-9a-f]{12}$")
+            self.assertNotIn("sess-a", pid)
+            self.assertNotIn("/w/x", pid)
+        self.assertEqual(ids, [p["projectId"] for p in r2], "派生IDが呼び直しで変わった")
+        proj_id = office.group_by_project(emps, mode="project")[0]["projectId"]
+        self.assertNotIn(proj_id, ids, "projectモードのIDと衝突")
+
+    def test_attention_lands_on_own_entry(self):
+        """❗は当該セッションのエントリだけに付く（他セッションへ波及しない）。"""
+        emps = [self._emp("sess-a1", "/w/x", "開発", age=5),
+                self._emp("sess-a2", "/w/x", "開発", age=50,
+                          approvalMin=4, question="進めていい?")]
+        roster = office.group_by_project(emps, mode="session")
+        by_sess = {p["session"]: p for p in roster}
+        self.assertTrue(by_sess["sess-a2"]["attention"])
+        self.assertEqual(by_sess["sess-a2"]["question"], "進めていい?")
+        self.assertFalse(by_sess["sess-a1"]["attention"])
+
+    def test_name_keeps_dept_for_push_filter_and_numbering(self):
+        """name=dept 維持（PWA購読フィルタ/deptbar担保）・同名の採番は安定。"""
+        emps = [self._emp("sess-a1", "/w/x", "制作本部", age=5),
+                self._emp("sess-a2", "/w/x", "制作本部", age=50)]
+        r1 = office.group_by_project(emps, mode="session")
+        for p in r1:
+            self.assertEqual(p["name"], "制作本部")
+        d1 = sorted(p["disp"] for p in r1)
+        self.assertEqual(d1, ["制作本部", "制作本部 2号"])
+        d2 = sorted(p["disp"] for p in office.group_by_project(emps[::-1], mode="session"))
+        self.assertEqual(d1, d2, "並び順で採番が回転した")
+
+    def test_external_keeps_ext_style(self):
+        """external は従来どおり ext:（projectId=session）＝OpenClaw区画の挙動不変。"""
+        emps = [self._emp("sess-a1", "/w/x", "開発", age=5),
+                self._emp("oc-123", "", "OpenClaw", age=5, external={"site": "macmini"})]
+        roster = office.group_by_project(emps, mode="session")
+        ext = [p for p in roster if p.get("external")]
+        self.assertEqual(len(ext), 1)
+        self.assertEqual(ext[0]["projectId"], "oc-123")
+
+    def test_launch_target_fallback_for_derived_id(self):
+        """R86-A: 派生projectId の遠隔▶起動＝rosterから cwd を引くが、projects_index の
+        cwd 集合に無いパスは絶対に採用しない（遠隔から任意パス起動不能の不変条件）。"""
+        orig_pj, orig_oj = office.projects_index.projects_json, office.office_json
+        try:
+            office.projects_index.projects_json = lambda: {
+                "projects": [{"cwd": "/w/known", "name": "既知PJ"}]}
+            derived = office.project_id_for("/w/known\nsess-a1")
+            evil = office.project_id_for("/w/evil\nsess-a2")
+            office.office_json = lambda: {"roster": [
+                {"projectId": derived, "cwd": "/w/known", "title": "決済チーム", "disp": "既知PJ"},
+                {"projectId": evil, "cwd": "/w/evil", "disp": "怪しいPJ"},
+            ]}
+            # 従来経路（cwd直一致）は不変
+            self.assertEqual(office._launch_target_for(office.project_id_for("/w/known")),
+                             ("/w/known", "既知PJ"))
+            # 派生ID → roster経由で cwd 引き当て（labelはtitle優先）
+            self.assertEqual(office._launch_target_for(derived), ("/w/known", "決済チーム"))
+            # roster に在っても index の cwd 集合外は拒否
+            self.assertEqual(office._launch_target_for(evil), ("", ""))
+            self.assertEqual(office._launch_target_for("ffffffffffff"), ("", ""))
+        finally:
+            office.projects_index.projects_json = orig_pj
+            office.office_json = orig_oj
+
+    def test_scan_office_default_is_session_mode(self):
+        """scan_office の実既定＝session（env/config 未指定）。同cwd2セッションが2アバターになる。"""
+        os.environ.pop("OFFICE_AVATAR_MODE", None)
+        proj_root = _home / ".claude" / "projects"
+        if proj_root.exists():
+            shutil.rmtree(proj_root)
+        office._cache["t"] = 0.0
+        put("-Users-test-demo-project", "sess-sm000001.jsonl", "working_tool.jsonl", age=5)
+        put("-Users-test-demo-project", "sess-sm000002.jsonl", "waiting_said.jsonl", age=60)
+        data = office.scan_office()
+        self.assertEqual(data["avatarMode"], "session")
+        self.assertEqual(len(data["roster"]), 2)
+        self.assertTrue(all(p["crew"] == 1 for p in data["roster"]))

@@ -1,5 +1,6 @@
 {
-  "_note": "Optional config. Copy to office_config.json to customize (the server runs fine without it). Keys under projects are matched against each session's cwd path; the first match wins and overrides the department name (name) and role.",
+  "_note": "Optional config. Copy to office_config.json to customize (the server runs fine without it). Keys under projects are matched against each session's cwd path; the first match wins and overrides the department name (name) and role. avatarMode: 'session' (default) = one robot per session, 'project' = sessions in the same folder fold into one robot.",
   "officeName": "AI Office",
+  "avatarMode": "session",
   "projects": {}
 }

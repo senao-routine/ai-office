@@ -609,6 +609,31 @@
   display: flex; flex-direction: column; gap: 4px;
 }
 .ui-iso .feedline.say { color: #4f3fa8; }
+/* R86-B: 💬 セッションのやり取り（オンデマンド・独立スクロール・user右/ai左） */
+.ui-iso .dlglist {
+  display: flex; flex-direction: column; gap: 6px;
+  max-height: 190px; overflow-y: auto; padding: 2px;
+}
+.ui-iso .dlgmsg {
+  max-width: 88%; padding: 6px 10px; border-radius: 12px;
+  font-size: 11.5px; line-height: 1.65; white-space: pre-wrap; word-break: break-word;
+}
+.ui-iso .dlgmsg.user {
+  align-self: flex-end; color: var(--iso-ink);
+  background: rgba(124, 92, 255, .12); border: 1px solid rgba(124, 92, 255, .22);
+}
+.ui-iso .dlgmsg.ai {
+  align-self: flex-start; color: var(--iso-ink);
+  background: rgba(255, 255, 255, .8); border: 1px solid var(--iso-hairline);
+}
+.ui-iso .dlgnote { font-size: 11px; color: var(--iso-ink-soft); padding: 4px 2px; }
+.ui-iso .dlgmore {
+  align-self: center; flex: none; font: inherit; font-size: 10.5px; font-weight: 700;
+  color: var(--iso-accent); background: rgba(124, 92, 255, .09);
+  border: 1px solid rgba(124, 92, 255, .25); border-radius: 999px;
+  padding: 3px 12px; cursor: pointer;
+}
+.ui-iso.th-dark .dlgmsg.ai { background: rgba(44, 39, 72, .8); }
 
 /* R54-E: 定型ボード（compose直上に常設＝本文がスクロールしても動かない返信の一箇所） */
 .ui-iso .quickdock:empty { display: none; }
@@ -787,6 +812,7 @@
   .ui-iso .sheetquick { grid-template-columns: 1fr; }          /* QUICKを1列に */
   .ui-iso .qchip { min-height: 30px; padding: 4px 9px; }
   .ui-iso .crewlist { max-height: 84px; overflow-y: auto; }    /* 内訳は独立スクロール */
+  .ui-iso .dlglist { max-height: 120px; }                      /* R86-B: 会話も縮める */
 }
 
 /* ── R42.6骨格: OpenClaw Edition のダーク基調（CSS変数オーバーライドのみ・scene無改変） ──

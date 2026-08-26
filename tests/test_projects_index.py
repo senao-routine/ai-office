@@ -138,9 +138,9 @@ class ProjectsIndexTests(unittest.TestCase):
         # "projects" だけは**入れてはいけない**＝projects_index が返すローカルパス一覧のキー名。
         # R80.6: res(Claude枠%の最小ゲージ)・launchable(projectId+名前のみ)を意図的に追加。
         # R82: templates（ユーザー定義定型文=遠隔利用が目的の意図的搬送）も追加。
-        # R85-2: rosterCounts は撤去（読者ゼロ）。
+        # R85-2: rosterCounts は撤去（読者ゼロ）。R86-A: avatarMode（session/project・機微なし）追加。
         self.assertEqual({"officeName", "employees", "history", "generatedAt", "setup",
-                          "counts", "edition", "lang", "roster", "tasks",
+                          "counts", "edition", "lang", "avatarMode", "roster", "tasks",
                           "actions", "relay", "res", "launchable", "templates"},
                          set(data))
         self.assertNotIn("projects", data)
