@@ -247,7 +247,7 @@ def main():
             #       検出できない種類の崩れなので、矩形とscrollHeightで機械検査する）
             fit = page.evaluate(
                 "() => { const side = document.querySelector('.side');"
-                " const lic = document.querySelector('#btn-license').getBoundingClientRect();"
+                " const lic = document.querySelector('#btn-settings').getBoundingClientRect();"
                 " return { over: side.scrollHeight - side.clientHeight,"
                 "   licOk: lic.height > 0 && lic.bottom <= window.innerHeight }; }")
             if fit["over"] <= 1 and fit["licOk"]:

@@ -171,7 +171,7 @@ def main(argv):
                     print(f"  ✓ ロスター情報カード（述語 {sum(1 for g in glosses if g.strip())}/{len(glosses)} 枚）")
 
                 # R81-4: 殺風景対策の常設ピン＝ライブ活動ティッカー（誰が今なにを）と
-                # ゲージタップ→⚡リソースシート（ゲージの意味とライセンスが読める場所）
+                # ゲージタップ→⚡リソースシート（ゲージの意味が読める場所。🧾表示はR85-2撤去）
                 live = page.evaluate(
                     """() => ({
                         ticker: (document.getElementById('ticker')||{}).textContent || '',
@@ -189,11 +189,12 @@ def main(argv):
                         open: document.getElementById('reswrap').classList.contains('open'),
                         text: (document.getElementById('rs_body')||{}).textContent || '',
                     })""")
-                if not res_sheet["open"] or "ライセンス" not in res_sheet["text"]                         or "中継" not in res_sheet["text"]:
-                    print(f"  ✗ ⚡リソースシートが開かない/説明が無い: {res_sheet['text'][:60]}")
+                if not res_sheet["open"] or "中継" not in res_sheet["text"] \
+                        or "ライセンス" in res_sheet["text"]:
+                    print(f"  ✗ ⚡リソースシートが開かない/説明が無い/🧾が復活: {res_sheet['text'][:60]}")
                     ng += 1
                 else:
-                    print("  ✓ ⚡リソースシート（中継の説明＋ライセンス到達）")
+                    print("  ✓ ⚡リソースシート（中継の説明・🧾撤去の維持）")
                 page.evaluate("closeRes()")
                 page.wait_for_timeout(300)
 

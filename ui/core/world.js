@@ -30,7 +30,8 @@ export function buildWorld(office) {
   const agents = triageSort(raw).map((p) => ({
     id: p.projectId || p.session || "",
     session: p.session || "",
-    name: p.disp || p.name || p.dept || "",
+    // R85-1: /rename のセッション名が最優先（disp/採番はサーバー側で無改変のまま）
+    name: p.title || p.disp || p.name || p.dept || "",
     role: p.role || "",
     dept: p.dept || "",
     crew: Number(p.crew) || 1,
@@ -65,6 +66,9 @@ export function buildWorld(office) {
     counts: countByZone(agents),
     tasks: office.tasks || { pending: 0, inProgress: 0, completed: 0 },
     history: Array.isArray(office.history) ? office.history : [],
+    // R85-3: PC機能パリティ＝スマホだけが読んでいた搬送済みデータをPCへも通す
+    relay: (office.relay && typeof office.relay === "object") ? office.relay : null,
+    launchable: Array.isArray(office.launchable) ? office.launchable : [],
   };
 }
 
@@ -75,6 +79,7 @@ function emptyWorld() {
     agents: [], seats: new Map(), history: [],
     counts: { desk: 0, meeting: 0, queue: 0, lounge: 0, external: 0, attention: 0 },
     tasks: { pending: 0, inProgress: 0, completed: 0 },
+    relay: null, launchable: [],
   };
 }
 

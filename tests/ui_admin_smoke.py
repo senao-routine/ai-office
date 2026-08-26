@@ -40,24 +40,12 @@ def main():
     config.write_text('{"projects": {}}', encoding="utf-8")
     launch_marker = tmp / "launch.marker"
     gen_marker = tmp / "gen.marker"
-    # 📱pair/new は Pro ゲート配下 → テスト鍵ライセンスで解錠してから叩く（掟）
-    lic = tmp / "office_license.json"
-    lic_n = subprocess.run(
-        [sys.executable, "-c",
-         "import json;print(json.load(open('tests/fixtures/license_test_key.json'))['n'][2:])"],
-        cwd=str(ROOT), capture_output=True, text=True).stdout.strip()
-    subprocess.run(
-        [sys.executable, str(ROOT / "tools" / "license_sign.py"), "issue",
-         "--edition", "hybrid", "--email", "admin-smoke@fixture", "--out", str(lic)],
-        cwd=str(ROOT), env={**os.environ,
-                            "OFFICE_LICENSE_SIGNING": "tests/fixtures/license_test_key.json"},
-        check=True, capture_output=True)
+    # R85-2: 旧「テスト鍵ライセンスで解錠」はライセンス機構撤去で不要（全機能が素で開く）
 
     env = {**os.environ,
            "OFFICE_HOME": str(home), "OFFICE_CONFIG": str(config),
            "OFFICE_PICK_DIR": str(pick_dir),
-           "OFFICE_FAKE_LAUNCH": str(launch_marker), "OFFICE_FAKE_GEN": str(gen_marker),
-           "OFFICE_LICENSE": str(lic), "OFFICE_LICENSE_PUBKEY_N": lic_n}
+           "OFFICE_FAKE_LAUNCH": str(launch_marker), "OFFICE_FAKE_GEN": str(gen_marker)}
     port = free_port()
     proc = subprocess.Popen(
         [sys.executable, str(ROOT / "server" / "office_server.py"), "--port", str(port)],
@@ -151,29 +139,16 @@ def main():
                 ng += 1
             page.keyboard.press("Escape")
 
-            # (3) 🧾ライセンス: fixture鍵で hybrid 有効の表示＋不正キーの拒否
-            page.click("#btn-license")
-            page.wait_for_selector("#mgo-license", timeout=8000)
-            lic_text = page.eval_on_selector(".modal", "el => el.textContent")
-            if "hybrid" in lic_text and "ライセンス有効" in lic_text:
-                print("  ✓ 🧾状態: hybrid+有効を表示")
+            # (3) 🧾ライセンスは R85-2 撤去 → ボタン/パネルが**存在しない**ことをピン
+            #     （復活させると R84 全機能無料化と矛盾＝廃止商品の宣伝が再発する）
+            lic_btn = page.evaluate("() => !!document.querySelector('#btn-license')")
+            if not lic_btn:
+                print("  ✓ 🧾ライセンスUIが存在しない（R85-2撤去の維持）")
             else:
-                print(f"  ✗ 🧾状態の表示が想定外: {lic_text[:100]}")
+                print("  ✗ 🧾ライセンスボタンが復活している")
                 ng += 1
-            page.fill(".modal .mtextarea", "こわれたライセンス")
-            # 直前操作のトーストが残っていると誤読する（実際に「失効しました」を読んだ）
-            page.eval_on_selector("#toast", "el => { el.hidden = true; el.textContent = ''; }")
-            page.click("#mgo-license")
-            page.wait_for_selector("#toast:not([hidden])", timeout=5000)
-            toast = page.eval_on_selector("#toast", "el => el.textContent")
-            if "失敗" in toast:
-                print("  ✓ 🧾不正キーは拒否（サーバー文言のトースト）")
-            else:
-                print(f"  ✗ 🧾不正キーが通った?: {toast}")
-                ng += 1
-            page.keyboard.press("Escape")
 
-            # (4) ⚡リソース: status_board 読み取りビュー（Pro解錠済み前提）
+            # (4) ⚡リソース: status_board 読み取りビュー
             page.click("#btn-res")
             page.wait_for_selector(".modal .mres", timeout=10000)
             res_text = page.eval_on_selector(".modal", "el => el.textContent")
@@ -227,6 +202,23 @@ def main():
             else:
                 print("  ✗ 💳台帳の削除が反映されない")
                 ng += 1
+
+            # (4b3) R85-3 💱為替編集: 保存が実ファイル(fx.jpyPerUsd)へ反映（UI呼び手ゼロだったAPIの接続ピン）
+            page.wait_for_selector("#mgo-fx", timeout=8000)
+            page.fill(".modal .mledform:has(#mgo-fx) .mledamt", "150.5")
+            page.click("#mgo-fx")
+            page.wait_for_timeout(1500)
+            try:
+                fx_saved = json.loads(ledger_file.read_text(encoding="utf-8")) \
+                    .get("fx", {}).get("jpyPerUsd") == 150.5
+            except (OSError, json.JSONDecodeError):
+                fx_saved = False
+            if fx_saved:
+                print("  ✓ R85-3 💱為替: 保存が fx.jpyPerUsd に反映")
+            else:
+                print("  ✗ 💱為替の保存が反映されない")
+                ng += 1
+            page.wait_for_selector(".modal .mkeygrp", timeout=8000)   # 再描画完了を待つ
 
             # (4b2) R66 🔑グループ構造: 🅰自動（キー入力UIなし・Claudeの/loginガイド）／
             #       🅱APIキー（キー形式プレースホルダ・発行場所）＝「接続方法が分からない」FBのピン
@@ -306,6 +298,47 @@ def main():
                 ng += 1
             page.keyboard.press("Escape")
 
+            # (5) R85-3 ⚙設定: ダークテーマ切替（th-dark クラス＋実背景色の変化を実測）と復帰
+            page.click("#btn-settings")
+            page.wait_for_selector(".modal .mkeybtn", timeout=8000)
+            light_bg = page.evaluate(
+                "() => getComputedStyle(document.querySelector('.side')).backgroundColor")
+            page.evaluate(
+                "() => [...document.querySelectorAll('.modal .mkeybtn')]"
+                ".find(b => b.textContent === 'ダーク').click()")
+            page.wait_for_timeout(400)
+            dark = page.evaluate(
+                "() => ({ cls: document.querySelector('.ui-iso').classList.contains('th-dark'),"
+                "  bg: getComputedStyle(document.querySelector('.side')).backgroundColor,"
+                "  saved: localStorage.getItem('aioffice.iso.theme') })")
+            if dark["cls"] and dark["bg"] != light_bg and dark["saved"] == "dark":
+                print("  ✓ R85-3 ⚙ダーク: th-dark適用+実背景色変化+localStorage永続")
+            else:
+                print(f"  ✗ ダークテーマが効かない: {dark} light_bg={light_bg}")
+                ng += 1
+            page.evaluate(
+                "() => [...document.querySelectorAll('.modal .mkeybtn')]"
+                ".find(b => b.textContent === 'ライト').click()")
+            page.wait_for_timeout(300)
+            if not page.evaluate("() => document.querySelector('.ui-iso').classList.contains('th-dark')"):
+                print("  ✓ R85-3 ⚙ライト復帰")
+            else:
+                print("  ✗ ライトへ戻らない")
+                ng += 1
+            page.keyboard.press("Escape")
+
+            # (6) R85-3 ▶プロジェクト起動: モーダル到達（fixtureは launchable 空＝空状態文言）
+            page.click("#btn-launch")
+            page.wait_for_selector(".modal .mtitle", timeout=8000)
+            launch_txt = page.eval_on_selector(".modal", "el => el.textContent")
+            if "プロジェクト起動" in launch_txt and (
+                    "まだありません" in launch_txt or "▶" in launch_txt):
+                print("  ✓ R85-3 ▶起動モーダル到達（空状態/一覧）")
+            else:
+                print(f"  ✗ ▶起動モーダルが想定外: {launch_txt[:80]}")
+                ng += 1
+            page.keyboard.press("Escape")
+
             real = [e for e in errors if "Failed to load resource" not in e]
             if real:
                 print(f"  ✗ JSエラー: {real[:3]}")
@@ -320,7 +353,7 @@ def main():
     if ng:
         print(f"管理フロースモーク: {ng} 件失敗")
     else:
-        print("✓ 管理フロースモーク合格（➕/📱/🧾/⚡ + console 0）")
+        print("✓ 管理フロースモーク合格（➕/📱/🧾撤去維持/⚡ + console 0）")
     return 1 if ng else 0
 
 

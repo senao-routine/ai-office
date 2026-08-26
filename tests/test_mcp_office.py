@@ -257,6 +257,23 @@ class McpResolveTest(unittest.TestCase):
         sid, _n = self.m._resolve_session("オフィス")
         self.assertEqual(sid, "sess-abcdef01")
 
+    def test_resolve_title_match(self):
+        """R85-1: /rename のセッション名（title）でも宛先解決できる。"""
+        e = self._emp("sess-abcdef01", "制作本部(works) 2号")
+        e["title"] = "決済チーム"
+        sid, note = self.m._resolve_session("決済チーム")
+        self.assertEqual(sid, "sess-abcdef01")
+        self.assertIn("決済チーム", note)   # 解決メッセージも title 表示
+
+    def test_resolve_title_exact_beats_partial(self):
+        """title 完全一致がちょうど1件なら部分一致 candidates が複数でも解決する。"""
+        e1 = self._emp("sess-aaaaaaa1", "開発")
+        e1["title"] = "決済チーム"
+        e2 = self._emp("sess-aaaaaaa2", "開発 2号")
+        e2["title"] = "決済チーム改"
+        sid, _n = self.m._resolve_session("決済チーム")
+        self.assertEqual(sid, "sess-aaaaaaa1")
+
     def test_resolve_ambiguous_lists_candidates(self):
         self._emp("sess-aaaaaaa1", "動画編集ソフト")
         self._emp("sess-aaaaaaa2", "動画編集ソフト 2号")

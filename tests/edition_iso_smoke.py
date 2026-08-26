@@ -78,13 +78,11 @@ def main():
                 print(f"  ✗ openclaw: Claude Code 行が残っている: {names}")
                 ng += 1
             page.keyboard.press("Escape")
-            page.click("#btn-license")
-            page.wait_for_selector("#mgo-license", timeout=8000)
-            lic_txt = page.eval_on_selector(".modal", "el => el.textContent")
-            if "Hybrid" in lic_txt and ("アップグレード" in lic_txt or "Upgrade" in lic_txt):
-                print("  ✓ openclaw: ②→③アップグレード導線")
+            # R85-2: 🧾ライセンス（②→③アップグレード導線）は R84 全機能無料化で撤去済み
+            if not page.evaluate("() => !!document.querySelector('#btn-license')"):
+                print("  ✓ openclaw: 🧾ライセンスUIなし（R85-2撤去の維持）")
             else:
-                print(f"  ✗ openclaw: 導線が出ない: {lic_txt[:100]!r}")
+                print("  ✗ openclaw: 🧾ライセンスボタンが復活している")
                 ng += 1
             browser.close()
         finally:

@@ -126,6 +126,17 @@ test("buildWorld: roster[] があればそれを使う", () => {
   assert.equal(w.officeName, "テスト");
 });
 
+test("buildWorld: title（/renameのセッション名）が disp より優先される（R85-1）", () => {
+  const w = buildWorld({
+    roster: [
+      proj({ disp: "制作本部(works) 2号", title: "決済チーム" }),
+      proj({ projectId: "p2", session: "s2", disp: "ai-office", cwd: "/x/2" }),
+    ],
+  });
+  const names = w.agents.map((a) => a.name).sort();
+  assert.deepEqual(names, ["ai-office", "決済チーム"], "title優先・無ければdisp");
+});
+
 test("buildWorld: roster[] が無ければ employees[] から作る（後方互換）", () => {
   const w = buildWorld({
     employees: [

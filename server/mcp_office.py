@@ -103,6 +103,11 @@ def _alert(e):
     return bool(e.get("approvalMin", 0) > 0 or e.get("question") or e.get("pending"))
 
 
+def _disp(e):
+    """表示名。R85-1: /rename のセッション名（title）があればそれを優先。"""
+    return e.get("title") or e.get("disp", "?")
+
+
 def _tool_status():
     d = office.office_json()
     emps = d.get("employees", [])
@@ -123,7 +128,7 @@ def _tool_status():
         verb = (e.get("verb", "") + " " + (e.get("target") or "")).strip()
         role = f"／{e['role']}" if e.get("role") else ""
         cwd = Path(e.get("cwd") or "").name
-        lines.append(f"{head}[{_emoji(e.get('state'))}] {e.get('disp', '?')}{role} {verb}{why}"
+        lines.append(f"{head}[{_emoji(e.get('state'))}] {_disp(e)}{role} {verb}{why}"
                      f" — session={e.get('session', '')} branch={e.get('branch') or '-'} …{cwd}")
     if len(emps) > MAX_EMPLOYEES:
         lines.append(f"…他{len(emps) - MAX_EMPLOYEES}人（全件は http://127.0.0.1:4780 のオフィスUIで）")
@@ -155,17 +160,21 @@ def _resolve_session(query):
         sid = e.get("session", "")
         disp = unicodedata.normalize("NFC", e.get("disp", "")).casefold()
         dept = unicodedata.normalize("NFC", e.get("dept", "")).casefold()
-        if sid.startswith(q) or (qn and (qn in disp or qn in dept)):
+        # R85-1: /rename のセッション名（title）でも宛先解決できるように
+        title = unicodedata.normalize("NFC", e.get("title", "")).casefold()
+        if sid.startswith(q) or (qn and (qn in disp or qn in dept or qn in title)):
             cands.append(e)
     if len(cands) == 1:
         e = cands[0]
-        return e["session"], f'（"{q}" を {e.get("disp", "")} に解決）'
+        return e["session"], f'（"{q}" を {_disp(e)} に解決）'
     if len(cands) > 1:
-        # disp 完全一致がちょうど1件ならそれを採用（同部署複数でも表示名一致は一意）
-        exact = [e for e in cands if unicodedata.normalize("NFC", e.get("disp", "")).casefold() == qn]
+        # disp/title 完全一致がちょうど1件ならそれを採用（同部署複数でも表示名一致は一意）
+        exact = [e for e in cands
+                 if qn in (unicodedata.normalize("NFC", e.get("disp", "")).casefold(),
+                           unicodedata.normalize("NFC", e.get("title", "")).casefold())]
         if len(exact) == 1:
-            return exact[0]["session"], f'（"{q}" を {exact[0].get("disp", "")} に解決）'
-        listing = "\n".join(f'  {e.get("disp", "?")} = {e.get("session", "")}' for e in cands)
+            return exact[0]["session"], f'（"{q}" を {_disp(exact[0])} に解決）'
+        listing = "\n".join(f'  {_disp(e)} = {e.get("session", "")}' for e in cands)
         return None, "AMBIGUOUS:\n" + listing
     # (d) 出勤簿に無いが正規形式ID かつ 実トランスクリプトが存在 → 閉じたセッション宛（孤児inbox防止）
     if re.fullmatch(r"[a-zA-Z0-9-]{8,64}", q) and _transcript_exists(q):

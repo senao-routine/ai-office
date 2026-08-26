@@ -354,6 +354,10 @@ def _process_items(items):
 # プライバシー方針: 「本文は中継に流さない」（2026-07-09ユーザー選択）。残すのは状態/動作ログ/質問/名前/経過。
 # 本文をMac側で落とすので Cloudflare の DO にもスマホにも一切乗らない（表示側の隠蔽ではなく根元遮断）。
 _REDACT_FIELDS = ("lastSaid", "target", "lastOrder", "cwd", "branch")
+# R85-1: title（/rename のセッション名）は自由入力だが「ユーザーが意図して付けた短い表示名」
+# ＝dept/disp と同じ性格。「スマホにも同じ名前を出す」をユーザーが明示裁定（2026-08-26）した
+# ため既定で通す。OFFICE_RELAY_TITLES=0 で Mac 画面のみへ戻せる（値を空にする＝lastSaid と同流儀）。
+RELAY_TITLES = os.environ.get("OFFICE_RELAY_TITLES", "1") not in ("0", "false")
 _WORK_PATH_RE = re.compile(r"(?:/|~/)[^\s]+")
 
 
@@ -419,6 +423,8 @@ def _redact_entry_for_relay(e):
     for k in _REDACT_FIELDS:
         if k in e:
             e[k] = ""
+    if not RELAY_TITLES and "title" in e:
+        e["title"] = ""                    # R85-1: opt-out時はリネーム名も根元遮断
     fd = e.get("feed")
     if isinstance(fd, list):
         # 「💬 …」＝発言本文の要約行は除去。残す動作ログ行（実行中/編集中…）も、Bashコマンド・
@@ -433,7 +439,8 @@ def _redact_entry_for_relay(e):
 
 def _redact_office_for_relay(office_snapshot):
     """office_json() の結果から機微になりうる本文/パスを除去して返す（破壊的・呼び出し側は都度生成物を渡す）。
-    残す=state/kind/verb/feedの動作ログ(実行中・編集中…)/question/disp/dept/role/age/minions/approvalMin/stuckTool。
+    残す=state/kind/verb/feedの動作ログ(実行中・編集中…)/question/disp/dept/role/age/minions/approvalMin/stuckTool、
+    および title（/renameのセッション名＝ユーザー裁定2026-08-26で既定通過・OFFICE_RELAY_TITLES=0で遮断）。
     落とす=lastSaid・target(本文由来)・lastOrder・cwd・branch、および feed の「💬 発言」行。
 
     R82: templates（ユーザー定義定型文）は**意図的に素通し**＝スマホから使うために保存する
@@ -642,8 +649,7 @@ OPENCLAW_MIN_INTERVAL = float(os.environ.get("OFFICE_OPENCLAW_INTERVAL", "60"))
 def _openclaw_enabled():
     """エディション上 openclaw 連携が有効か（機能フラグの素の値）。"""
     try:
-        return bool(office.edition_features(office.edition(),
-                                            office.license_state()).get("openclaw"))
+        return bool(office.edition_features(office.edition()).get("openclaw"))
     except Exception:
         return False
 
@@ -859,22 +865,12 @@ def tick(url, token):
         print(f"⚠ 状況送信のみ失敗（配達は完了済み）: {e}", flush=True)
     try:
         # openclaw機能が閉じたエディション(claude版)では転送も取得もしない
-        if office.edition_features(office.edition(),
-                                   office.license_state()).get("openclaw"):
+        if office.edition_features(office.edition()).get("openclaw"):
             forward_oc_outbox(url, token)
             pull_openclaw_status(url, token)
     except Exception as e:
         print(f"⚠ OpenClaw集約のみ失敗（本流は完了済み）: {e}", flush=True)
     return n
-
-
-def _license_gate_ok():
-    """relayPwa機能の解錠判定。例外時はTrue（paywallのバグで配達を止めない）。"""
-    try:
-        return bool(office.edition_features(office.edition(),
-                                            office.license_state()).get("relayPwa"))
-    except Exception:
-        return True
 
 
 def main():
@@ -895,15 +891,7 @@ def main():
             url, token, interval = load_config()
         print("✓ 中継設定を検出・起動します", flush=True)
     _adopt_p4_data()  # P4常駐インストール済みなら data/ を共有（スマホstatusの分岐防止）
-    # R42.2 有料機能ゲート: スマホ中継(relayPwa)はライセンス必須（②openclaw版は無料で通る）。
-    # 常駐では exit せず60秒毎に再確認＝ライセンス登録した瞬間に自己回復（PathState対策も兼ねる）。
-    # 判定不能な内部エラーでは止めない（fail-open=ユーザー自身のツールの可用性優先）。
-    while not _license_gate_ok():
-        print("🔒 スマホ中継はPro機能です（オフィスUIの🔑からライセンス登録・60秒毎に再確認）",
-              file=sys.stderr)
-        if once:
-            sys.exit(1)
-        time.sleep(60)
+    # R42.2 のライセンスゲート（_license_gate_ok ループ）は R84 全機能無料化で撤去。
     _load_nonces()   # 既視 nonce を復元（再起動後も窓内リプレイを塞ぐ）
     ws_mode = WS_ENABLED and not once   # --once は常にHTTP＝E2E/デバッグの決定論を守る
     print(f"📡 中継エージェント起動: {url} "

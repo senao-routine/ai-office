@@ -122,7 +122,8 @@ class EditionTest(unittest.TestCase):
         self.assertEqual(data["edition"]["id"], "hybrid")
         feats = data["edition"]["features"]
         self.assertTrue(feats["claudeSessions"] and feats["openclaw"])
-        self.assertIn("license", data["edition"])
+        # R85-2: edition.license はライセンス機構撤去で搬送しない
+        self.assertNotIn("license", data["edition"])
         # 既定(hybrid)では従来どおり社員が出る＝差分ゼロ
         self.assertEqual(len(data["employees"]), 1)
         self.assertIn("counts", data)

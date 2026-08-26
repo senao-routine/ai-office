@@ -450,7 +450,8 @@ function computeAttnNow(office) {
   for (const e of list) {
     if (e && (e.projectId || e.session) && ((e.approvalMin || 0) > 0 || e.question)) {
       now[String(e.projectId || e.session)] = {
-        disp: [...String(e.disp || e.session || "")].slice(0, 40).join(""),
+        // R85-1: /rename のセッション名を優先（Push本文にも同じ名前を出す＝ユーザー裁定）
+        disp: [...String(e.title || e.disp || e.session || "")].slice(0, 40).join(""),
         dept: attnDept(e),
       };
     }
@@ -1311,7 +1312,7 @@ const APP_HTML = "<!doctype html><html lang=ja><head>" +
 '<div id=ln_list></div>' +
 '<button class=sub id=ln_close onclick="closeLaunch()">閉じる</button></div></div>' +
 '<div id=reswrap><div class=mask onclick="closeRes()"></div><div class="sheet">' +
-'<h3 style="margin-bottom:6px" id=rs_title>⚡ リソースとライセンス</h3>' +
+'<h3 style="margin-bottom:6px" id=rs_title>⚡ リソース</h3>' +
 '<div id=rs_body></div>' +
 '<button class=sub id=rs_close onclick="closeRes()">閉じる</button></div></div>' +
 '<div id=setwrap><div class=mask onclick="closeSettings()"></div><div class="sheet">' +
@@ -1327,11 +1328,10 @@ const APP_HTML = "<!doctype html><html lang=ja><head>" +
 '<div class=setrow><div><div class=lb id=st_ln_lb>▶ プロジェクトを起動</div><div class=hint id=st_ln_hint>休眠中のプロジェクトのセッションをMacで開きます</div></div>' +
 '<div class=seg><button id=st_ln_btn onclick="closeSettings();openLaunch()">開く</button></div></div>' +
 '<div class=setrow><div><div class=lb id=st_res_lb>⚡ リソース</div><div class=hint id=st_res_hint>読み込み中…</div></div><div class=seg><button id=st_res_btn onclick="closeSettings();openRes()">開く</button></div></div>' +
-'<div class=setrow><div><div class=lb id=st_lic_lb>🧾 ライセンス</div><div class=hint id=st_lic_hint>読み込み中…</div></div></div>' +
 '<div class=setrow style="border-bottom:0"><div><div class=lb id=st_rp_lb>🔗 再ペアリング</div><div class=hint id=st_rp_hint>この端末の登録をやり直します</div></div>' +
 '<div class=seg><button class=r id=st_rp_btn style="background:var(--danger);color:#fff" onclick="repair()">解除</button></div></div>' +
 '<button class=sub id=st_close onclick="closeSettings()">閉じる</button>' +
-'<div class=setver>AI Office PWA v4.0</div>' +
+'<div class=setver>AI Office PWA v5</div>' +
 '</div></div>' +
 '<div id=setup class="setup hidden"><h2 id=su_title>📱 スマホをペアリング</h2>' +
 '<p><span id=su_p1>Macの AIオフィス画面（左パネル「📱 スマホ連携」）でペアリングを発行し、表示された</span><b id=su_link>リンク</b><span id=su_p2>をこの端末へ送って開くと自動でペアリングされます。うまくいかない時は、Mac側の「ペアリングリンクをコピー」で得たリンクを下に貼り付けてください。</span></p>' +
@@ -1378,7 +1378,7 @@ PWA_GLOSS_SOURCE +
 // ❗カード/回答済みフラグのキーは projectId（rosterで代表sessionが入れ替わっても同一プロジェクト=1件）
 'function attnKey(e){return String((e&&(e.projectId||e.session))||"")}' +
 'function crewOf(e){var n=Number(e&&e.crew);return n>1?n:0}' +
-'function dispCrew(e){var c=crewOf(e);return (e&&(e.disp||e.session)||"")+(c?" ×"+c:"")}' +
+'function dispCrew(e){var c=crewOf(e);return (e&&(e.title||e.disp||e.session)||"")+(c?" ×"+c:"")}' +
 // R51: ❗回答済みフラグは localStorage 永続（再訪しても「送信済み」が残り、消えたら✅ answeredトースト）
 'var ATTN_SENT=(function(){try{return JSON.parse(localStorage.getItem("aioffice.attnSent")||"{}")||{}}catch(_){return {}}})();' +
 'function saveAttnSent(){try{localStorage.setItem("aioffice.attnSent",JSON.stringify(ATTN_SENT))}catch(_){}}' +
@@ -1498,15 +1498,14 @@ PWA_GLOSS_SOURCE +
 'function empDept(e){var d=String((e&&e.dept)||(e&&e.name)||"").trim();if(d)return Array.from(d).slice(0,40).join("");var n=String((e&&e.disp)||"").trim();return Array.from((n&&n.split(/\\s+/)[0])||"").slice(0,40).join("")}' +
 'function filterEmps(emps){var a=(Array.isArray(emps)?emps:[]).filter(function(e){return !!e});return PREF.deptFilter?a.filter(function(e){return empDept(e)===PREF.deptFilter}):a}' +
 // R42.1 エディション機能フラグ（office.edition.features・未定義はtrue=旧server後方互換）
-'function featOn(name){var f=LAST_OFFICE&&LAST_OFFICE.edition&&LAST_OFFICE.edition.features;return !f||f[name]!==false}' +
 // R79-5: 部署フィルタはリストタブ専用（3D/❗ドックは常に全員＝「フィルタ中も全員立っている」を仕様に昇格）
 'function buildDeptbar(emps){var bar=document.getElementById("deptbar");if(!bar)return;bar.innerHTML="";var ds=[];(Array.isArray(emps)?emps:[]).forEach(function(e){var d=empDept(e);if(d&&ds.indexOf(d)<0)ds.push(d)});var show=ds.length>=2&&VIEW==="list";bar.style.display=show?"":"none";if(!show)return;function add(d,label){var b=el("button","deptchip",label);var on=PREF.deptFilter===d;b.classList.toggle("on",on);b.setAttribute("aria-pressed",on?"true":"false");b.addEventListener("click",function(){setDeptFilter(d)});bar.appendChild(b)}add("",T("全部","All"));ds.forEach(function(d){add(d,d)})}' +
 'function setDeptFilter(d){PREF.deptFilter=String(d||"");localStorage.setItem("aioffice.deptFilter",PREF.deptFilter);dispatch()}' +
 'function markSeg(){function m(id,on){var b=document.getElementById(id);if(b)b.classList.toggle("on",!!on)}m("sg_th_c",PREF.theme!=="dark");m("sg_th_d",PREF.theme==="dark");m("sg_fs_s",!PREF.big);m("sg_fs_b",PREF.big);m("sg_sd_on",AUDIO.enabled);m("sg_sd_off",!AUDIO.enabled)}' +
 'function setTheme(t){PREF.theme=t;localStorage.setItem("aioffice.theme",t);applyPrefs();markSeg()}' +
 'function setBig(v){PREF.big=v;localStorage.setItem("aioffice.big",v?"1":"0");applyPrefs();markSeg()}' +
-// R80.6: 設定を「状態が読める場所」へ（ユーザーFB「PC版にあるリソースやライセンスが無い」）。
-// ライセンス=edition.features から導出／リソース=office_json.res(Claude枠%)+relay(中継使用量)。
+// R80.6: 設定を「状態が読める場所」へ（ユーザーFB「PC版にあるリソースが無い」）。
+// リソース=office_json.res(Claude枠%)+relay(中継使用量)。ライセンス表示は R84 無料化で撤去（R85-2）。
 // どちらも新しい秘密は運ばない（%とレベルの整数だけ＝redaction設計の内側）。
 // R80.7: 下部ゲージ帯（ユーザーFB「下にゲージ・消費クレジットとか」）。Claude枠%と中継%。
 // R82: res v2（providers[]）対応。旧サーバー（fiveHour/sevenDayのみ）はclaude行を合成=版ズレ両対応
@@ -1568,14 +1567,10 @@ PWA_GLOSS_SOURCE +
 'var tot=(tk0.pending||0)+(tk0.inProgress||0)+(tk0.completed||0);'+
 'if(tot){sec(T("📋 タスクの進み","📋 Task progress"));'+
 'note(T("完了 "+(tk0.completed||0)+" ・ 進行中 "+(tk0.inProgress||0)+" ・ 未着手 "+(tk0.pending||0),"Done "+(tk0.completed||0)+" · In progress "+(tk0.inProgress||0)+" · Pending "+(tk0.pending||0)))}'+
-'sec(T("🧾 ライセンス","🧾 License"));'+
-'var ed=(o.edition&&o.edition.edition)||"";'+
-'note(featOn("relayPwa")?T("Pro 有効 — スマホ連携・プッシュ通知・遠隔実行・コスト表示が使えます"+(ed?"（"+ed+"）":""),"Pro active — phone link, push, remote actions, cost view"+(ed?" ("+ed+")":"")):T("無料版 — スマホ連携はProライセンスで解錠します","Free — phone link unlocks with a Pro license"))}'+
+'}'+
 'function openRes(){paintRes();playSE("select");document.getElementById("reswrap").classList.add("open")}'+
 'function closeRes(){var w=document.getElementById("reswrap");if(w&&w.classList.contains("open"))playSE("cursor");if(w)w.classList.remove("open")}'+
 'function paintSettingsInfo(){var o=LAST_OFFICE||{};'+
-'var lic=document.getElementById("st_lic_hint");if(lic){var ed=(o.edition&&o.edition.edition)||"";'+
-'lic.textContent=featOn("relayPwa")?T("Pro 有効（スマホ連携・通知・遠隔実行）","Pro active (phone link, push, remote actions)")+(ed?" · "+ed:""):T("無料版（スマホ連携はProで解錠）","Free (phone link unlocks with Pro)")}'+
 'var rs=document.getElementById("st_res_hint");if(rs){var parts=[];var res=o.res||{};'+
 'if(typeof res.fiveHour==="number")parts.push(T("Claude 5時間枠 ","Claude 5h ")+Math.round(res.fiveHour)+"%");'+
 'if(typeof res.sevenDay==="number")parts.push(T("7日枠 ","7d ")+Math.round(res.sevenDay)+"%");'+
@@ -1643,7 +1638,7 @@ PWA_GLOSS_SOURCE +
 'var VIEW=(localStorage.getItem("aioffice.view")||"office");' +
 'var LAST_OFFICE={};var LAST_SIG="",LAST_VIEW="",POLL_IV=null,ATTN_SESSIONS={};'+
 'var SCENE3D="pending";' +
-'function sceneSig(emps){return PREF.deptFilter+"|"+emps.map(function(e){return (e.session||"")+"|"+(e.disp||"")+"|"+empDept(e)+"|"+(e.state||"")+"|"+(e.verb||"")+"|"+(e.target||"")+"|"+((e.feed&&e.feed[0])||"")+"|"+(e.question||"")+"|"+(e.pending?1:0)+"|"+(e.minions||0)+"|"+(needsAttn(e)?1:0)+"|"+(e.stuckTool||"")+"|"+(e.approvalMin||0)+"|"+(e.sprite||"")+"|"+(e.projectId||"")+"|"+(e.crew||0)+"|"+((e.work&&e.work.now&&e.work.now[0])||"")}).join(";")+"|D:"+Object.keys(DELIVERED).join(",")}' +
+'function sceneSig(emps){return PREF.deptFilter+"|"+emps.map(function(e){return (e.session||"")+"|"+(e.disp||"")+"|"+empDept(e)+"|"+(e.state||"")+"|"+(e.verb||"")+"|"+(e.target||"")+"|"+((e.feed&&e.feed[0])||"")+"|"+(e.question||"")+"|"+(e.pending?1:0)+"|"+(e.minions||0)+"|"+(needsAttn(e)?1:0)+"|"+(e.stuckTool||"")+"|"+(e.approvalMin||0)+"|"+(e.projectId||"")+"|"+(e.crew||0)+"|"+((e.work&&e.work.now&&e.work.now[0])||"")}).join(";")+"|D:"+Object.keys(DELIVERED).join(",")}' +
 'function needsAttn(e){return (e.approvalMin>0)||!!e.question}' +
 'function attnSessionSet(emps){var set={};(Array.isArray(emps)?emps:[]).forEach(function(e){if(e&&needsAttn(e)){var k=attnKey(e);if(k)set[k]=1}});return set}' +
 'function checkAttnEdge(emps){var next=attnSessionSet(emps),newly=Object.keys(next).filter(function(s){return !ATTN_SESSIONS[s]});ATTN_SESSIONS=next;if(newly.length)playSE("attn")}' +
@@ -1691,7 +1686,7 @@ PWA_GLOSS_SOURCE +
 // 再描画のたび走る＝素で作るとid重複し、描画対象と表示個体が別物になって空白が出る。再発2敗目）
 'var info=document.getElementById("infodock");if(!info){info=el("div",null);info.id="infodock";'+
 'var tk=el("button",null);tk.id="ticker";tk.type="button";tk.addEventListener("click",function(){var e=TICKER_CUR&&officeAgents(LAST_OFFICE).filter(function(x){return x&&x.session===TICKER_CUR})[0];if(e)openSheet(e)});info.appendChild(tk);'+
-'var gb=el("button",null);gb.id="gaugebar";gb.type="button";gb.title=T("タップで詳細（AI利用枠・中継・ライセンス）","Tap for details (AI quota, relay, license)");gb.addEventListener("click",openRes);info.appendChild(gb)}'+
+'var gb=el("button",null);gb.id="gaugebar";gb.type="button";gb.title=T("タップで詳細（AI利用枠・中継）","Tap for details (AI quota, relay)");gb.addEventListener("click",openRes);info.appendChild(gb)}'+
 'dock.appendChild(info);room.appendChild(dock);'+
 // R80.6: タップは2段（ユーザーFB「いきなりウィンドウでなく、まずフォーカスして
 // どういう作業のアバターか浮かび上がってほしい」）。1度目=カメラが寄る+選択名札+

@@ -47,6 +47,14 @@ def main():
             d = json.loads(ln)
         except json.JSONDecodeError:
             continue
+        # R85-1: custom-title（/rename名）は状態ブロック行だが parse_session が読むので保存する。
+        # 名前そのものは機微になりうるため伏せ字化（構造だけ残す）。
+        if d.get("type") == "custom-title":
+            out_lines.append(json.dumps(
+                {"type": "custom-title",
+                 "customTitle": redact_text(d.get("customTitle", "")),
+                 "sessionId": "sess-aaaa1111"}, ensure_ascii=False))
+            continue
         if d.get("type") not in ("user", "assistant"):
             continue
         slim = {"type": d["type"], "cwd": "/Users/test/demo-project", "gitBranch": "main"}

@@ -825,15 +825,7 @@ class SpendApiTest(unittest.TestCase):
     def setUp(self):
         shutil.rmtree(self.home, ignore_errors=True)
         self.home.mkdir()
-        # R42.2: status_board APIはPro機能ゲート配下＝テスト鍵ライセンスで解錠して従来挙動を検証
-        _licfx_spec = importlib.util.spec_from_file_location(
-            "license_fixture_sb", Path(__file__).resolve().parent / "license_fixture.py")
-        licfx = importlib.util.module_from_spec(_licfx_spec)
-        _licfx_spec.loader.exec_module(licfx)
-        licfx.install(self.home / "office_license.json")
-        self.office._license_cache.update({"path": None, "mtime": None, "state": None})
-        self.addCleanup(os.environ.pop, "OFFICE_LICENSE", None)
-        self.addCleanup(os.environ.pop, "OFFICE_LICENSE_PUBKEY_N", None)
+        # R85-2: 旧Pro機能ゲート（テスト鍵ライセンスで解錠）は R84 全機能無料化で撤去済み
 
     def request_json(self, method, path, data=None):
         body = None if data is None else json.dumps(data).encode("utf-8")
@@ -955,14 +947,15 @@ class PrivacyIsolationRegressionTest(unittest.TestCase):
         try:
             office = _exec_module(ROOT / "server" / "office_server.py", "office_status_isolation")
             snapshot = office.office_json()
-            # R50: roster/rosterCounts/tasks を追加（status_board は依然として混ぜない）
+            # R50: roster/tasks を追加（status_board は依然として混ぜない）
             # R79-10: actions（許可リストの最小ビュー＋実行結果）を追加。argv/cwd/env は
             # recipes_public が落とすので中継へ構成情報は出ない（下の relay push 検査でピン）。
             # R80.6: res は claude_gauge_public の**最小形だけ**（%とstale。account/emailは
             # 構造的に出さない＝中継に新しい秘密を運ばない）。launchable も projectId+名前のみ。
+            # R85-2: rosterCounts は撤去（読者ゼロ）。
             self.assertEqual(set(snapshot), {"officeName", "employees", "history", "generatedAt",
                                              "setup", "counts", "edition", "lang",
-                                             "roster", "rosterCounts", "tasks", "actions",
+                                             "roster", "tasks", "actions",
                                              "relay", "res", "launchable", "templates"})
             for tp in snapshot["templates"]:
                 self.assertEqual({"label", "text"}, set(tp))

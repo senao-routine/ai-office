@@ -415,6 +415,25 @@ class RelayAgentTest(unittest.TestCase):
         self.assertEqual(p["work"]["counts"], {"pending": 1, "in_progress": 2, "completed": 3})
         self.assertEqual(p["sessions"][0]["session"], "s1")
 
+    def test_redact_title_default_pass_and_optout_strip(self):
+        """R85-1: title（/renameのセッション名）は既定で中継へ通す（ユーザー裁定2026-08-26・
+        Push本文にも同じ名前を出す）。OFFICE_RELAY_TITLES=0 なら根元遮断（lastSaidと同流儀）。"""
+        def snap():
+            return {"employees": [{"disp": "開発", "title": "決済チーム", "session": "s1"}],
+                    "roster": [{"projectId": "p1", "name": "開発", "disp": "開発",
+                                "title": "決済チーム", "session": "s1"}]}
+        out = ra._redact_office_for_relay(snap())
+        self.assertEqual(out["employees"][0]["title"], "決済チーム")
+        self.assertEqual(out["roster"][0]["title"], "決済チーム")
+        orig = ra.RELAY_TITLES
+        try:
+            ra.RELAY_TITLES = False
+            out2 = ra._redact_office_for_relay(snap())
+            self.assertEqual(out2["employees"][0]["title"], "")
+            self.assertEqual(out2["roster"][0]["title"], "")
+        finally:
+            ra.RELAY_TITLES = orig
+
     def test_redact_keeps_edition_toplevel(self):
         """R42.1: edition はPWAの表示分岐源＝redaction後もトップレベルに残る（本文/パス由来でない）。"""
         snap = {
@@ -724,22 +743,11 @@ class RelayAgentTest(unittest.TestCase):
         finally:
             ra.office.edition_features = orig_feats
 
-    def test_license_gate_relaypwa(self):
-        """R42.2: relayPwa閉なら常駐ゲートが閉まる。内部例外はfail-open（配達を止めない）。"""
-        orig = (ra.office.edition, ra.office.edition_features, ra.office.license_state)
-        try:
-            ra.office.edition = lambda: "hybrid"
-            ra.office.license_state = lambda: {"valid": False}
-            ra.office.edition_features = lambda ed, lic=None: {"relayPwa": False}
-            self.assertFalse(ra._license_gate_ok())
-            ra.office.edition_features = lambda ed, lic=None: {"relayPwa": True}
-            self.assertTrue(ra._license_gate_ok())
-            def boom():
-                raise RuntimeError("license_state爆発")
-            ra.office.license_state = boom
-            self.assertTrue(ra._license_gate_ok(), "fail-openでない")
-        finally:
-            ra.office.edition, ra.office.edition_features, ra.office.license_state = orig
+    def test_license_gate_removed(self):
+        """R85-2: ライセンスゲートは撤去済み＝relay_agent に paywall 経路が存在しないことをピン
+        （復活させると R84 全機能無料化と矛盾する）。"""
+        self.assertFalse(hasattr(ra, "_license_gate_ok"))
+        self.assertFalse(hasattr(ra.office, "license_state"))
 
     def test_redact_sanitizes_work_without_releasing_existing_redactions(self):
         long_item = "/Users/private/project/" + ("x" * 90) + ".md を確認"

@@ -27,14 +27,4 @@ export function persistStyle(style) {
   }
 }
 
-/**
- * スタイルを切り替える。3D の WebGL コンテキストを確実に破棄するため、
- * その場で差し替えるのではなくリロードする（GPUメモリのリークを避ける唯一確実な手段）。
- */
-export function switchStyle(style) {
-  if (!VALID.has(style)) return;
-  persistStyle(style);
-  const url = new URL(location.href);
-  url.searchParams.delete("ui");        // 明示指定を消して localStorage を正にする
-  location.replace(url.toString());
-}
+// switchStyle は R85-2 で撤去（スタイルは iso 1本＝R50-P5でドット絵撤去以来、呼び出し不能だった）。

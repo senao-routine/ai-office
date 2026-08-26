@@ -818,6 +818,69 @@
   background: rgba(42, 35, 62, .9); color: var(--iso-ink); border-color: rgba(224, 96, 68, .3);
 }
 
+/* ── R85-3: ダークテーマ（⚙設定・localStorage aioffice.iso.theme）──
+   .ed-openclaw と同じ型＝CSS変数オーバーライド＋白ハードコード面の的当て上書き。
+   配色はPWAダークと同じ言語（深インディゴ＋紫）。意味色（ok/warn/alert）は共通変数のまま。
+   既定はライト＝golden 無変化。3Dシーンは自前照明のため無改変（PWAダークと同じ判断）。 */
+.ui-iso.th-dark {
+  --iso-bg: #12111e;
+  --iso-glass: rgba(28, 26, 46, .78);
+  --iso-glass-solid: #201d38;
+  --iso-line: rgba(84, 74, 138, .5);
+  --iso-hairline: rgba(151, 134, 236, .22);
+  --iso-ink: #e8e6f6;
+  --iso-ink-soft: #a09bc4;
+  --iso-accent: #9b82ff;
+  --iso-accent-2: #6ea4ff;
+  --iso-shadow: 0 12px 34px rgba(0, 0, 0, .5), 0 2px 6px rgba(0, 0, 0, .3);
+  background:
+    radial-gradient(90% 70% at 18% 6%, rgba(124, 92, 255, .16) 0%, rgba(124, 92, 255, 0) 55%),
+    radial-gradient(80% 60% at 88% 90%, rgba(79, 141, 255, .10) 0%, rgba(79, 141, 255, 0) 58%),
+    linear-gradient(165deg, #17152a 0%, #131126 52%, #0e0d1c 100%);
+}
+.ui-iso.th-dark .card, .ui-iso.th-dark .side { background: var(--iso-glass); }
+.ui-iso.th-dark .abtn, .ui-iso.th-dark .gcard {
+  background: rgba(36, 32, 60, .8); color: var(--iso-ink);
+}
+.ui-iso.th-dark .abtn:hover { background: rgba(46, 40, 76, .95); }
+.ui-iso.th-dark .modal, .ui-iso.th-dark .sheet {
+  background: rgba(30, 27, 50, .97); border-color: rgba(84, 74, 138, .6);
+}
+.ui-iso.th-dark .qchip, .ui-iso.th-dark .sheetopt, .ui-iso.th-dark .kbd,
+.ui-iso.th-dark .mpick, .ui-iso.th-dark .mkeybtn {
+  background: rgba(44, 39, 72, .9); color: var(--iso-ink); border-color: rgba(151, 134, 236, .3);
+}
+.ui-iso.th-dark .qchip:hover, .ui-iso.th-dark .sheetopt:hover,
+.ui-iso.th-dark .mpick:hover, .ui-iso.th-dark .kbd:hover { background: rgba(56, 49, 92, .95); }
+.ui-iso.th-dark .minput, .ui-iso.th-dark .mtextarea, .ui-iso.th-dark .mledin,
+.ui-iso.th-dark select.mledin, .ui-iso.th-dark .composeinput, .ui-iso.th-dark #composeinput {
+  background: rgba(20, 18, 36, .9); color: var(--iso-ink); border-color: rgba(84, 74, 138, .55);
+}
+.ui-iso.th-dark .crewrow, .ui-iso.th-dark .arow, .ui-iso.th-dark .tile,
+.ui-iso.th-dark .feedbox, .ui-iso.th-dark .composerow {
+  background: rgba(36, 32, 60, .6);
+}
+.ui-iso.th-dark .arow:hover, .ui-iso.th-dark .crewrow:hover { background: rgba(48, 42, 78, .85); }
+.ui-iso.th-dark .zrow:hover { background: rgba(124, 92, 255, .16); }
+.ui-iso.th-dark .lbl {
+  background: rgba(30, 27, 50, .88); border-color: rgba(84, 74, 138, .6);
+}
+.ui-iso.th-dark .lbl b, .ui-iso.th-dark .lblmono { color: var(--iso-ink); }
+.ui-iso.th-dark .lbl:hover { background: rgba(40, 36, 66, .95); }
+.ui-iso.th-dark .no3d, .ui-iso.th-dark .stagehint {
+  background: rgba(28, 26, 46, .85); color: var(--iso-ink-soft);
+}
+.ui-iso.th-dark .setupbar .sb-cmd { background: rgba(20, 18, 36, .8); color: var(--iso-ink); }
+.ui-iso.th-dark .setupbar .sb-copy { background: rgba(44, 39, 72, .9); }
+.ui-iso.th-dark .modalclose { background: rgba(44, 39, 72, .9); color: var(--iso-ink-soft); }
+.ui-iso.th-dark .feedline.say, .ui-iso.th-dark .mkeybtn { color: var(--iso-ink); }
+.ui-iso.th-dark #attn.tray .kbd { background: rgba(44, 39, 72, .92); color: var(--iso-ink); }
+
+/* ⚙設定のセグメント選択状態（ライト/ダーク共通） */
+.ui-iso .mkeybtn.on {
+  background: var(--iso-accent); color: #fff; border-color: var(--iso-accent);
+}
+
 /* エディションバッジ（openclaw時のみ表示） */
 .ui-iso .edbadge {
   display: inline-block; margin-left: 10px; padding: 2px 10px;

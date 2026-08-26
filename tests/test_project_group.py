@@ -226,3 +226,29 @@ class R69GroupTest(unittest.TestCase):
         p2 = office.group_by_project([lead2, other])[0]
         self.assertEqual(p2["work"]["counts"],
                          {"pending": 6, "in_progress": 0, "completed": 3})
+
+    # ── R85-1: title（/renameのセッション名）の決定則 ──────────────
+    def test_title_uses_smallest_session_id_not_lead(self):
+        """title は「title持ちメンバの sessionId 昇順で最初」＝lead交代で名前がチラつかない。"""
+        a = self._emp("sess-aaa", "/w/x", "開発", age=50, title="決済チーム")
+        b = self._emp("sess-bbb", "/w/x", "開発", age=5, title="別名セッション")
+        p = office.group_by_project([b, a])[0]
+        self.assertEqual(p["title"], "決済チーム")
+        # ❗で代表が b に入れ替わっても title は不変
+        b_attn = dict(b, approvalMin=4, age=1)
+        p2 = office.group_by_project([b_attn, a])[0]
+        self.assertEqual(p2["session"], "sess-bbb", "前提: 代表は❗のbへ交代")
+        self.assertEqual(p2["title"], "決済チーム", "lead交代でtitleがチラついた")
+
+    def test_title_skips_untitled_and_defaults_empty(self):
+        a = self._emp("sess-aaa", "/w/x", "開発", age=5)                       # title無し
+        b = self._emp("sess-bbb", "/w/x", "開発", age=50, title="決済チーム")
+        self.assertEqual(office.group_by_project([a, b])[0]["title"], "決済チーム")
+        self.assertEqual(office.group_by_project([a])[0]["title"], "")
+
+    def test_title_does_not_affect_disp_numbering(self):
+        """title があっても disp・N号採番は1文字も変わらない（採番ピンの延長）。"""
+        a = self._emp("sess-aaa", "/w/alpha", "制作本部", age=5, title="PollAI")
+        b = self._emp("sess-bbb", "/w/beta", "制作本部", age=50)
+        d = {p["cwd"]: p["disp"] for p in office.group_by_project([a, b])}
+        self.assertEqual(sorted(d.values()), ["制作本部", "制作本部 2号"])

@@ -1,0 +1,5 @@
+{"type": "user", "message": {"role": "user", "content": "デプロイを進めて"}, "cwd": "/Users/test/demo-project", "gitBranch": "main"}
+{"type": "custom-title", "customTitle": "決済チーム", "sessionId": "sess-aaaa1111"}
+{"type": "assistant", "message": {"role": "assistant", "content": [{"type": "text", "text": "了解です。まずテストを回します。"}]}, "cwd": "/Users/test/demo-project", "gitBranch": "main"}
+{"type": "custom-title", "customTitle": "", "sessionId": "sess-aaaa1111"}
+{"type": "assistant", "message": {"role": "assistant", "content": [{"type": "tool_use", "name": "Bash", "input": {"command": "git push origin main", "description": "push to origin"}}]}, "cwd": "/Users/test/demo-project", "gitBranch": "main"}

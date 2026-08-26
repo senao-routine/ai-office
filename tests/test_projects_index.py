@@ -134,12 +134,13 @@ class ProjectsIndexTests(unittest.TestCase):
     def test_office_json_top_level_is_not_polluted(self):
         office = load_module(OFFICE_SERVER, "office_server")
         data = office.office_json()
-        # R50: roster/rosterCounts/tasks は新UIの集約ビュー（中継へは relay_agent が redact する）。
+        # R50: roster/tasks は新UIの集約ビュー（中継へは relay_agent が redact する）。
         # "projects" だけは**入れてはいけない**＝projects_index が返すローカルパス一覧のキー名。
         # R80.6: res(Claude枠%の最小ゲージ)・launchable(projectId+名前のみ)を意図的に追加。
         # R82: templates（ユーザー定義定型文=遠隔利用が目的の意図的搬送）も追加。
+        # R85-2: rosterCounts は撤去（読者ゼロ）。
         self.assertEqual({"officeName", "employees", "history", "generatedAt", "setup",
-                          "counts", "edition", "lang", "roster", "rosterCounts", "tasks",
+                          "counts", "edition", "lang", "roster", "tasks",
                           "actions", "relay", "res", "launchable", "templates"},
                          set(data))
         self.assertNotIn("projects", data)

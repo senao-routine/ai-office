@@ -35,7 +35,7 @@ export async function api(path, { method = "GET", body = null, signal = null } =
 }
 
 export const getOffice = (signal) => api("/api/office", { signal });
-export const getProjects = (signal) => api("/api/projects", { signal });
+// getProjects は R85-2 で撤去（import元ゼロのデッドエクスポートだった。PCの起動導線は office_json.launchable を使う）。
 export const getStatusBoard = (signal) => api("/api/status_board", { signal });
 
 /** 指示を投函する。宛先は代表セッションID（core/project.js が決める）。 */
@@ -65,10 +65,7 @@ export const spendApply = (body) =>
 export const budgetApply = (provider, amount, currency = "USD") =>
   api("/api/status_board/budget", { method: "POST", body: { provider, amount, currency } });
 
-/** 🧾ライセンス（R42.2）: 状態と登録（文字列はJSONとして受理・nullで解除）。 */
-export const licenseStatus = () => api("/api/license/status");
-export const licenseSet = (license) =>
-  api("/api/license/set", { method: "POST", body: { license } });
+// 🧾ライセンスAPI（licenseStatus/licenseSet）は R84 全機能無料化で撤去（R85-2）。
 
 /** 📱スマホ連携（P3）: デバイス発行/一覧/失効。pair/new はPro機能（403あり）。 */
 export const pairNew = (label) =>
@@ -83,6 +80,14 @@ export const setTemplates = (templates) =>
   api("/api/templates/set", { method: "POST", body: { templates } });
 
 /** R79-10 遠隔実行の許可リスト（ローカルUI専用＝ここでしか作れない・スマホからは参照のみ）。 */
+/** R85-3: PC機能パリティ（休眠プロジェクト起動・言語切替・為替レート編集）。 */
+export const launchProject = (projectId) =>
+  api("/api/projects/launch", { method: "POST", body: { projectId } });
+export const setServerLang = (lang) =>
+  api("/api/lang", { method: "POST", body: { lang } });
+export const fxApply = (jpyPerUsd) =>
+  api("/api/status_board/fx", { method: "POST", body: { jpyPerUsd } });
+
 export const getRecipes = () => api("/api/recipes");
 export const setRecipes = (recipes) =>
   api("/api/recipes/set", { method: "POST", body: { recipes } });

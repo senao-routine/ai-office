@@ -57,13 +57,7 @@ printf 'RELAY_TOKEN=%s\nRELAY_POST_TOKEN=%s\nRELAY_MACMINI_TOKEN=%s\nVAPID_JWK=%
 ( cd relay && npx wrangler dev --port $PORT --ip 127.0.0.1 >/tmp/relay_e2e_dev.log 2>&1 ) &
 WPID=$!
 VHOME=$(mktemp -d)
-# R42.2: relay_agent main() はライセンスゲート配下（relayPwa）。fixture HOMEにテスト鍵の
-# hybridライセンスを敷いて従来のE2E挙動を維持する（無ライセンス停止は verify ▶5/単体で検査）。
-OFFICE_LICENSE_SIGNING=tests/fixtures/license_test_key.json \
-  python3 tools/license_sign.py issue --edition hybrid --email relay-e2e@fixture \
-  --out "$VHOME/office_license.json" >/dev/null 2>&1
-export OFFICE_LICENSE="$VHOME/office_license.json"
-export OFFICE_LICENSE_PUBKEY_N=$(python3 -c 'import json;print(json.load(open("tests/fixtures/license_test_key.json"))["n"][2:])')
+# R85-2: 旧ライセンスゲート（テスト鍵で解錠）は R84 全機能無料化で撤去済み＝素で通る
 # wrangler dev は子に workerd を spawn する。親subshellをkillしても workerd が :PORT に残り
 # 次回起動が古いコードの残骸を叩く（＝嘘green/嘘fail）。ポート専有プロセスも明示的に落とす。
 cleanup(){ kill ${WPID:-} 2>/dev/null; wait ${WPID:-} 2>/dev/null;

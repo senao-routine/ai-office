@@ -105,8 +105,8 @@ else
 fi
 
 
-# ▶3d scene_sync --check は R52 旧UI削除で退役（office_scene.json 自体はサーバーの
-# /api/layout 等が現役で読む＝tests/test_scene_geometry.py が引き続きピンする）
+# ▶3d scene_sync --check は R52 旧UI削除で退役。office_scene.json＋/api/layout＋
+# test_scene_geometry.py も R80 Phase4 で撤去済み（3Dの間取り正本= ui/core/nav.js）
 
 echo "▶ 4/8 ユニットテスト (状態推定ゴールデン他)"
 python3 -m unittest discover -s tests -q 2>&1 | tail -2 | sed 's/^/  /'
@@ -248,7 +248,7 @@ CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://127.0.0.1:$TPORT/ap
 # R42.1 エディション: config差し替えで同一サーバーのまま検査（editionは毎スキャンでconfig再読込・cache 2秒）。
 # 検査後は必ず元configへ復元＋cache失効待ち（▶7 UIスモークは既定hybrid前提のため）。
 API=$(curl -s -H "X-Office-Local: 1" http://127.0.0.1:$TPORT/api/office)
-echo "$API" | python3 -c 'import sys,json; d=json.load(sys.stdin); e=d["edition"]; f=e["features"]; assert e["id"]=="hybrid" and f["claudeSessions"] and f["openclaw"] and f["costDash"], e; print("  ✓ R42.1+R42.2 edition既定=hybrid (fixtureライセンスでfeatures全開)")' \
+echo "$API" | python3 -c 'import sys,json; d=json.load(sys.stdin); e=d["edition"]; f=e["features"]; assert e["id"]=="hybrid" and f["claudeSessions"] and f["openclaw"] and f["costDash"], e; print("  ✓ R42.1+R84 edition既定=hybrid (鍵なしでfeatures全開)")' \
   || ng "R42.1 edition既定がhybridでない: $(echo "$API" | head -c 160)"
 CFG_ORIG=$(cat "$VHOME/office_config.json")
 python3 - "$VHOME/office_config.json" claude <<'EOF'

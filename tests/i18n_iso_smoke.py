@@ -74,8 +74,8 @@ def main():
             else:
                 print("  ✓ 本体DOM: 日本語文字 0（デモ=enワールド）")
 
-            # 🧾ライセンス・⚡リソースのモーダル（➕はフォルダダイアログ・📱は実API発行なので開かない）
-            for btn, label in (("#btn-license", "🧾"), ("#btn-res", "⚡")):
+            # ⚡リソースのモーダル（➕はフォルダダイアログ・📱は実API発行なので開かない。🧾はR85-2撤去）
+            for btn, label in (("#btn-res", "⚡"),):
                 page.click(btn)
                 page.wait_for_selector(".modal .mtitle", timeout=8000)
                 if btn == "#btn-res":

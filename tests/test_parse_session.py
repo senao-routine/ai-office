@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """状態推定のゴールデンテスト（合成jsonlフィクスチャ・mtime注入）"""
 import importlib.util
+import json
 import os
 import re
 import shutil
@@ -23,10 +24,12 @@ class ParseSessionTest(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp(prefix="office_fx_"))
         office._SKILL_MEMORY.clear()
+        office._TITLE_MEMORY.clear()
 
     def tearDown(self):
         shutil.rmtree(self.tmp, ignore_errors=True)
         office._SKILL_MEMORY.clear()
+        office._TITLE_MEMORY.clear()
 
     def load(self, fixture, age, name="sess-aaaa1111.jsonl"):
         """フィクスチャをコピーし、mtime=now-age で parse_session を呼ぶ"""
@@ -174,6 +177,75 @@ class HelpersTest(unittest.TestCase):
         self.assertEqual((name, role), ("デモ部", "検証"))
         name, _ = office.project_label("/Users/test/unknown", "-x", {"projects": {}})
         self.assertEqual(name, "unknown")
+
+
+class CustomTitleTest(unittest.TestCase):
+    """R85-1: /rename のセッション名（custom-title 行 → employee['title']）。"""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="office_title_"))
+        office._SKILL_MEMORY.clear()
+        office._TITLE_MEMORY.clear()
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+        office._SKILL_MEMORY.clear()
+        office._TITLE_MEMORY.clear()
+
+    def load(self, fixture, age, name="sess-aaaa1111.jsonl"):
+        p = self.tmp / name
+        shutil.copy(FX / fixture, p)
+        mtime = 1_800_000_000.0
+        os.utime(p, (mtime, mtime))
+        return office.parse_session(p, now=mtime + age)
+
+    def test_last_custom_title_wins(self):
+        """複数の custom-title 行は最後の1件が現在値。ai-title/agent-name は採用しない。"""
+        e = self.load("custom_title.jsonl", age=10)
+        self.assertEqual(e["title"], "決済チーム")
+
+    def test_cleared_title_is_empty(self):
+        """customTitle が空文字＝リネーム解除。"""
+        e = self.load("custom_title_cleared.jsonl", age=10)
+        self.assertEqual(e["title"], "")
+
+    def test_no_custom_title_is_empty(self):
+        e = self.load("working_tool.jsonl", age=10)
+        self.assertEqual(e["title"], "")
+
+    def test_clamp_and_nonstring_ignored(self):
+        """30字クランプ（short と同じ …省略）・非文字列は無視して直前の値を保つ。"""
+        src = (FX / "working_tool.jsonl").read_text()
+        p = self.tmp / "sess-cccc3333.jsonl"
+        p.write_text(
+            json.dumps({"type": "custom-title", "customTitle": "あ" * 40},
+                       ensure_ascii=False) + "\n" +
+            json.dumps({"type": "custom-title", "customTitle": 123}) + "\n" + src)
+        mtime = 1_800_000_000.0
+        os.utime(p, (mtime, mtime))
+        e = office.parse_session(p, now=mtime + 10)
+        self.assertEqual(len(e["title"]), 30)
+        self.assertTrue(e["title"].endswith("…"))
+
+    def test_title_sticky_when_scrolled_out_of_tail(self):
+        """custom-title 行が tail 窓から流れても記憶で表示を保つ（名前チラつき根絶）。
+        明示の解除（空文字）は記憶ごと消す。"""
+        p = self.tmp / "sess-dddd4444.jsonl"
+        mtime = 1_800_000_000.0
+        shutil.copy(FX / "custom_title.jsonl", p)
+        os.utime(p, (mtime, mtime))
+        e1 = office.parse_session(p, now=mtime + 10)
+        self.assertEqual(e1["title"], "決済チーム")
+        # 窓から流れた状態を再現（custom-title 行の無い内容へ差し替え）
+        shutil.copy(FX / "working_tool.jsonl", p)
+        os.utime(p, (mtime, mtime))
+        e2 = office.parse_session(p, now=mtime + 20)
+        self.assertEqual(e2["title"], "決済チーム", "記憶が効いていない（チラつき再発）")
+        # 明示の解除
+        shutil.copy(FX / "custom_title_cleared.jsonl", p)
+        os.utime(p, (mtime, mtime))
+        e3 = office.parse_session(p, now=mtime + 30)
+        self.assertEqual(e3["title"], "")
 
 
 if __name__ == "__main__":

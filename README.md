@@ -14,7 +14,7 @@ If you run several coding agents in parallel, the bottleneck isn't the AI — it
 
 AI Office closes that loop:
 
-- ❗ When a session needs approval or asks a question, an exclamation mark pops over its robot's head — and (Pro) your iPhone gets a **push notification**
+- ❗ When a session needs approval or asks a question, an exclamation mark pops over its robot's head — and your iPhone gets a **push notification**
 - The question's **actual options become buttons** (mirrored from `AskUserQuestion`) — answer with one keystroke or one tap
 - Your reply lands inside the real session via a Stop-hook inbox — **the agent keeps moving**
 
@@ -28,7 +28,7 @@ Plenty of tools *show* your agents. Almost none let you *run* them:
 | Claude Code Agent View | table UI | peek & reply | one machine, Claude only |
 | **AI Office** | ✅ live 3D office | ✅ answer / approve / instruct — from tray, list, 3D floor, or phone | Claude Code sessions on your Mac |
 
-And privacy is structural, not a setting: message bodies are stripped **on your Mac** before anything reaches the relay — the relay carries states, activity verbs and questions, never your code or conversations. Instructions are HMAC-signed per device; the relay **cannot forge them**. Your own Cloudflare account, no vendor server, no account, one-time license.
+And privacy is structural, not a setting: message bodies are stripped **on your Mac** before anything reaches the relay — the relay carries states, activity verbs and questions, never your code or conversations. Instructions are HMAC-signed per device; the relay **cannot forge them**. Your own Cloudflare account, no vendor server, no account — and it's completely free.
 
 ## Features
 
@@ -38,8 +38,8 @@ And privacy is structural, not a setting: message bodies are stripped **on your 
 - **👑 Boss desk** — click the gold-crowned boss robot to pick any project and issue a directive
 - **🎬 Demo mode** — `/?demo=1`, no sessions needed
 - **🔔 Desktop notifications + daily report** — new ❗ pings you; at 18:00 a one-file daily summary of what your fleet shipped
-- **📱 Phone PWA + Web Push** (Pro) — QR pairing, per-device HMAC signing, one-tap approve / stop / free-form replies
-- **💸 Cost gauges** (Pro) — Claude / Codex and other providers' quota usage and monthly spend
+- **📱 Phone PWA + Web Push** — QR pairing, per-device HMAC signing, one-tap approve / stop / free-form replies
+- **💸 Cost gauges** — Claude / Codex and other providers' quota usage and monthly spend
 - **🔌 MCP tools** — `office_status` / `office_instruct`, so agents can read and drive the office too
 - **🔒 Private by design** — `127.0.0.1` bind only, transcripts read-only, bodies redacted at source
 - **Zero dependencies** — server is Python standard library only. Clone and run
@@ -80,7 +80,7 @@ claude mcp add --scope user aioffice -- "$(command -v python3)" "$PWD/server/mcp
 claude mcp list   # → aioffice: connected
 ```
 
-## Phone setup (paid)
+## Phone setup (optional)
 
 The mobile relay runs on **your own Cloudflare account** (the free tier is plenty — the office
 keeps its own daily budget and slows itself down long before you could hit a limit).
@@ -98,15 +98,13 @@ Requires Node.js (for `wrangler`) and a free Cloudflare account.
 
 Security model: the relay carries a transport token only and **cannot forge instructions** — authenticity is verified on your Mac with a per-device HMAC key that never leaves it.
 
-## Editions
+## Pricing
 
-| | Price | What you get |
-|---|---|---|
-| **Free** | ¥0 | The full local office — live 3D visualization, instruct from the desktop UI, demo mode, MCP |
-| **Pro** | ¥980 one-time | Phone PWA delivery, push notifications, remote actions, cost dashboard |
+**Everything is free.** The full local office, phone PWA + push notifications, remote actions and
+the cost dashboard are all included — no license, no subscription, no account, no telemetry.
 
-Offline license file. No subscription, no account, no telemetry. See the
-[product page](https://routinelabo-lp.routinelabo-senao.workers.dev) for purchase and updates.
+Like it? The [product page](https://routinelabo-lp.routinelabo-senao.workers.dev) has updates and a
+membership community (early builds, new tools, hands-on support).
 
 ## Requirements
 

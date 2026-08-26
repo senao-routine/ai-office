@@ -10,9 +10,9 @@ import {
 } from "/ui/core/world.js";
 import {
   focusTerminal, getKeysStatus, getOffice, getRecipes, getStatusBoard,
-  getTemplates, licenseSet, licenseStatus, setRecipes, setTemplates,
+  getTemplates, setRecipes, setTemplates,
   newProject, pairList, pairNew, pairRevoke, pickProjectFolder, poll, postInstruction,
-  budgetApply, setOfficeKey, spendApply,
+  budgetApply, fxApply, launchProject, setOfficeKey, setServerLang, spendApply,
 } from "/ui/platform/api.js";
 import { frozen, loop, now } from "/ui/platform/clock.js";
 import { installProbe } from "/ui/platform/probe.js";
@@ -33,10 +33,7 @@ const attnKeyFor = (a) => (a?.question ? `q:${a.question}` : `approval:${a?.sess
 const DEMO = new URLSearchParams(
   typeof location === "undefined" ? "" : location.search).get("demo") === "1";
 
-// R80: 購入・お知らせの導線は**この1箇所**だけを見る（R81でLPを作ったらここを差し替える）。
-// UIの各所にURLを散らすと、値上げ・移転のたびに探し回ることになる。
-// R81: 特設LP（購入・メール登録の単一入口。買うボタンと「知らせを受け取る」の両方がここへ）
-const PRODUCT_SITE = "https://routinelabo-lp.routinelabo-senao.workers.dev";
+// R85-2: 購入導線 PRODUCT_SITE は R84 全機能無料化で撤去（LPへの導線は README が担う）。
 
 export async function mount(root) {
   root.replaceChildren();
@@ -66,10 +63,11 @@ export async function mount(root) {
       <div class="spacer"></div>
       <div class="admin">
         <button class="abtn" id="btn-newproj" type="button"></button>
+        <button class="abtn" id="btn-launch" type="button"></button>
         <button class="abtn" id="btn-pair" type="button"></button>
         <button class="abtn" id="btn-run" type="button"></button>
         <button class="abtn" id="btn-res" type="button"></button>
-        <button class="abtn" id="btn-license" type="button"></button>
+        <button class="abtn" id="btn-settings" type="button"></button>
       </div>
     </aside>
     <main class="main">
@@ -786,16 +784,9 @@ export async function mount(root) {
     try {
       dev = await pairNew(T("pair_device_label"));
     } catch (err) {
-      // Pro未解錠(403)や中継未設定はサーバーの文言をそのまま出す
+      // 中継未設定などはサーバーの文言をそのまま出す（Pro壁はR84撤去済み）
       modal.replaceChildren(mEl("b", "mtitle", T("btn_pair")),
         mEl("p", "mnote merr", err.message));
-      if (err.status === 403) {
-        // Pro壁で袋小路にしない: 次の一歩（ライセンス登録）へワンクリック遷移
-        const go = mEl("button", "mgo", T("pair_to_license"));
-        go.type = "button";
-        go.addEventListener("click", () => renderLicensePanel());
-        modal.append(go);
-      }
       return;
     }
     modal.replaceChildren(mEl("b", "mtitle", T("btn_pair")));
@@ -1265,6 +1256,31 @@ export async function mount(root) {
     });
     form.append(nameIn, amtIn, curSel, kindSel, renewIn, addBtn);
     led.append(form);
+    // R85-3: 💱 円換算レート（POST /api/status_board/fx＝実装済みだが呼び手ゼロだったAPIを接続。
+    // UIの ≈¥ 表示は全部この1値から導出＝155固定のままだと全額表示が古くなる）
+    const fxForm = mEl("div", "mledform");
+    fxForm.append(mEl("span", "mledname", T("fx_label")));
+    const fxIn = mEl("input", "mledin mledamt");
+    fxIn.type = "number";
+    fxIn.min = "1";
+    fxIn.step = "0.1";
+    fxIn.value = String(jpy);
+    const fxBtn = mEl("button", "mgo", T("fx_save"));
+    fxBtn.type = "button";
+    fxBtn.id = "mgo-fx";
+    fxBtn.addEventListener("click", async () => {
+      fxBtn.disabled = true;
+      try {
+        await fxApply(Number(fxIn.value));
+        showToast(T("fx_saved"));
+        shell.querySelector("#btn-res").click();       // 新レートで全額を描き直す
+      } catch (err) {
+        fxBtn.disabled = false;
+        showToast(err.message, false);
+      }
+    });
+    fxForm.append(fxIn, fxBtn);
+    led.append(fxForm);
     modal.append(led);
     await renderKeysSection(sb);
   });
@@ -1273,69 +1289,78 @@ export async function mount(root) {
     shell.querySelector("#btn-res").click();
   });
 
-  // ── 🧾ライセンス（状態表示＋キー登録） ─────────────────────────────
-  const renderLicensePanel = async () => {
-    modal.replaceChildren(mEl("b", "mtitle", T("btn_license")),
-      mEl("p", "mnote", T("loading")));
-    openModal();
-    let st;
-    try {
-      st = await licenseStatus();
-    } catch (err) {
-      modal.replaceChildren(mEl("b", "mtitle", T("btn_license")),
-        mEl("p", "mnote merr", err.message));
-      return;
-    }
-    modal.replaceChildren(mEl("b", "mtitle", T("btn_license")));
-    const lic = st.license || {};
-    modal.append(mEl("p", "mnote",
-      T("lic_line", st.edition) +
-      (lic.valid ? T("lic_valid") : lic.reason ? T("lic_reason", lic.reason) : T("lic_none"))));
-    const feats = st.features || {};
-    const featRow = mEl("p", "mnote",
-      Object.entries({ relayPwa: T("feat_relay"), push: T("feat_push"),
-                       costDash: T("feat_cost"), openclaw: T("feat_openclaw") })
-        .map(([k, label]) => `${feats[k] ? "✅" : "⬜"} ${label}`).join("  "));
-    modal.append(featRow);
-    if (!lic.valid) {
-      // 購入導線: R81のLPへ（Stripe Payment Link 確定まではLP側が「近日発売＝メール登録」を出す）
-      if (built?.edition === "openclaw") {
-        modal.append(mEl("p", "mnote", T("lic_upgrade_hybrid")));
+  // 🧾ライセンスパネルは R84 全機能無料化で撤去（R85-2）。購入導線・鍵登録UIは存在しない。
+
+  // ── R85-3: ▶ プロジェクト起動（launchable[]＝直近に開いたプロジェクトの再起動。
+  //    従来は➕新規登録しかなく「昨日のプロジェクトを今日開き直す」導線がスマホにしか無かった） ──
+  shell.querySelector("#btn-launch").addEventListener("click", () => {
+    modal.replaceChildren(mEl("b", "mtitle", T("btn_launch")));
+    const items = built?.launchable || [];
+    if (!items.length) {
+      modal.append(mEl("p", "mnote", T("launch_empty")));
+    } else {
+      modal.append(mEl("p", "mnote", T("launch_note")));
+      for (const it of items) {
+        const row = mEl("button", "mpick");
+        row.type = "button";
+        row.textContent = `▶ ${it.name || it.projectId}`;
+        row.addEventListener("click", async () => {
+          row.disabled = true;
+          try {
+            await launchProject(it.projectId);
+            showToast(T("launch_ok", it.name || it.projectId));
+            closeModal();
+          } catch (err) {
+            row.disabled = false;
+            showToast(err.message, false);
+          }
+        });
+        modal.append(row);
       }
-      const buy = mEl("a", "mbuy", T("lic_buy"));
-      buy.href = PRODUCT_SITE;
-      buy.target = "_blank";
-      buy.rel = "noopener";
-      modal.append(buy);
-      // 買わない人にも「知らせを受け取る」道を用意する（無料版が主戦場なので、
-      // ここで袋小路にせず、次のリリースまで関係を繋ぐ）
-      const news = mEl("a", "mnote mlink", T("lic_news"));
-      news.href = PRODUCT_SITE;
-      news.target = "_blank";
-      news.rel = "noopener";
-      modal.append(news);
     }
-    const ta = mEl("textarea", "mtextarea");
-    ta.placeholder = T("lic_ph");
-    ta.rows = 4;
-    modal.append(ta);
-    const go = mEl("button", "mgo", T("lic_go"));
-    go.type = "button";
-    go.id = "mgo-license";
-    go.addEventListener("click", async () => {
-      go.disabled = true;
+    openModal();
+  });
+
+  // ── R85-3: ⚙ 設定（PC初の設定パネル＝ダークテーマ・言語。PWAの⚙タブと対） ──
+  const THEME_KEY = "aioffice.iso.theme";
+  const savedTheme = () => {
+    try { return localStorage.getItem(THEME_KEY) || "light"; } catch { return "light"; }
+  };
+  const applyTheme = (t) => root.classList.toggle("th-dark", t === "dark");
+  applyTheme(savedTheme());
+  const renderSettings = () => {
+    modal.replaceChildren(mEl("b", "mtitle", T("btn_settings")));
+    const seg = (label, opts, current, onPick) => {
+      const row = mEl("div", "mledform");
+      row.append(mEl("span", "mledname", label));
+      for (const [v, l] of opts) {
+        const b = mEl("button", `mkeybtn${v === current ? " on" : ""}`, l);
+        b.type = "button";
+        b.addEventListener("click", () => onPick(v));
+        row.append(b);
+      }
+      modal.append(row);
+    };
+    seg(T("set_theme"), [["light", T("set_theme_light")], ["dark", T("set_theme_dark")]],
+      savedTheme(), (v) => {
+        try { localStorage.setItem(THEME_KEY, v); } catch { /* プライベートモード */ }
+        applyTheme(v);
+        renderSettings();                                  // 選択状態を描き直す
+      });
+    // 🌐 サーバーの lang を切り替える（office_json.lang が正本＝PWA/通知の言語も揃う）
+    seg(T("set_lang"), [["ja", "日本語"], ["en", "English"]], lang(), async (v) => {
       try {
-        const r = await licenseSet(ta.value.trim());
-        showToast(r.message || T("lic_ok"));
-        renderLicensePanel();
+        await setServerLang(v);
+        setLang(v);
+        applyStaticStrings(shell);
+        renderSettings();
       } catch (err) {
-        go.disabled = false;
-        showToast(T("reg_fail", err.message), false);
+        showToast(err.message, false);
       }
     });
-    modal.append(go);
+    openModal();
   };
-  shell.querySelector("#btn-license").addEventListener("click", renderLicensePanel);
+  shell.querySelector("#btn-settings").addEventListener("click", renderSettings);
 
   // ↻再送は2クリック制（1回目=3秒のアーム表示・2回目で送信）。誤爆で同じ指示が飛ぶのを防ぐ
   let resendArm = { key: "", timer: 0 };
@@ -1623,6 +1648,16 @@ export async function mount(root) {
       row.append(gEl("span", "", T("g_fixed")), gEl("b", "", `≈¥${total.toLocaleString()}`));
       moneyBody.append(row);
     }
+    // R85-3: 📡 中継使用量（office_json.relay＝R80の自己防衛メーター。従来はPWAだけが
+    // 表示し、Cloudflare無料枠を管理する当人がMacで見えなかった）。閾値はPWAと同じ70/90%。
+    const rl = built?.relay;
+    if (rl && typeof rl.pct === "number") {
+      const lvl = Number(rl.level) || 0;
+      const sub = `${Math.round(rl.pct)}%` +
+        (lvl >= 2 ? T("relay_throttled") : lvl >= 1 ? T("relay_slowed") : "");
+      creditsBody.append(gEl("div", "gbillhead", T("relay_head")),
+        gaugeRow(T("relay_today"), (Number(rl.pct) || 0) / 100, sub, rl.pct >= 70));
+    }
     creditsCard.hidden = creditsBody.children.length === 0;
     moneyCard.hidden = moneyBody.children.length === 0;
     gaugesEl.hidden = creditsCard.hidden && moneyCard.hidden;
@@ -1761,10 +1796,11 @@ function applyStaticStrings(shell) {
   shell.querySelector("#gtitle-credits").textContent = T("gauge_credits");
   shell.querySelector("#gtitle-money").textContent = T("gauge_money");
   shell.querySelector("#btn-newproj").textContent = T("btn_newproj");
+  shell.querySelector("#btn-launch").textContent = T("btn_launch");
   shell.querySelector("#btn-pair").textContent = T("btn_pair");
   shell.querySelector("#btn-run").textContent = T("btn_run");
   shell.querySelector("#btn-res").textContent = T("btn_res");
-  shell.querySelector("#btn-license").textContent = T("btn_license");
+  shell.querySelector("#btn-settings").textContent = T("btn_settings");
   shell.querySelector("#greet").textContent = T("office_fallback");
   shell.querySelector("#sub").textContent = T("loading");
   shell.querySelector("#sheetsnd").title = T("snd_title");

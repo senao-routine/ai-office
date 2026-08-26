@@ -45,7 +45,6 @@ from urllib.parse import parse_qs, unquote
 try:
     import projects_index
     import status_board
-    import license as office_license
     import openclaw_source
     import office_actions
 except ModuleNotFoundError:  # importlibでファイルを直接読む既存テスト向け
@@ -53,7 +52,6 @@ except ModuleNotFoundError:  # importlibでファイルを直接読む既存テ�
     try:
         import projects_index
         import status_board
-        import license as office_license
         import openclaw_source
         import office_actions
     finally:
@@ -132,7 +130,7 @@ def L(ja, en):
 
 
 def L_now(ja, en):
-    """scan外の応答経路（403文言・license reason 等）用: その場で office_lang() を解決する。
+    """scan外の応答経路（403文言等）用: その場で office_lang() を解決する。
     _LANG は scan_office が更新するため、scanが一度も走っていない経路（?demo=1 のみ閲覧等）
     では鮮度が保証されない＝ここでは都度解決する（R50提案2c・新UI i18nカナリアが検出）。"""
     return en if office_lang() == "en" else ja
@@ -186,27 +184,14 @@ def edition(config=None):
     return val if val in VALID_EDITIONS else "claude"
 
 
-# R80: このプロダクトの識別子（ライセンスの product と照合する）
-PRODUCT_ID = "ai-office"
-
-# R80-B1: ライセンスの有効判定を単純化した。
-# 旧実装は「ライセンスのedition」×「動作中のedition」の入れ子表で、**新規cloneの既定edition
-# (hybrid) を claude(Pro)ライセンスがカバーしない**ため、買った人が素のまま使うと解錠されず
-# 「有効なライセンスを登録済みなのに『Pro機能です』で403」になっていた（実測確認）。
-# 回避策は config への手書きのみで、READMEにもUIにも記述が無い＝返金と信頼喪失の直行便。
-# 正しい約束は「買った鍵は、どの版で動かしていても、その鍵が示す機能を開ける」。
-# hybrid鍵は上位互換なので、判定は「有効な鍵があるか」だけで足りる。
-_LICENSE_EDITIONS = ("claude", "hybrid")   # 鍵として受理する edition 名（license.py と対）
-
-
-def edition_features(ed, lic=None):
+def edition_features(ed):
     """機能マトリクス＝表示分岐の単一集約点。UI/PWA はこの features だけを見る。
 
     2026-08-10 ライセンス廃止（ユーザー決定）: 署名鍵による機能ゲートを全廃し、
     **クローンした全員がスマホ連携・Push・遠隔実行・コスト表示まで使える**。
     価値は配布経路（note/Discord）＋更新＋コミュニティで作る（詳細= docs/収益化アーキテクチャ）。
     edition（claude/hybrid/openclaw）は「どの種類のエージェントを表示するか」の**表示モード**として
-    のみ残す＝有料ゲートではない。lic 引数は後方互換のため残すが判定には使わない。"""
+    のみ残す＝有料ゲートではない（検証器・鍵・/api/license/* は R85-2 で撤去済み）。"""
     return {
         "claudeSessions": ed in ("claude", "hybrid"),
         "openclaw": ed in ("openclaw", "hybrid"),
@@ -214,93 +199,6 @@ def edition_features(ed, lic=None):
         "push": True,
         "costDash": True,
     }
-
-
-def license_file():
-    # OFFICE_LICENSE はテスト用の注入口（未指定なら実HOME配下・買い切り恒久）
-    return Path(os.environ.get("OFFICE_LICENSE", str(_HOME / ".claude" / "office_license.json")))
-
-
-_license_cache = {"path": None, "mtime": None, "state": None}
-
-
-def license_state():
-    """ライセンス検証結果（mtimeキャッシュ）。鍵素材・署名値はログ/応答に出さない。
-    公開鍵はテスト注入口 OFFICE_LICENSE_PUBKEY_N(hex) で差し替え可（未指定=本番鍵）。"""
-    p = license_file()
-    try:
-        mtime = p.stat().st_mtime
-    except OSError:
-        return {"valid": False, "edition": "", "product": "",
-                "reason": L_now("ライセンス未登録", "no license registered")}
-    if (_license_cache["state"] is not None and _license_cache["path"] == str(p)
-            and _license_cache["mtime"] == mtime):
-        return _license_cache["state"]
-    try:
-        lic = json.loads(p.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
-        state = {"valid": False, "edition": "", "product": "",
-                 "reason": "ライセンスファイルが読めません"}
-    else:
-        ok, reason = office_license.verify_license(lic, n=_license_pubkey_override())
-        # R80: 1組の署名鍵で複数プロダクト（他アプリ・有料スキル）を扱うため、
-        # **自分宛ての鍵しか受理しない**。v1（product無し）は AI Office 専用の既発行分。
-        if ok and office_license.license_product(lic) != PRODUCT_ID:
-            ok = False
-            reason = L_now("この鍵は AI Office 用ではありません",
-                           "This license is for another product")
-        state = {"valid": ok,
-                 "edition": str(lic.get("edition") or "") if ok else "",
-                 "product": office_license.license_product(lic),
-                 "reason": reason}
-    _license_cache["path"] = str(p)
-    _license_cache["mtime"] = mtime
-    _license_cache["state"] = state
-    return state
-
-
-def _license_pubkey_override():
-    raw = os.environ.get("OFFICE_LICENSE_PUBKEY_N")
-    if not raw:
-        return None
-    try:
-        return int(raw, 16)
-    except ValueError:
-        return None
-
-
-def apply_license(lic):
-    """UIからのライセンス登録/解除。検証してから保存（600・tmp+rename原子置換）。
-    lic=None は解除。lic=文字列はJSONとして受ける（コピペUI向け）。"""
-    p = license_file()
-    if lic is None:
-        try:
-            p.unlink()
-        except OSError:
-            pass
-        return True, "ライセンスを解除しました", {"license": license_state()}
-    if isinstance(lic, str):
-        try:
-            lic = json.loads(lic)
-        except json.JSONDecodeError:
-            return False, "JSONとして読めません", {}
-    if not isinstance(lic, dict):
-        return False, "ライセンス形式が不正です", {}
-    okv, reason = office_license.verify_license(lic, n=_license_pubkey_override())
-    if not okv:
-        return False, f"検証に失敗: {reason}", {}
-    # ★保存する項目は **canonical（署名対象）を1つも落とさない**こと。
-    #   R80で product を v2 の署名対象へ足したとき、ここに追加し忘れて
-    #   「登録し直すと検証が落ちる」実バグを作った（verify ▶5 の復帰E2Eが検出）。
-    keep = {k: lic[k] for k in ("v", "product", "edition", "key_id", "issued",
-                                "holder", "alg", "sig")
-            if k in lic}
-    p.parent.mkdir(parents=True, exist_ok=True)
-    tmp = p.with_name(p.name + ".tmp")
-    tmp.write_text(json.dumps(keep, ensure_ascii=False), encoding="utf-8")
-    os.chmod(tmp, 0o600)
-    tmp.replace(p)
-    return True, f"ライセンス登録完了（{keep.get('edition')}）", {"license": license_state()}
 
 
 def tail_lines(path, nbytes=TAIL_BYTES):
@@ -508,6 +406,29 @@ def remembered_skills(session_key, events, now, fallback_time):
         _SKILL_MEMORY.pop(key, None)
     ordered = sorted(memory.items(), key=lambda kv: kv[1], reverse=True)
     return [name for name, _ts in ordered[:5]]
+
+
+# R85-1: /rename のカスタムセッション名。transcript の {"type":"custom-title"} 行は
+# ターン境界ごとに追記され「最後の1件が現在値」（実測で全サンプルEOFから20KB以内＝
+# tail窓80KBで拾える）。稀に窓から流れても名前がチラつかないよう記憶する（skillsと同じ流儀・
+# メモリのみ）。空文字の customTitle は「リネーム解除」として記憶ごと消す。
+_TITLE_MEMORY = {}
+
+
+def _remembered_title(session_key, seen, now, mtime):
+    """tail窓で見た custom-title を記憶へ合流して現在値を返す。seen=None は「窓に無かった」。"""
+    if seen is not None:
+        if seen:
+            _TITLE_MEMORY[session_key] = [seen, mtime]
+        else:
+            _TITLE_MEMORY.pop(session_key, None)
+    entry = _TITLE_MEMORY.get(session_key)
+    if entry:
+        entry[1] = max(entry[1], mtime)   # 現役セッションを失効させない
+    for key in [k for k, v in _TITLE_MEMORY.items() if now - v[1] > SHOW_WINDOW]:
+        _TITLE_MEMORY.pop(key, None)      # 退勤セッションの残骸掃除（表示窓と同期）
+    entry = _TITLE_MEMORY.get(session_key)
+    return entry[0] if entry else ""
 
 
 _TASK_MEMORY = {}
@@ -801,6 +722,7 @@ def parse_session(path, now):
 
     parsed = []
     skill_events = []
+    custom_title = None            # R85-1: 窓に custom-title 行が無ければ None（記憶を使う）
     for ln in lines:
         try:
             d = json.loads(ln)
@@ -810,7 +732,15 @@ def parse_session(path, now):
             cwd = d["cwd"]
         if d.get("gitBranch"):
             branch = d["gitBranch"]
-        if d.get("type") in ("user", "assistant"):
+        t = d.get("type")
+        if t == "custom-title":
+            # /rename のカスタム名。ループで自然に last-wins（＝最後の1件が現在値）。
+            # 兄弟の ai-title（自動生成・更新され続ける）と agent-name（自動命名と混在）は
+            # 採用しない（docs/transcript-format.md）。非文字列は無視。
+            ct = d.get("customTitle")
+            if isinstance(ct, str):
+                custom_title = short(ct, 30)
+        if t in ("user", "assistant"):
             skill_events.append(d)
             parsed.append(d)
             if len(parsed) > 120:
@@ -819,6 +749,7 @@ def parse_session(path, now):
     if not parsed:
         return None
 
+    title = _remembered_title(str(path), custom_title, now, mtime)
     skills = remembered_skills(str(path), skill_events, now, mtime)
     tasks = _remembered_tasks(str(path), task_lines, now, mtime)
     work = _work_from_tasks(tasks)
@@ -943,6 +874,9 @@ def parse_session(path, now):
         "session": path.stem,
         "cwd": cwd,
         "branch": branch,
+        # R85-1: /rename のセッション名（無ければ""）。表示側が title || disp で名前を合成する。
+        # disp・採番（N号）は無改変＝既存ピンを壊さない（設計= R85計画）。
+        "title": title,
         "age": int(age),
         "mtime": mtime,
         "state": state,
@@ -1128,7 +1062,8 @@ def group_by_project(employees, lang="ja"):
             "name": lead.get("dept", ""),
             "role": lead.get("role", ""),
             "cwd": lead.get("cwd", ""),
-            "branch": lead.get("branch", ""),
+            # branch/lastOrder/skills/avatar は R85-2 で撤去（roster に表示先ゼロの
+            # デッドペイロードだった。employees[] 側は MCP が読むため維持）
             "crew": len(members),
             "state": state,
             "kind": lead.get("kind", "idle"),
@@ -1142,13 +1077,16 @@ def group_by_project(employees, lang="ja"):
             "question": lead.get("question", ""),
             "stuckTool": lead.get("stuckTool", ""),
             "lastSaid": lead.get("lastSaid", ""),
-            "lastOrder": lead.get("lastOrder", ""),
             "feed": lead.get("feed", []),
-            "skills": lead.get("skills", []),
-            "avatar": int(lead.get("avatar") or 0),
             "sessions": [_session_brief(m) for m in
                          sorted(members, key=lambda m: int(m.get("age") or 0))],
         }
+        # R85-1: /rename のセッション名。lead は❗発生で入れ替わる（=lead依存だと
+        # ポーリング毎に名前がチラつく）ので、title を持つメンバのうち sessionId 昇順で
+        # 最初の1件を採用する（メンバ集合が変わらない限り不変の決定則）。
+        titled = sorted((m for m in members if m.get("title")),
+                        key=lambda m: m.get("session", ""))
+        proj["title"] = titled[0]["title"] if titled else ""
         if lead.get("external"):
             proj["external"] = lead["external"]
         if lead.get("questionOptions"):
@@ -1203,11 +1141,7 @@ def scan_office():
     now = time.time()
     config = load_config()
     ed = edition(config)
-    lic = license_state()
-    edition_info = {"id": ed, "features": edition_features(ed, lic),
-                    "license": {"valid": bool(lic.get("valid")),
-                                "edition": lic.get("edition", ""),
-                                "reason": lic.get("reason", "")}}
+    edition_info = {"id": ed, "features": edition_features(ed)}
     global _LANG
     _LANG = office_lang(config)
     setup = {"hookInstalled": hook_installed()}
@@ -1289,18 +1223,13 @@ def scan_office():
         "templates": load_templates(),
         "launchable": launchable_projects(now),
         "lang": _LANG,
+        # counts は MCP office_status の出勤サマリが読む（UI/PWAは world 側で再計算＝読まない）
         "counts": {
             "working": sum(1 for e in employees if e["state"] == "working"),
             "waiting": sum(1 for e in employees if e["state"] == "waiting"),
             "resting": sum(1 for e in employees if e["state"] == "resting"),
         },
-        "rosterCounts": {
-            "total": len(roster),
-            "working": sum(1 for p in roster if p["state"] == "working"),
-            "waiting": sum(1 for p in roster if p["state"] == "waiting"),
-            "resting": sum(1 for p in roster if p["state"] == "resting"),
-            "attention": sum(1 for p in roster if p["attention"]),
-        },
+        # rosterCounts は R85-2 で撤去（読者ゼロのデッドペイロードだった）
         "tasks": task_totals(roster),
     }
 
@@ -2140,20 +2069,7 @@ class Handler(BaseHTTPRequestHandler):
             # pair/list と同様に別オリジンGETを弾く（UIの api() は X-Office-Local を付与）。
             if not self._csrf_ok():
                 return self._deny(403, "cross-site request blocked")
-            if not edition_features(edition(), license_state()).get("costDash"):
-                return self._deny(403, L_now("コストダッシュボードはPro機能です（🔑ライセンス登録から）",
-                                             "The cost dashboard is a Pro feature (register a license via 🧾)"))
             self._send(200, json.dumps(status_board.status_board_json(), ensure_ascii=False).encode("utf-8"),
-                       "application/json; charset=utf-8")
-        elif self.path.startswith("/api/license/status"):
-            # ライセンス状態はローカルUI専用（holder等を別オリジンへ出さない）。sigは返さない。
-            if not self._csrf_ok():
-                return self._deny(403, "cross-site request blocked")
-            ed = edition()
-            lic = license_state()
-            self._send(200, json.dumps({"edition": ed, "license": lic,
-                                        "features": edition_features(ed, lic)},
-                                       ensure_ascii=False).encode("utf-8"),
                        "application/json; charset=utf-8")
         elif self.path.split("?", 1)[0] == "/api/projects":
             # cwd を含むローカルパス一覧なので、別オリジンGETには公開しない。
@@ -2205,15 +2121,7 @@ class Handler(BaseHTTPRequestHandler):
         if not self._csrf_ok():
             return self._deny(403, "cross-site request blocked")
         route = self.path.split("?", 1)[0]
-        # R42.2 有料機能ゲート（強制は全部Mac側・Workerは無強制の掟）。
-        if route == "/api/pair/new" or route.startswith("/api/status_board"):
-            feats = edition_features(edition(), license_state())
-            if route == "/api/pair/new" and not feats.get("relayPwa"):
-                return self._deny(403, L_now("スマホ連携はPro機能です（🔑ライセンス登録から）",
-                                             "Phone pairing is a Pro feature (register a license via 🧾)"))
-            if route.startswith("/api/status_board") and not feats.get("costDash"):
-                return self._deny(403, L_now("コストダッシュボードはPro機能です（🔑ライセンス登録から）",
-                                             "The cost dashboard is a Pro feature (register a license via 🧾)"))
+        # R42.2 の有料機能ゲートは R84 全機能無料化で撤去（features は常に全ON）。
         try:
             n = int(self.headers.get("Content-Length", 0))
             body_limit = 100_000
@@ -2247,6 +2155,16 @@ class Handler(BaseHTTPRequestHandler):
                 launch=bool(data.get("launch")))
         elif self.path == "/api/projects/launch":
             path = data.get("path")
+            # R85-3: PCの「▶ プロジェクト起動」は launchable[]（projectId+名前のみ・パス非搬送）
+            # から呼ぶため projectId でも引き当てる。解決は遠隔launch（_action_exec）と同じ
+            # projects_index＝「過去に本当に開かれたプロジェクト」だけが対象。
+            pid = str(data.get("projectId") or "")
+            if not path and pid:
+                for prj in (projects_index.projects_json().get("projects") or []):
+                    p0 = prj.get("cwd") or ""
+                    if p0 and project_id_for(p0) == pid:
+                        path = p0
+                        break
             try:
                 valid_path = isinstance(path, str) and bool(path.strip()) and Path(path).is_dir()
             except (OSError, ValueError):
@@ -2300,10 +2218,6 @@ class Handler(BaseHTTPRequestHandler):
             ok, msg = status_board.budget_apply(data)      # R63: 手動予算
         elif self.path.startswith("/api/status_board/ledger"):
             ok, msg = status_board.ledger_apply(data)
-        elif self.path.startswith("/api/license/set"):
-            ok, msg, extra = apply_license(data.get("license"))
-            if ok:
-                extra = {**extra, "message": msg}
         else:
             self.send_response(404)
             self.end_headers()
