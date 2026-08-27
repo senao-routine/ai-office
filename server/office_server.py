@@ -724,10 +724,19 @@ def _work_from_tasks(tasks):
 # 会話本文を返すのは GET /api/session/dialog（loopback+CSRF配下）だけ。
 # office_json には載せない＝中継(push_status)へ乗る経路が構造的に存在しない（R83思想・
 # redaction 非依存）。スマホ向けは E2EE 化（R87候補）まで出さない。
-DIALOG_TAIL_BYTES = 300_000     # シートを開いた時だけの単発読み（TASK_TAIL_BYTES 8MB の前例あり）
-DIALOG_LIMIT = 30               # 返す最大件数（UIは直近12件＋「もっと見る」で全件）
+# R86-C: 深さは**列挙**（bytes/limit の直接指定は受けない）。サーバーが確保する最大量が
+# 閉じた集合になり、UIのバグや将来の経路が巨大読みを要求する事故が構造的に起きない
+# （遠隔実行の許可リストと同じ思想）。値は実測で決めた:
+#   depth0 2MB … 4〜10ms・実セッション11本の中央値45件（300KBだと中央値6件＝会話が見えない）
+#   depth1 8MB … ≤32ms・350本の95%以上がここで全会話を回収（TASK_TAIL_BYTES と同じ天井）
+#   depth2 32MB … ≤75ms（現状の最大transcript 18.7MBを全部含む）＝終端
+# 件数上限は安全弁（全量読みで400件超は350本中3本だけ）。実効的な制約はバイト側。
+DIALOG_DEPTHS = ((2_000_000, 60), (8_000_000, 250), (32_000_000, 1000))
+DIALOG_MAX_DEPTH = len(DIALOG_DEPTHS) - 1
+DIALOG_TAIL_BYTES, DIALOG_LIMIT = DIALOG_DEPTHS[0]   # 旧名は depth0 の別名として温存
 DIALOG_CLAMP = 400              # 1メッセージの最大文字数
 _SESSION_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")   # `.`/`/` を排除＝トラバーサル不能
+_DEPTH_RE = re.compile(r"^[0-9]{1,2}$")                 # 非数値/負値/小数は 400
 
 
 def dialog_from_lines(lines, limit=DIALOG_LIMIT, clamp=DIALOG_CLAMP):
@@ -774,7 +783,26 @@ def dialog_from_lines(lines, limit=DIALOG_LIMIT, clamp=DIALOG_CLAMP):
                     parts.append("❓ " + q)
         if parts:
             msgs.append({"role": role, "text": short("\n".join(parts), clamp)})
-    return msgs[-limit:]
+    return msgs if limit is None else msgs[-limit:]
+
+
+def dialog_page(lines, depth=0, truncated=False, clamp=DIALOG_CLAMP):
+    """R86-C: 1ページ分の会話＋「まだ古いのが在るか」。純関数（I/Oは呼び出し側）。
+
+    hasMore = truncated（バイト窓がファイル先頭に届いていない）or limitHit（件数上限で切った）。
+    どちらでもない＝会話の先頭に到達済み＝「もっと見る」を出さない（押せないボタンを作らない）。
+    depth は列挙内へ丸める（範囲外の弾きはルート側で400）。"""
+    depth = max(0, min(int(depth), DIALOG_MAX_DEPTH))
+    _nbytes, limit = DIALOG_DEPTHS[depth]
+    msgs = dialog_from_lines(lines, limit=None, clamp=clamp)
+    limit_hit = len(msgs) > limit
+    return {
+        "messages": msgs[-limit:] if limit_hit else msgs,
+        "depth": depth,
+        "maxDepth": DIALOG_MAX_DEPTH,
+        "hasMore": bool(truncated or limit_hit),
+        "windowTotal": len(msgs),   # ★この窓の中の総数（会話全体ではない）
+    }
 
 
 def _session_transcript(session):
@@ -2181,9 +2209,25 @@ class Handler(BaseHTTPRequestHandler):
             session = (qs.get("session") or [""])[0]
             if not _SESSION_ID_RE.fullmatch(session or ""):
                 return self._deny(400, "bad session")
+            raw_depth = (qs.get("depth") or ["0"])[0] or "0"
+            if not _DEPTH_RE.fullmatch(raw_depth) or int(raw_depth) > DIALOG_MAX_DEPTH:
+                return self._deny(400, "bad depth")
+            depth = int(raw_depth)
             p = _session_transcript(session)
-            msgs = dialog_from_lines(tail_lines(p, DIALOG_TAIL_BYTES)) if p else []
-            self._send(200, json.dumps({"ok": True, "messages": msgs},
+            if not p:
+                page = {"messages": [], "depth": depth, "maxDepth": DIALOG_MAX_DEPTH,
+                        "hasMore": False, "total": 0}
+            else:
+                nbytes = DIALOG_DEPTHS[depth][0]
+                # truncated の述語は tail_lines の欠け行破棄条件と同じ（size > nbytes）。
+                # tail_lines も内部で stat するので厳密には二重＝読み中に窓境界を跨いで
+                # 追記されると1周だけ hasMore が揺れる（次のポーリングで整合。実害は無い）。
+                try:
+                    size = p.stat().st_size
+                except OSError:
+                    size = 0
+                page = dialog_page(tail_lines(p, nbytes), depth, truncated=size > nbytes)
+            self._send(200, json.dumps({"ok": True, **page},
                                        ensure_ascii=False).encode("utf-8"),
                        "application/json; charset=utf-8")
         elif self.path.split("?", 1)[0] == "/api/projects":

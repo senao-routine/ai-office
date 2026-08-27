@@ -185,6 +185,23 @@ echo "$DLG" | python3 -c 'import sys,json; d=json.load(sys.stdin); assert d["ok"
   && ok "R86-B dialog 未知session=200+空 (console error回避)" || ng "R86-B dialog 未知sessionの応答が不正"
 CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "X-Office-Local: 1" "http://127.0.0.1:$TPORT/api/session/dialog?session=..%2Fevil")
 [ "$CODE" = "400" ] && ok "R86-B dialog 形式不正=400 (トラバーサル拒否)" || ng "R86-B dialog 不正session拒否失敗 (code=$CODE)"
+# R86-C: depth は**列挙**（bytes/limitの直接指定を受けない）＝任意サイズ読みが構造的に不可能
+D2=$(curl -s -H "X-Office-Local: 1" "http://127.0.0.1:$TPORT/api/session/dialog?session=sess-verify0001&depth=2")
+echo "$D2" | python3 -c 'import sys,json; d=json.load(sys.stdin); assert d["depth"]==2 and isinstance(d["hasMore"],bool) and d["maxDepth"]>=2, d' \
+  && ok "R86-C dialog depth=2 (depth/maxDepth/hasMore を返す)" || ng "R86-C dialog depth応答が不正: $(echo "$D2" | head -c 80)"
+for BAD in 9 abc 1.5 -1; do
+  CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "X-Office-Local: 1" "http://127.0.0.1:$TPORT/api/session/dialog?session=sess-verify0001&depth=$BAD")
+  [ "$CODE" = "400" ] || ng "R86-C dialog depth=$BAD を拒否しない (code=$CODE)"
+done
+ok "R86-C dialog 列挙外depth(9/abc/1.5/-1)=400"
+D0=$(curl -s -H "X-Office-Local: 1" "http://127.0.0.1:$TPORT/api/session/dialog?session=sess-verify0001&depth=0")
+python3 -c '
+import json,sys
+d0=json.loads(sys.argv[1]); d2=json.loads(sys.argv[2])
+a,b=d0["messages"],d2["messages"]
+assert len(b)>=len(a) and (not a or a==b[-len(a):]), "深いdepthが浅いdepthのsuffixでない"
+' "$D0" "$D2" && ok "R86-C dialog 深いdepthは浅いdepthのsuffix (置換で会話が飛ばない)" \
+  || ng "R86-C dialog suffix性が破れている"
 curl -s http://127.0.0.1:$TPORT/ | grep -q "AI Office" && ok "GET / 200+HTMLマーカー" || ng "トップページ異常"
 # R52: 旧UIは削除済み＝?ui=legacy でも新UI(boot.html)が返ること（旧ページの残骸を配らない）
 curl -s http://127.0.0.1:$TPORT/ | grep -q 'id="bootstate"' \

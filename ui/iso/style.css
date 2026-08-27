@@ -561,7 +561,21 @@
   background: transparent; border: 0; cursor: pointer; padding: 4px;
 }
 .ui-iso .sheetact { font-size: 12px; color: var(--iso-ink-soft); margin: 0; }
-.ui-iso .sheetbody { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+/* R86-C: overflow-y:auto は overflow-x を visible→auto へ格上げする（CSS Overflow仕様）。
+   放置すると本文がはみ出した瞬間に**横スクロールコンテナ**になり、トラックパッドの横スワイプで
+   シートの中身が丸ごと横滑りする（実測352px＝ユーザーFB「クリックしたら幅が崩れる」の正体）。
+   はみ出し自体は下の overflow-wrap で潰すが、ここは将来セクションを増やしたときの最後の砦。 */
+/* R86-C: min-height:0 だけだと定型ボードに押されて本文が113pxまで潰れる（実測）。
+   本文の下限を確保し、押し出しは定型ボード側（max-height:40%）に吸わせる。 */
+.ui-iso .sheetbody { flex: 1 1 auto; min-height: 200px; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; gap: 6px; }
+/* R86-C: 分割不能な連続文字（絶対パス・URL・sha256・snake_case名）を必ず折り返す。
+   Chromium は "-" では改行機会を作るが "/" "_" "." では作らない＝パスとハッシュが素通しで
+   はみ出す（実測: .wv 216px は約35文字、.sheetline 268px は約50文字で崩れ始める）。 */
+.ui-iso .sheetline,
+.ui-iso .workgrid .wv,
+.ui-iso .sheetq b,
+.ui-iso .sheetact,
+.ui-iso .dlgnote { overflow-wrap: break-word; }
 .ui-iso .sheetq {
   background: rgba(224, 83, 138, .11); color: #7a1f42;
   border: 1px solid rgba(224, 83, 138, .30);
@@ -610,9 +624,13 @@
 }
 .ui-iso .feedline.say { color: #4f3fa8; }
 /* R86-B: 💬 セッションのやり取り（オンデマンド・独立スクロール・user右/ai左） */
+/* R86-C: 190px固定は「12件出しても実際に見えるのは1.5件」（実測 可視率12〜38%）＝
+   ユーザーFB「量が少ない」の実体。画面高に追随させ、足りなければ ⤢全画面 へ逃がす。 */
 .ui-iso .dlglist {
   display: flex; flex-direction: column; gap: 6px;
-  max-height: 190px; overflow-y: auto; padding: 2px;
+  /* R86-C: min-height を置くと会話0件でも空箱が最上段を占め、下の 📋/🕑/内訳 がフォールド外へ
+     押し出される（実測）。高さは中身なりに、上限だけ抑える。長文は ⤢全画面 で読む。 */
+  max-height: 32vh; overflow-y: auto; overflow-x: hidden; padding: 2px;
 }
 .ui-iso .dlgmsg {
   max-width: 88%; padding: 6px 10px; border-radius: 12px;
@@ -627,15 +645,46 @@
   background: rgba(255, 255, 255, .8); border: 1px solid var(--iso-hairline);
 }
 .ui-iso .dlgnote { font-size: 11px; color: var(--iso-ink-soft); padding: 4px 2px; }
-.ui-iso .dlgmore {
-  align-self: center; flex: none; font: inherit; font-size: 10.5px; font-weight: 700;
+/* R86-C: 「もっと見る」「全画面」は**見出し行**に置く（リスト内だと最新へのピン留めで
+   可視域の外へ流れて一生押せない＝実測 -706px）。margin-left:auto で右寄せ。 */
+.ui-iso .dlgmore, .ui-iso .dlgexpand {
+  flex: none; font: inherit; font-size: 10px; font-weight: 800; letter-spacing: 0;
   color: var(--iso-accent); background: rgba(124, 92, 255, .09);
   border: 1px solid rgba(124, 92, 255, .25); border-radius: 999px;
-  padding: 3px 12px; cursor: pointer;
+  padding: 2px 9px; cursor: pointer; white-space: nowrap;
 }
+.ui-iso .dlgexpand { margin-left: auto; }
+/* R86-C: 会話の見出し（＝もっと見る/全画面の置き場）は本文をスクロールしても貼り付く。
+   sheetbody がスクロールコンテナなので sticky が効く。 */
+.ui-iso .dlghead {
+  position: sticky; top: -2px; z-index: 2;
+  background: rgba(255, 255, 255, .92); padding: 3px 0;
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+}
+.ui-iso.th-dark .dlghead { background: rgba(30, 27, 50, .95); }
+/* R86-C: openclaw版（暗色シート）でも白帯にしない（実測コントラスト2.6:1だった） */
+.ui-iso.ed-openclaw .dlghead { background: rgba(28, 24, 44, .96); }
+.ui-iso.ed-openclaw .dlgmsg.ai { background: rgba(42, 35, 62, .9); color: var(--iso-ink); }
+.ui-iso .dlgmore:hover, .ui-iso .dlgexpand:hover { background: rgba(124, 92, 255, .18); }
+.ui-iso .dlgmore:disabled { opacity: .55; cursor: default; }
+.ui-iso .dlgend {
+  margin-left: auto; font-style: normal; font-size: 9.5px; font-weight: 700;
+  color: var(--iso-ink-soft); white-space: nowrap;
+}
+/* ⤢全画面で読む（モーダル再利用） */
+.ui-iso .dlgfull {
+  display: flex; flex-direction: column; gap: 8px;
+  max-height: 68vh; overflow-y: auto; overflow-x: hidden; padding: 2px;
+}
+.ui-iso .dlgfull .dlgmsg { max-width: 80%; font-size: 12.5px; }
 .ui-iso.th-dark .dlgmsg.ai { background: rgba(44, 39, 72, .8); }
 
 /* R54-E: 定型ボード（compose直上に常設＝本文がスクロールしても動かない返信の一箇所） */
+/* R86-C: ❗回答ボタン＋QUICK4種＋ユーザー定型が積み上がると **283px** を占め、
+   シート本文が113pxまで潰れて会話も仕事もほぼ読めなくなる（実測）。ここを上限で抑え、
+   溢れたら定型ボード側をスクロールさせる＝「本文が読める」を優先する。 */
+/* min-height が無いと低い画面(vh≤640)で dock が 0px に潰れ、❗回答ボタンが到達不能になる（実測）。 */
+.ui-iso .quickdock { flex: 0 1 auto; min-height: 92px; max-height: 40%; overflow-y: auto; overflow-x: hidden; }
 .ui-iso .quickdock:empty { display: none; }
 .ui-iso .quickboard {
   border: 1px solid rgba(124, 92, 255, .28); border-radius: 12px;
@@ -812,7 +861,7 @@
   .ui-iso .sheetquick { grid-template-columns: 1fr; }          /* QUICKを1列に */
   .ui-iso .qchip { min-height: 30px; padding: 4px 9px; }
   .ui-iso .crewlist { max-height: 84px; overflow-y: auto; }    /* 内訳は独立スクロール */
-  .ui-iso .dlglist { max-height: 120px; }                      /* R86-B: 会話も縮める */
+  .ui-iso .dlglist { max-height: 26vh; }                       /* R86-C: 低い画面では会話を控えめに */
 }
 
 /* ── R42.6骨格: OpenClaw Edition のダーク基調（CSS変数オーバーライドのみ・scene無改変） ──

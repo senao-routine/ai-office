@@ -134,7 +134,10 @@ const DICT = {
     dialog_head: "💬 セッションのやり取り",
     dialog_empty: "まだ会話がありません",
     dialog_err: "会話を取得できませんでした",
-    dialog_more: (n) => `▲ もっと見る（前の${n}件）`,
+    dialog_older: "▲ もっと見る",
+    dialog_oldest: "これより古い会話は表示できません（表示上限）",
+    dialog_expand: "⤢ 全画面",
+    dialog_modal_head: (n) => `💬 やり取り（${n}件）`,
     crew_head: (n) => `セッション内訳（${n}）`,
     crew_n: (i) => `${i}号`,
     crew_rep: "（代表）",
@@ -354,7 +357,10 @@ const DICT = {
     dialog_head: "💬 Session conversation",
     dialog_empty: "No conversation yet",
     dialog_err: "Couldn't load the conversation",
-    dialog_more: (n) => `▲ Show ${n} earlier`,
+    dialog_older: "▲ Load earlier",
+    dialog_oldest: "Older messages are beyond the display limit",
+    dialog_expand: "⤢ Full screen",
+    dialog_modal_head: (n) => `💬 Conversation (${n})`,
     crew_head: (n) => `Sessions (${n})`,
     crew_n: (i) => `#${i}`,
     crew_rep: " (lead)",
@@ -468,4 +474,11 @@ export function T(key, ...args) {
  *  片方の言語にだけキーを足すと、既定言語jaで生キー名が画面に出る（R85-0で実発生）。 */
 export function dictKeys() {
   return { ja: Object.keys(DICT.ja), en: Object.keys(DICT.en) };
+}
+
+/** 文字列値だけを返す（R86-C: en に日本語が混じっていないかの番人用。関数値は除外）。 */
+export function dictStrings() {
+  const pick = (d) => Object.fromEntries(
+    Object.entries(d).filter(([, v]) => typeof v === "string"));
+  return { ja: pick(DICT.ja), en: pick(DICT.en) };
 }

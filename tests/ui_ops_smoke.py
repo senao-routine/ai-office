@@ -36,6 +36,23 @@ def main():
     world = json.loads(WORLD.read_text(encoding="utf-8"))
     payload = json.dumps(world, ensure_ascii=False)
     roster = {p["disp"]: p["session"] for p in world["roster"]}
+    # R86-C: 幅崩れは「折り返せない連続文字」でしか再現しない（素の fixture では BAD=0＝
+    # 敵対的注入をしないピンは永久にgreenで無価値）。Chromium は "-" では改行機会を作るが
+    # "/" "_" "." では作らないので、絶対パス・hash・URLが実際にはみ出す。
+    HOSTILE_PATH = "/Users/test/works/server/office_server_very_long_module_name.py"
+    HOSTILE_HASH = "a" * 72
+    HOSTILE_URL = ("https://relay.example.workers.dev/api/session/dialog?session="
+                   + "b" * 48)
+    hostile = json.loads(payload)
+    hp = next(p for p in hostile["roster"] if p["disp"] == "制作本部(works)")
+    hp["work"] = {"now": [f"編集中 {HOSTILE_PATH}"], "next": [HOSTILE_HASH],
+                  "done": [HOSTILE_URL],
+                  "counts": {"pending": 1, "in_progress": 1, "completed": 1}}
+    hp["feed"] = [f"実行中 {HOSTILE_PATH}", HOSTILE_HASH, f"調査中 {HOSTILE_URL}"]
+    hp["attention"] = True
+    hp["approvalMin"] = 3
+    hp["question"] = HOSTILE_PATH + " を削除していいですか"
+    hostile_payload = json.dumps(hostile, ensure_ascii=False)
     attn_session = roster["議事録アプリ"]        # 質問持ち（トレイの最優先）
     target_session = roster["制作本部(works)"]   # コンポーズ送信のターゲット
 
@@ -59,13 +76,23 @@ def main():
                           ).read_text(encoding="utf-8")
             page.route("**/api/status_board*", lambda route: route.fulfill(
                 status=200, content_type="application/json; charset=utf-8", body=sb_payload))
-            # R86-B: 会話ビューアのモック（fixture worldのセッションは実transcriptが無い＝
-            # 実サーバーは200+空を返すが、描画ピンには決定論の会話を注入する）
-            dlg_payload = ('{"ok":true,"messages":['
-                           '{"role":"user","text":"スモーク用の指示です"},'
-                           '{"role":"ai","text":"了解しました。作業を進めます。"}]}')
-            page.route("**/api/session/dialog*", lambda route: route.fulfill(
-                status=200, content_type="application/json; charset=utf-8", body=dlg_payload))
+            # R86-B/C: 会話ビューアのモック（fixture worldのセッションは実transcriptが無い＝
+            # 実サーバーは200+空を返すが、描画ピンには決定論の会話を注入する）。
+            # **depth で応答を変える**＝「もっと見るを押しても同じ物が返る」嘘greenを避ける。
+            DLG_D0 = ([{"role": "user", "text": "スモーク用の指示です"},
+                       {"role": "ai", "text": "了解しました。作業を進めます。"}]
+                      + [{"role": "user" if i % 2 else "ai",
+                          "text": f"d0-{i} " + HOSTILE_PATH} for i in range(18)])
+            DLG_D1 = ([{"role": "ai", "text": f"もっと古い-{i}"} for i in range(45)] + DLG_D0)
+
+            def dlg_route(route):
+                deep = "depth=1" in route.request.url
+                body = {"ok": True, "messages": DLG_D1 if deep else DLG_D0,
+                        "depth": 1 if deep else 0, "maxDepth": 2,
+                        "hasMore": not deep, "total": len(DLG_D1 if deep else DLG_D0)}
+                route.fulfill(status=200, content_type="application/json; charset=utf-8",
+                              body=json.dumps(body))
+            page.route("**/api/session/dialog*", dlg_route)
             page.goto(f"http://127.0.0.1:{port}/?ui=iso&t=3.2&seed=11")
             page.wait_for_function("window.__office && window.__office.ready", timeout=30000)
             page.wait_for_timeout(300)
@@ -127,6 +154,131 @@ def main():
             else:
                 print("  ✗ 送信後もシートが開いたまま")
                 ng += 1
+
+            # ── (2a2) R86-C: 幅崩れ／もっと見る／名札 の常設ピン（敵対的な世界で測る） ──
+            # 実測の背景: ①.sheetbody は overflow-y:auto により overflow-x が auto へ格上げされ、
+            # 折り返せない文字がはみ出すと本文が丸ごと横滑りした（実測352px＝ユーザーFB「幅が崩れる」）
+            # ②「もっと見る」をリスト内に置くと最新へのピン留めで可視域外へ流れ一生押せなかった
+            # ③シートを開くとカメラズームで名札が下段カードへ潜った（11枚中7枚）
+            page.unroute("**/api/office*")
+            page.route("**/api/office*", lambda route: route.fulfill(
+                status=200, content_type="application/json; charset=utf-8",
+                body=hostile_payload))
+            page.evaluate("(w) => window.__office.inject(w)", hostile)
+            page.wait_for_timeout(300)
+            page.click(f'.arow[data-session="{target_session}"]')
+            page.wait_for_selector("#sheet:not([hidden])", timeout=3000)
+            page.wait_for_selector(".dlgmsg", timeout=8000)
+            page.wait_for_timeout(900)          # カメラフォーカスの整定を待つ
+            wide = page.evaluate(
+                "() => { const b = document.querySelector('#sheetbody');"
+                " b.scrollLeft = 9999; const pan = b.scrollLeft; b.scrollLeft = 0;"
+                " const bad = [...document.querySelectorAll('#sheet *')]"
+                "   .filter(n => n.scrollWidth > n.clientWidth + 1 &&"
+                "                getComputedStyle(n).overflowX !== 'hidden')"
+                "   .map(n => n.className + ':' + n.scrollWidth + '/' + n.clientWidth);"
+                " return { pan, bad, bodyH: b.clientHeight }; }")
+            if wide["pan"] == 0 and not wide["bad"]:
+                print(f"  ✓ R86-C 幅崩れなし（横パン0・はみ出し0・本文可視域 {wide['bodyH']}px）")
+            else:
+                print(f"  ✗ シート本文が横に崩れる: panX={wide['pan']} bad={wide['bad'][:4]}")
+                ng += 1
+            if wide["bodyH"] < 180:
+                print(f"  ✗ シート本文が潰れている（{wide['bodyH']}px）＝定型ボードに押されている")
+                ng += 1
+            btn = page.evaluate(
+                "() => { const b = document.querySelector('#sheet .dlgmore');"
+                " if (!b) return { exists: false };"
+                " const r = b.getBoundingClientRect();"
+                " const hit = document.elementFromPoint(r.left + r.width/2, r.top + r.height/2);"
+                " return { exists: true, text: b.textContent,"
+                "   visible: r.top >= 0 && r.bottom <= innerHeight && r.width > 0,"
+                "   hit: !!(hit && (hit === b || b.contains(hit))),"
+                "   msgs: document.querySelectorAll('.dlglist .dlgmsg').length,"
+                "   count: (document.querySelector('#sheet .dlghead .seccount')||{}).textContent,"
+                "   expand: !!document.querySelector('#sheet .dlgexpand') }; }")
+            if btn.get("exists") and btn.get("visible") and btn.get("hit"):
+                print(f"  ✓ R86-C もっと見るが実際に可視＆クリック可（{btn['text']}）")
+            else:
+                print(f"  ✗ もっと見るが押せない（DOMにあっても画面外なら不合格）: {btn}")
+                ng += 1
+            if btn.get("msgs") == len(DLG_D0) and btn.get("count") == str(len(DLG_D0)):
+                print(f"  ✓ R86-C 取得済みは全件表示（{btn['msgs']}件・12件しきい値の廃止）")
+            else:
+                print(f"  ✗ 初期表示が全件でない: {btn.get('msgs')}/{btn.get('count')}")
+                ng += 1
+            if btn.get("expand"):
+                print("  ✓ R86-C ⤢全画面ボタンが見出しに常駐")
+            else:
+                print("  ✗ ⤢全画面ボタンが無い")
+                ng += 1
+            page.click("#sheet .dlgmore")
+            try:
+                page.wait_for_function(
+                    "(n) => document.querySelectorAll('.dlglist .dlgmsg').length === n",
+                    arg=len(DLG_D1), timeout=8000)
+                deep = page.evaluate(
+                    "() => ({ msgs: document.querySelectorAll('.dlglist .dlgmsg').length,"
+                    "  more: !!document.querySelector('#sheet .dlgmore'),"
+                    "  count: (document.querySelector('#sheet .dlghead .seccount')||{}).textContent,"
+                    "  scrollTop: document.querySelector('.dlglist').scrollTop })")
+            except Exception as exc:                                    # noqa: BLE001
+                deep = {"error": str(exc)[:80]}
+            if deep.get("msgs") == len(DLG_D1) and not deep.get("more"):
+                print(f"  ✓ R86-C もっと見る→depth1 で {len(DLG_D0)}→{len(DLG_D1)}件"
+                      f"（hasMore=false でボタン消滅＝押せないボタンを出さない）")
+            else:
+                print(f"  ✗ 深掘りが効いていない（サーバーへ depth を取りに行っていない）: {deep}")
+                ng += 1
+            if deep.get("scrollTop", 0) > 0:
+                print("  ✓ R86-C 読んでいた位置を保持（最新へ飛ばない）")
+            else:
+                print(f"  ✗ 深掘り後にスクロール位置が失われた: {deep}")
+                ng += 1
+            page.keyboard.press("Escape")
+
+            # (2a3) R86-C 名札クランプは **live ページ**で測る。?t= 固定だと loop() が1フレームで
+            # 止まり focusOn のカメラズームが一度も回らない＝「シートを開いても名札は1pxも動かない」
+            # ＝どんな実装でも通る恒真式になる（レビューで実際に嘘greenだったことを検出）。
+            live = browser.new_page(viewport=VIEWPORT, device_scale_factor=1)
+            live.route("**/api/office*", lambda route: route.fulfill(
+                status=200, content_type="application/json; charset=utf-8", body=payload))
+            live.route("**/api/status_board*", lambda route: route.fulfill(
+                status=200, content_type="application/json; charset=utf-8", body=sb_payload))
+            live.route("**/api/session/dialog*", dlg_route)
+            live.goto(f"http://127.0.0.1:{port}/?ui=iso")          # frozen にしない
+            live.wait_for_function("window.__office && window.__office.ready", timeout=60000)
+            live.wait_for_timeout(600)
+            probe_labels = (
+                "() => { const bot = document.querySelector('.bottom').getBoundingClientRect();"
+                " const host = document.querySelector('#labels').getBoundingClientRect();"
+                " const ch = [...document.querySelectorAll('.lbl')].map(n => n.getBoundingClientRect());"
+                " let ov = 0;"
+                " for (let i = 0; i < ch.length; i++) for (let j = i + 1; j < ch.length; j++) {"
+                "   const a = ch[i], b = ch[j];"
+                "   if (a.left < b.right - 2 && a.right > b.left + 2 &&"
+                "       a.top < b.bottom - 2 && a.bottom > b.top + 2) ov++; }"
+                " return { n: ch.length, under: ch.filter(r => r.bottom > bot.top + 1).length,"
+                "   out: ch.filter(r => r.bottom > host.bottom + 1).length, overlaps: ov }; }")
+            lb_before = live.evaluate(probe_labels)
+            live.click(f'.arow[data-session="{target_session}"]')
+            live.wait_for_selector("#sheet:not([hidden])", timeout=8000)
+            live.wait_for_timeout(2200)                            # カメラズームの整定を待つ
+            lb_after = live.evaluate(probe_labels)
+            if (lb_after["under"] == 0 and lb_after["out"] == 0
+                    and lb_after["overlaps"] == 0 and lb_after["n"] == lb_before["n"]):
+                print(f"  ✓ R86-C 名札クランプ（開いても潜らない・切れない・重ならない"
+                      f"/{lb_after['n']}枚・live）")
+            else:
+                print(f"  ✗ シートを開くと名札が崩れる: 前={lb_before} 後={lb_after}")
+                ng += 1
+            live.close()
+
+            page.unroute("**/api/office*")
+            page.route("**/api/office*", lambda route: route.fulfill(
+                status=200, content_type="application/json; charset=utf-8", body=payload))
+            page.evaluate("(w) => window.__office.inject(w)", world)
+            page.wait_for_timeout(300)
 
             # (2b) ×N集約の内訳: 2号セッションへ宛先を切替えて投函 → 非代表の inbox へ届く
             ai_office = next(p for p in world["roster"] if p["disp"] == "ai-office")

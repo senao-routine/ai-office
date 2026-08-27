@@ -324,47 +324,98 @@ export async function mount(root) {
       ? T("target_rep") : T("target_n", idx + 1);
     el2.hidden = false;
   };
-  // 💬 R86-B: 会話のオンデマンド取得。stale ガード＝取得中に宛先が切り替わったら破棄。
+  // 💬 R86-B/C: 会話のオンデマンド取得。stale ガード＝取得中に宛先が切り替わったら破棄。
+  // R86-C の教訓: 「もっと見る」をリスト内に置くと、最新へのピン留め
+  // （scrollTop=scrollHeight）でボタンが可視域の遥か上へ流れ**恒常的に押せない**（実測 -706px）。
+  // ボタンは必ず**見出し行**に置く＝スクロール位置に依存せず常に見える。
   let dlgSeq = 0;
-  const loadDialog = async (session, listEl, headEl) => {
-    const seq = ++dlgSeq;
-    listEl.replaceChildren(sEl("div", "dlgnote", T("loading")));
-    let msgs = [];
-    try {
-      msgs = (await getDialog(session)).messages || [];
-    } catch {
-      if (seq === dlgSeq) listEl.replaceChildren(sEl("div", "dlgnote", T("dialog_err")));
-      return;
-    }
-    if (seq !== dlgSeq) return;
-    if (!msgs.length) {
-      listEl.replaceChildren(sEl("div", "dlgnote", T("dialog_empty")));
-      return;
-    }
-    if (headEl) {
-      headEl.querySelector(".seccount")?.remove();
-      headEl.append(sEl("i", "seccount", String(msgs.length)));
-    }
-    const renderMsgs = (items, moreCount) => {
-      listEl.replaceChildren();
-      if (moreCount > 0) {
-        const more = sEl("button", "dlgmore", T("dialog_more", moreCount));
-        more.type = "button";
-        more.addEventListener("click", () => renderMsgs(msgs, 0));
-        listEl.append(more);
-      }
-      for (const m of items) {
-        listEl.append(sEl("div", `dlgmsg ${m.role === "user" ? "user" : "ai"}`, m.text));
-      }
-      listEl.scrollTop = listEl.scrollHeight;   // 最新（下端）を見せる
-    };
-    const over = Math.max(0, msgs.length - 12);
-    renderMsgs(over ? msgs.slice(-12) : msgs, over);
+  const dlgMsgEl = (m) =>
+    sEl("div", `dlgmsg ${m.role === "user" ? "user" : "ai"}`, m.text);
+
+  const openDialogModal = (msgs) => {
+    // sEl は mEl と同一実装だが**この位置より前で定義済み**（mount の await より前に確定する）
+    modal.replaceChildren(sEl("b", "mtitle", T("dialog_modal_head", msgs.length)));
+    const box = sEl("div", "dlgfull");
+    for (const m of msgs) box.append(dlgMsgEl(m));
+    modal.append(box);
+    openModal();
+    box.scrollTop = box.scrollHeight;
   };
+
+  const loadDialog = async (session, listEl, headEl, depth = 0) => {
+    const seq = ++dlgSeq;
+    // R86-C: 復元アンカーは**件数索引**で取る。本文一致だと「はい」「ok」や 400字クランプで
+    // 先頭が同じ長文が古い側にもあると誤爆して会話の最古部へ飛ぶ（実測）。
+    // サーバーは「深い応答は浅い応答の suffix」を保証（test_deeper_depth_is_superset_suffix）。
+    const prevCount = depth > 0 ? listEl.querySelectorAll(".dlgmsg").length : 0;
+    const btn = headEl?.querySelector(".dlgmore");
+    if (btn) { btn.disabled = true; btn.textContent = T("loading"); }   // 連打ガード
+    if (!prevCount) listEl.replaceChildren(sEl("div", "dlgnote", T("loading")));
+    let res;
+    try {
+      res = await getDialog(session, depth);
+    } catch {
+      if (seq !== dlgSeq) return;
+      if (prevCount) {
+        // 深掘りの失敗は**読めている会話を消さない**（daemon再起動中や瞬断で踏む。
+        // 消すと閉じて開き直す以外に戻る手段が無くなる）。ボタンを押せる状態へ戻すだけ。
+        if (btn) { btn.disabled = false; btn.textContent = T("dialog_older"); }
+        return;
+      }
+      listEl.replaceChildren(sEl("div", "dlgnote", T("dialog_err")));
+      paintDlgHead(headEl, listEl, session, { messages: [], hasMore: false, depth });
+      return;
+    }
+    if (seq !== dlgSeq) return;                     // 取得中に宛先が変わった＝破棄
+    const msgs = res.messages || [];
+    listEl.replaceChildren();
+    if (!msgs.length) {
+      listEl.append(sEl("div", "dlgnote", T("dialog_empty")));
+    } else {
+      for (const m of msgs) listEl.append(dlgMsgEl(m));
+    }
+    paintDlgHead(headEl, listEl, session, res);
+    if (prevCount) {
+      // 読んでいた位置を失わない: 押す前に先頭だった1件（=末尾から prevCount 番目）を上端へ
+      const nodes = [...listEl.querySelectorAll(".dlgmsg")];
+      const anchor = nodes[nodes.length - prevCount];
+      if (anchor) {
+        listEl.scrollTop +=
+          anchor.getBoundingClientRect().top - listEl.getBoundingClientRect().top;
+      }
+    } else {
+      listEl.scrollTop = listEl.scrollHeight;       // 初回は最新（下端）を見せる
+    }
+  };
+
+  /** 見出し行（件数バッジ・もっと見る・全画面）を今の状態で貼り直す。 */
+  function paintDlgHead(headEl, listEl, session, res) {
+    if (!headEl) return;
+    const msgs = res.messages || [...listEl.querySelectorAll(".dlgmsg")].map(
+      (n) => ({ role: n.classList.contains("user") ? "user" : "ai", text: n.textContent }));
+    for (const n of [...headEl.children]) n.remove();   // 件数/ボタンを一旦落とす（B4: 残留防止）
+    headEl.append(sEl("i", "seccount", String(msgs.length)));
+    if (msgs.length) {
+      const exp = sEl("button", "dlgexpand", T("dialog_expand"));
+      exp.type = "button";
+      exp.addEventListener("click", () => openDialogModal(msgs));
+      headEl.append(exp);
+    }
+    if (res.hasMore && (res.depth ?? 0) < (res.maxDepth ?? 0)) {
+      const more = sEl("button", "dlgmore", T("dialog_older"));
+      more.type = "button";
+      more.addEventListener("click", () =>
+        loadDialog(session, listEl, headEl, (res.depth ?? 0) + 1));
+      headEl.append(more);
+    } else if (res.hasMore) {
+      headEl.append(sEl("i", "dlgend", T("dialog_oldest")));   // 最深＝これ以上は無い
+    }
+  }
 
   const openCompose = (agent) => {
     composeTarget = { session: agent.session, name: agent.name, id: agent.id };
     let dlgListEl = null;                     // R86-B: crewrow の宛先切替から参照する
+    let dlgHeadEl = null;                     // R86-C: previousSibling への暗黙依存をやめる
     shell.querySelector("#sheetname").textContent =
       agent.crew > 1 ? `${agent.name} ×${agent.crew}` : agent.name;
     typewrite(shell.querySelector("#sheetact"), humanSummary(agent));
@@ -379,6 +430,21 @@ export async function mount(root) {
         : `❗ ${T("approval_min", agent.approvalMin)}` +
           (agent.stuckTool ? `\n${T("attn_target", tidyActivity(agent.stuckTool, 60))}` : "")));
       body.append(q);
+    }
+    // 💬 セッションのやり取り（R86-B／R86-C で本文の**先頭**へ移動）: 実会話をオンデマンド取得
+    // （office_json非搭載＝中継へ流れる経路が構造的に無い）。承認判断の主材料なので、
+    // 📋いまの仕事・🕑最近の動きより上に置く（末尾だとスクロールしないと到達できず、
+    // 「もっと見る」も本文の折り返しの下に隠れて押せない＝実測 y=833 で不可視だった）。
+    // DEMO/外部/oc- はサーバー無し・別Macなので節ごと出さない（demo golden 不変の条件）。
+    if (!DEMO && !agent.external && !String(agent.session || "").startsWith("oc-")) {
+      const dsec = sEl("div", "sheetsec");
+      const dhead = sEl("b", "sheetsec-head dlghead", T("dialog_head"));
+      const dlist = sEl("div", "dlglist");
+      dsec.append(dhead, dlist);
+      body.append(dsec);
+      dlgListEl = dlist;
+      dlgHeadEl = dhead;
+      loadDialog(composeTarget?.session || agent.session, dlist, dhead);
     }
     // ×N集約の内訳: 非代表セッションへの宛先切替（配達経路・APIは無改変＝sessionの差替だけ）
     if (agent.crew > 1 && (agent.sessions || []).length > 1) {
@@ -401,7 +467,7 @@ export async function mount(root) {
           row.classList.add("sel");
           paintTarget(agent);
           // R86-B: 会話ビューアも切替先セッションのやり取りへ追随
-          if (dlgListEl) loadDialog(s2.session, dlgListEl, dlgListEl.previousSibling);
+          if (dlgListEl) loadDialog(s2.session, dlgListEl, dlgHeadEl);
           composeInput.focus();
         });
         crewWrap.append(row);
@@ -442,18 +508,6 @@ export async function mount(root) {
       }
       sec.append(listEl);
       body.append(sec);
-    }
-    // 💬 セッションのやり取り（R86-B）: 実会話をオンデマンド取得（office_json非搭載＝
-    // 中継へ流れる経路が構造的に無い）。DEMO/外部/oc- はサーバー無し・別Macなので節ごと出さない
-    // （demo golden 不変の条件）。
-    if (!DEMO && !agent.external && !String(agent.session || "").startsWith("oc-")) {
-      const dsec = sEl("div", "sheetsec");
-      const dhead = sEl("b", "sheetsec-head", T("dialog_head"));
-      const dlist = sEl("div", "dlglist");
-      dsec.append(dhead, dlist);
-      body.append(dsec);
-      dlgListEl = dlist;
-      loadDialog(composeTarget?.session || agent.session, dlist, dhead);
     }
     // ⚡ 定型ボード: 回答ボタン＋よく押す定型を compose 直上に常設（本文スクロールでも動かない）
     const dock = shell.querySelector("#quickdock");
@@ -591,8 +645,11 @@ export async function mount(root) {
   const onKey = (e) => {
     if (e.target.closest?.("input, textarea")) return;
     if (e.key === "Escape") {
+      // R86-C: ⤢全画面（会話モーダル）はシートの上に重なるので、Escape は**上の一枚だけ**
+      // 閉じる。両方閉じると「戻るつもりが会話ごと消える」（従来モーダルはサイドバー起点で
+      // シートに重ならなかったため露見しなかった）。閉じ方は closeModal に一本化する。
+      if (!shell.querySelector("#modalwrap").hidden) { closeModal(); return; }
       closeCompose();
-      shell.querySelector("#modalwrap").hidden = true;
       return;
     }
     // モーダル/シート表示中のキーは背後のトレイへ流さない（誤投函ガード）
@@ -1775,6 +1832,15 @@ function paintLabels(shell, scene, w) {
   const oldChips = new Map([...host.children].map((n) => [n.dataset.project, n]));
   const perZone = {};
   const placed = [];
+  // R86-C: 名札の**下限**。従来はクランプが横方向だけで、重なり回避ループが下へしか逃がさない
+  // ため、シートを開くとカメラズーム(focusOn)で足元が下がり、名札が下段カード(.bottom・z:6)の
+  // 下に潜る／ステージ外へ切れる（実測: 11枚中7枚・「クリックしたらレイアウトが崩れる」の本体）。
+  // .bottom の上端を実測して、そこより下へは置かない（閉じた状態では発火しない＝golden不変）。
+  const hostTop = host.getBoundingClientRect().top;
+  const bottomBar = shell.querySelector(".bottom");
+  const limitB = bottomBar
+    ? bottomBar.getBoundingClientRect().top - hostTop - 3
+    : host.clientHeight - 2;
   for (const a of w.agents) {
     const idx = (perZone[a.zone] = (perZone[a.zone] ?? -1) + 1);
     // R69: cap10撤廃＝11体目以降も名札を出す（差分更新化済みでコストは許容・実測14体で確認）
@@ -1818,15 +1884,21 @@ function paintLabels(shell, scene, w) {
     const maxL = host.clientWidth - half - 2;
     const left = maxL > half + 2
       ? Math.min(Math.max(at.left, half + 2), maxL) : at.left;
-    // 足元チップ同士の軽い重なりだけ下へ逃がす（頭上スタックの塔は作らない）
-    let top = at.top + 6;
+    // 足元チップ同士の軽い重なりだけ逃がす（頭上スタックの塔は作らない）。
+    // R86-C: **下限を先に決めてから**衝突解決する。解消の後にクランプを掛けると全員が
+    // 下限へ押し戻されて重なる（実測: 潜り4枚が重なり10ペアに化けた。この関数の掟どおり）。
+    // 下限に当たった後は上へ逃がし、一度上へ逃げたら下へ戻さない（戻すと2値間で振動する）。
+    const hardB = limitB > ch + 4 ? limitB - ch : Infinity;
+    let top = Math.max(2, Math.min(at.top + 6, hardB));
+    let up = false;
     const box = () => ({ l: left - half, r: left + half, t: top, b: top + ch });
-    for (let guard = 0; guard < 6; guard++) {
+    for (let guard = 0; guard < 8; guard++) {
       const me = box();
       const hit = placed.find((q) =>
         me.l < q.r + 4 && me.r > q.l - 4 && me.t < q.b + 3 && me.b > q.t - 3);
       if (!hit) break;
-      top = hit.b + 3;
+      if (!up && hit.b + 3 <= hardB) top = hit.b + 3;
+      else { up = true; top = Math.max(2, hit.t - ch - 3); }
     }
     const leftPx = `${left}px`;
     const topPx = `${top}px`;

@@ -81,8 +81,8 @@ export const setTemplates = (templates) =>
 
 /** R79-10 遠隔実行の許可リスト（ローカルUI専用＝ここでしか作れない・スマホからは参照のみ）。 */
 /** R86-B: シート会話ビューア（会話本文はこのオンデマンドAPIのみ＝office_json非搭載）。 */
-export const getDialog = (session) =>
-  api("/api/session/dialog?session=" + encodeURIComponent(session));
+export const getDialog = (session, depth = 0) =>
+  api(`/api/session/dialog?session=${encodeURIComponent(session)}&depth=${encodeURIComponent(depth)}`);
 
 /** R85-3: PC機能パリティ（休眠プロジェクト起動・言語切替・為替レート編集）。 */
 export const launchProject = (projectId) =>
