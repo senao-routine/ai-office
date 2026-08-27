@@ -933,6 +933,9 @@ const APP_HTML = "<!doctype html><html lang=ja><head>" +
 '.card{position:relative;background:rgba(255,255,255,.86);border:1px solid rgba(96,82,170,.14);border-radius:12px;padding:12px 14px;margin-bottom:10px;box-shadow:0 1px 2px rgba(40,32,18,.06)}' +
 '.card:active{background:#efedfb}' +
 '.card.alert{border-color:rgba(224,83,138,.55);background:#fdf2f7}' +
+// R86-D: 受信待機なしの明示（意味色=保留の琥珀。届かないことを黙らない）
+'.card .mute{font-size:12px;opacity:.9;margin-left:2px}' +
+'.listenoff{background:rgba(245,165,36,.14);border:1px solid rgba(245,165,36,.4);border-radius:10px;padding:9px 11px;margin-bottom:10px;font-size:12.5px;line-height:1.65;overflow-wrap:break-word}' +
 '.card.pend{border-color:#b9791a;background:#fbf6ea}' +
 '.card .nm{font-weight:800;font-size:15px}' +
 '.card .st{font-size:13px;color:#4a4670;margin-top:3px;display:flex;align-items:center;gap:6px}' +
@@ -1438,6 +1441,7 @@ PWA_GLOSS_SOURCE +
 'st.appendChild(document.createTextNode(" "+activityGlossPWA(e,LANG)));card.appendChild(st);' +
 'if(e.question)card.appendChild(el("div","q","❓ "+e.question));' +
 'var fd=(e.feed||[]).slice(0,3);if(fd.length){var fb=el("div","feed");fd.forEach(function(l){fb.appendChild(el("div","feedline",l))});card.appendChild(fb)}' +
+'if(e.listening===false){var mu=el("span","mute","📴");mu.title=T("受信待機なし — 送っても即座には届きません","Not listening — it won\'t arrive right away");meta.appendChild(mu)}' +
 'card.addEventListener("click",function(){openSheet(e)});list.appendChild(card)})}' +
 'function QUICK(){return [{l:T("✅ 承認して進める","✅ Approve & continue"),s:T("✅ 承認","✅ Approve"),t:T("はい、そのまま進めてください。","Yes, please go ahead as planned."),c:"g"},{l:T("🛑 いったん停止して報告","🛑 Stop and report"),s:T("🛑 停止","🛑 Stop"),t:T("いったん作業を止めて、いまの状況を報告してください。","Please pause the work and report the current status."),c:"r"},{l:T("📝 進捗を1行で報告","📝 One-line progress report"),s:T("📝 報告","📝 Report"),t:T("いまの進捗を1〜2行で報告してください。","Please report your current progress in one or two lines."),c:"sub"}]}' +
 'function sayText(e){e=e||{};var action=activityGlossPWA(e,LANG);var s=(e.disp||e.session||T("このプロジェクト","This project"))+T("です！"," here! ")+(action?T("いま「"+action+"」です。","Currently: "+action+"."):T("いまの状況を確認中です。","Checking the current status."));if(e.question)s+="\\n❓ "+e.question;if((e.approvalMin||0)>0)s+=T("\\n❗ 承認まちです","\\n❗ Waiting for approval");return s}' +
@@ -1448,7 +1452,13 @@ PWA_GLOSS_SOURCE +
 'var sa=document.getElementById("shava");sa.style.setProperty("--asz","48px");setMono(sa,e);' +
 'document.getElementById("shwho").textContent=activityGlossPWA(e,LANG)+" ・"+fmtAge(e.age);' +
 'var sht=sayText(e);if(window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches){shsay.textContent=sht}else{var shchars=Array.from(sht),shi=0;SHSAY_IV=setInterval(function(){shsay.appendChild(document.createTextNode(shchars[shi++]));if(shi%3===0)playSE("talk");if(shi>=shchars.length){clearInterval(SHSAY_IV);SHSAY_IV=null}},18)}' +
-'var dt=document.getElementById("shdetail");dt.innerHTML="";appendWorkBlock(dt,e.work);' +
+'var dt=document.getElementById("shdetail");dt.innerHTML="";' +
+// R86-D: 受信待機が切れている相手には正直に但し書きを出す（黙って届かないのが最悪）。
+// 送信はブロックしない＝inboxに残り、そのターミナルを次に触った瞬間に届く。
+'if(e&&e.listening===false){var lo=el("div","listenoff");' +
+'lo.textContent=T("📴 このセッションはいま受信待機していません。送信は保存され、そのターミナルで次に何か操作した瞬間に届きます（3時間で失効）。","📴 This session isn\'t listening right now. Your message is saved and arrives the moment you touch that terminal again (expires in 3h).");' +
+'dt.appendChild(lo)}' +
+'appendWorkBlock(dt,e.work);' +
 // R51: roster の sessions[] 内訳ミニ行（state/age/❗/📨のドットのみ・本文は構造的に持たない）
 'if(Array.isArray(e.sessions)&&e.sessions.length>1){dt.appendChild(el("div","sec",T("👥 セッション内訳（"+e.sessions.length+"）","👥 Sessions ("+e.sessions.length+")")));var sw=el("div","sessrows");e.sessions.slice(0,8).forEach(function(s){var r=el("div","sessrow");r.appendChild(el("span","dot "+(s.state||""),""));r.appendChild(el("span","sessid",String(s.session||"").slice(0,8)));r.appendChild(el("span","sessage",fmtAge(s.age)));if(s.attention)r.appendChild(el("span",null,"❗"));if(s.pending)r.appendChild(el("span",null,"📨"));if(s.minions)r.appendChild(el("span",null,"👥"+s.minions));sw.appendChild(r)});if(e.sessions.length>8)sw.appendChild(el("div","sessrow",T("ほか"+(e.sessions.length-8)+"件","+"+(e.sessions.length-8)+" more")));dt.appendChild(sw)}' +
 // 質問は最上部+強調（承認/回答がシートの主目的・埋もれさせない）

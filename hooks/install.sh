@@ -48,9 +48,14 @@ def save(d):
     tmp.replace(p)
 
 
+# R86-D 不変条件: timeout > office-inbox-wait.sh の LOOPS × INTERVAL（8640×5=43200秒）。
+# timeout に達した hook は Claude Code が**出力を破棄して kill** するので、待機ループが
+# 先に尽きる形を保つ（さもないと「読んで消したが渡せない」窓で指示が消える）。
+# Stop hook の timeout に上限は無い（公式docs・実測で100000も受理される）。
+HOOK_TIMEOUT = 44400
 HOOK = {"hooks": [{"type": "command",
                    "command": 'bash "$HOME/.claude/hooks/office-inbox-wait.sh"',
-                   "timeout": 7300,
+                   "timeout": HOOK_TIMEOUT,
                    "statusMessage": "AI Office inbox…",
                    "asyncRewake": True}]}
 SL_CMD = 'bash "$HOME/.claude/hooks/office-statusline-capture.sh"'
@@ -83,7 +88,22 @@ wired = any("office-inbox-wait" in h.get("command", "")
             for grp in stops if isinstance(grp, dict)
             for h in grp.get("hooks", []) if isinstance(h, dict))
 if wired:
-    print("✓ ~/.claude/settings.json の Stop hook 配線を確認")
+    # R86-D: 配線済みでも **timeout が短いまま**なら直す（旧7300＝2時間で受信待機が切れ、
+    # 2時間以上アイドルのセッションへ送った指示が届かない実バグの本体）。冪等な自己修復。
+    fixed = 0
+    for grp in stops:
+        if not isinstance(grp, dict):
+            continue
+        for h in grp.get("hooks", []):
+            if (isinstance(h, dict) and "office-inbox-wait" in h.get("command", "")
+                    and int(h.get("timeout") or 0) < HOOK_TIMEOUT):
+                h["timeout"] = HOOK_TIMEOUT
+                fixed += 1
+    if fixed:
+        save(data)
+        print(f"✓ Stop hook の timeout を {HOOK_TIMEOUT} 秒へ更新（受信待機12時間に合わせた）")
+    else:
+        print("✓ ~/.claude/settings.json の Stop hook 配線を確認")
 elif mode == "--wire":
     stops.append(HOOK)
     save(data)

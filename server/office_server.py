@@ -805,6 +805,49 @@ def dialog_page(lines, depth=0, truncated=False, clamp=DIALOG_CLAMP):
     }
 
 
+# R86-D: 受信待機（Stop hook の office-inbox-wait.sh が生きているか）の判定。
+# **心拍方式**: hook が待機ループの毎周 pidfile を touch するので、その mtime の鮮度だけを見る。
+# pid の生存確認（os.kill）は使わない — **PID再利用で嘘をつく**（実測: 素朴な判定で
+# pidfile 7件中4件が Google Drive の crashpad や login の pid を「待機中」と誤報していた）。
+# 心拍なら「今この瞬間そのループが回っている」ことの直接の証拠になり、再利用と無縁。
+LISTEN_STALE = float(os.environ.get("OFFICE_LISTEN_STALE", 30))   # hook の interval 5秒の6倍
+# 心拍を打たない**旧hook**がまだ待機しているセッション向けの移行フォールバック窓（旧LOOPS=2時間）。
+# この窓内に限って pid の生存で補う。PID再利用の実害はここでは無視できる
+# （実測の誤検出はいずれも 327〜617時間前の pidfile 由来で、2時間窓には1件も無かった）。
+LISTEN_LEGACY = float(os.environ.get("OFFICE_LISTEN_LEGACY", 2 * 3600))
+
+
+def session_listening(session, now=None):
+    """そのセッションが**いま指示を受け取れるか**。判定不能は False（フェイルセーフ＝
+    「届く」と嘘をつかない）。False でも投函は無駄にならない: inbox に残り、そのセッションが
+    次にターンを終えた瞬間に配達される（TTL内なら）。＝送信をブロックする理由にはならない。"""
+    p = INBOX / f".{session}.pid"
+    try:
+        st = p.stat()
+    except OSError:
+        return False
+    age = (now or time.time()) - st.st_mtime
+    if age <= LISTEN_STALE:
+        return True                 # 心拍（新hook）＝今この瞬間ループが回っている直接の証拠
+    if age > LISTEN_LEGACY:
+        return False
+    try:                            # 移行期のみ: 旧hookは心拍を打たないので pid 生存で補う
+        pid = int(p.read_text(encoding="utf-8").strip().split()[0])
+    except (OSError, ValueError, IndexError):
+        return False
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)             # シグナル0＝存在確認のみ（何も送らない）
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
 def _session_transcript(session):
     """sessionId → 実transcriptパス（PROJECTS配下の glob のみ＝閉じ込め）。無ければ None。
     呼び出し側が _SESSION_ID_RE を通してから呼ぶ（形式不正は400・不在は200+空）。"""
@@ -864,6 +907,15 @@ def parse_session(path, now):
     skills = remembered_skills(str(path), skill_events, now, mtime)
     tasks = _remembered_tasks(str(path), task_lines, now, mtime)
     work = _work_from_tasks(tasks)
+
+    # R86-D: 鮮度は**中身の最終イベント時刻**で測る。Claude Code はアイドルな transcript も
+    # 1時間ごとに touch する（実測: サイズがバイト単位で同一のまま mtime だけ +3600秒）ため、
+    # mtime を鮮度にすると **90時間前に終わったセッションが「出勤中」に居座る**（実測で
+    # 表示13人中7人=53%が幽霊）。ユーザーはその幽霊をタップして「指示が届かない」と感じる。
+    # timestamp を持たない行しか無い場合（合成フィクスチャ等）は従来どおり mtime へフォールバック。
+    last_event = max((transcript_event_time(d, 0.0) for d in parsed), default=0.0)
+    if last_event > 0:
+        age = max(0.0, now - last_event)
 
     def blocks(d):
         c = (d.get("message") or {}).get("content")
@@ -1000,6 +1052,9 @@ def parse_session(path, now):
         "skills": skills,
         "minions": minions,
         "pending": (INBOX / f"{path.stem}.json").exists(),
+        # R86-D: 指示を今すぐ受け取れるか（Stop hook の待機が生きているか）。
+        # 出勤中(SHOW_WINDOW=3h)と受信待機(hookの寿命)は別の窓なので、UIで正直に分ける。
+        "listening": session_listening(path.stem, now),
         "lastSaid": last_said,
         "lastOrder": last_order,
         "question": question,
@@ -1197,6 +1252,8 @@ def group_by_project(employees, lang="ja", mode="project"):
             "age": min(int(m.get("age") or 0) for m in members),
             "minions": sum(int(m.get("minions") or 0) for m in members),
             "pending": any(bool(m.get("pending")) for m in members),
+            # R86-D: 1つでも受信待機していれば「届く」（sessionモードでは自分自身のみ）
+            "listening": any(bool(m.get("listening")) for m in members),
             "attention": bool(attn),
             "approvalMin": int(lead.get("approvalMin") or 0),
             "question": lead.get("question", ""),
@@ -1285,6 +1342,11 @@ def scan_office():
             except OSError:
                 continue
             info = parse_session(f, now)
+            # R86-D: mtime のゲートを通っても、**中身**が SHOW_WINDOW より古ければ退勤扱い。
+            # Claude Code がアイドルな transcript を1時間ごとに touch するため、mtime だけだと
+            # 数十時間前に終わったセッションが居座り続ける（実測53%が幽霊）。
+            if info and info.get("age", 0) > SHOW_WINDOW:
+                continue
             if info:
                 dept, role = project_label(info["cwd"], proj.name, config)
                 info["dept"] = dept

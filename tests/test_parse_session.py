@@ -3,6 +3,8 @@
 import importlib.util
 import json
 import os
+import time
+from datetime import datetime
 import re
 import shutil
 import tempfile
@@ -246,6 +248,82 @@ class CustomTitleTest(unittest.TestCase):
         os.utime(p, (mtime, mtime))
         e3 = office.parse_session(p, now=mtime + 30)
         self.assertEqual(e3["title"], "")
+
+
+class ListeningTest(unittest.TestCase):
+    """R86-D: 受信待機（Stop hookの心拍）の判定。届かない相手に「届く」と嘘をつかない。"""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="office_listen_"))
+        self.orig = office.INBOX
+        office.INBOX = self.tmp
+
+    def tearDown(self):
+        office.INBOX = self.orig
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _pid(self, session, age):
+        p = self.tmp / f".{session}.pid"
+        p.write_text("12345\n", encoding="utf-8")
+        t = time.time() - age
+        os.utime(p, (t, t))
+        return p
+
+    def test_fresh_heartbeat_is_listening(self):
+        self._pid("s-live", age=3)
+        self.assertTrue(office.session_listening("s-live"))
+
+    def test_stale_heartbeat_is_not_listening(self):
+        """心拍が止まった＝待機プロセスが死んでいる。PIDが生きていても関係ない
+        （実測でPID再利用により7件中4件がGoogle Drive等を「待機中」と誤報していた）。"""
+        self._pid("s-dead", age=600)
+        self.assertFalse(office.session_listening("s-dead"))
+
+    def test_missing_pidfile_is_not_listening(self):
+        self.assertFalse(office.session_listening("s-none"))
+
+    def test_pid_content_is_irrelevant(self):
+        """判定は mtime の鮮度のみ＝中身が壊れていても心拍が新しければ待機中。"""
+        p = self._pid("s-odd", age=1)
+        p.write_text("not-a-pid", encoding="utf-8")
+        t = time.time() - 1
+        os.utime(p, (t, t))
+        self.assertTrue(office.session_listening("s-odd"))
+
+
+class GhostSessionTest(unittest.TestCase):
+    """R86-D: Claude Code はアイドルな transcript も1時間ごとに touch する。
+    mtime を鮮度にすると数十時間前に終わったセッションが「出勤中」に居座る（実測53%）。"""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="office_ghost_"))
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_age_uses_last_event_timestamp_not_mtime(self):
+        p = self.tmp / "sess-ghost001.jsonl"
+        old = "2026-08-20T10:00:00.000Z"
+        p.write_text("\n".join([
+            json.dumps({"type": "user", "message": {"role": "user", "content": "やって"},
+                        "cwd": "/w/x", "timestamp": old}),
+            json.dumps({"type": "assistant", "timestamp": old,
+                        "message": {"role": "assistant",
+                                    "content": [{"type": "text", "text": "できました"}]}}),
+        ]), encoding="utf-8")
+        now = datetime.fromisoformat("2026-08-27T10:00:00+00:00").timestamp()
+        os.utime(p, (now - 60, now - 60))          # mtime は1分前（＝touchされた幽霊）
+        e = office.parse_session(p, now=now)
+        self.assertGreater(e["age"], 6 * 24 * 3600, "mtimeを信じて幽霊を出勤させている")
+
+    def test_age_falls_back_to_mtime_without_timestamps(self):
+        """timestamp を持たない合成フィクスチャは従来どおり mtime 基準（既存テスト互換）。"""
+        p = self.tmp / "sess-nots0001.jsonl"
+        shutil.copy(FX / "working_tool.jsonl", p)
+        mtime = 1_800_000_000.0
+        os.utime(p, (mtime, mtime))
+        e = office.parse_session(p, now=mtime + 42)
+        self.assertEqual(e["age"], 42)
 
 
 if __name__ == "__main__":

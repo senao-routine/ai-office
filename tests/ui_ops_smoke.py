@@ -155,6 +155,33 @@ def main():
                 print("  ✗ 送信後もシートが開いたまま")
                 ng += 1
 
+            # (2a1) R86-D: 受信待機が切れている相手には 📴 と但し書きを出す（黙って届かないのが最悪）。
+            # fixture の roster には listening が無い＝undefined→true 扱いなので、
+            # まず「出ない」ことを確認してから false を注入して「出る」ことを確認する（両方向ピン）。
+            if page.evaluate("() => !!document.querySelector('#sheet .listenoff')"):
+                print("  ✗ listening未指定なのに『受信待機なし』を出している（根拠なく脅している）")
+                ng += 1
+            mute_world = json.loads(payload)
+            for p0 in mute_world["roster"]:
+                if p0["session"] == target_session:
+                    p0["listening"] = False
+            page.evaluate("(w) => window.__office.inject(w)", mute_world)
+            page.wait_for_timeout(250)
+            page.click(f'.arow[data-session="{target_session}"]')
+            page.wait_for_selector("#sheet:not([hidden])", timeout=3000)
+            mute = page.evaluate(
+                "(s) => ({ note: (document.querySelector('#sheet .listenoff')||{}).textContent || '',"
+                "  badge: !(document.querySelector(`.arow[data-session=\"${s}\"] .amute`)||{}).hidden,"
+                "  compose: !document.querySelector('#composeinput').disabled })", target_session)
+            if "受信待機" in mute["note"] and mute["badge"] and mute["compose"]:
+                print("  ✓ R86-D 受信待機なし: 一覧に📴＋シートに但し書き＋送信はブロックしない")
+            else:
+                print(f"  ✗ 受信待機なしの表示が出ない/送信を塞いだ: {mute}")
+                ng += 1
+            page.keyboard.press("Escape")
+            page.evaluate("(w) => window.__office.inject(w)", world)
+            page.wait_for_timeout(200)
+
             # ── (2a2) R86-C: 幅崩れ／もっと見る／名札 の常設ピン（敵対的な世界で測る） ──
             # 実測の背景: ①.sheetbody は overflow-y:auto により overflow-x が auto へ格上げされ、
             # 折り返せない文字がはみ出すと本文が丸ごと横滑りした（実測352px＝ユーザーFB「幅が崩れる」）

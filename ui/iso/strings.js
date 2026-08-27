@@ -131,6 +131,8 @@ const DICT = {
     // シート
     work_now: "▶ いま", work_next: "⏭ 次", work_done: "✅ 完了",
     recent_moves: "最近の動き",
+    listen_off: "このセッションはいま受信待機していません。送信は保存され、そのターミナルで次に何か操作した瞬間に届きます（3時間で失効）。",
+    listen_off_hint: "受信待機なし — 送っても即座には届きません",
     dialog_head: "💬 セッションのやり取り",
     dialog_empty: "まだ会話がありません",
     dialog_err: "会話を取得できませんでした",
@@ -354,6 +356,8 @@ const DICT = {
     quick: ["Keep going", "This approach is fine", "Fix the tests, then push", "Pause for now"],
     work_now: "▶ Now", work_next: "⏭ Next", work_done: "✅ Done",
     recent_moves: "Recent activity",
+    listen_off: "This session isn't listening right now. Your message is saved and arrives the moment you touch that terminal again (expires in 3 hours).",
+    listen_off_hint: "Not listening — it won't arrive right away",
     dialog_head: "💬 Session conversation",
     dialog_empty: "No conversation yet",
     dialog_err: "Couldn't load the conversation",

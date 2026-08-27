@@ -314,6 +314,10 @@ export async function mount(root) {
     if (a.state === "working") return doing || T("hs_working");
     return T("hs_waiting");
   };
+  /** R86-D: 受信待機が切れている相手を選んだとき、シート先頭に正直な但し書きを出す。
+   *  投函はブロックしない（inboxに残り、そのセッションが次に動いた瞬間に届く）。 */
+  const listenNote = (a) => (a.listening ? null : sEl("div", "dlgnote listenoff",
+    `📴 ${T("listen_off")}`));
   // 宛先表示（crew>1 のときだけ・内訳行のクリックで切替）
   const targetEl = () => shell.querySelector("#sheettarget");
   const paintTarget = (agent) => {
@@ -421,6 +425,8 @@ export async function mount(root) {
     typewrite(shell.querySelector("#sheetact"), humanSummary(agent));
     const body = shell.querySelector("#sheetbody");
     body.replaceChildren();
+    const note = listenNote(agent);
+    if (note) body.append(note);
     if (agent.attention) {
       // 質問文の表示は本文の先頭に。回答ボタンは quickboard（compose直上の常設ボード）へ
       // 集約＝「返信はここ」の一箇所感（R54ユーザーFB）
@@ -2080,7 +2086,7 @@ function render(shell, w) {
     const row = el("div", "arow");
     const head = el("div", "arowhead");
     head.append(el("i", "adot"), el("b", "aname"), el("span", "acrew"),
-      el("span", "apend", "📨"));
+      el("span", "apend", "📨"), el("span", "amute", "📴"));
     const act = el("div", "aact");
     act.append(el("span", "atext"), el("i", "aage"));
     const prog = el("div", "aprog");
@@ -2116,6 +2122,10 @@ function render(shell, w) {
     crewEl.hidden = !(a.crew > 1);
     if (a.crew > 1) changed = setText(crewEl, `×${a.crew}`) || changed;
     row.querySelector(".apend").hidden = !a.pending;
+    // R86-D: 受信待機が切れている相手は 📴 で明示する（黙って届かないのが最悪）
+    const muteEl = row.querySelector(".amute");
+    muteEl.hidden = a.listening;
+    if (!muteEl.hidden) muteEl.title = T("listen_off_hint");
     const act = row.querySelector(".aact");
     const actCls = "aact" + (a.attention && a.approvalMin >= STARVE_MIN ? " starve" : "");
     if (act.className !== actCls) act.className = actCls;

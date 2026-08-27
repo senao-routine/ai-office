@@ -45,6 +45,9 @@ export function buildWorld(office) {
     stuckTool: p.stuckTool || "",
     questionOptions: Array.isArray(p.questionOptions) ? p.questionOptions : [],
     pending: Boolean(p.pending),
+    // R86-D: いま指示を受け取れるか（Stop hookの待機が生きているか）。
+    // 旧server（未搬送）は undefined → true 扱い＝根拠なく「届かない」と脅さない。
+    listening: p.listening !== false,
     minions: Number(p.minions) || 0,
     age: Number(p.age) || 0,
     external: p.external || null,

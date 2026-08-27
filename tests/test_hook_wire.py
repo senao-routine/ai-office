@@ -6,6 +6,7 @@
 バックアップ作成・冪等（2回実行で重複しない）・既存Stop hookの温存を機械でピンする。
 """
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -49,10 +50,34 @@ class HookWireTest(unittest.TestCase):
         self.assertEqual(self._wired_count(), 1)
         hook = self._stops()[-1]["hooks"][0]
         self.assertTrue(hook["asyncRewake"])
-        self.assertEqual(hook["timeout"], 7300)
+        # R86-D 不変条件: timeout は待機ループ（LOOPS×INTERVAL）より必ず長い。
+        # 逆転すると Claude Code が hook を kill して**出力を破棄**するため、
+        # 「inboxを読んで消したが渡せない」窓が生まれて指示が恒久ロストする。
+        script = (ROOT / "hooks" / "office-inbox-wait.sh").read_text(encoding="utf-8")
+        loops = int(re.search(r"OFFICE_WAIT_LOOPS:-(\d+)", script).group(1))
+        interval = int(re.search(r"OFFICE_WAIT_INTERVAL:-(\d+)", script).group(1))
+        self.assertGreater(hook["timeout"], loops * interval,
+                           "hook timeout <= 待機ループ長＝指示ロストの窓ができる")
+        self.assertGreaterEqual(loops * interval, 12 * 3600,
+                                "受信待機が12時間を下回った（アイドル中に届かなくなる）")
         r2 = run_install(self.home, "--wire")             # 2回目=冪等
         self.assertIn("配線を確認", r2.stdout)
         self.assertEqual(self._wired_count(), 1)
+
+    def test_wire_repairs_short_timeout(self):
+        """R86-D: 旧 timeout(7300=2時間)のまま配線済みの環境を、再実行で自己修復する。"""
+        self.settings.parent.mkdir(parents=True)
+        old = {"hooks": {"Stop": [{"hooks": [{
+            "type": "command",
+            "command": 'bash "$HOME/.claude/hooks/office-inbox-wait.sh"',
+            "timeout": 7300, "asyncRewake": True}]}]}}
+        self.settings.write_text(json.dumps(old), encoding="utf-8")
+        r = run_install(self.home, "--wire")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self._wired_count(), 1, "重複配線してはいけない")
+        hook = self._stops()[-1]["hooks"][0]
+        self.assertGreater(hook["timeout"], 12 * 3600)
+        self.assertIn("timeout", r.stdout)
 
     def test_wire_preserves_existing_hooks_and_backs_up(self):
         self.settings.parent.mkdir(parents=True)
