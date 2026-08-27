@@ -1220,7 +1220,7 @@ const APP_HTML = "<!doctype html><html lang=ja><head>" +
 '#ticker .tk-n{flex:none;font-size:10px;color:var(--muted);font-weight:800;background:rgba(124,92,255,.10);border-radius:99px;padding:2px 7px}' +
 'body.th-dark #ticker{color:#e8e6f6}' +
 '#gaugebar .gg{flex:1;display:grid;grid-template-columns:1fr auto;grid-template-areas:"lb pct" "bar bar";column-gap:7px;row-gap:4px;min-width:0;align-items:center}' +
-'#gaugebar .gg .lb{grid-area:lb;font-size:10.5px;font-weight:800;color:var(--muted);overflow:hidden;white-space:nowrap;letter-spacing:.01em}' +
+'#gaugebar .gg .lb{grid-area:lb;font-size:10.5px;font-weight:800;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;letter-spacing:.01em}' +
 '#gaugebar .gg .tr{grid-area:bar;height:10px;border-radius:99px;background:rgba(124,92,255,.12);overflow:hidden;box-shadow:inset 0 1px 2px rgba(64,52,140,.10)}' +
 '#gaugebar .gg .tr i{display:block;height:100%;border-radius:99px;background:var(--sage)}' +
 '#gaugebar .gg.warn .tr i{background:var(--amber)}' +
@@ -1441,7 +1441,7 @@ PWA_GLOSS_SOURCE +
 'st.appendChild(document.createTextNode(" "+activityGlossPWA(e,LANG)));card.appendChild(st);' +
 'if(e.question)card.appendChild(el("div","q","❓ "+e.question));' +
 'var fd=(e.feed||[]).slice(0,3);if(fd.length){var fb=el("div","feed");fd.forEach(function(l){fb.appendChild(el("div","feedline",l))});card.appendChild(fb)}' +
-'if(e.listening===false){var mu=el("span","mute","📴");mu.title=T("受信待機なし — 送っても即座には届きません","Not listening — it won\'t arrive right away");meta.appendChild(mu)}' +
+'if(isMute(e))meta.appendChild(muteChip());' +
 'card.addEventListener("click",function(){openSheet(e)});list.appendChild(card)})}' +
 'function QUICK(){return [{l:T("✅ 承認して進める","✅ Approve & continue"),s:T("✅ 承認","✅ Approve"),t:T("はい、そのまま進めてください。","Yes, please go ahead as planned."),c:"g"},{l:T("🛑 いったん停止して報告","🛑 Stop and report"),s:T("🛑 停止","🛑 Stop"),t:T("いったん作業を止めて、いまの状況を報告してください。","Please pause the work and report the current status."),c:"r"},{l:T("📝 進捗を1行で報告","📝 One-line progress report"),s:T("📝 報告","📝 Report"),t:T("いまの進捗を1〜2行で報告してください。","Please report your current progress in one or two lines."),c:"sub"}]}' +
 'function sayText(e){e=e||{};var action=activityGlossPWA(e,LANG);var s=(e.disp||e.session||T("このプロジェクト","This project"))+T("です！"," here! ")+(action?T("いま「"+action+"」です。","Currently: "+action+"."):T("いまの状況を確認中です。","Checking the current status."));if(e.question)s+="\\n❓ "+e.question;if((e.approvalMin||0)>0)s+=T("\\n❗ 承認まちです","\\n❗ Waiting for approval");return s}' +
@@ -1455,7 +1455,7 @@ PWA_GLOSS_SOURCE +
 'var dt=document.getElementById("shdetail");dt.innerHTML="";' +
 // R86-D: 受信待機が切れている相手には正直に但し書きを出す（黙って届かないのが最悪）。
 // 送信はブロックしない＝inboxに残り、そのターミナルを次に触った瞬間に届く。
-'if(e&&e.listening===false){var lo=el("div","listenoff");' +
+'if(isMute(e)){var lo=el("div","listenoff");' +
 'lo.textContent=T("📴 このセッションはいま受信待機していません。送信は保存され、そのターミナルで次に何か操作した瞬間に届きます（3時間で失効）。","📴 This session isn\'t listening right now. Your message is saved and arrives the moment you touch that terminal again (expires in 3h).");' +
 'dt.appendChild(lo)}' +
 'appendWorkBlock(dt,e.work);' +
@@ -1642,7 +1642,7 @@ PWA_GLOSS_SOURCE +
 'SENDING=true;var session=target.session;closeSheet();' +
 'note(T("送信中…","Sending…"));sign(cred,session,text).then(function(env){' +
 'return fetch("/instruct",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+cred.t},body:JSON.stringify(env)})})' +
-'.then(function(r){return r.json()}).then(function(d){if(d&&d.ok){note(T("📨 Macへ送信しました","📨 Sent to your Mac"));bumpSentLog();if(needsAttn(target)){ATTN_SENT[attnKey(target)]=Date.now();saveAttnSent();updateAttnCards(officeAgents(LAST_OFFICE))}playSE("send");setTimeout(function(){poll()},1200)}else note("⚠ "+((d&&d.error)||T("失敗","failed")))})' +
+'.then(function(r){return r.json()}).then(function(d){if(d&&d.ok){note(isMute(target)?T("📨 保存しました — そのターミナルを次に触った瞬間に届きます","📨 Saved — it arrives the moment you touch that terminal"):T("📨 Macへ送信しました","📨 Sent to your Mac"));bumpSentLog();if(needsAttn(target)){ATTN_SENT[attnKey(target)]=Date.now();saveAttnSent();updateAttnCards(officeAgents(LAST_OFFICE))}playSE("send");setTimeout(function(){poll()},1200)}else note("⚠ "+((d&&d.error)||T("失敗","failed")))})' +
 '.catch(function(){note(T("⚠ 送信できませんでした","⚠ Could not send"))}).then(function(){SENDING=false})}' +
 'function note(m){var n=document.getElementById("note");if(!n)return;n.textContent=m;var err=m.indexOf("⚠")===0;n.className="show"+(err?" err":"");if(n._t){clearTimeout(n._t);n._t=null}if(m.indexOf(T("送信中","Sending"))<0){n._t=setTimeout(function(){n.className=""},err?4200:5200)}}' +
 'var VIEW=(localStorage.getItem("aioffice.view")||"office");' +
@@ -1653,6 +1653,12 @@ PWA_GLOSS_SOURCE +
 'function attnSessionSet(emps){var set={};(Array.isArray(emps)?emps:[]).forEach(function(e){if(e&&needsAttn(e)){var k=attnKey(e);if(k)set[k]=1}});return set}' +
 'function checkAttnEdge(emps){var next=attnSessionSet(emps),newly=Object.keys(next).filter(function(s){return !ATTN_SESSIONS[s]});ATTN_SESSIONS=next;if(newly.length)playSE("attn")}' +
 'function isPend(e){return !!e.pending&&!needsAttn(e)}' +
+// R86-E: 「送っても即座には届かない」相手か（📴の唯一の条件）。定義は ui/core/world.js の
+// isMuted と同一に保つ。★working は除外＝受信待機の心拍は Stop hook の待機ループ中しか
+// 打たないので稼働中は必ず listening:false になるが、それは「ターン終了直後に届く」
+// 高速パスであって異常ではない。ここを外すと忙しい社員全員に嘘の警告が付く（実測）。
+'function isMute(e){return !!e&&e.listening===false&&e.state!=="working"}' +
+'function muteChip(){return el("span","dchip mute",T("📴 受信待機なし","📴 Not listening"))}' +
 // R79: アバター＝モノグラム（名前1文字＋状態リング）。ドット絵の立ち絵は2D時代の遺物で、
 // デスクトップ3Dは一切使っていなかった（スプライト同梱2.4MBの存在理由がここだけだった）。
 // 状態リングの色は意味色の規約どおり: 緑=作業中/琥珀=待機/赤=❗/青=外部(3DのACCENTS.externalと同系)
@@ -1680,9 +1686,9 @@ PWA_GLOSS_SOURCE +
 // PWA_TRIAGE_END
 // R79-5: officeタブは固定画面＝scrollY退避は不要。ドックは3Dを覆わない高さに収める
 'function updateAttnCards(emps){var host=document.getElementById("attncards");if(!host)return;var need=(Array.isArray(emps)?emps:[]).filter(needsAttn).slice().sort(triageSort);host.innerHTML="";host.classList.toggle("on",need.length>0);' +
-'need.slice(0,1).forEach(function(e){var key=attnKey(e),card=el("article","card alert attncard");card.setAttribute("data-attn-sess",key);var head=el("div","attnhead"),img=avatarNode(e,30);head.appendChild(img);head.appendChild(el("div","attnname","❗ "+(dispCrew(e)||key)));card.appendChild(head);card.appendChild(el("div","attnq",e.question?"❓ "+e.question:T("❗ 承認が必要です","❗ Approval needed")));if(e.question&&questionOptionEntries(e).length){var options=el("div","attnoptions");appendQuestionOptions(options,e,"attnoption");card.appendChild(options)}var actions=el("div","attnactions");QUICK().forEach(function(it){var b=el("button",it.c,it.s||it.l);b.title=it.l;b.addEventListener("click",function(ev){ev.stopPropagation();send(it.t,e)});actions.appendChild(b)});var free=el("button","sub",T("✍️ 自由に","✍️ Custom"));free.addEventListener("click",function(ev){ev.stopPropagation();openSheet(e)});actions.appendChild(free);card.appendChild(actions);if(ATTN_SENT[key])card.appendChild(el("div","attnsent",T("📨 送信済み","📨 Sent")));host.appendChild(card)});' +
+'need.slice(0,1).forEach(function(e){var key=attnKey(e),card=el("article","card alert attncard");card.setAttribute("data-attn-sess",key);var head=el("div","attnhead"),img=avatarNode(e,30);head.appendChild(img);head.appendChild(el("div","attnname","❗ "+(dispCrew(e)||key)));if(isMute(e))head.appendChild(muteChip());card.appendChild(head);card.appendChild(el("div","attnq",e.question?"❓ "+e.question:T("❗ 承認が必要です","❗ Approval needed")));if(e.question&&questionOptionEntries(e).length){var options=el("div","attnoptions");appendQuestionOptions(options,e,"attnoption");card.appendChild(options)}var actions=el("div","attnactions");QUICK().forEach(function(it){var b=el("button",it.c,it.s||it.l);b.title=it.l;b.addEventListener("click",function(ev){ev.stopPropagation();send(it.t,e)});actions.appendChild(b)});var free=el("button","sub",T("✍️ 自由に","✍️ Custom"));free.addEventListener("click",function(ev){ev.stopPropagation();openSheet(e)});actions.appendChild(free);card.appendChild(actions);if(ATTN_SENT[key])card.appendChild(el("div","attnsent",T("📨 送信済み","📨 Sent")));host.appendChild(card)});' +
 // 2件目=1行ミニカード（タップでシートへ）。3件目以降はリストへ誘導＝ドックが3Dを覆い尽くさない
-'need.slice(1,2).forEach(function(e){var key=attnKey(e),mini=el("article","card alert attncard attnmini");mini.setAttribute("data-attn-sess",key);mini.appendChild(el("span","attnname","❗ "+(dispCrew(e)||key)));mini.appendChild(el("span","attnq",e.question?e.question:T("承認が必要です","Approval needed")));mini.appendChild(el("span","attngo",T("回答 ›","Reply ›")));mini.addEventListener("click",function(){openSheet(e)});host.appendChild(mini)});' +
+'need.slice(1,2).forEach(function(e){var key=attnKey(e),mini=el("article","card alert attncard attnmini");mini.setAttribute("data-attn-sess",key);mini.appendChild(el("span","attnname","❗ "+(dispCrew(e)||key)));if(isMute(e))mini.appendChild(muteChip());mini.appendChild(el("span","attnq",e.question?e.question:T("承認が必要です","Approval needed")));mini.appendChild(el("span","attngo",T("回答 ›","Reply ›")));mini.addEventListener("click",function(){openSheet(e)});host.appendChild(mini)});' +
 'if(need.length>2){var more=el("button","attnmore",T("ほか+"+(need.length-2)+"件","+"+(need.length-2)+" more"));more.setAttribute("aria-label",T("ほか"+(need.length-2)+"件の要対応をリストで表示","Show "+(need.length-2)+" more items that need attention in the list"));more.addEventListener("click",function(){setView("list")});host.appendChild(more)}}' +
 // R77: スマホも3Dオフィス（デスクトップと同じ IsoScene）。3Dが起動しない端末
 // （WebGL不可・モジュール未取得）はリスト表示へ自動退避する（2DマップはR79-2で全撤去）。
@@ -1733,7 +1739,7 @@ PWA_GLOSS_SOURCE +
 'seen[a.id]=1;'+
 'var cls=kind+(e&&e.state?" st-"+e.state:"")+((e&&e.external)?" ext":"")+(attn?" attn":"")+(sel?" sel":"");'+
 'if(n.className!==cls)n.className=cls;'+
-'if(text){var base=e?dispCrew(e):String(a.name||a.id);var arr=Array.from(base);var short=(attn?"❗ ":"")+arr.slice(0,8).join("")+(arr.length>8?"…":"");var nm=n.querySelector(".nm");if(nm.textContent!==short){nm.textContent=short;n.title=base}}'+
+'if(text){var base=e?dispCrew(e):String(a.name||a.id);var arr=Array.from(base);var short=(attn?"❗ ":"")+arr.slice(0,12).join("")+(arr.length>8?"…":"");var nm=n.querySelector(".nm");if(nm.textContent!==short){nm.textContent=short;n.title=base}}'+
 'else{var ch=monoChar(e||{disp:a.name});if(n.textContent!==ch)n.textContent=ch}'+
 'var w=text?110:20,h=text?18:20;'+
 'var half=w/2,maxL=W-half-2,left=maxL>half+2?Math.min(Math.max(at.left,half+2),maxL):at.left;'+
@@ -1745,7 +1751,7 @@ PWA_GLOSS_SOURCE +
 // R79-6: チップ先頭にモノグラム（3Dの足元ピンと同じ文字＋状態リング＝対応が学習できる）。
 // R80.5: 述語(activityGloss)を常設の下段に＝タップしなくても「誰が・何を」が読める。×N=セッション内訳
 'function paintEmptyHint(n){var room=document.getElementById("room");if(!room)return;var el0=document.getElementById("emptyhint");if(n>0){if(el0)el0.remove();return}if(el0)return;var box=el("div",null);box.id="emptyhint";box.appendChild(el("div","eh-t",T("まだ誰も出勤していません","Nobody is on duty yet")));box.appendChild(el("div","eh-s",T("Macのターミナルで claude を起動すると、そのプロジェクトがここに出勤します。","Start claude in a terminal on your Mac and the project will show up here.")));room.appendChild(box)}'+
-'function paintRoster(office){var bar=document.getElementById("roster");if(!bar)return;var emps=officeAgents(office).slice().sort(triageSort);var seen={};emps.forEach(function(e){var key=e.session||"";seen[key]=1;var n=null,all=bar.querySelectorAll(".rchip");for(var i=0;i<all.length;i++)if(all[i].getAttribute("data-sess")===key){n=all[i];break}if(!n){n=el("button","rchip");n.type="button";n.setAttribute("data-sess",key);n.appendChild(el("span","mono"));var tx=el("span","rtxt");tx.appendChild(el("span","nm",""));tx.appendChild(el("span","gl",""));n.appendChild(tx);n.addEventListener("click",function(){var cur=(officeAgents(LAST_OFFICE)||[]).filter(function(x){return x&&x.session===key})[0];if(!cur)return;openSheet(cur);if(window.__scene3d&&window.__scene3d.focus){var ags=window.__scene3d.agents()||[];for(var j=0;j<ags.length;j++)if(ags[j].session===key){window.__scene3d.focus(ags[j].id);break}}});bar.appendChild(n)}n.setAttribute("data-state",e.state||"");n.className="rchip"+(needsAttn(e)?" attn":"")+(SEL&&SEL.session===key?" sel":"");setMono(n.querySelector(".mono"),e);var rnm=dispCrew(e);var rn=n.querySelector(".nm");if(rn.textContent!==rnm)rn.textContent=rnm;var gl0=activityGlossPWA(e,LANG)||"";var gn=n.querySelector(".gl");if(gn&&gn.textContent!==gl0)gn.textContent=gl0;var tt=rnm+" \u2014 "+gl0;if(n.title!==tt)n.title=tt});var nodes=bar.querySelectorAll(".rchip");for(var q=nodes.length-1;q>=0;q--)if(!seen[nodes[q].getAttribute("data-sess")])nodes[q].remove()}'+
+'function paintRoster(office){var bar=document.getElementById("roster");if(!bar)return;var emps=officeAgents(office).slice().sort(triageSort);var seen={};emps.forEach(function(e){var key=e.session||"";seen[key]=1;var n=null,all=bar.querySelectorAll(".rchip");for(var i=0;i<all.length;i++)if(all[i].getAttribute("data-sess")===key){n=all[i];break}if(!n){n=el("button","rchip");n.type="button";n.setAttribute("data-sess",key);n.appendChild(el("span","mono"));var tx=el("span","rtxt");tx.appendChild(el("span","nm",""));tx.appendChild(el("span","gl",""));n.appendChild(tx);n.addEventListener("click",function(){var cur=(officeAgents(LAST_OFFICE)||[]).filter(function(x){return x&&x.session===key})[0];if(!cur)return;openSheet(cur);if(window.__scene3d&&window.__scene3d.focus){var ags=window.__scene3d.agents()||[];for(var j=0;j<ags.length;j++)if(ags[j].session===key){window.__scene3d.focus(ags[j].id);break}}});bar.appendChild(n)}n.setAttribute("data-state",e.state||"");n.className="rchip"+(needsAttn(e)?" attn":"")+(SEL&&SEL.session===key?" sel":"");setMono(n.querySelector(".mono"),e);var rnm=dispCrew(e);var rn=n.querySelector(".nm");if(rn.textContent!==rnm)rn.textContent=rnm;var gl0=(isMute(e)?"📴 ":"")+(activityGlossPWA(e,LANG)||"");var gn=n.querySelector(".gl");if(gn&&gn.textContent!==gl0)gn.textContent=gl0;var tt=rnm+" \u2014 "+gl0;if(n.title!==tt)n.title=tt});var nodes=bar.querySelectorAll(".rchip");for(var q=nodes.length-1;q>=0;q--)if(!seen[nodes[q].getAttribute("data-sess")])nodes[q].remove()}'+
 'window.__paintPlates=paintPlates;'+
 // 3Dモジュールは非同期で載る。載った瞬間に**シーンだけ**描き直す。
 // ここで dispatch()（全再描画）を呼ぶと、設定シート等の開いているDOMが差し替わり
@@ -1778,7 +1784,7 @@ PWA_GLOSS_SOURCE +
 'var hs=document.getElementById("hstats");if(!hs)return;hs.innerHTML="";function mk(cls,lb,n,tip){var s=el("span","hstat"+(cls?" "+cls:""));s.appendChild(document.createTextNode(lb));s.appendChild(el("b",null,String(n)));s.title=tip;s.addEventListener("click",function(){note(tip)});hs.appendChild(s)}' +
 // R80-A10: タッチ端末に title は出ないので、タップで内訳（作業中N + サブエージェントM）を言う。
 // 「稼働12」が実は3+9だった、という一目の誤解を潰す。
-'var tl=document.querySelector(".hdr2 .ttl");if(tl){var on0=(LAST_OFFICE&&LAST_OFFICE.officeName)||"AI Office";var sub0=emps.length?(emps.length+T("プロジェクト"," projects")):"";var sig0=on0+"|"+sub0;if(tl.getAttribute("data-sig")!==sig0){tl.setAttribute("data-sig",sig0);tl.innerHTML="";var nm0=el("span","tname","🏢 "+on0);tl.appendChild(nm0);if(sub0)tl.appendChild(el("span","tsub",sub0))}}if(al)mk("attn","❗",al,T("要対応（承認/質問まち）","Needs attention (approvals/questions)"));mk("",T("稼働","Active"),w+mn,T("作業中セッション"+w+" + サブエージェント"+mn,"Working sessions "+w+" + subagents "+mn));mk("",T("待機","Idle"),wa,T("指示待ちセッション","Sessions waiting for instructions"))}' +
+'var tl=document.querySelector(".hdr2 .ttl");if(tl){var on0=(LAST_OFFICE&&LAST_OFFICE.officeName)||"AI Office";var sub0=emps.length?(emps.length+((LAST_OFFICE&&LAST_OFFICE.avatarMode==="session")?T("セッション"," sessions"):T("プロジェクト"," projects"))):"";var sig0=on0+"|"+sub0;if(tl.getAttribute("data-sig")!==sig0){tl.setAttribute("data-sig",sig0);tl.innerHTML="";var nm0=el("span","tname","🏢 "+on0);tl.appendChild(nm0);if(sub0)tl.appendChild(el("span","tsub",sub0))}}if(al)mk("attn","❗",al,T("要対応（承認/質問まち）","Needs attention (approvals/questions)"));mk("",T("稼働","Active"),w+mn,T("作業中セッション"+w+" + サブエージェント"+mn,"Working sessions "+w+" + subagents "+mn));mk("",T("待機","Idle"),wa,T("指示待ちセッション","Sessions waiting for instructions"))}' +
 'function dispatch(){var off=LAST_OFFICE;var emps=officeAgents(off);var sig=sceneSig(emps);if(sig===LAST_SIG&&VIEW===LAST_VIEW)return;var sy=window.scrollY;LAST_SIG=sig;LAST_VIEW=VIEW;buildHeader(emps);buildDeptbar(emps);var room=document.getElementById("room"),list=document.getElementById("list");var to=document.getElementById("tb_office"),tl=document.getElementById("tb_list");if(to)to.classList.toggle("on",VIEW==="office");if(tl)tl.classList.toggle("on",VIEW!=="office");if(VIEW==="office"){room.classList.remove("hidden");list.classList.add("hidden");renderScene(off)}else{list.classList.remove("hidden");room.classList.add("hidden");renderList(off)}window.scrollTo(0,sy)}' +
 'function setView(v){if(VIEW!==v)playSE("cursor");VIEW=v;localStorage.setItem("aioffice.view",VIEW);dispatch()}' +
 // R79-7: status適用の単一路。HTTPポーリング応答もWS pushフレームも必ずここを通る

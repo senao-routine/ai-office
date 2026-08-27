@@ -179,6 +179,29 @@ def main():
                 print(f"  ✗ 受信待機なしの表示が出ない/送信を塞いだ: {mute}")
                 ng += 1
             page.keyboard.press("Escape")
+
+            # R86-E: **稼働中は listening:false でも📴を出さない**（心拍は待機ループ中しか
+            # 打たないので working は必ず false になる。そこに出すと忙しい社員全員に誤警告）
+            work_world = json.loads(payload)
+            work_sess = next(p0["session"] for p0 in work_world["roster"]
+                             if p0["state"] == "working")
+            for p0 in work_world["roster"]:
+                if p0["session"] == work_sess:
+                    p0["listening"] = False
+            page.evaluate("(w) => window.__office.inject(w)", work_world)
+            page.wait_for_timeout(250)
+            page.click(f'.arow[data-session="{work_sess}"]')
+            page.wait_for_selector("#sheet:not([hidden])", timeout=3000)
+            wk = page.evaluate(
+                "(s) => ({ note: !!document.querySelector('#sheet .listenoff'),"
+                "  badge: !(document.querySelector(`.arow[data-session=\"${s}\"] .amute`)||{}).hidden })",
+                work_sess)
+            if not wk["note"] and not wk["badge"]:
+                print("  ✓ R86-E 稼働中(working)は listening:false でも📴を出さない（誤警告なし）")
+            else:
+                print(f"  ✗ 稼働中に誤って📴を出している: {wk}")
+                ng += 1
+            page.keyboard.press("Escape")
             page.evaluate("(w) => window.__office.inject(w)", world)
             page.wait_for_timeout(200)
 

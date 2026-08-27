@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  DESK_SLOTS, activityGloss, activityText, agoStr, assignMeetingRooms, assignRestSpots, assignSeats, attentionQueue, buildWorld,
+  DESK_SLOTS, activityGloss, activityText, agoStr, assignMeetingRooms, assignRestSpots, assignSeats, attentionQueue, buildWorld, isMuted,
   countByZone, deliveryTransitions, needsAttention, stableIndex, summarizeWorld, tidyActivity,
   topAttention, triageSort, zoneOf,
 } from "./world.js";
@@ -403,4 +403,15 @@ test("R74: 会議は主要3室を先に使い、予備室(第3)は満席のと�
   // reserve 省略時は従来どおり全室が対象（後方互換）
   const noReserve = assignMeetingRooms([mk("a"), mk("b"), mk("c"), mk("d")], caps);
   assert.equal(noReserve.size, 4);
+});
+
+test("isMuted: 待機切れかつ非稼働のみ true（稼働中は届くので警告しない）", () => {
+  assert.equal(isMuted({ listening: false, state: "waiting" }), true);
+  assert.equal(isMuted({ listening: false, state: "resting" }), true);
+  // ★心拍は待機ループ中しか打たない＝稼働中は必ず listening:false になるが、
+  //   ターン終了直後に届く高速パスなので警告してはいけない
+  assert.equal(isMuted({ listening: false, state: "working" }), false);
+  assert.equal(isMuted({ listening: true, state: "waiting" }), false);
+  assert.equal(isMuted({ state: "waiting" }), false);        // 旧server（未搬送）は脅さない
+  assert.equal(isMuted(null), false);
 });

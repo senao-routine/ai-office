@@ -59,6 +59,42 @@ def main(argv):
                     return 1
                 print("  ✓ 3D canvas が描画された（Worker配信のESM＋WebGL）")
 
+                # R86-E: 「送っても即座には届かない」相手を**既定タブで**見分けられること。
+                # 📴 をリストとシートにだけ入れていたため、既定の🏢オフィスタブを見ている
+                # ユーザーには構造的に見えなかった（ユーザー報告「そんなボタンない」で発覚）。
+                # 併せて **working には出さない**（心拍は待機ループ中しか打たないので working は
+                # 必ず listening:false になる＝そこに出すと忙しい社員全員に誤警告）。
+                page.wait_for_selector("#attncards .attncard", timeout=20000)
+                page.wait_for_timeout(600)
+                mute = page.evaluate(
+                    """() => {
+                      const vis = (n) => { const r = n.getBoundingClientRect();
+                        return r.width > 0 && r.height > 0; };
+                      const chips = [...document.querySelectorAll('.dchip.mute')].filter(vis);
+                      const attn = document.getElementById('attncards');
+                      const roster = document.getElementById('roster');
+                      const inAttn = !!(attn && [...attn.querySelectorAll('.dchip.mute')].some(vis));
+                      const inRoster = !!(roster && /📴/.test(roster.textContent || ''));
+                      const busy = [...(roster ? roster.querySelectorAll('.rchip') : [])]
+                        .filter(n => /E2E稼働部/.test(n.textContent || ''));
+                      return { chips: chips.length, inAttn, inRoster,
+                        busyMuted: busy.some(n => /📴/.test(n.textContent || '')),
+                        busySeen: busy.length }; }""")
+                if mute["inAttn"] and mute["inRoster"]:
+                    print(f"  ✓ R86-E 既定タブで受信待機なしが分かる（❗ドック＋ロスター帯・"
+                          f"チップ{mute['chips']}件）")
+                else:
+                    print(f"  ✗ 既定タブに📴が出ない（リスト/シートだけでは見えない）: {mute}")
+                    ng += 1
+                if mute["busySeen"] and not mute["busyMuted"]:
+                    print("  ✓ R86-E 稼働中(working)には📴を出さない（誤警告なし）")
+                elif not mute["busySeen"]:
+                    print(f"  ✗ 稼働中セッションがロスター帯に出ていない: {mute}")
+                    ng += 1
+                else:
+                    print(f"  ✗ 稼働中に誤って📴を出している: {mute}")
+                    ng += 1
+
                 stats = None
                 for _ in range(60):
                     stats = page.evaluate(

@@ -5,7 +5,7 @@
 // 全ての数値は world（実データ）から。参考画像にある FUNDS 等の
 // 実データが無い数値は出さない（嘘のメトリクス禁止＝プラン確定事項）。
 import {
-  STARVE_MIN, activityGloss, agoStr, attentionQueue, buildWorld,
+  STARVE_MIN, activityGloss, agoStr, attentionQueue, buildWorld, isMuted,
   deliveryTransitions, summarizeWorld, tidyActivity,
 } from "/ui/core/world.js";
 import {
@@ -316,7 +316,7 @@ export async function mount(root) {
   };
   /** R86-D: 受信待機が切れている相手を選んだとき、シート先頭に正直な但し書きを出す。
    *  投函はブロックしない（inboxに残り、そのセッションが次に動いた瞬間に届く）。 */
-  const listenNote = (a) => (a.listening ? null : sEl("div", "dlgnote listenoff",
+  const listenNote = (a) => (!isMuted(a) ? null : sEl("div", "dlgnote listenoff",
     `📴 ${T("listen_off")}`));
   // 宛先表示（crew>1 のときだけ・内訳行のクリックで切替）
   const targetEl = () => shell.querySelector("#sheettarget");
@@ -2124,7 +2124,7 @@ function render(shell, w) {
     row.querySelector(".apend").hidden = !a.pending;
     // R86-D: 受信待機が切れている相手は 📴 で明示する（黙って届かないのが最悪）
     const muteEl = row.querySelector(".amute");
-    muteEl.hidden = a.listening;
+    muteEl.hidden = !isMuted(a);
     if (!muteEl.hidden) muteEl.title = T("listen_off_hint");
     const act = row.querySelector(".aact");
     const actCls = "aact" + (a.attention && a.approvalMin >= STARVE_MIN ? " starve" : "");

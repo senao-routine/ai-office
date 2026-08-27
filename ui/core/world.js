@@ -199,6 +199,20 @@ export function needsAttention(employee) {
 }
 
 /**
+ * R86-D/E: 「送っても即座には届かない」相手か（📴 を出す唯一の条件）。
+ *
+ * ★working は除外する。受信待機の心拍は Stop hook の待機ループ中しか打たないので、
+ * **ターンが走っている＝稼働中のセッションは必ず listening:false になる**。だが作業中の
+ * セッションは「ターン終了直後に届く」＝設計どおりの高速パスなので、ここに 📴 を出すと
+ * 忙しい社員全員に嘘の警告が付く（実測で発覚）。本当に警告すべきは、待機が切れていて
+ * かつ動いてもいない相手＝人間が触るまで届かないセッション。
+ * listening 未搬送（旧server）は undefined → 警告しない（根拠なく脅さない）。
+ */
+export function isMuted(agent) {
+  return Boolean(agent) && agent.listening === false && agent.state !== "working";
+}
+
+/**
  * どのゾーンに居るべきか。場所＝状態という設計の中心。
  * external(OpenClaw等) は別Macの稼働体なので専用区画から動かさない。
  */
