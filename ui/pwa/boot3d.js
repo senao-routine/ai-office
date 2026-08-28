@@ -38,6 +38,28 @@ if (host && scene) {
   };
   fitForPortrait();
 
+  // R86-H: 下部ドック（❗カード・ロスター・ゲージ）がシーンに重なるぶん、
+  // オフィスを上へ寄せる。これが無いと❗が2件出ただけで**ロボットが1体も見えなくなる**
+  // （実測: ドック460px／ロボットの投影y=400〜443＝全部裏）。
+  let dockInset = 0;
+  const applyDockInset = () => {
+    const dock = document.getElementById("dock");
+    if (!dock) return;
+    const dr = dock.getBoundingClientRect();
+    const hr = host.getBoundingClientRect();
+    if (!dr.height || !hr.height) return;
+    const overlap = Math.max(0, Math.min(hr.bottom, dr.bottom) - Math.max(hr.top, dr.top));
+    const inset = Math.min(overlap, hr.height * 0.42) / 2;   // 半分だけ寄せる＝上も詰まらない
+    if (Math.abs(inset - dockInset) < 10) return;            // ばたつき防止
+    dockInset = inset;
+    try { scene.setViewShiftPx(inset); } catch (_) { /* 非対応の版でも操作は続行 */ }
+  };
+  applyDockInset();
+  if (typeof ResizeObserver === "function") {
+    const dock = document.getElementById("dock");
+    if (dock) new ResizeObserver(applyDockInset).observe(dock);
+  }
+
   const api = {
     ready: true,
     /** /status で来た office_json を反映（app.js から毎ポーリング呼ばれる）。 */
@@ -70,7 +92,7 @@ if (host && scene) {
       return last ? last.agents : [];
     },
     resize() {
-      try { fitForPortrait(); } catch (_) { /* 回転直後などは黙って次フレームへ */ }
+      try { fitForPortrait(); applyDockInset(); } catch (_) { /* 回転直後などは黙って次フレームへ */ }
     },
     /** R78: 一覧チップから「その社員へカメラを寄せる」（誰がどれか一目で分かる）。 */
     focus(id) {

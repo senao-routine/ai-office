@@ -176,6 +176,8 @@ const DICT = {
     pair_norelay: "中継が未設定です（relay/README.md のデプロイ後にQRが出ます）。デバイスは発行済みです。",
     pair_devices: (n) => `登録済みデバイス（${n}）`,
     pair_revoke: "失効",
+    pair_active: (n) => `（有効・あと${n}日）`,
+    pair_dead: "（失効済み）",
     pair_revoked: "失効しました",
     // ⚡リソース
     res_note: "API換算の参考値・実際の請求額ではありません",
@@ -408,6 +410,8 @@ const DICT = {
     pair_norelay: "Relay isn't configured yet (the QR appears after deploying relay/ — see relay/README.md). The device itself is issued.",
     pair_devices: (n) => `Registered devices (${n})`,
     pair_revoke: "Revoke",
+    pair_active: (n) => ` (active, ${n}d left)`,
+    pair_dead: " (revoked)",
     pair_revoked: "Revoked",
     res_note: "Approximate API-equivalent values — not your actual bill",
     res_today: (t, y) => `Today ${t} tok ≈ ¥${y}`,

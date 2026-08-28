@@ -590,6 +590,7 @@
   border-radius: 8px; padding: 7px 10px; cursor: pointer;
 }
 .ui-iso .sheetopt:hover { background: #fff; }
+.ui-iso .devmeta { color: var(--iso-ink-soft); font-size: 10.5px; margin-left: 6px; }
 /* R86-H: 「いま実際に聞かれている」事実（推測の❗と区別できるように控えめな地の文で） */
 .ui-iso .askfact {
   font-size: 11px; line-height: 1.5; color: #7a1f42; opacity: .92;

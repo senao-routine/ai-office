@@ -1089,9 +1089,11 @@ const APP_HTML = "<!doctype html><html lang=ja><head>" +
 '.attncard.attnmini .attnname{flex:none;max-width:38vw}' +
 '.attncard.attnmini .attnq{flex:1;min-width:0;margin:0;white-space:nowrap;display:block;text-overflow:ellipsis}' +
 '.attncard.attnmini .attngo{flex:none;color:var(--muted);font-size:12px;font-weight:800}' +
-'.attnoptions{display:flex;flex-direction:row;gap:6px;margin-top:7px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding-bottom:2px}' +
+// R86-H: 選択肢は**縦積み**。横スクロールだと3択の3つ目が画面外に出て押せない（実測390px幅で
+// right=531px）。選択肢は「決める」ための主操作なので、隠れる可能性のある置き方をしない。
+'.attnoptions{display:flex;flex-direction:column;gap:6px;margin-top:7px}' +
 '.attnoptions::-webkit-scrollbar{display:none}' +
-'.attnoptions .qopt{flex:none;width:auto;min-width:120px;max-width:200px}' +
+'.attnoptions .qopt{flex:none;width:100%;min-width:0;max-width:none}' +
 '.quickoptions{display:flex;flex-direction:column;gap:6px;margin-top:8px}' +
 '.qopt{display:flex;flex-direction:column;align-items:flex-start;gap:1px;width:100%;min-height:44px;margin:0;padding:8px 9px;background:rgba(255,255,255,.86);color:var(--ink);border:1.5px solid rgba(124,92,255,.30);border-radius:9px;text-align:left;font-size:12px;line-height:1.25}' +
 '.qopt:hover{background:rgba(124,92,255,.10)}' +
@@ -1103,6 +1105,11 @@ const APP_HTML = "<!doctype html><html lang=ja><head>" +
 '.attncard .attnactions button{flex:1 1 0;min-width:0;width:auto;min-height:44px;margin:0;padding:7px 4px;font-size:11px;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}' +
 '.attncard .attnactions button.sub{color:var(--muted)}' +
 '.attncard .attnsent{margin-top:7px;color:#2f6f68;font-size:12px;font-weight:800}' +
+// R86-H: スマホからは実行の許可を渡せない、という事実の但し書き（意味色は使わず地の文）
+'.attncard .attnnote{margin-top:6px;color:var(--muted);font-size:11.5px;line-height:1.45}' +
+// R86-H: ❗ドックは画面の45%まで（超えたら中でスクロール）。❗が2件＋選択肢の縦積みで
+// **オフィスのロボットが1体も見えなくなる**（実測: 3D領域が全部覆われてタップ不能）。
+// 「いま誰が何をしているか」を見に来た画面を、通知が食い潰さないための上限。
 '#attncards.on{display:block}' +
 '#attncards .attnmore{width:auto;min-height:44px;margin:0;padding:8px 14px;background:#fdf4ef;color:var(--danger);border:1px solid var(--alert);border-radius:999px;font-size:12px;font-weight:800}' +
 'body.th-dark #attncards{background:transparent}body.th-dark .attncard .attnq{color:#ffb09c}body.th-dark .attncard .attnsent{color:#9ee6bb}' +
@@ -1198,7 +1205,9 @@ const APP_HTML = "<!doctype html><html lang=ja><head>" +
 '#emptyhint .eh-t{font-size:14px;font-weight:800;color:var(--ink);margin-bottom:6px}' +
 '#emptyhint .eh-s{font-size:12px;line-height:1.7;color:var(--muted)}' +
 'body.th-dark #emptyhint{background:rgba(30,28,58,.86);border-color:rgba(160,140,255,.22)}' +
-'#dock{position:absolute;left:8px;right:8px;bottom:calc(78px + env(safe-area-inset-bottom));z-index:6;display:flex;flex-direction:column;gap:6px}' +
+// R86-H: 下部ドック全体の高さ上限。❗が複数＋選択肢の縦積みで**オフィスのロボットが
+// 1体も見えなくなる**（実測）。ここを見に来た画面を通知が食い潰さないための天井。
+'#dock{position:absolute;left:8px;right:8px;bottom:calc(78px + env(safe-area-inset-bottom));z-index:6;display:flex;flex-direction:column;gap:6px;max-height:56dvh;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}' +
 // R80.7: ロスターは**上部の常設帯**へ（ユーザーFB「下のスライドできる項目は上に」）。
 // ❗カードは下（親指圏）のまま＝縦の取り合いが消えたので圧縮モードは廃止。
 '#topdock{position:absolute;left:8px;right:8px;top:calc(58px + env(safe-area-inset-top));z-index:6}' +
@@ -1220,14 +1229,14 @@ const APP_HTML = "<!doctype html><html lang=ja><head>" +
 '#ticker .tk-n{flex:none;font-size:10px;color:var(--muted);font-weight:800;background:rgba(124,92,255,.10);border-radius:99px;padding:2px 7px}' +
 'body.th-dark #ticker{color:#e8e6f6}' +
 '#gaugebar .gg{flex:1;display:grid;grid-template-columns:1fr auto;grid-template-areas:"lb pct" "bar bar";column-gap:7px;row-gap:4px;min-width:0;align-items:center}' +
-'#gaugebar .gg .lb{grid-area:lb;font-size:10.5px;font-weight:800;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;letter-spacing:.01em}' +
+'#gaugebar .gg .lb{grid-area:lb;font-size:10.5px;font-weight:800;color:var(--muted);overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-height:1.2;overflow-wrap:anywhere;letter-spacing:.01em}' +
 '#gaugebar .gg .tr{grid-area:bar;height:10px;border-radius:99px;background:rgba(124,92,255,.12);overflow:hidden;box-shadow:inset 0 1px 2px rgba(64,52,140,.10)}' +
 '#gaugebar .gg .tr i{display:block;height:100%;border-radius:99px;background:var(--sage)}' +
 '#gaugebar .gg.warn .tr i{background:var(--amber)}' +
 '#gaugebar .gg.hot .tr i{background:var(--alert)}' +
 '#gaugebar .gg b{grid-area:pct;font-size:13.5px;font-weight:800;letter-spacing:.01em}' +
 '#gaugebar .gg-t,#gaugebar .gg-p{display:flex;flex:none;align-items:center;background:rgba(124,92,255,.10);border-radius:12px;padding:7px 11px}' +
-'#gaugebar .gg-p .lb{font-size:12px;color:var(--ink);max-width:96px}' +
+'#gaugebar .gg-p .lb{font-size:12px;color:var(--ink);max-width:118px}' +
 'body.th-dark #gaugebar .gg-p .lb{color:#e8e6f6}' +
 '#gaugebar .gg-t .lb{font-size:12.5px;color:var(--ink)}' +
 'body.th-dark #gaugebar .gg-t .lb{color:#e8e6f6}' +
@@ -1444,8 +1453,10 @@ PWA_GLOSS_SOURCE +
 'if(isMute(e))meta.appendChild(muteChip());' +
 'card.addEventListener("click",function(){openSheet(e)});list.appendChild(card)})}' +
 'function QUICK(){return [{l:T("✅ 承認して進める","✅ Approve & continue"),s:T("✅ 承認","✅ Approve"),t:T("はい、そのまま進めてください。","Yes, please go ahead as planned."),c:"g"},{l:T("🛑 いったん停止して報告","🛑 Stop and report"),s:T("🛑 停止","🛑 Stop"),t:T("いったん作業を止めて、いまの状況を報告してください。","Please pause the work and report the current status."),c:"r"},{l:T("📝 進捗を1行で報告","📝 One-line progress report"),s:T("📝 報告","📝 Report"),t:T("いまの進捗を1〜2行で報告してください。","Please report your current progress in one or two lines."),c:"sub"}]}' +
-'function sayText(e){e=e||{};var action=activityGlossPWA(e,LANG);var s=(e.disp||e.session||T("このプロジェクト","This project"))+T("です！"," here! ")+(action?T("いま「"+action+"」です。","Currently: "+action+"."):T("いまの状況を確認中です。","Checking the current status."));if(e.question)s+="\\n❓ "+e.question;if((e.approvalMin||0)>0)s+=T("\\n❗ 承認まちです","\\n❗ Waiting for approval");return s}' +
-'function questionOptionEntries(e){if(!e||!e.question||!Array.isArray(e.questionOptions))return [];return e.questionOptions.slice(0,4).map(function(option){var raw=String((option&&option.label)||"");if(!raw.trim())return null;var recommended=raw.indexOf("(Recommended)")>=0;var clean=raw.replace(/\\s*\\(Recommended\\)\\s*/g," ").replace(/\\s{2,}/g," ").trim()||raw.trim();return {raw:raw,label:(recommended?"⭐ ":"")+clean,desc:String((option&&option.desc)||"")};}).filter(Boolean)}' +
+'function sayText(e){e=e||{};var action=activityGlossPWA(e,LANG);var s=(e.disp||e.session||T("このプロジェクト","This project"))+T("です！"," here! ")+(action?T("いま「"+action+"」です。","Currently: "+action+"."):T("いまの状況を確認中です。","Checking the current status."));if(e.question)s+="\\n❓ "+e.question;if((e.approvalMin||0)>0)s+="\\n"+attnLine(e);return s}' +
+'function questionOptionEntries(e){if(!e||!e.question||!Array.isArray(e.questionOptions))return [];return e.questionOptions.slice(0,4).map(function(option){var raw=String((typeof option==="string"?option:(option&&option.label))||"");if(!raw.trim())return null;var recommended=raw.indexOf("(Recommended)")>=0;var clean=raw.replace(/\\s*\\(Recommended\\)\\s*/g," ").replace(/\\s{2,}/g," ").trim()||raw.trim();return {raw:raw,label:(recommended?"⭐ ":"")+clean,desc:String((option&&option.desc)||"")};}).filter(Boolean)}' +
+// 版ズレ耐性: 選択肢は [{label,desc}] が正だが、素の文字列の配列でも描く
+// （旧/新サーバーが混在しても「選択肢が1つも出ない」という最悪の形にしない）
 'function appendQuestionOptions(parent,e,klass){if(!parent)return;questionOptionEntries(e).forEach(function(option){var b=el("button","qopt "+klass);b.type="button";var label=el("span","qopt-label",option.label),desc=el("span","qopt-desc",option.desc);b.appendChild(label);b.appendChild(desc);b.addEventListener("click",function(ev){ev.stopPropagation();send(T("選択肢「"+option.raw+"」でお願いします。","Please go with the option: "+option.raw),e)});parent.appendChild(b)})}' +
 'function appendWorkBlock(parent,work){if(!parent||!work||typeof work!=="object")return;var block=el("div","wk-work");block.appendChild(el("div","wk-title",T("📋 いまの仕事","📋 Current work")));[["now",T("▶ いま","▶ Now")],["next",T("⏭ 次","⏭ Next")],["done",T("✅ 済み","✅ Done")]].forEach(function(pair){var values=Array.isArray(work[pair[0]])?work[pair[0]].filter(function(value){return typeof value==="string"&&value}):[];if(!values.length)return;var row=el("div","wk-row wk-"+pair[0]);row.appendChild(el("span","wk-label",pair[1]));var items=el("div","wk-items");values.forEach(function(value){items.appendChild(el("div","wk-item",value))});row.appendChild(items);block.appendChild(row)});parent.appendChild(block)}' +
 'function openSheet(e){if(e)playSE("select");if(SHSAY_IV){clearInterval(SHSAY_IV);SHSAY_IV=null}var shsay=document.getElementById("shsay");shsay.textContent="";SEL=e;document.querySelectorAll(".sel").forEach(function(n){n.classList.remove("sel")});if(e&&e.session){document.querySelectorAll("[data-sess]").forEach(function(n){if(n.getAttribute("data-sess")===e.session)n.classList.add("sel")})}document.getElementById("shname").textContent=dispCrew(e);' +
@@ -1465,7 +1476,7 @@ PWA_GLOSS_SOURCE +
 'if(e.question){dt.appendChild(el("div","sec",T("❓ 質問待ち — 下のボタンか自由指示で回答","❓ Question waiting — reply with a button below or a custom instruction")));var qd=el("div","said saidq",e.question);dt.appendChild(qd)}' +
 'var fd=(e.feed||[]);if(fd.length){dt.appendChild(el("div","sec",T("📋 最近の動き（"+fd.length+"件）— タップで全文を拡大","📋 Recent activity ("+fd.length+") — tap to expand")));var fb=el("div","feedbox");fb.setAttribute("role","button");fb.tabIndex=0;fd.slice(0,16).forEach(function(l){fb.appendChild(el("div","feedline",l))});fb.addEventListener("click",openLog);dt.appendChild(fb)}' +
 'if(e.lastSaid){dt.appendChild(el("div","sec",T("💬 直近の発言","💬 Latest message")));dt.appendChild(el("div","said",e.lastSaid))}' +
-'var q=document.getElementById("quickbtns");q.innerHTML="";if(canAct()&&e&&e.projectId&&(e.state==="resting"||!e.state)){var lb=el("button","sub",T("▶ このプロジェクトを起動","▶ Launch this project"));lb.title=T("Macでこのプロジェクトのセッションを開きます","Opens a session for this project on your Mac");lb.addEventListener("click",function(){launchProject(e)});q.appendChild(lb)}if(e.question&&questionOptionEntries(e).length){var qo=el("div","quickoptions");appendQuestionOptions(qo,e,"quickoption");q.appendChild(qo)}QUICK().forEach(function(it){var b=el("button",it.c,it.l);' +
+'var q=document.getElementById("quickbtns");q.innerHTML="";if(canAct()&&e&&e.projectId&&(e.state==="resting"||!e.state)){var lb=el("button","sub",T("▶ このプロジェクトを起動","▶ Launch this project"));lb.title=T("Macでこのプロジェクトのセッションを開きます","Opens a session for this project on your Mac");lb.addEventListener("click",function(){launchProject(e)});q.appendChild(lb)}if(e.question&&questionOptionEntries(e).length){var qo=el("div","quickoptions");appendQuestionOptions(qo,e,"quickoption");q.appendChild(qo)}quickForSheet(e).forEach(function(it){var b=el("button",it.c,it.l);' +
 'b.onclick=function(){send(it.t)};q.appendChild(b)});'+
 // R82: ユーザー定義の定型文（Macの定型ボードで作成→office_json.templatesで同期）
 '((LAST_OFFICE&&LAST_OFFICE.templates)||[]).slice(0,8).forEach(function(tp){'+
@@ -1650,6 +1661,22 @@ PWA_GLOSS_SOURCE +
 'var SCENE3D="pending";' +
 'function sceneSig(emps){return PREF.deptFilter+"|"+emps.map(function(e){return (e.session||"")+"|"+(e.disp||"")+"|"+empDept(e)+"|"+(e.state||"")+"|"+(e.verb||"")+"|"+(e.target||"")+"|"+((e.feed&&e.feed[0])||"")+"|"+(e.question||"")+"|"+(e.pending?1:0)+"|"+(e.minions||0)+"|"+(needsAttn(e)?1:0)+"|"+(e.stuckTool||"")+"|"+(e.approvalMin||0)+"|"+(e.projectId||"")+"|"+(e.crew||0)+"|"+((e.work&&e.work.now&&e.work.now[0])||"")}).join(";")+"|D:"+Object.keys(DELIVERED).join(",")}' +
 'function needsAttn(e){return (e.approvalMin>0)||!!e.question}' +
+// R86-H: ❗の説明。掲示（ask）があれば「いまターミナルで許可を待っている」事実を出し、
+// 無ければ推測のまま「N分 止まっています」。断定の「承認が必要です」は使わない
+// （PC側 strings.js の approval_min / ask_perm と同じ言い分け）。
+'function attnLine(e){if(e&&e.ask&&e.ask.kind==="permission")' +
+'  return T("⌨️ ターミナルで "+(e.ask.tool||"操作")+" の許可を待っています",' +
+'           "⌨️ Waiting for permission to run "+(e.ask.tool||"a tool")+" in the terminal");' +
+' return T("❗ "+(Number(e&&e.approvalMin)||0)+"分 止まっています",' +
+'          "❗ Stuck for "+(Number(e&&e.approvalMin)||0)+" min")}' +
+// 許可そのものはスマホからは渡せない（Macの前の人間だけ）。文章は届くので、
+// 「✅承認」という**実行できない約束**を出さず、できること（言葉を届ける）に絞る。
+'function canApproveHere(e){return !(e&&e.ask&&e.ask.kind==="permission")}' +
+// シートは面積があるので定型3本を残す（選択肢は上に別枠で出る）。
+// ❗カードは狭いので、選択肢があるときは定型を出さない＝押すものを1系統に絞る。
+'function quickForSheet(e){var q=QUICK();return canApproveHere(e)?q:q.slice(1)}' +
+'function quickForCard(e){if(e&&e.question&&questionOptionEntries(e).length)return [];' +
+'return quickForSheet(e)}' +
 'function attnSessionSet(emps){var set={};(Array.isArray(emps)?emps:[]).forEach(function(e){if(e&&needsAttn(e)){var k=attnKey(e);if(k)set[k]=1}});return set}' +
 'function checkAttnEdge(emps){var next=attnSessionSet(emps),newly=Object.keys(next).filter(function(s){return !ATTN_SESSIONS[s]});ATTN_SESSIONS=next;if(newly.length)playSE("attn")}' +
 'function isPend(e){return !!e.pending&&!needsAttn(e)}' +
@@ -1690,9 +1717,9 @@ PWA_GLOSS_SOURCE +
 // PWA_TRIAGE_END
 // R79-5: officeタブは固定画面＝scrollY退避は不要。ドックは3Dを覆わない高さに収める
 'function updateAttnCards(emps){var host=document.getElementById("attncards");if(!host)return;var need=(Array.isArray(emps)?emps:[]).filter(needsAttn).slice().sort(triageSort);host.innerHTML="";host.classList.toggle("on",need.length>0);' +
-'need.slice(0,1).forEach(function(e){var key=attnKey(e),card=el("article","card alert attncard");card.setAttribute("data-attn-sess",key);var head=el("div","attnhead"),img=avatarNode(e,30);head.appendChild(img);head.appendChild(el("div","attnname","❗ "+(dispCrew(e)||key)));if(isMute(e))head.appendChild(muteChip());card.appendChild(head);card.appendChild(el("div","attnq",e.question?"❓ "+e.question:T("❗ 承認が必要です","❗ Approval needed")));if(e.question&&questionOptionEntries(e).length){var options=el("div","attnoptions");appendQuestionOptions(options,e,"attnoption");card.appendChild(options)}var actions=el("div","attnactions");QUICK().forEach(function(it){var b=el("button",it.c,it.s||it.l);b.title=it.l;b.addEventListener("click",function(ev){ev.stopPropagation();send(it.t,e)});actions.appendChild(b)});var free=el("button","sub",T("✍️ 自由に","✍️ Custom"));free.addEventListener("click",function(ev){ev.stopPropagation();openSheet(e)});actions.appendChild(free);card.appendChild(actions);if(ATTN_SENT[key])card.appendChild(el("div","attnsent",T("📨 送信済み","📨 Sent")));host.appendChild(card)});' +
+'need.slice(0,1).forEach(function(e){var key=attnKey(e),card=el("article","card alert attncard");card.setAttribute("data-attn-sess",key);var head=el("div","attnhead"),img=avatarNode(e,30);head.appendChild(img);head.appendChild(el("div","attnname","❗ "+(dispCrew(e)||key)));if(isMute(e))head.appendChild(muteChip());card.appendChild(head);card.appendChild(el("div","attnq",e.question?"❓ "+e.question:attnLine(e)));if(e.question&&questionOptionEntries(e).length){var options=el("div","attnoptions");appendQuestionOptions(options,e,"attnoption");card.appendChild(options)}var actions=el("div","attnactions");if(!canApproveHere(e))card.appendChild(el("div","attnnote",T("実行の許可はMacのターミナルでのみ渡せます。ここからは指示を届けられます。","Execution can only be allowed at the Mac. From here you can send instructions.")));quickForCard(e).forEach(function(it){var b=el("button",it.c,it.s||it.l);b.title=it.l;b.addEventListener("click",function(ev){ev.stopPropagation();send(it.t,e)});actions.appendChild(b)});var free=el("button","sub",T("✍️ 自由に","✍️ Custom"));free.addEventListener("click",function(ev){ev.stopPropagation();openSheet(e)});actions.appendChild(free);card.appendChild(actions);if(ATTN_SENT[key])card.appendChild(el("div","attnsent",T("📨 送信済み","📨 Sent")));host.appendChild(card)});' +
 // 2件目=1行ミニカード（タップでシートへ）。3件目以降はリストへ誘導＝ドックが3Dを覆い尽くさない
-'need.slice(1,2).forEach(function(e){var key=attnKey(e),mini=el("article","card alert attncard attnmini");mini.setAttribute("data-attn-sess",key);mini.appendChild(el("span","attnname","❗ "+(dispCrew(e)||key)));if(isMute(e))mini.appendChild(muteChip());mini.appendChild(el("span","attnq",e.question?e.question:T("承認が必要です","Approval needed")));mini.appendChild(el("span","attngo",T("回答 ›","Reply ›")));mini.addEventListener("click",function(){openSheet(e)});host.appendChild(mini)});' +
+'need.slice(1,2).forEach(function(e){var key=attnKey(e),mini=el("article","card alert attncard attnmini");mini.setAttribute("data-attn-sess",key);mini.appendChild(el("span","attnname","❗ "+(dispCrew(e)||key)));if(isMute(e))mini.appendChild(muteChip());mini.appendChild(el("span","attnq",e.question?e.question:attnLine(e)));mini.appendChild(el("span","attngo",T("回答 ›","Reply ›")));mini.addEventListener("click",function(){openSheet(e)});host.appendChild(mini)});' +
 'if(need.length>2){var more=el("button","attnmore",T("ほか+"+(need.length-2)+"件","+"+(need.length-2)+" more"));more.setAttribute("aria-label",T("ほか"+(need.length-2)+"件の要対応をリストで表示","Show "+(need.length-2)+" more items that need attention in the list"));more.addEventListener("click",function(){setView("list")});host.appendChild(more)}}' +
 // R77: スマホも3Dオフィス（デスクトップと同じ IsoScene）。3Dが起動しない端末
 // （WebGL不可・モジュール未取得）はリスト表示へ自動退避する（2DマップはR79-2で全撤去）。

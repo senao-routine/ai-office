@@ -80,6 +80,54 @@ def main(argv):
                       return { chips: chips.length, inAttn, inRoster,
                         busyMuted: busy.some(n => /📴/.test(n.textContent || '')),
                         busySeen: busy.length }; }""")
+                # R86-H: 選択肢は**全部画面内で押せる**こと（横スクロールだと3択の3つ目が
+                # 画面外へ出て押せない＝実機390pxで実測 right=531px）。加えて、選択肢がある
+                # ときに汎用の承認/停止/報告を並べない（PC側と同じ規則＝何を押すか迷わせない）。
+                qo = page.evaluate(
+                    """() => {
+                      const opts = [...document.querySelectorAll('.attncard .qopt')].map(n => {
+                        const r = n.getBoundingClientRect();
+                        const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+                        return { label: n.textContent.trim().slice(0, 12),
+                                 inside: r.right <= innerWidth + 1 && r.left >= -1,
+                                 tappable: !!(hit && (hit === n || n.contains(hit))) };
+                      });
+                      return { opts,
+                        acts: [...document.querySelectorAll('.attncard .attnactions button')]
+                                .map(n => n.textContent.trim()),
+                        clipped: [...document.querySelectorAll('#gaugebar .lb')]
+                                   .filter(n => n.scrollWidth > n.clientWidth + 1)
+                                   .map(n => n.textContent.trim()) }; }""")
+                if len(qo["opts"]) == 3 and all(o["inside"] and o["tappable"] for o in qo["opts"]):
+                    print("  ✓ R86-H 選択肢3件が全て画面内で押せる（横スクロールで隠さない）")
+                else:
+                    print(f"  ✗ 選択肢が画面外/押せない: {qo['opts']}")
+                    ng += 1
+                if qo["acts"] == ["✍️ 自由に"]:
+                    print("  ✓ R86-H 選択肢があるときは汎用ボタンを出さない（PCと同じ規則）")
+                else:
+                    print(f"  ✗ 選択肢と汎用ボタンが二重に出ている: {qo['acts']}")
+                    ng += 1
+                if not qo["clipped"]:
+                    print("  ✓ R86-H ゲージのラベルが切れていない")
+                else:
+                    print(f"  ✗ ゲージのラベルが切れて読めない: {qo['clipped']}")
+                    ng += 1
+
+                # R86-H: 許可要求の相手には「承認」を出さない（スマホからは実行を通せない）。
+                perm = page.evaluate(
+                    """() => {
+                      const t = document.body.innerText || '';
+                      const mini = [...document.querySelectorAll('.attnmini')]
+                        .map(n => n.textContent || '').join(' ');
+                      return { hasPermLine: /ターミナルで .* の許可を待って/.test(t) || /許可を待って/.test(mini),
+                               liesApprovalNeeded: /承認が必要です/.test(t) }; }""")
+                if perm["hasPermLine"] and not perm["liesApprovalNeeded"]:
+                    print("  ✓ R86-H 許可要求は事実の文言（『承認が必要です』と断定しない）")
+                else:
+                    print(f"  ✗ 許可要求の文言が事実と違う: {perm}")
+                    ng += 1
+
                 if mute["inAttn"] and mute["inRoster"]:
                     print(f"  ✓ R86-E 既定タブで受信待機なしが分かる（❗ドック＋ロスター帯・"
                           f"チップ{mute['chips']}件）")
@@ -405,7 +453,18 @@ def main(argv):
                         return null;
                     }""")
                 if not point:
-                    print("  ✗ ドックに覆われていないロボットが1体も無い（タップ検証不能）")
+                    diag = page.evaluate(
+                        """() => {
+                          const d = document.getElementById('dock');
+                          const r = d ? d.getBoundingClientRect() : null;
+                          const ags = window.__scene3d ? window.__scene3d.agents() : [];
+                          const host = document.getElementById('scene3d').getBoundingClientRect();
+                          return { dockTop: r ? Math.round(r.top) : null,
+                                   dockH: r ? Math.round(r.height) : null, vh: innerHeight,
+                                   robots: ags.map(a => { const p = window.__scene3d.project(a.id);
+                                     return p ? Math.round(host.top + p.top) : null; }) }; }""")
+                    print("  ✗ ドックに覆われていないロボットが1体も無い（タップ検証不能）"
+                          f" 診断: {diag}")
                     ng += 1
                 else:
                     # R80.6: タップは2段（1度目=フォーカス+「誰が・何を」/ 2度目=シート）。
@@ -460,7 +519,16 @@ def main(argv):
                             else:
                                 print("  ✓ 定型文チップ（Mac保存→スマホ同期）")
                         else:
-                            print("  ✗ 2度目のタップでシートが開かない")
+                            diag2 = page.evaluate(
+                                """(pt) => { const hit = document.elementFromPoint(pt.x, pt.y);
+                                  const d = document.getElementById('dock');
+                                  const dr = d ? d.getBoundingClientRect() : null;
+                                  return { hit: hit ? (hit.id || hit.className || hit.tagName) : null,
+                                    pt, dockTop: dr ? Math.round(dr.top) : null,
+                                    sel: window.SEL || null,
+                                    selAgo: window.SEL_AT ? Math.round(Date.now() - window.SEL_AT) : null }; }""",
+                                p2)
+                            print(f"  ✗ 2度目のタップでシートが開かない 診断: {diag2}")
                             ng += 1
 
                     # R80.9: **実タッチ**の連続タップ（<320ms）。ダブルタップ=全景リセットが

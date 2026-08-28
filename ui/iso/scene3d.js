@@ -519,6 +519,14 @@ export class IsoScene {
     this.resize();
   }
 
+  /** R86-H: 下部UIに隠れないよう、シーンを上へ px 単位で寄せる（0=従来どおり）。 */
+  setViewShiftPx(px) {
+    const v = Number(px) || 0;
+    if (v === (this.viewShiftPx || 0)) return;
+    this.viewShiftPx = v;
+    this.resize();
+  }
+
   resize() {
     const w = Math.max(1, this.container.clientWidth);
     const h = Math.max(1, this.container.clientHeight);
@@ -569,6 +577,15 @@ export class IsoScene {
       top: cy + view,
       bottom: cy - view * (1 + BOT_PAD * 2),
     };
+    // R86-H: 下部にUI（スマホの❗ドック等）が重なるぶん、可視域を上へずらす。
+    // フレームの形は変えずに平行移動するだけなので歪まない（botPad を大きくすると
+    // 縦だけ伸びて絵が潰れる）。既定 0＝デスクトップは完全に従来どおり＝golden不変。
+    if (this.viewShiftPx) {
+      const perPx = (this._frame.top - this._frame.bottom) / h;
+      const d = this.viewShiftPx * perPx;
+      this._frame.top -= d;
+      this._frame.bottom -= d;
+    }
     this.camera.left = this._frame.left;
     this.camera.right = this._frame.right;
     this.camera.top = this._frame.top;
@@ -747,6 +764,15 @@ export class IsoScene {
         const halfW = halfH * aspect;
         const g = { left: this._focusV.x - halfW, right: this._focusV.x + halfW,
           top: this._focusV.y + halfH, bottom: this._focusV.y - halfH };
+        // R86-H: 寄り先も可視域（下部UIの上）に合わせる。ここを揃えないと、
+        // タップで寄った瞬間に対象ロボが**ドックの裏へ移動**し、2度目のタップが
+        // ドックのボタンに当たる＝「タップしても詳細が開かない」になる（実測）。
+        if (this.viewShiftPx) {
+          const perPx = (g.top - g.bottom) / (this.renderer.domElement.clientHeight || 1);
+          const d = this.viewShiftPx * perPx;
+          g.top -= d;
+          g.bottom -= d;
+        }
         f = { left: f.left + (g.left - f.left) * k,
           right: f.right + (g.right - f.right) * k,
           top: f.top + (g.top - f.top) * k,

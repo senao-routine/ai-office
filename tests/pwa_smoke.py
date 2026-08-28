@@ -178,11 +178,11 @@ def main(argv):
                         );
                     }"""
                 )
-                assert len(attn_seed) == 1 and attn_seed[0].get("question"), (
-                    "質問付きseed社員が1名ではありません: " + repr(attn_seed)
-                )
-                attn_card = page.locator("#attncards .attncard")
-                assert attn_card.count() == 1, "#attncards の質問カードが1枚ではありません"
+                # R86-H: seed は「質問(選択肢つき)」と「許可要求」の2件。前者が先頭カード。
+                assert len(attn_seed) == 2, "❗seed社員が2名ではありません: " + repr(attn_seed)
+                attn_seed = [e for e in attn_seed if e.get("question")]
+                assert len(attn_seed) == 1, "質問付きseedが1名ではありません: " + repr(attn_seed)
+                attn_card = page.locator("#attncards .attncard").first
                 option_buttons = attn_card.locator(".attnoptions .attnoption")
                 assert option_buttons.count() == 3, (
                     "質問カードの選択肢ボタンが3個ではありません: "
@@ -194,11 +194,13 @@ def main(argv):
                 assert "(Recommended)" not in option_buttons.first.inner_text(), (
                     "Recommended原文が表示に残っています"
                 )
-                option_buttons.first.click()
-                assert attn_card.locator("button").count() >= 6, (
-                    "質問カードの選択肢+即答ボタンが不足しています: "
+                # R86-H: 選択肢があるときは汎用の承認/停止/報告を出さない（PCと同じ規則）
+                # ＝選択肢3件＋「✍️ 自由に」の4個ちょうど。
+                assert attn_card.locator("button").count() == 4, (
+                    "選択肢と汎用ボタンが二重に出ている/足りない: "
                     + str(attn_card.locator("button").count())
                 )
+                option_buttons.first.click()
                 for _ in range(50):
                     if instruct_requests:
                         break
@@ -219,6 +221,13 @@ def main(argv):
                     "document.querySelector('#attncards .attnsent').textContent.includes('送信済み')",
                     timeout=5000,
                 )
+                # R86-H: 許可要求のカードは断定の「承認が必要です」を出さない
+                # （スマホからは実行の許可を渡せない＝言えるのは事実だけ）
+                perm_txt = page.evaluate(
+                    "() => [...document.querySelectorAll('#attncards .attncard')]"
+                    "  .map(n => n.textContent || '').join(' | ')")
+                assert "承認が必要です" not in perm_txt, (
+                    "断定の『承認が必要です』が残っています: " + perm_txt[:160])
                 assert not _unexpected(console_errors), (
                     "console error: " + "; ".join(console_errors[:5])
                 )

@@ -1171,7 +1171,10 @@ def parse_session(path, now):
         if ask["kind"] == "question":
             question = question or ask["title"]
             if not question_options and ask["options"]:
-                question_options = ask["options"]
+                # ★形を必ず [{label, desc}] に揃える（掲示は素の文字列で持つ）。
+                # 素の文字列のまま載せると **スマホの選択肢ボタンが1つも描かれない**
+                # （PWAの questionOptionEntries が option.label を読む）＝R86-H で実際に踏んだ。
+                question_options = [{"label": o, "desc": ""} for o in ask["options"]]
         elif not approval_min:
             approval_min = max(1, int((now - ask["ts"]) // 60))
 
@@ -1482,8 +1485,45 @@ def task_totals(projects):
     return totals
 
 
+_PRUNE_EVERY = 3600.0
+_LAST_PRUNE = [0.0]
+PID_LITTER = 24 * 3600          # 心拍は5秒毎・hookの寿命は12時間＝1日超の pidfile は必ず死骸
+
+
+def prune_inbox_litter(now=None):
+    """指示ポストの置き場に溜まる死骸を掃除する（1時間に1回・失敗は黙って諦める）。
+
+    実測（2026-08-28）: pidfile が **262個・最古35日前**、さらに宛先セッションが消えた
+    51日前の未配達指示が1件残っていた。どちらも実害は無いが、放っておくと増え続ける。
+    ★消してよい根拠: pidfile は hook が毎周 touch する（寿命12時間）ので1日以上古いものは
+    死骸。指示は TTL=3時間で hook 自身が捨てるので、その倍を過ぎたものは誰も受け取らない。
+    """
+    now = now or time.time()
+    if now - _LAST_PRUNE[0] < _PRUNE_EVERY:
+        return 0
+    _LAST_PRUNE[0] = now
+    removed = 0
+    try:
+        entries = list(INBOX.iterdir())
+    except OSError:
+        return 0
+    for f in entries:
+        try:
+            if f.name.startswith(".") and f.name.endswith(".pid"):
+                if now - f.stat().st_mtime > PID_LITTER:
+                    f.unlink(); removed += 1
+            elif f.suffix == ".json" and not f.name.startswith("_"):
+                age = now - f.stat().st_mtime
+                if age > INBOX_TTL * 2:          # hook が捨てる窓の倍＝誰も受け取らない
+                    f.unlink(); removed += 1
+        except OSError:
+            pass
+    return removed
+
+
 def scan_office():
     now = time.time()
+    prune_inbox_litter(now)
     config = load_config()
     ed = edition(config)
     edition_info = {"id": ed, "features": edition_features(ed)}
@@ -2207,19 +2247,62 @@ def revoke_device(device_id):
         if not rec:
             return False
         rec["revoked"] = True
+        rec["revoked_at"] = int(time.time())
         save_devices(d)
     return True
 
 
+DEVICE_KEEP_DEAD = 7 * 86400      # 期限切れを台帳に残す期間
+DEVICE_KEEP_REVOKED = 3600        # 失効直後は「失効済み」として残す（押した結果が見えるように）
+
+
+def prune_devices(now=None):
+    """失効・期限切れの端末を台帳から落とす（秘密を必要以上に持ち続けない）。
+
+    実測（2026-08-28）: 📱スマホ連携を押すたびに新しい鍵が増え、**57件（うち有効29件）**
+    まで溜まっていた。どれも署名付き指示を送れる鍵なので、使い終わったものは消す。
+    有効なものには一切触らない（消すのは revoked と、期限切れから DEVICE_KEEP_DEAD 経過）。
+    """
+    now = int(now or time.time())
+    with _lock:
+        d = load_devices()
+        devs = d.get("devices", {})
+        dead = []
+        for did, rec in devs.items():
+            exp = int(rec.get("expires") or 0)
+            if rec.get("revoked"):
+                # 押した直後は一覧に「失効済み」として残す（操作の結果が見えないと不安）。
+                # revoked_at を持たない旧レコードは即対象（もう使えないので残す意味がない）。
+                if now - int(rec.get("revoked_at") or 0) > DEVICE_KEEP_REVOKED:
+                    dead.append(did)
+            elif exp and exp + DEVICE_KEEP_DEAD < now:
+                dead.append(did)
+        for did in dead:
+            devs.pop(did, None)
+        if dead:
+            save_devices(d)
+    return len(dead)
+
+
 def list_devices():
-    """secret を伏せたデバイス一覧（画面表示用）。"""
+    """secret を伏せたデバイス一覧（画面表示用）。状態を明示し、有効なものを先に出す。"""
+    prune_devices()
+    now = int(time.time())
     d = load_devices()
-    out = [{
-        "device_id": did, "label": rec.get("label", ""),
-        "created": rec.get("created", 0), "expires": rec.get("expires", 0),
-        "revoked": bool(rec.get("revoked")), "last_used": rec.get("last_used", 0),
-    } for did, rec in d.get("devices", {}).items()]
-    out.sort(key=lambda x: x["created"], reverse=True)
+    out = []
+    for did, rec in d.get("devices", {}).items():
+        expires = int(rec.get("expires") or 0)
+        state = ("revoked" if rec.get("revoked")
+                 else "expired" if expires and expires <= now else "active")
+        out.append({
+            "device_id": did, "label": rec.get("label", ""),
+            "created": rec.get("created", 0), "expires": expires,
+            "revoked": bool(rec.get("revoked")), "last_used": rec.get("last_used", 0),
+            # 「どれが今も使える鍵か」が画面から分かること（29件全部が同じ「スマホ」表示で
+            # 見分けられない状態だった）。日数は表示側の計算をサーバーに寄せる。
+            "state": state, "daysLeft": max(0, (expires - now) // 86400) if expires else 0,
+        })
+    out.sort(key=lambda x: (x["state"] != "active", -x["created"]))
     return out
 
 

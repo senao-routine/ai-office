@@ -980,7 +980,12 @@ export async function mount(root) {
         list.append(mEl("b", "msub", T("pair_devices", devices.length)));
         for (const d of devices) {
           const row = mEl("div", "mdev");
-          row.append(mEl("span", "", d.label || d.device_id));
+          // R86-H: 「どれが今も使える鍵か」を出す。57件・全部「スマホ」表示で
+          // 見分けられず、有効な鍵が29個ぶら下がっていた（実測）。
+          const name = mEl("span", "", d.label || d.device_id);
+          name.append(mEl("span", "devmeta", d.state === "active"
+            ? T("pair_active", d.daysLeft) : T("pair_dead")));
+          row.append(name);
           const rv = mEl("button", "mrevoke", T("pair_revoke"));
           rv.type = "button";
           rv.addEventListener("click", async () => {
