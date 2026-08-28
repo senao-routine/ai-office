@@ -59,6 +59,14 @@ export function buildWorld(office) {
     work: p.work || null,
   }));
   for (const a of agents) a.arch = archetypeFor(a);   // R80.7: 職業アーキタイプ
+  // R86-I: 識別記号は「名前の頭」でなく「区別がつく末尾」から作る（同一プロジェクトの
+  // 並走セッションが全部同じ1文字になっていた実データへの対処）。
+  const labels = assignLabels(agents);
+  for (const a of agents) {
+    const l = labels.get(a.id) || {};
+    a.badge = l.badge || "?";
+    a.shortName = l.short || a.name;
+  }
 
   return {
     officeName: office.officeName || "",
@@ -71,6 +79,8 @@ export function buildWorld(office) {
     seats: assignSeats(agents),
     counts: countByZone(agents),
     tasks: office.tasks || { pending: 0, inProgress: 0, completed: 0 },
+    // R86-I: 「今日のオフィス」の実数（件数のみ・本文は載らない）
+    today: (office.today && typeof office.today === "object") ? office.today : null,
     history: Array.isArray(office.history) ? office.history : [],
     // R85-3: PC機能パリティ＝スマホだけが読んでいた搬送済みデータをPCへも通す
     relay: (office.relay && typeof office.relay === "object") ? office.relay : null,
@@ -86,7 +96,7 @@ function emptyWorld() {
     setup: null,
     agents: [], seats: new Map(), history: [],
     counts: { desk: 0, meeting: 0, queue: 0, lounge: 0, external: 0, attention: 0 },
-    tasks: { pending: 0, inProgress: 0, completed: 0 },
+    tasks: { pending: 0, inProgress: 0, completed: 0 }, today: null,
     relay: null, launchable: [], avatarMode: "project",
   };
 }
@@ -492,4 +502,84 @@ export function summarizeWorld(office) {
       external: a.external,
     })),
   };
+}
+
+// ── R86-I: 「どのロボが誰か」を一目で分ける短い名前とバッジ ────────────────
+// 実データで詰んでいた形（2026-08-28実測・9セッション）:
+//   制作本部(works) / 制作本部(works) 3号 / …5号 / …6号 / …7号 / …8号
+// ①1文字モノグラムが**全部「制」**＝識別記号として機能しない
+// ②3D名札は12文字で切るので「制作本部(works) 7…」＝**区別がつく部分だけが消える**
+// どちらも「名前の頭」を使っていたのが原因。区別がつくのは**末尾**（号・フォルダ名）。
+const SEQ_PATTERNS = [
+  /^(.+?)[\s　]+[#＃]?(\d{1,3})号$/,     // 「制作本部(works) 7号」
+  /^(.+?)[\s　]+[#＃](\d{1,3})$/,        // 「works #7」
+];
+const NAME_SPLIT = /[()（）/／_|｜]|\s+-\s+|[·・]/;
+
+/** 名前を「基部」と「連番」に割る（連番は号/#が付いているときだけ＝"GLM5.3" を割らない）。 */
+function splitSeq(name) {
+  for (const re of SEQ_PATTERNS) {
+    const m = re.exec(name);
+    if (m) return { base: m[1].trim(), seq: String(Number(m[2])) };
+  }
+  return { base: name, seq: "" };
+}
+
+/** 区別がつく末尾トークンを拾う（"制作本部(works)"→"works"／"20260714 - ai-office"→"ai-office"）。 */
+function tailToken(base) {
+  const parts = String(base).split(NAME_SPLIT).map((s) => s.trim()).filter(Boolean);
+  for (let i = parts.length - 1; i >= 0; i--) {
+    if (!/^\d{4,10}$/.test(parts[i])) return parts[i];   // 日付だけのトークンは飛ばす
+  }
+  return parts[parts.length - 1] || String(base);
+}
+
+const clip = (s, n) => {
+  const a = [...String(s)];
+  return a.length <= n ? a.join("") : a.slice(0, n - 1).join("") + "…";
+};
+
+/**
+ * 全員ぶんの { short, badge } を一度に決める（衝突を見て割るので個別には決められない）。
+ * 決定則は id 昇順で安定＝ポーリングのたびに記号が入れ替わらない。
+ */
+export function assignLabels(agents) {
+  const out = new Map();
+  const list = (Array.isArray(agents) ? agents : []).filter(Boolean)
+    .slice().sort((a, b) => String(a.id || "").localeCompare(String(b.id || "")));
+
+  const rows = list.map((a) => {
+    const full = String(a.name || a.dept || a.session || "?");
+    const { base, seq } = splitSeq(full);
+    const tail = tailToken(base);
+    return { a, full, seq, tail, short: clip(seq ? `${tail} ${seq}` : tail, 14) };
+  });
+
+  // 短縮名が衝突したら、その組だけフルネームへ戻す（別人が同じ名前に見えるのが最悪）
+  const shortCount = new Map();
+  for (const r of rows) shortCount.set(r.short, (shortCount.get(r.short) || 0) + 1);
+  for (const r of rows) if (shortCount.get(r.short) > 1) r.short = clip(r.full, 18);
+
+  // バッジ: 連番があれば数字（＝並走セッションが一目で分かる）、無ければ末尾トークンの頭文字。
+  // 取られていたら2文字→3文字と伸ばし、それでも駄目なら連番を振る。
+  const taken = new Set();
+  for (const r of rows) {
+    const cands = [];
+    if (r.seq) cands.push(r.seq);
+    const t = [...r.tail];
+    if (t.length) {
+      cands.push(t[0].toUpperCase());
+      if (t.length > 1) cands.push((t[0] + t[1]).toUpperCase());
+      if (t.length > 2) cands.push((t[0] + t[1] + t[2]).toUpperCase());
+    }
+    let badge = cands.find((c) => c && !taken.has(c));
+    if (!badge) {
+      let i = 1;
+      while (taken.has(String(i))) i += 1;
+      badge = String(i);
+    }
+    taken.add(badge);
+    out.set(r.a.id, { short: r.short, badge });
+  }
+  return out;
 }

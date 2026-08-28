@@ -1048,3 +1048,11 @@
 .tplrow .tpltext { flex: 1; min-width: 0; color: var(--iso-muted, #6a6584); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tplrow .tpldel { flex: none; width: auto; margin: 0; padding: 4px 10px; font-size: 11px; }
 .tpladdrow { margin-top: 6px; }
+
+/* R86-I: タスクが無いときの「今日のオフィス」（ドーナツの代わり＝死んだ面積を作らない） */
+.ui-iso .todaycard { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 6px; padding: 2px 2px 0; }
+.ui-iso .todaycard .trow { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.ui-iso .todaycard .ticon { font-style: normal; width: 16px; text-align: center; }
+.ui-iso .todaycard .tlabel { flex: 1; color: var(--iso-ink-soft); }
+.ui-iso .todaycard .tval { font-size: 13px; font-weight: 800; color: var(--iso-ink); }
+.ui-iso .todaycard .tnote { margin-top: 2px; font-size: 10.5px; color: var(--iso-ink-soft); }

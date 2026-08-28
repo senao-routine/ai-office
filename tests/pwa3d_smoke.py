@@ -114,6 +114,47 @@ def main(argv):
                     print(f"  ✗ ゲージのラベルが切れて読めない: {qo['clipped']}")
                     ng += 1
 
+                # R86-I: 通知が未購読なら、❗が出ているときに1行だけ案内が出る
+                # （ヘッダーの🔕が小さすぎて誰も押さず、実測で購読0台＝❗が一生届かなかった）。
+                hint = page.evaluate(
+                    """() => { const n = document.getElementById('pushhint');
+                      if (!n) return null;
+                      const r = n.getBoundingClientRect();
+                      return { text: (n.innerText || '').slice(0, 60),
+                               visible: r.width > 0 && r.height > 0,
+                               buttons: [...n.querySelectorAll('button')].map(b => b.textContent) }; }""")
+                if hint and hint["visible"] and any("あとで" in b or "Later" in b
+                                                    for b in hint["buttons"]):
+                    print(f"  ✓ R86-I 通知の案内が❗と一緒に出る（{hint['buttons']}）")
+                else:
+                    print(f"  ✗ 通知が未購読なのに案内が出ない（❗が一生届かない）: {hint}")
+                    ng += 1
+
+                # R86-I: 「どのロボが誰か」＝名札とバッジが**全員ぶん一意**であること。
+                # 実データで詰んだ形: 同一プロジェクトの並走セッションは名前の頭が全部同じで
+                # 1文字モノグラムが「制」だらけ、名札は12文字で切られて区別がつく部分だけが消える。
+                ident = page.evaluate(
+                    r"""() => {
+                      const plates = [...document.querySelectorAll('#plates .plate .nm')]
+                        .map(n => n.textContent.replace(/^❗\s*/, ''));
+                      const badges = [...document.querySelectorAll('#roster .rchip .mono')]
+                        .map(n => n.textContent);
+                      const r = [...document.querySelectorAll('#plates .plate')]
+                        .map(n => n.getBoundingClientRect());
+                      let overlap = 0;
+                      for (let i = 0; i < r.length; i++) for (let j = i + 1; j < r.length; j++)
+                        if (!(r[i].right < r[j].left || r[j].right < r[i].left ||
+                              r[i].bottom < r[j].top || r[j].bottom < r[i].top)) overlap++;
+                      return { plates, badges, overlap }; }""")
+                dup_p = len(ident["plates"]) != len(set(ident["plates"]))
+                dup_b = len(ident["badges"]) != len(set(ident["badges"]))
+                if ident["plates"] and not dup_p and not dup_b:
+                    print(f"  ✓ R86-I 名札とバッジが全員一意（名札{len(ident['plates'])}枚・"
+                          f"重なり{ident['overlap']}）")
+                else:
+                    print(f"  ✗ 誰がどれか分からない（名札/バッジが重複）: {ident}")
+                    ng += 1
+
                 # R86-H: 許可要求の相手には「承認」を出さない（スマホからは実行を通せない）。
                 perm = page.evaluate(
                     """() => {

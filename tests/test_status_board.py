@@ -953,7 +953,7 @@ class PrivacyIsolationRegressionTest(unittest.TestCase):
             # R80.6: res は claude_gauge_public の**最小形だけ**（%とstale。account/emailは
             # 構造的に出さない＝中継に新しい秘密を運ばない）。launchable も projectId+名前のみ。
             # R85-2: rosterCounts は撤去（読者ゼロ）。R86-A: avatarMode 追加（機微なし）。
-            self.assertEqual(set(snapshot), {"officeName", "employees", "history", "generatedAt",
+            self.assertEqual(set(snapshot), {"officeName", "employees", "history", "today", "generatedAt",
                                              "setup", "counts", "edition", "lang", "avatarMode",
                                              "roster", "tasks", "actions",
                                              "relay", "res", "launchable", "templates"})

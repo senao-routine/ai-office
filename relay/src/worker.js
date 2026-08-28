@@ -1107,6 +1107,11 @@ const APP_HTML = "<!doctype html><html lang=ja><head>" +
 '.attncard .attnsent{margin-top:7px;color:#2f6f68;font-size:12px;font-weight:800}' +
 // R86-H: スマホからは実行の許可を渡せない、という事実の但し書き（意味色は使わず地の文）
 '.attncard .attnnote{margin-top:6px;color:var(--muted);font-size:11.5px;line-height:1.45}' +
+'.pushhint{padding:10px 12px;margin-bottom:6px}' +
+'.pushhint .phtext{font-size:12px;line-height:1.45;color:var(--ink)}' +
+'.pushhint .phrow{display:flex;gap:8px;margin-top:8px}' +
+'.pushhint .phrow button{flex:1;min-height:38px;font-size:12px}' +
+'body.th-dark .pushhint .phtext{color:#e8e6f6}' +
 // R86-H: ❗ドックは画面の45%まで（超えたら中でスクロール）。❗が2件＋選択肢の縦積みで
 // **オフィスのロボットが1体も見えなくなる**（実測: 3D領域が全部覆われてタップ不能）。
 // 「いま誰が何をしているか」を見に来た画面を、通知が食い潰さないための上限。
@@ -1215,7 +1220,7 @@ const APP_HTML = "<!doctype html><html lang=ja><head>" +
 // R81-5: 下部は #infodock 1枚のガラスパネル（バラバラの小ピルが「素人感」の正体・ユーザーFB）
 '#infodock{background:rgba(255,255,255,.82);-webkit-backdrop-filter:blur(22px) saturate(160%);backdrop-filter:blur(22px) saturate(160%);border:1px solid var(--line);border-radius:18px;box-shadow:0 12px 32px rgba(64,52,140,.16);overflow:hidden}' +
 'body.th-dark #infodock{background:rgba(28,26,54,.86);border-color:rgba(160,140,255,.22)}' +
-'#gaugebar{color:var(--ink);min-height:0;margin:0;width:100%;text-align:left;font-weight:800;background:transparent;border:0;border-radius:0;box-shadow:none;padding:10px 14px 13px;border-top:1px solid rgba(124,92,255,.12);display:flex;gap:12px;align-items:center}' +
+'#gaugebar{color:var(--ink);min-height:0;margin:0;width:100%;text-align:left;font-weight:800;background:transparent;border:0;border-radius:0;box-shadow:none;padding:10px 12px 13px;border-top:1px solid rgba(124,92,255,.12);display:flex;gap:8px;align-items:center}' +
 '#gaugebar .gg b{color:var(--ink)}' +
 'body.th-dark #gaugebar{color:#e8e6f6;border-top-color:rgba(160,140,255,.16)}' +
 'body.th-dark #gaugebar .gg b{color:#e8e6f6}' +
@@ -1229,16 +1234,24 @@ const APP_HTML = "<!doctype html><html lang=ja><head>" +
 '#ticker .tk-n{flex:none;font-size:10px;color:var(--muted);font-weight:800;background:rgba(124,92,255,.10);border-radius:99px;padding:2px 7px}' +
 'body.th-dark #ticker{color:#e8e6f6}' +
 '#gaugebar .gg{flex:1;display:grid;grid-template-columns:1fr auto;grid-template-areas:"lb pct" "bar bar";column-gap:7px;row-gap:4px;min-width:0;align-items:center}' +
-'#gaugebar .gg .lb{grid-area:lb;font-size:10.5px;font-weight:800;color:var(--muted);overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-height:1.2;overflow-wrap:anywhere;letter-spacing:.01em}' +
+// R86-I: 日本語ラベルは語中で折らない（『中/継』と縦に割れて読めなくなる実測）。
+// 2行までは許すが、折るのは単語の切れ目だけ。入り切らないときだけ省略記号。
+'#gaugebar .gg .lb{grid-area:lb;font-size:10.5px;font-weight:800;color:var(--muted);overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-height:1.2;word-break:keep-all;overflow-wrap:normal;text-overflow:ellipsis;letter-spacing:.01em}' +
 '#gaugebar .gg .tr{grid-area:bar;height:10px;border-radius:99px;background:rgba(124,92,255,.12);overflow:hidden;box-shadow:inset 0 1px 2px rgba(64,52,140,.10)}' +
 '#gaugebar .gg .tr i{display:block;height:100%;border-radius:99px;background:var(--sage)}' +
 '#gaugebar .gg.warn .tr i{background:var(--amber)}' +
 '#gaugebar .gg.hot .tr i{background:var(--alert)}' +
-'#gaugebar .gg b{grid-area:pct;font-size:13.5px;font-weight:800;letter-spacing:.01em}' +
+'#gaugebar .gg b{grid-area:pct;font-size:13.5px;font-weight:800;letter-spacing:.01em;justify-self:end}' +
+// R86-I: 幅の細いゲージ（5h/7d/中継）はラベル優先で列を割る。既定の 1fr auto だと
+// ラベル側が19pxしか取れず『中/継』と縦に割れて読めなかった（実測）。
+'#gaugebar .gg:not(.gg-p){grid-template-columns:auto 1fr}' +
+// 細いゲージは%の字を少し小さくしてラベルに幅を譲る（390pxで『中継』が1行に収まる境目）
+'#gaugebar .gg:not(.gg-p) b{font-size:12px}' +
+'#gaugebar .gg-p{max-width:118px}' +
 '#gaugebar .gg-t,#gaugebar .gg-p{display:flex;flex:none;align-items:center;background:rgba(124,92,255,.10);border-radius:12px;padding:7px 11px}' +
 '#gaugebar .gg-p .lb{font-size:12px;color:var(--ink);max-width:118px}' +
 'body.th-dark #gaugebar .gg-p .lb{color:#e8e6f6}' +
-'#gaugebar .gg-t .lb{font-size:12.5px;color:var(--ink)}' +
+'#gaugebar .gg-t .lb{font-size:11.5px;color:var(--ink)}' +
 'body.th-dark #gaugebar .gg-t .lb{color:#e8e6f6}' +
 '#reswrap .sheet{background:rgba(255,255,255,.97)}' +
 'body.th-dark #reswrap .sheet{background:rgba(26,24,50,.97)}' +
@@ -1281,7 +1294,7 @@ const APP_HTML = "<!doctype html><html lang=ja><head>" +
 '#plates .pin.ext{border-color:#5aa2ff}' +
 '#plates .pin.attn{border-color:var(--alert);background:#fff0f5;color:#a3274e;animation:attnpulse 1.6s ease infinite}' +
 /* 汎用button{}のmin-height:44/width:100%/marginに負けないよう明示上書き（R78教訓） */
-'#plates .plate{position:absolute;transform:translate(-50%,0);pointer-events:auto;display:flex;align-items:center;gap:5px;width:auto;max-width:150px;height:18px;min-height:18px;margin:0;font-weight:700;font-size:11px;line-height:1.2;color:#33305a;background:rgba(255,255,255,.88);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.95);border-radius:999px;padding:2px 9px;white-space:nowrap;box-shadow:0 4px 14px rgba(64,52,140,.18)}' +
+'#plates .plate{position:absolute;transform:translate(-50%,0);pointer-events:auto;display:flex;align-items:center;gap:5px;width:auto;max-width:110px;height:18px;min-height:18px;margin:0;font-weight:700;font-size:11px;line-height:1.2;color:#33305a;background:rgba(255,255,255,.88);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.95);border-radius:999px;padding:2px 9px;white-space:nowrap;box-shadow:0 4px 14px rgba(64,52,140,.18)}' +
 '#plates .plate .dot{width:6px;height:6px;border-radius:999px;background:#c9c6dd;flex:none}' +
 '#plates .plate .nm{overflow:hidden;text-overflow:ellipsis}' +
 '#plates .plate.st-working .dot{background:var(--sage)}' +
@@ -1693,7 +1706,35 @@ PWA_GLOSS_SOURCE +
 // R79: アバター＝モノグラム（名前1文字＋状態リング）。ドット絵の立ち絵は2D時代の遺物で、
 // デスクトップ3Dは一切使っていなかった（スプライト同梱2.4MBの存在理由がここだけだった）。
 // 状態リングの色は意味色の規約どおり: 緑=作業中/琥珀=待機/赤=❗/青=外部(3DのACCENTS.externalと同系)
-'function monoChar(e){var a=Array.from(String(dispCrew(e)||"?"));return (a[0]||"?").toUpperCase()}'+
+// PWA_BADGE_BEGIN（正本= ui/core/world.js の assignLabels。真理値表は tests/badge_parity.mjs が機械照合）
+// 「名前の頭1文字」は同一プロジェクトの並走セッションで全部同じになる（実測: 9体中6体が「制」）。
+// 区別がつくのは末尾（号の数字・フォルダ名）なので、そこから短縮名とバッジを作る。
+'var SEQ_PATTERNS=[/^(.+?)[\\s\\u3000]+[#\\uFF03]?(\\d{1,3})\\u53f7$/,/^(.+?)[\\s\\u3000]+[#\\uFF03](\\d{1,3})$/];' +
+'var NAME_SPLIT=/[()\\uFF08\\uFF09/\\uFF0F_|\\uFF5C]|\\s+-\\s+|[\\u00b7\\u30fb]/;' +
+'function splitSeq(name){for(var i=0;i<SEQ_PATTERNS.length;i++){var m=SEQ_PATTERNS[i].exec(name);' +
+'if(m)return {base:m[1].trim(),seq:String(Number(m[2]))}}return {base:name,seq:""}}' +
+'function tailToken(base){var parts=String(base).split(NAME_SPLIT).map(function(x){return x.trim()})' +
+'.filter(Boolean);for(var i=parts.length-1;i>=0;i--){if(!/^\\d{4,10}$/.test(parts[i]))return parts[i]}' +
+'return parts[parts.length-1]||String(base)}' +
+'function clipN(s,n){var a=Array.from(String(s));return a.length<=n?a.join(""):a.slice(0,n-1).join("")+"\\u2026"}' +
+'function assignLabels(list){var out={};var rows=(list||[]).filter(Boolean).slice().sort(function(a,b){' +
+'return String(idOf(a)).localeCompare(String(idOf(b)))}).map(function(a){' +
+'var full=String(nameOf(a)||"?");var sp=splitSeq(full);var tail=tailToken(sp.base);' +
+'return {a:a,full:full,seq:sp.seq,tail:tail,short:clipN(sp.seq?tail+" "+sp.seq:tail,14)}});' +
+'var cnt={};rows.forEach(function(r){cnt[r.short]=(cnt[r.short]||0)+1});' +
+'rows.forEach(function(r){if(cnt[r.short]>1)r.short=clipN(r.full,18)});' +
+'var taken={};rows.forEach(function(r){var c=[];if(r.seq)c.push(r.seq);var t=Array.from(r.tail);' +
+'if(t.length){c.push(t[0].toUpperCase());if(t.length>1)c.push((t[0]+t[1]).toUpperCase());' +
+'if(t.length>2)c.push((t[0]+t[1]+t[2]).toUpperCase())}' +
+'var b=null;for(var i=0;i<c.length;i++){if(c[i]&&!taken[c[i]]){b=c[i];break}}' +
+'if(!b){var k=1;while(taken[String(k)])k++;b=String(k)}taken[b]=1;' +
+'out[idOf(r.a)]={short:r.short,badge:b}});return out}' +
+// PWA_BADGE_END
+'function idOf(e){return (e&&(e.projectId||e.session))||""}' +
+'function nameOf(e){return (e&&(e.title||e.disp||e.name||e.dept))||""}' +
+'var LABELS={};' +
+'function labelOf(e){return LABELS[idOf(e)]||{short:nameOf(e)||"?",badge:(Array.from(nameOf(e)||"?")[0]||"?").toUpperCase()}}' +
+'function monoChar(e){return labelOf(e).badge}'+
 'function setMono(n,e){n.textContent=monoChar(e);n.className="mono st-"+((e&&e.state)||"idle")+((e&&e.external)?" ext":"")+(needsAttn(e)?" attn":"")}'+
 'function avatarNode(e,px){var n=el("span","mono");if(px)n.style.setProperty("--asz",px+"px");setMono(n,e);return n}' +
 'function loadOfficeCache(){try{var raw=localStorage.getItem("aioffice.lastOffice");return raw?JSON.parse(raw):null}catch(_){return null}}' +
@@ -1716,7 +1757,24 @@ PWA_GLOSS_SOURCE +
 'return stateSort(a,b)}' +
 // PWA_TRIAGE_END
 // R79-5: officeタブは固定画面＝scrollY退避は不要。ドックは3Dを覆わない高さに収める
+// R86-I: 通知は「気づいてほしい瞬間」に案内する。ヘッダーの🔕は小さすぎて誰も押さず、
+// 実測で購読0台＝❗が出ても一生届かないままだった。❗が出ているときだけ1行出し、
+// 押したらその場でON（iOSはホーム画面に追加が前提なので、その場合は手順を出す）。
+// 1度ONにした/×で閉じた日は出さない＝しつこくしない。
+'function pushHintDismissed(){try{return localStorage.getItem("aioffice.pushhint")===new Date().toDateString()}catch(_){return false}}' +
+'function dismissPushHint(){try{localStorage.setItem("aioffice.pushhint",new Date().toDateString())}catch(_){}' +
+'var n=document.getElementById("pushhint");if(n)n.remove()}' +
+'function isStandalone(){return !!(window.navigator.standalone||(window.matchMedia&&window.matchMedia("(display-mode: standalone)").matches))}' +
+'function pushHintNode(){var box=el("div","card pushhint");box.id="pushhint";' +
+'var msg=el("div","phtext",isStandalone()?T("🔔 ❗が出たときスマホに通知できます","🔔 Get a push when something needs you")' +
+':T("🔔 通知を受け取るには、共有メニューから「ホーム画面に追加」して開いてください","🔔 To get alerts, add this to your Home Screen and open it from there"));' +
+'box.appendChild(msg);var row=el("div","phrow");' +
+'if(isStandalone()){var on=el("button","g","🔔 "+T("通知をONにする","Turn on alerts"));' +
+'on.addEventListener("click",function(ev){ev.stopPropagation();dismissPushHint();togglePush()});row.appendChild(on)}' +
+'var no=el("button","sub",T("あとで","Later"));no.addEventListener("click",function(ev){ev.stopPropagation();dismissPushHint()});' +
+'row.appendChild(no);box.appendChild(row);return box}' +
 'function updateAttnCards(emps){var host=document.getElementById("attncards");if(!host)return;var need=(Array.isArray(emps)?emps:[]).filter(needsAttn).slice().sort(triageSort);host.innerHTML="";host.classList.toggle("on",need.length>0);' +
+'if(need.length&&!NTOG_STATE&&pushSupported()&&!pushHintDismissed())host.appendChild(pushHintNode());' +
 'need.slice(0,1).forEach(function(e){var key=attnKey(e),card=el("article","card alert attncard");card.setAttribute("data-attn-sess",key);var head=el("div","attnhead"),img=avatarNode(e,30);head.appendChild(img);head.appendChild(el("div","attnname","❗ "+(dispCrew(e)||key)));if(isMute(e))head.appendChild(muteChip());card.appendChild(head);card.appendChild(el("div","attnq",e.question?"❓ "+e.question:attnLine(e)));if(e.question&&questionOptionEntries(e).length){var options=el("div","attnoptions");appendQuestionOptions(options,e,"attnoption");card.appendChild(options)}var actions=el("div","attnactions");if(!canApproveHere(e))card.appendChild(el("div","attnnote",T("実行の許可はMacのターミナルでのみ渡せます。ここからは指示を届けられます。","Execution can only be allowed at the Mac. From here you can send instructions.")));quickForCard(e).forEach(function(it){var b=el("button",it.c,it.s||it.l);b.title=it.l;b.addEventListener("click",function(ev){ev.stopPropagation();send(it.t,e)});actions.appendChild(b)});var free=el("button","sub",T("✍️ 自由に","✍️ Custom"));free.addEventListener("click",function(ev){ev.stopPropagation();openSheet(e)});actions.appendChild(free);card.appendChild(actions);if(ATTN_SENT[key])card.appendChild(el("div","attnsent",T("📨 送信済み","📨 Sent")));host.appendChild(card)});' +
 // 2件目=1行ミニカード（タップでシートへ）。3件目以降はリストへ誘導＝ドックが3Dを覆い尽くさない
 'need.slice(1,2).forEach(function(e){var key=attnKey(e),mini=el("article","card alert attncard attnmini");mini.setAttribute("data-attn-sess",key);mini.appendChild(el("span","attnname","❗ "+(dispCrew(e)||key)));if(isMute(e))mini.appendChild(muteChip());mini.appendChild(el("span","attnq",e.question?e.question:attnLine(e)));mini.appendChild(el("span","attngo",T("回答 ›","Reply ›")));mini.addEventListener("click",function(){openSheet(e)});host.appendChild(mini)});' +
@@ -1761,7 +1819,9 @@ PWA_GLOSS_SOURCE +
 'var attnFirst=emps.filter(needsAttn).slice().sort(triageSort)[0]||null;'+
 'var seen={},placed=[];'+
 'function drop(l,t,w,h){for(var g=0;g<6;g++){var hit=null;for(var i=0;i<placed.length;i++){var q=placed[i];if(l-w/2<q.r+3&&l+w/2>q.l-3&&t<q.b+2&&t+h>q.t-2){hit=q;break}}if(!hit)break;t=hit.b+2}placed.push({l:l-w/2,r:l+w/2,t:t,b:t+h});return t}'+
-'var showAll=ags.length<=6;'+
+// R86-I: 名札は短縮名（"制作本部(works) 7号"→"works 7"）＝幅が半分以下になるので、
+// 6体で退避していた「全員テキスト名札」を12体まで広げられる（識別が最優先というFBの本筋）。
+'var showAll=ags.length<=12;'+
 'ags.forEach(function(a){var e=bySess[a.session]||null;var at=(s3.anchor&&s3.anchor(a.id))||s3.project(a.id);if(!at||!isFinite(at.left)||!isFinite(at.top))return;'+
 'var attn=e?needsAttn(e):!!a.attention;var sel=!!(SEL&&e&&SEL.session===e.session);var text=showAll||sel||!!(attn&&attnFirst&&e&&e.session===attnFirst.session);'+
 'var kind=text?"plate":"pin";var n=PLATE_NODES[a.id];'+
@@ -1770,9 +1830,9 @@ PWA_GLOSS_SOURCE +
 'seen[a.id]=1;'+
 'var cls=kind+(e&&e.state?" st-"+e.state:"")+((e&&e.external)?" ext":"")+(attn?" attn":"")+(sel?" sel":"");'+
 'if(n.className!==cls)n.className=cls;'+
-'if(text){var base=e?dispCrew(e):String(a.name||a.id);var arr=Array.from(base);var short=(attn?"❗ ":"")+arr.slice(0,12).join("")+(arr.length>8?"…":"");var nm=n.querySelector(".nm");if(nm.textContent!==short){nm.textContent=short;n.title=base}}'+
+'if(text){var base=e?dispCrew(e):String(a.name||a.id);var lb=e?labelOf(e).short:String(a.name||a.id);var short=(attn?"❗ ":"")+clipN(lb,12);var nm=n.querySelector(".nm");if(nm.textContent!==short){nm.textContent=short;n.title=base}}'+
 'else{var ch=monoChar(e||{disp:a.name});if(n.textContent!==ch)n.textContent=ch}'+
-'var w=text?110:20,h=text?18:20;'+
+'var w=text?76:20,h=text?18:20;'+
 'var half=w/2,maxL=W-half-2,left=maxL>half+2?Math.min(Math.max(at.left,half+2),maxL):at.left;'+
 'var top=drop(left,at.top+4,w,h);'+
 'var lp=Math.round(left)+"px",tp=Math.round(top)+"px";if(n.style.left!==lp)n.style.left=lp;if(n.style.top!==tp)n.style.top=tp});'+
@@ -1816,7 +1876,7 @@ PWA_GLOSS_SOURCE +
 // R80-A10: タッチ端末に title は出ないので、タップで内訳（作業中N + サブエージェントM）を言う。
 // 「稼働12」が実は3+9だった、という一目の誤解を潰す。
 'var tl=document.querySelector(".hdr2 .ttl");if(tl){var on0=(LAST_OFFICE&&LAST_OFFICE.officeName)||"AI Office";var sub0=emps.length?(emps.length+((LAST_OFFICE&&LAST_OFFICE.avatarMode==="session")?T("セッション"," sessions"):T("プロジェクト"," projects"))):"";var sig0=on0+"|"+sub0;if(tl.getAttribute("data-sig")!==sig0){tl.setAttribute("data-sig",sig0);tl.innerHTML="";var nm0=el("span","tname","🏢 "+on0);tl.appendChild(nm0);if(sub0)tl.appendChild(el("span","tsub",sub0))}}if(al)mk("attn","❗",al,T("要対応（承認/質問まち）","Needs attention (approvals/questions)"));mk("",T("稼働","Active"),w+mn,T("作業中セッション"+w+" + サブエージェント"+mn,"Working sessions "+w+" + subagents "+mn));mk("",T("待機","Idle"),wa,T("指示待ちセッション","Sessions waiting for instructions"))}' +
-'function dispatch(){var off=LAST_OFFICE;var emps=officeAgents(off);var sig=sceneSig(emps);if(sig===LAST_SIG&&VIEW===LAST_VIEW)return;var sy=window.scrollY;LAST_SIG=sig;LAST_VIEW=VIEW;buildHeader(emps);buildDeptbar(emps);var room=document.getElementById("room"),list=document.getElementById("list");var to=document.getElementById("tb_office"),tl=document.getElementById("tb_list");if(to)to.classList.toggle("on",VIEW==="office");if(tl)tl.classList.toggle("on",VIEW!=="office");if(VIEW==="office"){room.classList.remove("hidden");list.classList.add("hidden");renderScene(off)}else{list.classList.remove("hidden");room.classList.add("hidden");renderList(off)}window.scrollTo(0,sy)}' +
+'function dispatch(){var off=LAST_OFFICE;var emps=officeAgents(off);LABELS=assignLabels(emps);var sig=sceneSig(emps);if(sig===LAST_SIG&&VIEW===LAST_VIEW)return;var sy=window.scrollY;LAST_SIG=sig;LAST_VIEW=VIEW;buildHeader(emps);buildDeptbar(emps);var room=document.getElementById("room"),list=document.getElementById("list");var to=document.getElementById("tb_office"),tl=document.getElementById("tb_list");if(to)to.classList.toggle("on",VIEW==="office");if(tl)tl.classList.toggle("on",VIEW!=="office");if(VIEW==="office"){room.classList.remove("hidden");list.classList.add("hidden");renderScene(off)}else{list.classList.remove("hidden");room.classList.add("hidden");renderList(off)}window.scrollTo(0,sy)}' +
 'function setView(v){if(VIEW!==v)playSE("cursor");VIEW=v;localStorage.setItem("aioffice.view",VIEW);dispatch()}' +
 // R79-7: status適用の単一路。HTTPポーリング応答もWS pushフレームも必ずここを通る
 'function applyStatus(d){if(!d)return;var office={};try{office=JSON.parse(d.json||"{}")}catch(_){}' +

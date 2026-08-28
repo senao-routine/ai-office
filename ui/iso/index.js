@@ -1923,7 +1923,9 @@ function paintLabels(shell, scene, w) {
     if (nameEl.textContent !== txt) {
       nameEl.textContent = txt;
       const monoEl = chip.firstElementChild;
-      if (monoEl) monoEl.textContent = [...String(a.name || "?")][0]?.toUpperCase() || "?";
+      // R86-I: 「名前の頭1文字」は同一プロジェクトの並走セッションで全部同じになる
+      // （実測: 9体中6体が「制」）。区別がつく末尾から作ったバッジを使う。
+      if (monoEl) monoEl.textContent = a.badge || "?";
       chip.title = a.crew > 1 ? `${a.name} ×${a.crew}` : a.name;   // R69: 省略時も全文が読める
       chip.dataset.w = "";                                    // テキスト変化＝寸法キャッシュ無効化
     }
@@ -2219,7 +2221,10 @@ function render(shell, w) {
   }
 
   // ── 下段: タスクのドーナツ＋指示履歴 ──────────────────────────
-  renderDonut(shell, w.tasks);
+  // R86-I: タスクが1件も無いときドーナツは「0のリング」＝永久に空のパネルになる
+  // （実測: どのセッションもタスク管理ツールを使っておらず常に 0/0/0 だった）。
+  // 空のときは実データで作った「今日のオフィス」に差し替える＝死んだ面積を作らない。
+  renderBottomLeft(shell, w);
   const hist = shell.querySelector("#hist");
   hist.replaceChildren();
   // R67: 4件目は全解像度でカード高さから完全にはみ出て不可視だった（実測）＝
@@ -2247,6 +2252,48 @@ function render(shell, w) {
     hist.append(el("div", "hmore", T("hist_more", w.history.length - 3)));
   }
   if (!hist.children.length) hist.append(el("div", "hempty", T("hist_empty")));
+}
+
+/** 左下カード: タスクがあればドーナツ、無ければ「今日のオフィス」。 */
+function renderBottomLeft(shell, w) {
+  const t = w.tasks || { pending: 0, inProgress: 0, completed: 0 };
+  const total = (t.pending || 0) + (t.inProgress || 0) + (t.completed || 0);
+  const donutWrap = shell.querySelector(".donutwrap");
+  const legend = shell.querySelector("#donutlegend");
+  let digest = shell.querySelector("#todaycard");
+  if (total > 0) {
+    donutWrap.hidden = false;
+    legend.hidden = false;
+    if (digest) digest.hidden = true;
+    shell.querySelector("#title-tasks").textContent = T("card_tasks");
+    renderDonut(shell, t);
+    return;
+  }
+  donutWrap.hidden = true;
+  legend.hidden = true;
+  shell.querySelector("#title-tasks").textContent = T("card_today");
+  if (!digest) {
+    digest = el("div", "todaycard");
+    digest.id = "todaycard";
+    shell.querySelector(".donutcard").append(digest);
+  }
+  digest.hidden = false;
+  const agents = w.agents || [];
+  const n = (f) => agents.filter(f).length;
+  const rows = [
+    ["📨", T("today_sent"), String(w.today?.sent ?? 0) + T("unit_items")],
+    ["❗", T("today_attn"), String(n((a) => a.attention)) + T("unit_items")],
+    ["🟢", T("today_working"), String(n((a) => a.state === "working")) + T("unit_people")],
+    ["☕", T("today_resting"), String(n((a) => a.state === "resting")) + T("unit_people")],
+  ];
+  digest.replaceChildren();
+  for (const [icon, label, value] of rows) {
+    const row = el("div", "trow");
+    row.append(el("i", "ticon", icon), el("span", "tlabel", label), el("b", "tval", value));
+    digest.append(row);
+  }
+  const ago = w.today?.lastSentAgo;
+  digest.append(el("div", "tnote", ago == null ? T("today_none") : T("today_last", agoStr(ago))));
 }
 
 /** タスクのドーナツ（SVG・実データのみ・アニメ無し＝golden を揺らさない）。 */

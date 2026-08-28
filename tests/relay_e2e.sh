@@ -23,6 +23,7 @@ if command -v node >/dev/null 2>&1; then
   node tests/triage_parity.mjs >/dev/null 2>&1 && ok "R80 ❗順序パリティ (PWA↔core 同一の先頭)" || ng "R80 ❗順序パリティ不一致 (node tests/triage_parity.mjs で詳細)"
   # R86-G: 「届かない」の判定を Mac/スマホで同一に保つ（片方だけ直すと❗中に嘘をつく）
   node tests/ismute_parity.mjs >/dev/null 2>&1 && ok "R86-G isMute パリティ (PWA↔core 同一)" || ng "R86-G isMute パリティ不一致 (node tests/ismute_parity.mjs で詳細)"
+  node tests/badge_parity.mjs >/dev/null 2>&1 && ok "R86-I 識別バッジ パリティ (PWA↔core 同一・常に一意)" || ng "R86-I バッジ パリティ不一致 (node tests/badge_parity.mjs で詳細)"
   # P7: Web Push暗号KAT（RFC8291 Appendix A公式ベクタ＋VAPID自己検証・wrangler不要）
   node tests/webpush_kat.mjs >/dev/null 2>&1 && ok "Web Push KAT (RFC8291ベクタ+VAPID)" || ng "Web Push KAT失敗 (node tests/webpush_kat.mjs で詳細)"
   # R5: Cloudflare依存を読み込まず、worker.js から純関数だけを抽出して購読フィルタを固定。

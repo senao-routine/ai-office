@@ -5,7 +5,7 @@ import { test } from "node:test";
 import {
   DESK_SLOTS, activityGloss, activityText, agoStr, assignMeetingRooms, assignRestSpots, assignSeats, attentionQueue, buildWorld, isMuted,
   countByZone, deliveryTransitions, needsAttention, stableIndex, summarizeWorld, tidyActivity,
-  stalledSends, topAttention, triageSort, zoneOf,
+  assignLabels, stalledSends, topAttention, triageSort, zoneOf,
 } from "./world.js";
 
 const proj = (over = {}) => ({
@@ -451,4 +451,46 @@ test("stalledSends: 送ったのに動かない相手だけを1回だけ返す�
   // 相手が居なくなった/引数が壊れていても落ちない
   assert.deepEqual(stalledSends(new Map([["zz", 0]]), agents, 999, new Set()), []);
   assert.deepEqual(stalledSends(null, agents, 999, new Set()), []);
+});
+
+test("assignLabels: 並走セッションを区別できる短い名前とバッジを割る（R86-I）", () => {
+  // 実データ（2026-08-28・9セッション）。1文字モノグラムが全部「制」で識別不能だった。
+  const names = ["制作本部(works)", "制作本部(works) 3号", "制作本部(works) 5号",
+    "制作本部(works) 7号", "20260714 - ai-office", "GLM5.3", "AKOOL"];
+  const ags = names.map((n, i) => ({ id: "id" + String(i).padStart(2, "0"), name: n }));
+  const r = assignLabels(ags);
+  const badges = ags.map((a) => r.get(a.id).badge);
+  assert.equal(new Set(badges).size, badges.length, "バッジが重複＝誰がどれか分からない");
+  assert.equal(r.get("id01").badge, "3");            // 号の数字がバッジ
+  assert.equal(r.get("id01").short, "works 3");      // 区別がつく部分を残す
+  assert.equal(r.get("id04").short, "ai-office");    // 日付プレフィクスは落とす
+  assert.equal(r.get("id05").short, "GLM5.3");       // 号でない数字は割らない
+  const shorts = ags.map((a) => r.get(a.id).short);
+  assert.equal(new Set(shorts).size, shorts.length, "短縮名が衝突＝別人が同じ名前に見える");
+});
+
+test("assignLabels: 衝突したらフルネームへ戻す・順序で揺れない（R86-I）", () => {
+  // 別プロジェクトの同名フォルダ（…/a/api と …/b/api）は短縮すると同じになる
+  const ags = [{ id: "x", name: "案件A(api)" }, { id: "y", name: "案件B(api)" }];
+  const r = assignLabels(ags);
+  assert.notEqual(r.get("x").short, r.get("y").short);
+  assert.ok(r.get("x").short.includes("案件A"));
+  // 入力順が変わっても割り当ては同じ（id昇順で決める＝ポーリングで記号が入れ替わらない）
+  const r2 = assignLabels([...ags].reverse());
+  assert.equal(r2.get("x").badge, r.get("x").badge);
+  assert.equal(r2.get("y").badge, r.get("y").badge);
+  // 壊れた入力でも落ちない
+  assert.equal(assignLabels(null).size, 0);
+  assert.equal(assignLabels([null, undefined]).size, 0);
+});
+
+test("buildWorld が badge/shortName を配る（R86-I）", () => {
+  const w = buildWorld({ roster: [
+    proj({ projectId: "p1", session: "s1", name: "制作本部(works) 7号" }),
+    proj({ projectId: "p2", session: "s2", name: "制作本部(works)" }),
+  ] });
+  const byName = Object.fromEntries(w.agents.map((a) => [a.name, a]));
+  assert.equal(byName["制作本部(works) 7号"].badge, "7");
+  assert.equal(byName["制作本部(works) 7号"].shortName, "works 7");
+  assert.equal(byName["制作本部(works)"].badge, "W");
 });

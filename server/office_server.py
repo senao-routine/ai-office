@@ -1574,9 +1574,18 @@ def scan_office():
         oc_emps, _oc_meta = openclaw_source.openclaw_employees(_HOME, now, lang=_LANG)
         employees.extend(oc_emps)
 
-    # 送信履歴（配達状況つき・新しい順12件）
+    # 送信履歴（配達状況つき・新しい順12件）＋ R86-I「今日のオフィス」の実数
+    # （画面に載せるのは件数だけ＝本文は乗らない。台帳は50件保持なので大量に送った日は
+    #  頭打ちになりうる＝その旨は表示側で断らず、素直に「直近50件のうち今日ぶん」を出す）
+    all_hist = load_history()
+    day_start = time.mktime(time.localtime(now)[:3] + (0, 0, 0, 0, 0, -1))
+    today_sent = sum(1 for h in all_hist if float(h.get("ts") or 0) >= day_start)
+    last_ts = max((float(h.get("ts") or 0) for h in all_hist), default=0.0)
+    today_view = {"sent": today_sent,
+                  "lastSentAgo": int(now - last_ts) if last_ts else None,
+                  "capped": len(all_hist) >= 50}
     hist = []
-    for h in reversed(load_history()[-12:]):
+    for h in reversed(all_hist[-12:]):
         hist.append({
             "session": h.get("session", ""),
             "disp": h.get("disp") or h.get("session", "")[:8],
@@ -1608,6 +1617,7 @@ def scan_office():
         "employees": employees,
         "roster": roster,
         "history": hist,
+        "today": today_view,
         "generatedAt": now,
         "setup": setup,
         "edition": edition_info,
