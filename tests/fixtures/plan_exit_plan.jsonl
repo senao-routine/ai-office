@@ -1,0 +1,3 @@
+{"type": "permission-mode", "permissionMode": "bypassPermissions", "sessionId": "sess-aaaa1111"}
+{"type": "user", "message": {"role": "user", "content": "計画を立てて"}, "cwd": "/Users/test/demo-project"}
+{"type": "assistant", "message": {"role": "assistant", "content": [{"type": "tool_use", "name": "ExitPlanMode", "input": {"plan": "手順を3つに分けます"}}]}, "cwd": "/Users/test/demo-project"}

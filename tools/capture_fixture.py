@@ -55,6 +55,14 @@ def main():
                  "customTitle": redact_text(d.get("customTitle", "")),
                  "sessionId": "sess-aaaa1111"}, ensure_ascii=False))
             continue
+        # R86-F: permission-mode は❗判定の一次情報＝落とすと今後のフィクスチャが全部
+        # 「モード不明」になり、誤検知の番人が静かに無意味化する（フィクスチャ第一則の穴）。
+        if d.get("type") == "permission-mode":
+            out_lines.append(json.dumps(
+                {"type": "permission-mode",
+                 "permissionMode": d.get("permissionMode", ""),
+                 "sessionId": "sess-aaaa1111"}, ensure_ascii=False))
+            continue
         if d.get("type") not in ("user", "assistant"):
             continue
         slim = {"type": d["type"], "cwd": "/Users/test/demo-project", "gitBranch": "main"}

@@ -72,6 +72,10 @@ HISTORY_FILE = INBOX / "_history.json"
 # R42.5: oc-宛（OpenClaw・別Mac社員）の転送待ちoutbox。relay_agent が署名して中継の
 # site=macmini キューへ運び、mini側 tools/openclaw_agent.py が受ける（office_inboxとは別系統）
 OC_OUTBOX = _HOME / ".claude" / "office_oc_outbox"
+# R86-H: PermissionRequest フック（hooks/office-approval-wait.sh）の掲示板。
+# <session>.json = いま実際に聞かれていること（フックが書き、フックが消す）
+# <session>.reply.json = こちらからの回答（office_server / relay_agent が書き、フックが取る）
+APPROVALS = _HOME / ".claude" / "office_approvals"
 DEVICES_FILE = _HOME / ".claude" / "office_devices.json"   # P3: スマホ端末台帳(600・secret平文)
 PORT = 4780
 SHOW_WINDOW = int(os.environ.get("OFFICE_SHOW_WINDOW", 3 * 3600))  # 3時間以内に動いたセッションを「出勤中」として表示（R23.5退勤早期化・verify.shカナリア/works watchdogの窓と同期）
@@ -446,6 +450,78 @@ def _remembered_title(session_key, seen, now, mtime):
     return entry[0] if entry else ""
 
 
+# R86-F: 権限モード（transcript の {"type":"permission-mode"} 行・last-wins）。
+# custom-title と同型で、ターン境界ごとに追記される（実測: 行を持つ104本すべてで
+# 最終行が EOF から max 32,830B＝TAIL_BYTES 80KB 窓に100%収まる）。
+_PERM_MEMORY = {}
+
+
+def _remembered_perm_mode(session_key, seen, now, mtime):
+    """窓に permission-mode 行が無かった周でも直前の値を保つ。窓落ちで「不明」へ落ちると
+    ❗の誤検知が復活する（＝R86-Fで直したバグの再発）ので、10行の保険を置く。"""
+    if seen:
+        _PERM_MEMORY[session_key] = [seen, mtime]
+    entry = _PERM_MEMORY.get(session_key)
+    if entry:
+        entry[1] = max(entry[1], mtime)
+    for key in [k for k, v in _PERM_MEMORY.items() if now - v[1] > SHOW_WINDOW]:
+        _PERM_MEMORY.pop(key, None)
+    entry = _PERM_MEMORY.get(session_key)
+    return entry[0] if entry else ""
+
+
+# ~/.claude/settings.json の permissions.ask（Bash(<接頭辞>:*)）。bypassPermissions でも
+# **ask ルール該当だけは聞かれる**（公式docs）＝このMacで本物の承認まちが生まれる唯一の源。
+# 実測でも裏づけ: ask該当Bashは p90=6,414秒（git push が1.8時間＝人間待ち）に対し、
+# それ以外のBashは p90=14.8秒。ファイルは mtime でキャッシュ（毎スキャンでは読まない）。
+_ASK_CACHE = {"mtime": -1.0, "rules": ()}
+_ASK_RULE_RE = re.compile(r"^Bash\((.+?):\*\)$")
+_CMD_SPLIT = re.compile(r"&&|\|\||;|\n|\|")
+
+
+def _ask_rules():
+    p = _HOME / ".claude" / "settings.json"
+    try:
+        m = p.stat().st_mtime
+    except OSError:
+        return ()
+    if m != _ASK_CACHE["mtime"]:
+        rules = []
+        try:
+            perm = json.loads(p.read_text(encoding="utf-8")).get("permissions") or {}
+            for r in (perm.get("ask") or []):
+                mm = _ASK_RULE_RE.match(str(r))
+                if mm:
+                    rules.append(mm.group(1))
+        except (OSError, ValueError, TypeError):
+            rules = []
+        _ASK_CACHE.update(mtime=m, rules=tuple(rules))
+    return _ASK_CACHE["rules"]
+
+
+def can_prompt(mode, tool, tool_input=None):
+    """このツール実行が**人間に聞く可能性があるか**（純関数）。
+
+    R86-F: 従来は「最後が tool_use のまま75秒経過＝承認ダイアログ待ち」と推定していたが、
+    それは実際には「ツールが走っている」だけのことが多い（実測: 直近7日の❗159回中95回=60%が誤報。
+    ❗はPush/macOS通知/トリアージ最優先/日報のトリガなので実害が大きい）。
+    透明性の原則: **聞かれ得ないツールは❗にしない**。
+    モード不明（permission-mode 行を持たない7割のセッション・旧CLI・合成フィクスチャ）は
+    **従来どおり「聞かれ得る」**＝安全側（default運用のユーザーの中核機能を黙って殺さない）。"""
+    if tool == "ExitPlanMode":
+        return True                    # プラン承認はどのモードでも聞かれる
+    if mode != "bypassPermissions":
+        return True                    # default/acceptEdits/plan/不明は従来どおり
+    if tool != "Bash":
+        return False                   # bypass下でBash以外が聞かれることはない
+    cmd = str((tool_input or {}).get("command") or "")
+    pref = _ask_rules()
+    if not pref:
+        return False
+    return any(part.strip().lstrip("(").strip().startswith(p)
+               for part in _CMD_SPLIT.split(cmd) for p in pref)
+
+
 _TASK_MEMORY = {}
 _TASK_WINDOW = 60 * 60
 _TASK_MARKERS = ('"TaskCreate"', '"TaskUpdate"', '"todos"')
@@ -817,6 +893,62 @@ LISTEN_STALE = float(os.environ.get("OFFICE_LISTEN_STALE", 30))   # hook の int
 LISTEN_LEGACY = float(os.environ.get("OFFICE_LISTEN_LEGACY", 2 * 3600))
 
 
+_SESSION_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+
+
+ASK_GRACE = 3.0       # 掲示が出てすぐは❗にしない（下の理由）
+
+
+def pending_approval(session, now=None, grace=0.0):
+    """R86-H: いまそのセッションが**実際に**人間へ聞いていること（フックが publish した事実）。
+
+    75秒ヒューリスティックは「止まっている＝聞かれているかもしれない」という推測にすぎず、
+    ユーザーに『❗が出ているのに承認画面が無い』と言わせた原因だった。こちらは一次情報。
+    掲示が無い/期限切れ/壊れている＝None（推測側の判定に委ねる＝旧セッションでも暗転しない）。
+    """
+    if not _SESSION_RE.match(session or ""):
+        return None
+    try:
+        rec = json.loads((APPROVALS / f"{session}.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(rec, dict) or rec.get("session") != session:
+        return None
+    now = now or time.time()
+    if float(rec.get("deadline") or 0) < now:
+        return None                      # フックが死んだ後の掲示は幽霊
+    # ★grace: PermissionRequest フックは「結局そのまま許可される操作」でも一度は発火する
+    # （信頼済みフォルダへの Write 等・実機で確認）。掲示は出るがコンマ数秒で消える＝
+    # ❗を一瞬光らせてスマホへ誤プッシュする。数秒生き残った掲示だけを「本当に止まっている」と見る。
+    if grace and now - float(rec.get("ts") or 0) < grace:
+        return None
+    kind = "question" if rec.get("kind") == "question" else "permission"
+    opts = [str(o) for o in rec.get("options") or [] if isinstance(o, str)][:4]
+    return {"tool": short(rec.get("tool") or "", 40), "kind": kind,
+            "title": short(rec.get("title") or "", 200), "options": opts,
+            "ts": float(rec.get("ts") or now)}
+
+
+def write_approval_reply(session, behavior, message="", src="local"):
+    """フックが待っている回答を置く。allow を通せるのは src="local"（Macの前の人間）だけ
+    ＝この関数がどこから呼ばれても、中継経由が実行許可に化けない（最終判定はフック側）。"""
+    if not _SESSION_RE.match(session or ""):
+        raise ValueError("bad session")
+    APPROVALS.mkdir(parents=True, exist_ok=True)
+    try:
+        os.chmod(APPROVALS, 0o700)
+    except OSError:
+        pass
+    rec = {"session": session, "behavior": "allow" if behavior == "allow" else "deny",
+           "message": short(message or "", 2000), "src": src, "ts": time.time()}
+    tmp = APPROVALS / f".{session}.reply.tmp"
+    fd = os.open(str(tmp), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        json.dump(rec, f, ensure_ascii=False)
+    os.replace(tmp, APPROVALS / f"{session}.reply.json")
+    return rec
+
+
 def session_listening(session, now=None):
     """そのセッションが**いま指示を受け取れるか**。判定不能は False（フェイルセーフ＝
     「届く」と嘘をつかない）。False でも投函は無駄にならない: inbox に残り、そのセッションが
@@ -877,6 +1009,7 @@ def parse_session(path, now):
     parsed = []
     skill_events = []
     custom_title = None            # R85-1: 窓に custom-title 行が無ければ None（記憶を使う）
+    perm_mode = None               # R86-F: 窓に permission-mode 行が無ければ None＝不明
     for ln in lines:
         try:
             d = json.loads(ln)
@@ -887,6 +1020,11 @@ def parse_session(path, now):
         if d.get("gitBranch"):
             branch = d["gitBranch"]
         t = d.get("type")
+        if t == "permission-mode":
+            # R86-F: 現在の権限モード（last-wins）。❗の誤検知を止める唯一の一次情報。
+            pm = d.get("permissionMode")
+            if isinstance(pm, str) and pm:
+                perm_mode = pm
         if t == "custom-title":
             # /rename のカスタム名。ループで自然に last-wins（＝最後の1件が現在値）。
             # 兄弟の ai-title（自動生成・更新され続ける）と agent-name（自動命名と混在）は
@@ -904,6 +1042,7 @@ def parse_session(path, now):
         return None
 
     title = _remembered_title(str(path), custom_title, now, mtime)
+    perm_mode = _remembered_perm_mode(str(path), perm_mode, now, mtime)
     skills = remembered_skills(str(path), skill_events, now, mtime)
     tasks = _remembered_tasks(str(path), task_lines, now, mtime)
     work = _work_from_tasks(tasks)
@@ -1014,9 +1153,24 @@ def parse_session(path, now):
                 question_options = _question_options(q)
             except (KeyError, IndexError, TypeError):
                 pass
-        elif age < 1800:
+        elif age < 1800 and can_prompt(perm_mode, last_tool_name,
+                                       (last_tool_block or {}).get("input")):
             # resting帯(30分超)のtool止まりはクラッシュ/放置残骸＝❗を出し続けない（誤プッシュ通知の門番）
+            # R86-F: さらに「そのツールが人間に聞き得るか」で門を絞る。bypassPermissions下で
+            # ask ルールに該当しない Bash は聞かれない＝走っているだけなので❗にしない。
             approval_min = max(1, int(age // 60))
+
+    # R86-H: PermissionRequest フックが publish した事実は、上の推測より常に強い。
+    # フックが動いていれば「聞かれた瞬間」に❗が立つ（75秒待たない）し、
+    # 人間がターミナルで答えた瞬間に掲示が消える（❗が居座らない）。
+    ask = pending_approval(path.stem, now, grace=ASK_GRACE)
+    if ask:
+        if ask["kind"] == "question":
+            question = question or ask["title"]
+            if not question_options and ask["options"]:
+                question_options = ask["options"]
+        elif not approval_min:
+            approval_min = max(1, int((now - ask["ts"]) // 60))
 
     minions = 0
     subdir = path.parent / path.stem / "subagents"
@@ -1061,6 +1215,10 @@ def parse_session(path, now):
         "approvalMin": approval_min,
         "stuckTool": f"{status_verb} {status_target}".strip() if approval_min else "",
     }
+    if ask:
+        # R86-H: 「推測」ではなく「いま聞かれている事実」。UIはこれがある時だけ
+        # 承認/回答ボタンを出す（フックが待っていないのに押せると嘘になる）。
+        employee["ask"] = ask
     if question_options:
         employee["questionOptions"] = question_options
     if work is not None:
@@ -1258,6 +1416,8 @@ def group_by_project(employees, lang="ja", mode="project"):
             "approvalMin": int(lead.get("approvalMin") or 0),
             "question": lead.get("question", ""),
             "stuckTool": lead.get("stuckTool", ""),
+            # R86-H: 代表が「いま聞かれている」なら、その事実ごと運ぶ（本文は中継前に落とす）
+            "ask": lead.get("ask") or None,
             "lastSaid": lead.get("lastSaid", ""),
             "feed": lead.get("feed", []),
             "sessions": [_session_brief(m) for m in
@@ -2354,6 +2514,30 @@ class Handler(BaseHTTPRequestHandler):
         extra = {}
         if self.path.startswith("/api/instruct"):
             ok, msg = post_instruction(data.get("session", ""), data.get("text", ""))
+        elif route == "/api/approval/reply":
+            # R86-H: 止まっているセッションへ「いま」答える（指示ポストは**ターンが終わるまで
+            # 届かない**ので、承認まちの相手には構造的に届かなかった＝ユーザー報告の本体）。
+            # ここは loopback+CSRF 配下＝Macの前の人間なので、実行の許可(allow)も出せる。
+            sess = str(data.get("session") or "")
+            ask = pending_approval(sess)
+            if not ask:
+                ok, msg = False, L_now(
+                    "そのセッションはいま何も聞いていません（もう答えられたか、承認フックが未配線です）",
+                    "that session is not asking anything right now")
+            else:
+                behavior = "allow" if data.get("behavior") == "allow" else "deny"
+                text = str(data.get("message") or "")
+                if behavior == "deny" and not text.strip():
+                    ok, msg = False, L_now("回答の内容が空です", "empty answer")
+                else:
+                    try:
+                        write_approval_reply(sess, behavior, text, src="local")
+                        ok = True
+                        msg = (L_now("許可しました", "approved") if behavior == "allow"
+                               else L_now("回答を届けました", "answer delivered"))
+                        extra = {"kind": ask["kind"]}
+                    except (OSError, ValueError) as e:
+                        ok, msg = False, str(e)
         elif route == "/api/terminal/focus":
             # R53: ロボ→実ターミナルジャンプ（loopback+CSRF配下・osascriptはローカル操作のみ）
             sess = data.get("session", "")

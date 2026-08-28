@@ -326,5 +326,106 @@ class GhostSessionTest(unittest.TestCase):
         self.assertEqual(e["age"], 42)
 
 
+class CanPromptTest(unittest.TestCase):
+    """R86-F: ❗は「承認まち」であって「ツールが走っている」ではない。
+    実測で直近7日の❗159回中95回(60%)が誤報だった＝Push/macOS通知/トリアージ/日報の共通トリガ
+    なので実害が大きい。can_prompt は「そのツールが人間に聞き得るか」の純関数。"""
+
+    def setUp(self):
+        office._ASK_CACHE.update(mtime=-1.0, rules=())
+        self._orig = office._ask_rules
+        office._ask_rules = lambda: ("git push", "firebase deploy")
+
+    def tearDown(self):
+        office._ask_rules = self._orig
+        office._ASK_CACHE.update(mtime=-1.0, rules=())
+
+    def test_truth_table(self):
+        B = "bypassPermissions"
+        cases = [
+            (B, "Bash", {"command": "python3 run_check.py"}, False),   # 走っているだけ
+            (B, "Bash", {"command": "git push origin main"}, True),    # askルール＝本物
+            (B, "Bash", {"command": "cd /x && git push"}, True),       # 複合コマンド内
+            (B, "Bash", {"command": "firebase deploy --only hosting"}, True),
+            (B, "Bash", {"command": "echo git push"}, False),          # 引数に出るだけは対象外
+            (B, "TaskOutput", {}, False),                              # bypass下でBash以外は聞かれない
+            (B, "Read", {"file_path": "/x"}, False),
+            (B, "ExitPlanMode", {}, True),                             # プラン承認は全モード
+            ("plan", "Bash", {"command": "ls"}, True),                 # 従来どおり
+            ("default", "Bash", {"command": "ls"}, True),
+            ("", "Bash", {"command": "ls"}, True),                     # 不明＝安全側
+            (None, "Bash", {"command": "ls"}, True),
+        ]
+        for mode, tool, inp, want in cases:
+            self.assertEqual(office.can_prompt(mode, tool, inp), want,
+                             f"{mode!r}/{tool}/{inp}")
+
+    def test_no_ask_rules_means_bypass_never_prompts(self):
+        office._ask_rules = lambda: ()
+        self.assertFalse(office.can_prompt("bypassPermissions", "Bash",
+                                           {"command": "git push origin main"}))
+        self.assertTrue(office.can_prompt("bypassPermissions", "ExitPlanMode", {}))
+
+
+class ApprovalGateTest(unittest.TestCase):
+    """R86-F: parse_session の❗が permission-mode で正しく門を絞ること（実フィクスチャ）。"""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="office_perm_"))
+        office._SKILL_MEMORY.clear()
+        office._TITLE_MEMORY.clear()
+        office._PERM_MEMORY.clear()
+        self._orig = office._ask_rules
+        office._ask_rules = lambda: ("git push", "firebase deploy")
+
+    def tearDown(self):
+        office._ask_rules = self._orig
+        office._PERM_MEMORY.clear()
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def load(self, fixture, age, name="sess-perm0001.jsonl"):
+        p = self.tmp / name
+        shutil.copy(FX / fixture, p)
+        mtime = 1_800_000_000.0
+        os.utime(p, (mtime, mtime))
+        return office.parse_session(p, now=mtime + age)
+
+    def test_bypass_long_bash_is_not_approval(self):
+        """走っているだけのBashを「承認まち」と言わない（今回の誤検知の本体）。"""
+        e = self.load("bypass_bash_stall.jsonl", age=400)
+        self.assertEqual(e["approvalMin"], 0)
+        self.assertEqual(e["stuckTool"], "")
+
+    def test_bypass_git_push_is_real_approval(self):
+        """askルール該当は bypass でも聞かれる＝本物の❗を消さない。"""
+        e = self.load("bypass_git_push.jsonl", age=400)
+        self.assertEqual(e["approvalMin"], 6)
+        self.assertIn("実行中", e["stuckTool"])
+
+    def test_exit_plan_mode_is_real_approval(self):
+        e = self.load("plan_exit_plan.jsonl", age=400)
+        self.assertGreater(e["approvalMin"], 0)
+
+    def test_unknown_mode_keeps_legacy_behavior(self):
+        """permission-mode 行を持たない旧形式は従来どおり❗を出す（安全側）。
+        working_tool.jsonl は `git push origin main` なので本物でもある。"""
+        e = self.load("working_tool.jsonl", age=200, name="sess-legacy01.jsonl")
+        self.assertEqual(e["approvalMin"], 3)
+
+    def test_perm_mode_survives_tail_scroll(self):
+        """permission-mode 行が窓から流れても記憶で保つ（落ちると誤検知が復活する）。"""
+        p = self.tmp / "sess-perm0002.jsonl"
+        mtime = 1_800_000_000.0
+        shutil.copy(FX / "bypass_bash_stall.jsonl", p)
+        os.utime(p, (mtime, mtime))
+        self.assertEqual(office.parse_session(p, now=mtime + 400)["approvalMin"], 0)
+        # permission-mode 行の無い内容へ差し替え（＝窓から流れた状態）
+        body = (FX / "bypass_bash_stall.jsonl").read_text(encoding="utf-8").splitlines()
+        p.write_text("\n".join(body[1:]), encoding="utf-8")
+        os.utime(p, (mtime, mtime))
+        self.assertEqual(office.parse_session(p, now=mtime + 400)["approvalMin"], 0,
+                         "窓落ちで誤検知が復活した")
+
+
 if __name__ == "__main__":
     unittest.main()

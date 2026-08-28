@@ -42,6 +42,14 @@ export const getStatusBoard = (signal) => api("/api/status_board", { signal });
 export const postInstruction = (session, text) =>
   api("/api/instruct", { method: "POST", body: { session, text } });
 
+/**
+ * R86-H: いま人間に聞いていて止まっているセッションへ**その場で**答える。
+ * 指示ポスト(/api/instruct)はターンが終わるまで届かないので、承認まちには構造的に届かない。
+ * behavior="allow" が通るのはこの経路（loopback+CSRF＝Macの前の人間）だけ。
+ */
+export const approvalReply = (session, behavior, message = "") =>
+  api("/api/approval/reply", { method: "POST", body: { session, behavior, message } });
+
 /** R53: そのセッションが動いている実ターミナル（ホストアプリ）を前面へ。 */
 export const focusTerminal = (session) =>
   api("/api/terminal/focus", { method: "POST", body: { session } });

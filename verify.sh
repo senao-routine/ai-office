@@ -174,6 +174,27 @@ CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:$TPORT/api/office
 [ "$CODE" = "403" ] && ok "M4 GET /api/office CSRFガード (ヘッダ無403)" || ng "M4 /api/office CSRF失敗 (code=$CODE)"
 CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "X-Office-Local: 1" http://127.0.0.1:$TPORT/api/office)
 [ "$CODE" = "200" ] && ok "M4 GET /api/office ヘッダ有り200" || ng "M4 /api/office 正常系失敗 (code=$CODE)"
+# R86-H: 承認・質問への回答経路（掲示が無ければ開かない・CSRF配下・allowはローカルのみ）
+mkdir -p "$VHOME/.claude/office_approvals"
+RES=$(curl -s -X POST http://127.0.0.1:$TPORT/api/approval/reply $H_LOCAL \
+  -H "Content-Type: application/json" -d '{"session":"sess-verify0001","behavior":"allow"}')
+echo "$RES" | python3 -c 'import sys,json; d=json.load(sys.stdin); assert d["ok"] is False, d' \
+  && ok "R86-H 掲示が無いセッションへは回答できない（押せて届かない嘘を作らない）" \
+  || ng "R86-H 掲示無しなのに回答を受理した: $(echo "$RES" | head -c 80)"
+python3 -c 'import json,sys,time; p=sys.argv[1]; json.dump({"session":"sess-verify0001","tool":"Bash","kind":"permission","title":"git push","options":[],"ts":time.time(),"deadline":time.time()+600,"pid":1}, open(p,"w"))' \
+  "$VHOME/.claude/office_approvals/sess-verify0001.json"
+RES=$(curl -s -X POST http://127.0.0.1:$TPORT/api/approval/reply $H_LOCAL \
+  -H "Content-Type: application/json" -d '{"session":"sess-verify0001","behavior":"allow"}')
+echo "$RES" | python3 -c 'import sys,json; d=json.load(sys.stdin); assert d["ok"], d' \
+  && [ -f "$VHOME/.claude/office_approvals/sess-verify0001.reply.json" ] \
+  && python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["behavior"]=="allow" and d["src"]=="local", d' \
+     "$VHOME/.claude/office_approvals/sess-verify0001.reply.json" \
+  && ok "R86-H 許可: reply(allow/local) を実ファイルで書く" || ng "R86-H 許可の書き込み失敗: $RES"
+CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://127.0.0.1:$TPORT/api/approval/reply \
+  -H "Content-Type: application/json" -d '{"session":"sess-verify0001","behavior":"allow"}')
+[ "$CODE" = "403" ] && ok "R86-H 回答APIのCSRFガード (ヘッダ無403)" || ng "R86-H 回答API CSRF失敗 (code=$CODE)"
+rm -f "$VHOME/.claude/office_approvals/sess-verify0001.json" \
+      "$VHOME/.claude/office_approvals/sess-verify0001.reply.json"
 # R86-B: 会話ビューア＝本文を返す唯一の経路（office_json非搭載・CSRF配下・未知=200空・不正=400）
 DLG=$(curl -s -H "X-Office-Local: 1" "http://127.0.0.1:$TPORT/api/session/dialog?session=sess-verify0001")
 echo "$DLG" | python3 -c 'import sys,json; d=json.load(sys.stdin); assert d["ok"] and len(d["messages"])>=1 and d["messages"][0]["role"] in ("user","ai"), d' \
@@ -434,9 +455,47 @@ if not recent:
     print("  - 直近3時間のセッションなし → カナリア省略"); sys.exit(0)
 out = subprocess.run(["python3", "server/office_server.py", "--dump"],
                      capture_output=True, text=True, timeout=60)
-n = len(json.loads(out.stdout)["employees"])
+emps = json.loads(out.stdout)["employees"]
+n = len(emps)
 assert n > 0, "実データで社員0人"
 print(f"  ✓ 実データカナリア OK (社員{n}人検出)")
+
+# R86-F 偽陽性カナリア: ❗「承認まち」は**人間に聞き得るツール**でしか立ってはいけない。
+# 従来は「最後がtool_useのまま75秒」だけで立て、走っているだけのBashを承認まちと誤報していた
+# （実測: 直近7日の❗159回中95回=60%が誤報。❗はPush/macOS通知/トリアージ/日報の共通トリガ）。
+import importlib.util
+spec = importlib.util.spec_from_file_location("office_canary", "server/office_server.py")
+office = importlib.util.module_from_spec(spec); spec.loader.exec_module(office)
+bad = []
+for e in emps:
+    if not e.get("approvalMin"):
+        continue
+    sess = e.get("session", "")
+    if e.get("ask"):
+        # R86-H: 掲示（PermissionRequest フックの一次情報）由来の❗は推測ではない＝この検査の対象外。
+        # ★実データで確認: bypassPermissions でも ask ルール外の Bash が実際に許可を聞くことがある
+        #   （実測 2026-08-28: `cd works && node -e ...` で8分ブロック）。つまり can_prompt の
+        #   推測は**本物の承認まちを取りこぼす**方向にも外れる。掲示があるならそれが正しい。
+        continue
+    hit = list(office.PROJECTS.glob(f"*/{sess}.jsonl"))
+    if not hit:
+        continue
+    mode, tool, tinput = "", "", {}
+    for ln in office.tail_lines(hit[0]):
+        try:
+            d = json.loads(ln)
+        except json.JSONDecodeError:
+            continue
+        if d.get("type") == "permission-mode" and isinstance(d.get("permissionMode"), str):
+            mode = d["permissionMode"]
+        if d.get("type") == "assistant":
+            for b in ((d.get("message") or {}).get("content") or []):
+                if isinstance(b, dict) and b.get("type") == "tool_use":
+                    tool, tinput = b.get("name", ""), b.get("input") or {}
+    if tool and not office.can_prompt(mode, tool, tinput):
+        bad.append(f"{e.get('disp', sess)[:20]}/{mode}/{tool}")
+assert not bad, f"❗の偽陽性: 聞かれ得ないツールで承認まちが立っている {bad}"
+print(f"  ✓ R86-F ❗偽陽性カナリア OK (承認まち{sum(1 for e in emps if e.get('approvalMin'))}件は全て聞かれ得るツール)")
 EOF
 
 echo "▶ 9 中継E2E (P2・任意=RUN_RELAY=1のとき。通常は 4/8 の relay_agent 単体テストがロジックを担保)"

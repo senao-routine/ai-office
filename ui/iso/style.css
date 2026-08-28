@@ -590,6 +590,16 @@
   border-radius: 8px; padding: 7px 10px; cursor: pointer;
 }
 .ui-iso .sheetopt:hover { background: #fff; }
+/* R86-H: 「いま実際に聞かれている」事実（推測の❗と区別できるように控えめな地の文で） */
+.ui-iso .askfact {
+  font-size: 11px; line-height: 1.5; color: #7a1f42; opacity: .92;
+  overflow-wrap: break-word; word-break: break-word;
+}
+/* 実行の許可は意味色（--iso-ok=承認）。文章の返信ボタンと取り違えないようにする */
+.ui-iso .sheetopt.allowbtn {
+  background: var(--iso-ok); color: #08341c; border-color: transparent;
+}
+.ui-iso .sheetopt.allowbtn:hover { background: var(--iso-ok); filter: brightness(1.06); }
 .ui-iso .sheetsub { font-size: 11px; font-weight: 800; color: var(--iso-ink-soft); margin-top: 4px; }
 .ui-iso .sheetline { font-size: 11.5px; color: var(--iso-ink); line-height: 1.55; }
 .ui-iso .sheetline.feed { color: var(--iso-ink-soft); }

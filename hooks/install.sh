@@ -9,7 +9,7 @@
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 mkdir -p "$HOME/.claude/hooks"
-for f in office-inbox-wait.sh office-statusline-capture.sh; do
+for f in office-inbox-wait.sh office-approval-wait.sh office-statusline-capture.sh; do
   cp "$HERE/$f" "$HOME/.claude/hooks/$f" && chmod +x "$HOME/.claude/hooks/$f"
   echo "✓ 配布: $HOME/.claude/hooks/$f"
 done
@@ -58,6 +58,12 @@ HOOK = {"hooks": [{"type": "command",
                    "timeout": HOOK_TIMEOUT,
                    "statusMessage": "AI Office inbox…",
                    "asyncRewake": True}]}
+# R86-H: 承認・質問フック（PermissionRequest）。待機は既定12時間＝同じ不変条件。
+# ★これが未配線でもターミナルは通常どおり動く（配線して初めて「オフィスから答えられる」）。
+PR_HOOK = {"hooks": [{"type": "command",
+                      "command": 'bash "$HOME/.claude/hooks/office-approval-wait.sh"',
+                      "timeout": HOOK_TIMEOUT,
+                      "statusMessage": "AI Office approval…"}]}
 SL_CMD = 'bash "$HOME/.claude/hooks/office-statusline-capture.sh"'
 
 if mode == "--statusline":
@@ -112,6 +118,28 @@ else:
     print("⚠ 指示配達が未配線です。自動配線: bash hooks/install.sh --wire")
     print("  （手動なら ~/.claude/settings.json の hooks.Stop に次の要素を追加）:")
     print(json.dumps(HOOK, ensure_ascii=False, indent=2))
+# R86-H PermissionRequest の配線（Stop と同じ「配線済みなら timeout 自己修復」）
+prs = data.setdefault("hooks", {}).setdefault("PermissionRequest", [])
+pr_wired = [h for grp in prs if isinstance(grp, dict)
+            for h in grp.get("hooks", []) if isinstance(h, dict)
+            and "office-approval-wait" in h.get("command", "")]
+if pr_wired:
+    fixed = [h for h in pr_wired if int(h.get("timeout") or 0) < HOOK_TIMEOUT]
+    for h in fixed:
+        h["timeout"] = HOOK_TIMEOUT
+    if fixed:
+        save(data)
+        print(f"✓ PermissionRequest hook の timeout を {HOOK_TIMEOUT} 秒へ更新")
+    else:
+        print("✓ ~/.claude/settings.json の PermissionRequest hook 配線を確認")
+elif mode == "--wire":
+    prs.append(PR_HOOK)
+    save(data)
+    print("✓ PermissionRequest hook を配線しました"
+          "（承認・質問をAIオフィスから答えられます。新しいセッションから有効）")
+else:
+    print("⚠ 承認・質問の受け答えが未配線です。自動配線: bash hooks/install.sh --wire")
+
 if "office-statusline-capture" not in str((data.get("statusLine") or {}).get("command", "")):
     print("ℹ Claude枠%の実測ゲージ: bash hooks/install.sh --statusline で配線できます")
 PYEOF

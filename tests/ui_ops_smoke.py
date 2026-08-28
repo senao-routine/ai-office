@@ -202,6 +202,74 @@ def main():
                 print(f"  ✗ 稼働中に誤って📴を出している: {wk}")
                 ng += 1
             page.keyboard.press("Escape")
+
+            # (2a3) R86-H: 「いま実際に聞かれている」相手には**その場で届く**経路を使う。
+            # ここは押せたで終わらせず、**実サーバーが reply ファイルを書くところまで**見る
+            # （承認フックはこのファイルだけを見て決定を返す＝これが届くことの全て）。
+            APPR = ROOT / ".ui_shot_home" / ".claude" / "office_approvals"
+            shutil.rmtree(APPR, ignore_errors=True)
+            APPR.mkdir(parents=True, exist_ok=True)
+            (APPR / f"{target_session}.json").write_text(json.dumps({
+                "session": target_session, "tool": "Bash", "kind": "permission",
+                "title": "git push origin main", "options": [],
+                "ts": time.time(), "deadline": time.time() + 600, "pid": 1}), encoding="utf-8")
+            ask_world = json.loads(payload)
+            for p0 in ask_world["roster"]:
+                if p0["session"] == target_session:
+                    p0["listening"] = False        # ターンが終わっていない＝Stop hookは動いていない
+                    p0["attention"] = True
+                    p0["approvalMin"] = 2
+                    p0["ask"] = {"tool": "Bash", "kind": "permission",
+                                 "title": "git push origin main"}
+            page.evaluate("(w) => window.__office.inject(w)", ask_world)
+            page.wait_for_timeout(250)
+            page.click(f'.arow[data-session="{target_session}"]')
+            page.wait_for_selector("#sheet:not([hidden])", timeout=3000)
+            askui = page.evaluate(
+                "(s) => ({ fact: (document.querySelector('#sheet .askfact')||{}).textContent || '',"
+                "  allow: !!document.querySelector('#quickdock .allowbtn'),"
+                "  mute: !!document.querySelector('#sheet .listenoff'),"
+                "  badge: !(document.querySelector(`.arow[data-session=\"${s}\"] .amute`)||{}).hidden })",
+                target_session)
+            if "git push origin main" in askui["fact"] and askui["allow"] and not askui["mute"] \
+                    and not askui["badge"]:
+                print("  ✓ R86-H 承認まち: 聞かれている中身を明示＋許可ボタン＋📴を出さない")
+            else:
+                print(f"  ✗ 承認まちの表示が不正: {askui}")
+                ng += 1
+            page.click("#quickdock .allowbtn")
+            fr = APPR / f"{target_session}.reply.json"
+            if wait_file(fr):
+                rec = json.loads(fr.read_text(encoding="utf-8"))
+                if rec["behavior"] == "allow" and rec["src"] == "local":
+                    print("  ✓ R86-H 許可: 実サーバーが reply(allow/local) を書いた＝ターミナルへ届く")
+                else:
+                    print(f"  ✗ reply の内容が不正: {rec}")
+                    ng += 1
+            else:
+                print(f"  ✗ 許可ボタンが reply を書かない: {fr}")
+                ng += 1
+            # 文章の回答も同じ経路（指示ポストではなく承認フックへ）＝これが「届かない」の修正
+            fr.unlink(missing_ok=True)
+            inbox_before = INBOX / f"{target_session}.json"
+            inbox_before.unlink(missing_ok=True)
+            page.click(f'.arow[data-session="{target_session}"]')
+            page.wait_for_selector("#sheet:not([hidden])", timeout=3000)
+            page.fill("#composeinput", "そのまま進めてOKです")
+            page.keyboard.press("Enter")
+            if wait_file(fr):
+                rec = json.loads(fr.read_text(encoding="utf-8"))
+                ok_text = rec["behavior"] == "deny" and "そのまま進めてOK" in rec["message"]
+                if ok_text and not inbox_before.exists():
+                    print("  ✓ R86-H 回答: 承認まちへの文章は inbox でなく承認フックへ届く")
+                else:
+                    print(f"  ✗ 回答の経路が不正: rec={rec} inbox={inbox_before.exists()}")
+                    ng += 1
+            else:
+                print(f"  ✗ 文章の回答が reply を書かない: {fr}")
+                ng += 1
+            shutil.rmtree(APPR, ignore_errors=True)
+            page.keyboard.press("Escape")
             page.evaluate("(w) => window.__office.inject(w)", world)
             page.wait_for_timeout(200)
 

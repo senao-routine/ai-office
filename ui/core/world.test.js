@@ -5,7 +5,7 @@ import { test } from "node:test";
 import {
   DESK_SLOTS, activityGloss, activityText, agoStr, assignMeetingRooms, assignRestSpots, assignSeats, attentionQueue, buildWorld, isMuted,
   countByZone, deliveryTransitions, needsAttention, stableIndex, summarizeWorld, tidyActivity,
-  topAttention, triageSort, zoneOf,
+  stalledSends, topAttention, triageSort, zoneOf,
 } from "./world.js";
 
 const proj = (over = {}) => ({
@@ -414,4 +414,41 @@ test("isMuted: 待機切れかつ非稼働のみ true（稼働中は届くので
   assert.equal(isMuted({ listening: true, state: "waiting" }), false);
   assert.equal(isMuted({ state: "waiting" }), false);        // 旧server（未搬送）は脅さない
   assert.equal(isMuted(null), false);
+});
+
+test("isMuted: ❗中は working でも「届かない」側（R86-G・実測で塞いだ穴）", () => {
+  // 権限ダイアログ/AskUserQuestion で止まったセッションは**ターンが終わらない**ので
+  // Stop hook が起動せず、人間がターミナルを触るまで無期限に届かない。
+  // しかもブロック中は必ず state:"working" なので、working を一律除外していると
+  // ❗が立ってから最初の164秒＝いちばん必要な瞬間だけ警告が消えていた。
+  assert.equal(isMuted({ listening: false, state: "working", approvalMin: 2 }), true);
+  assert.equal(isMuted({ listening: false, state: "working", question: "どっち?" }), true);
+  assert.equal(isMuted({ listening: false, state: "working", attention: true }), true);
+  // ❗が無い稼働中は従来どおり誤警告しない
+  assert.equal(isMuted({ listening: false, state: "working" }), false);
+  assert.equal(isMuted({ listening: true, state: "working", approvalMin: 9 }), false);
+});
+
+test("stalledSends: 送ったのに動かない相手だけを1回だけ返す（R86-G）", () => {
+  const stuck = proj({ session: "s1", name: "A", listening: false, attention: true, approvalMin: 3 });
+  const moving = proj({ session: "s2", name: "B", listening: true, attention: true, approvalMin: 3 });
+  const agents = [stuck, moving].map((p) => buildWorld({ roster: [p] }).agents[0]);
+  const sent = new Map([["s1", 100], ["s2", 100]]);
+  const noted = new Set();
+
+  // 90秒たつまでは黙っている（送信直後に脅さない）
+  assert.deepEqual(stalledSends(sent, agents, 180, noted), []);
+  const hit = stalledSends(sent, agents, 200, noted);
+  assert.equal(hit.length, 1);
+  assert.equal(hit[0].session, "s1");
+  assert.equal(hit[0].min, 2);            // 100秒 → 2分（切り上げでなく四捨五入・最低1）
+  // 通知済みは二度と返さない（毎ポーリングでトーストを撃たない）
+  noted.add("s1");
+  assert.deepEqual(stalledSends(sent, agents, 400, noted), []);
+  // ❗が消えていれば（＝届いて動いた）対象外
+  const cleared = buildWorld({ roster: [proj({ session: "s3", listening: false })] }).agents;
+  assert.deepEqual(stalledSends(new Map([["s3", 0]]), cleared, 999, new Set()), []);
+  // 相手が居なくなった/引数が壊れていても落ちない
+  assert.deepEqual(stalledSends(new Map([["zz", 0]]), agents, 999, new Set()), []);
+  assert.deepEqual(stalledSends(null, agents, 999, new Set()), []);
 });

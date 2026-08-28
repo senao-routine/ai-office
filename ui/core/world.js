@@ -48,6 +48,9 @@ export function buildWorld(office) {
     // R86-D: いま指示を受け取れるか（Stop hookの待機が生きているか）。
     // 旧server（未搬送）は undefined → true 扱い＝根拠なく「届かない」と脅さない。
     listening: p.listening !== false,
+    // R86-H: PermissionRequest フックが「いま聞いていること」を掲示していれば、その事実。
+    // {tool, kind} は中継にも載る（本文=title は Mac の外へ出さない）。
+    ask: (p.ask && typeof p.ask === "object") ? p.ask : null,
     minions: Number(p.minions) || 0,
     age: Number(p.age) || 0,
     external: p.external || null,
@@ -209,7 +212,16 @@ export function needsAttention(employee) {
  * listening 未搬送（旧server）は undefined → 警告しない（根拠なく脅さない）。
  */
 export function isMuted(agent) {
-  return Boolean(agent) && agent.listening === false && agent.state !== "working";
+  if (!agent || agent.listening !== false) return false;
+  // R86-H: 承認フックが待っている＝いま直接届く（Stop hook は動いていないが別の口が開いている）
+  if (agent.ask) return false;
+  // ★R86-G: ❗中は working でも「ターン終了直後に届く高速パス」ではない。
+  // 権限ダイアログや AskUserQuestion で止まっているセッションは**ターンが終わらない**ので
+  // Stop hook が起動せず、人間がターミナルを触るまで無期限に届かない（実測: 60秒不達→
+  // ターミナルで承認した2秒後に到達）。しかもブロック中は必ず state:"working" なので、
+  // working を一律に除外していると **❗が立ってから最初の164秒＝いちばん必要な瞬間だけ
+  // 警告が消える**（実測で構造的に確認）。❗が立っているなら working でも警告する。
+  return agent.state !== "working" || needsAttention(agent);
 }
 
 /**
@@ -409,6 +421,25 @@ export function topAttention(agents) {
  * answered = ❗が解消した（回答が実セッションに反映された）
  * 新規出現エージェントは対象外（初回データで誤発火しない）。
  */
+/**
+ * R86-G: 投函したのに**動いていない**相手を返す（1相手につき1回だけ知らせるための純関数）。
+ * 「押した→静かに何も起きない」が今回のユーザー報告の体験そのものだったので、
+ * UIが黙らないようにする。sent: Map(session -> 投函時刻[mono秒])、notified: Set(session)。
+ * 条件: 投函から holdSec 経っても ❗ が消えず、かつ届いていない（isMuted）相手。
+ */
+export function stalledSends(sent, agents, now, notified, holdSec = 90) {
+  const out = [];
+  if (!sent || !Array.isArray(agents)) return out;
+  for (const [session, at] of sent) {
+    if (notified && notified.has(session)) continue;
+    if (!(now - at >= holdSec)) continue;
+    const a = agents.find((x) => x && x.session === session);
+    if (!a || !needsAttention(a) || !isMuted(a)) continue;
+    out.push({ session, name: a.name || session, min: Math.max(1, Math.round((now - at) / 60)) });
+  }
+  return out;
+}
+
 export function deliveryTransitions(prevAgents, agents) {
   const prev = new Map((Array.isArray(prevAgents) ? prevAgents : [])
     .map((a) => [a.session, a]));

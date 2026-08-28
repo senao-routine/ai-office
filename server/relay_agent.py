@@ -327,6 +327,26 @@ def _process_items(items):
                 ack_ids.extend(done_ids)
             continue
         chunk, n = _first_chunk(g["texts"])   # 4000字に収まる先頭chunkだけ（残りは次tickへ繰り越す）
+        # R86-H: 相手が「いま人間に聞いていて止まっている」なら、指示ポストでは届かない
+        # （ターンが終わらない＝Stop hook が起動しない）。承認フックが待っているので
+        # そちらへ回答として渡す。★ここから allow は出せない（write_approval_reply の
+        # src="relay" をフック側が構造的に拒否する）＝スマホは「言葉を届ける」だけ。
+        ask = office.pending_approval(session)
+        if ask:
+            try:
+                office.write_approval_reply(session, "deny", _answer_text(ask, chunk),
+                                            src="relay")
+            except (OSError, ValueError) as e:
+                print(f"⚠ 回答の受け渡し失敗・残置して再試行 ({session}): {e}", flush=True)
+                continue
+            delivered += 1
+            committed = True
+            for k in g["keys"][:n]:
+                if k is not None:
+                    _NONCES[k[0]] = k[1]
+            ack_ids.extend(g["ids"][:n])
+            print(f"✓ 承認まちへ回答を配達 {session} ({ask['kind']})", flush=True)
+            continue
         try:
             ok, _msg = office.post_instruction(session, chunk)
         except OSError as e:
@@ -416,6 +436,19 @@ def _scrub_feed_line(ln):
     return scrubbed[:60]
 
 
+def _answer_text(ask, text):
+    """スマホからの回答文をフックへ渡す形に整える。
+
+    許可(allow)が必要な操作に「はい」と答えられても、こちらは実行を通せない。
+    モデルが「内容が気に入らなくて拒否された」と誤解しないよう、事実を1行添える
+    （ここを曖昧にすると同じツールを何度も再試行して詰まる）。"""
+    text = (text or "").strip()
+    if ask.get("kind") == "question":
+        return text
+    return (text + "\n（AIオフィス経由のユーザー回答です。実行の許可はMacのターミナルでのみ"
+                   "与えられるため、この操作自体は実行されていません。上の回答に従ってください）")
+
+
 def _redact_entry_for_relay(e):
     """社員/プロジェクト1件から本文・パスを落とす（employees[] と projects[] で共通）。"""
     if not isinstance(e, dict):
@@ -435,6 +468,10 @@ def _redact_entry_for_relay(e):
                      if not (isinstance(ln, str) and ln.lstrip().startswith("💬"))]
     if "work" in e:
         e["work"] = _sanitize_work_for_relay(e["work"])
+    if isinstance(e.get("ask"), dict):
+        # R86-H: 「聞かれている」事実は運ぶが、聞かれている**中身**は運ばない。
+        # title は Bash コマンド全文・質問文そのもの＝本文。tool/kind だけ残す。
+        e["ask"] = {"tool": e["ask"].get("tool", ""), "kind": e["ask"].get("kind", "")}
 
 
 def _redact_office_for_relay(office_snapshot):

@@ -5,11 +5,11 @@
 // 全ての数値は world（実データ）から。参考画像にある FUNDS 等の
 // 実データが無い数値は出さない（嘘のメトリクス禁止＝プラン確定事項）。
 import {
-  STARVE_MIN, activityGloss, agoStr, attentionQueue, buildWorld, isMuted,
+  STARVE_MIN, activityGloss, agoStr, attentionQueue, buildWorld, isMuted, stalledSends,
   deliveryTransitions, summarizeWorld, tidyActivity,
 } from "/ui/core/world.js";
 import {
-  focusTerminal, getKeysStatus, getOffice, getRecipes, getStatusBoard,
+  approvalReply, focusTerminal, getKeysStatus, getOffice, getRecipes, getStatusBoard,
   getDialog, getTemplates, setRecipes, setTemplates,
   newProject, pairList, pairNew, pairRevoke, pickProjectFolder, poll, postInstruction,
   budgetApply, fxApply, launchProject, setOfficeKey, setServerLang, spendApply,
@@ -209,6 +209,12 @@ export async function mount(root) {
       if (!recentSends.has(tr.session)) continue;
       showToast(tr.kind === "woke" ? T("woke", tr.name) : T("attn_resolved", tr.name));
       wakeUntil.set(tr.session, now() + 5);
+      sendStallNoted.delete(tr.session);        // 動いたので「止まっている」通知の対象から外す
+    }
+    // R86-G: 送ったのに動かない相手を黙って放置しない（「押しても何も起きない」への回答）
+    for (const st of stalledSends(recentSends, built.agents, now(), sendStallNoted)) {
+      sendStallNoted.add(st.session);
+      showToast(T("send_stalled", st.name, st.min), false);
     }
     prevAgents = built.agents;
     if (!gaugesKicked) { gaugesKicked = true; refreshGauges(); }   // features判明後に初回起動
@@ -228,6 +234,7 @@ export async function mount(root) {
   const answered = new Map();        // session -> ❗内容キー（回答済み・反映待ちの楽観状態）
   let prevAgents = null;             // 前回world（配達の手応え=遷移検出用）
   const recentSends = new Map();     // session -> mono秒（このUIから最近投函した相手だけ手応えを出す）
+  const sendStallNoted = new Set();  // R86-G: 「送ったが動いていない」を1相手1回だけ言う
   const wakeUntil = new Map();       // session -> mono秒（足元チップの動き出しハイライト期限）
   const toastEl = shell.querySelector("#toast");
   // R67: トーストは直近2件の縦スタック（連続送信で前のメッセージが無告知で消えるのを根絶）。
@@ -264,8 +271,20 @@ export async function mount(root) {
     sending = true;
     sendingUi(true);
     try {
-      await postInstruction(session, text);
-      showToast(T("deliver_ok", name));
+      // 宛先はセッション完全一致だけで引く（crewrowで非代表セッションへ切り替えている場合、
+      // 代表の listening を流用すると別人の状態で言い分けることになる＝黙って従来文言）
+      const tgt = built?.agents?.find((x) => x.session === session);
+      if (tgt?.ask) {
+        // R86-H: いま人間に聞いていて止まっている相手。指示ポストはターンが終わるまで
+        // 届かない（＝これが「承認しても届かない」の正体）ので、承認フックへ直接答える。
+        await approvalReply(session, "deny", text);
+        showToast(T("answer_sent", name));
+      } else {
+        await postInstruction(session, text);
+        // R86-G: 届かない相手（ターンが終わらず Stop hook が起動していない）に
+        // 「配達しました」と言わない。inbox には残るので、そのターミナルを触った瞬間に届く。
+        showToast(T(isMuted(tgt) ? "deliver_saved" : "deliver_ok", name));
+      }
       recentSends.set(session, now());   // R53.2: 手応え（woke/answered）を出す対象に登録
       if (attnKey) {
         // ❗への回答は「回答済み・反映待ち」を楽観表示し、二重送信の窓を即closeする
@@ -435,6 +454,13 @@ export async function mount(root) {
         ? `❓ ${agent.question}`
         : `❗ ${T("approval_min", agent.approvalMin)}` +
           (agent.stuckTool ? `\n${T("attn_target", tidyActivity(agent.stuckTool, 60))}` : "")));
+      // R86-H: 推測ではなく事実（フックが掲示している「いま聞かれていること」）が
+      // あるときは明示する＝ここから答えれば本当に届く、の根拠を見せる
+      if (agent.ask) {
+        q.append(sEl("div", "askfact", agent.ask.kind === "permission"
+          ? T("ask_perm", agent.ask.tool || "", agent.ask.title || "")
+          : T("ask_live")));
+      }
       body.append(q);
     }
     // 💬 セッションのやり取り（R86-B／R86-C で本文の**先頭**へ移動）: 実会話をオンデマンド取得
@@ -528,6 +554,25 @@ export async function mount(root) {
         : [{ label: T("opt_approve"), text: T("opt_approve_text") },
            { label: T("opt_pause"), text: T("opt_pause_text") },
            { label: T("opt_report"), text: T("opt_report_text") }];   // R80: スマホと同じ3本
+      if (agent.ask?.kind === "permission") {
+        // 実行の許可は「はい」という**文章**では通らない。許可そのものを送るボタンを出す。
+        // （この経路＝loopback+CSRF＝Macの前の人間だけが押せる。スマホには出さない）
+        const yes = sEl("button", "sheetopt allowbtn", T("opt_allow"));
+        yes.type = "button";
+        yes.addEventListener("click", async () => {
+          try {
+            await approvalReply(agent.session, "allow", "");
+            showToast(T("allow_sent", agent.name));
+            answered.set(agent.session, attnKeyFor(agent));
+            closeCompose();
+          } catch (e) {
+            showToast(T("deliver_fail", String(e?.message || e)), false);
+          }
+        });
+        answers.append(yes);
+        opts.length = 0;
+        opts.push({ label: T("opt_refuse"), text: T("opt_refuse_text") });
+      }
       for (const o of opts) {
         const b = sEl("button", "sheetopt", o.label);
         b.type = "button";

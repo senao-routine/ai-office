@@ -1657,7 +1657,11 @@ PWA_GLOSS_SOURCE +
 // isMuted と同一に保つ。★working は除外＝受信待機の心拍は Stop hook の待機ループ中しか
 // 打たないので稼働中は必ず listening:false になるが、それは「ターン終了直後に届く」
 // 高速パスであって異常ではない。ここを外すと忙しい社員全員に嘘の警告が付く（実測）。
-'function isMute(e){return !!e&&e.listening===false&&e.state!=="working"}' +
+// PWA_ISMUTE_BEGIN（正本= ui/core/world.js の isMuted。真理値表は tests/ismute_parity.mjs が機械照合）
+'function isMute(e){if(!e||e.listening!==false)return false;'+
+'if(e.ask)return false;'+
+'return e.state!=="working"||needsAttn(e)}' +
+// PWA_ISMUTE_END
 'function muteChip(){return el("span","dchip mute",T("📴 受信待機なし","📴 Not listening"))}' +
 // R79: アバター＝モノグラム（名前1文字＋状態リング）。ドット絵の立ち絵は2D時代の遺物で、
 // デスクトップ3Dは一切使っていなかった（スプライト同梱2.4MBの存在理由がここだけだった）。
