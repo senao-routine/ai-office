@@ -121,6 +121,31 @@ class PendingApprovalTest(unittest.TestCase):
         self.assertEqual(e["question"], "A案とB案どちらにしますか?")
         self.assertEqual(e["questionOptions"], ["A案", "B案"])
 
+    def test_blocked_session_stays_on_the_floor(self):
+        """★止まっている＝イベントが出ない＝古く見える。素直に3時間窓で切ると
+        **承認まちが画面から消える**（実測: 3時間45分ブロックされた works が非表示だった）。"""
+        sess = "sess-stuck0001"
+        proj = Path(self.home) / ".claude/projects/-tmp-demo"
+        proj.mkdir(parents=True, exist_ok=True)
+        f = proj / f"{sess}.jsonl"
+        old_ts = time.strftime("%Y-%m-%dT%H:%M:%S.000Z",
+                               time.gmtime(time.time() - 5 * 3600))
+        f.write_text(json.dumps({"type": "assistant", "cwd": "/tmp/demo", "timestamp": old_ts,
+                                 "message": {"role": "assistant", "content": [
+                                     {"type": "tool_use", "name": "Bash",
+                                      "input": {"command": "git add ."}}]}}) + "\n",
+                     encoding="utf-8")
+        publish(self.home, sess, ts=time.time() - 5 * 3600, deadline=time.time() + 600)
+        emps = self.office.scan_office()["employees"]
+        me = [e for e in emps if e["session"] == sess]
+        self.assertTrue(me, "承認まちのセッションが出勤窓から落ちて画面から消えた")
+        self.assertEqual(me[0]["state"], "waiting", "人間待ちなのに休憩中に見える")
+        # 掲示が無ければ従来どおり退勤扱い（幽霊社員の対策は生きている）
+        (Path(self.home) / ".claude/office_approvals" / f"{sess}.json").unlink()
+        emps2 = self.office.scan_office()["employees"]
+        self.assertFalse([e for e in emps2 if e["session"] == sess],
+                         "掲示が無い古いセッションまで居座らせている")
+
     def test_no_posting_keeps_old_heuristic(self):
         """掲示が無い（フック未配線の旧セッション）ときは従来どおり推測に委ねる＝暗転しない。"""
         sess = "sess-live3333"

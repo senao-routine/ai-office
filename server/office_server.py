@@ -1165,6 +1165,9 @@ def parse_session(path, now):
     # 人間がターミナルで答えた瞬間に掲示が消える（❗が居座らない）。
     ask = pending_approval(path.stem, now, grace=ASK_GRACE)
     if ask:
+        # 人間の返事を待って止まっている＝「休憩中」でも「作業中」でもなく **あなた待ち**。
+        # （resting のままだとラウンジへ歩いて行き、❗の相手が休んでいるように見える）
+        state = "waiting"
         if ask["kind"] == "question":
             question = question or ask["title"]
             if not question_options and ask["options"]:
@@ -1505,7 +1508,11 @@ def scan_office():
             # R86-D: mtime のゲートを通っても、**中身**が SHOW_WINDOW より古ければ退勤扱い。
             # Claude Code がアイドルな transcript を1時間ごとに touch するため、mtime だけだと
             # 数十時間前に終わったセッションが居座り続ける（実測53%が幽霊）。
-            if info and info.get("age", 0) > SHOW_WINDOW:
+            # ★R86-H: ただし「いま人間の返事を待って止まっている」セッションは落とさない。
+            # 止まっている＝新しいイベントが出ない＝古く見える、という構造なので、素直に
+            # 窓で切ると**承認まちが3時間で画面から消える**（実測: 3時間45分ブロックされた
+            # works セッションが❗224分と算出されたまま非表示だった）。掲示があれば生きている。
+            if info and info.get("age", 0) > SHOW_WINDOW and not info.get("ask"):
                 continue
             if info:
                 dept, role = project_label(info["cwd"], proj.name, config)
