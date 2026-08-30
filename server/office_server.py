@@ -2774,6 +2774,22 @@ def _rotate_daemon_log(name, limit=5 * 1024 * 1024):
         pass
 
 
+class _OfficeHTTPServer(ThreadingHTTPServer):
+    """ブラウザが読み終わる前に閉じただけで25行のトレースバックを吐かない。
+
+    実測（2026-08-28・本番ログ）: ページを閉じる/リロードするたびに socketserver が
+    BrokenPipeError/ConnectionResetError のトレースバックを流し、**本物のエラーが
+    その中に埋もれていた**（36件中36件がこれ）。切断は異常ではないので1行に畳む。
+    それ以外の例外は今までどおり全文出す（握り潰さない）。
+    """
+
+    def handle_error(self, request, client_address):
+        exc = sys.exc_info()[1]
+        if isinstance(exc, (BrokenPipeError, ConnectionResetError)):
+            return                      # ブラウザが先に閉じただけ＝正常
+        super().handle_error(request, client_address)
+
+
 def _install_ts_logging(log_name):
     """serve経路のみで呼ぶ（--dump のJSON出力・mcp_office の stdout純度を汚さない）。
     TTY（手動起動の対話ターミナル）では素通し＝daemon/リダイレクト時だけ有効。"""
@@ -3164,7 +3180,7 @@ def main():
     srv = None
     for attempt in range(3):
         try:
-            srv = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
+            srv = _OfficeHTTPServer(("127.0.0.1", args.port), Handler)
             break
         except OSError as e:
             if e.errno != errno.EADDRINUSE:

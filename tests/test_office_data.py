@@ -115,3 +115,30 @@ class PageFallbackTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DisconnectNoiseTest(unittest.TestCase):
+    """ブラウザを閉じただけで25行のトレースバックを吐かない（本物のエラーが埋もれる）。"""
+
+    def test_broken_pipe_is_one_liner(self):
+        import io
+        import sys as _sys
+        o = _load("office_noise", ROOT / "server" / "office_server.py")
+        srv = o._OfficeHTTPServer.__new__(o._OfficeHTTPServer)
+        buf = io.StringIO()
+        old = _sys.stderr
+        _sys.stderr = buf
+        try:
+            try:
+                raise BrokenPipeError(32, "Broken pipe")
+            except BrokenPipeError:
+                srv.handle_error(None, ("127.0.0.1", 1))
+            self.assertEqual(buf.getvalue(), "", "切断でトレースバックを吐いている")
+            # 本物の例外は今までどおり出す（握り潰さない）
+            try:
+                raise ValueError("本物のバグ")
+            except ValueError:
+                srv.handle_error(None, ("127.0.0.1", 1))
+            self.assertIn("本物のバグ", buf.getvalue())
+        finally:
+            _sys.stderr = old
