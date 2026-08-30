@@ -675,6 +675,12 @@ export class IsoScene {
     if (agent.zone === "desk") {
       const seat = world.seats.get(agent.id);
       if (seat !== undefined && list[seat]) return list[seat];
+      // R86-K: 席が尽きた人は**立ち作業**（待機列の空きスペースに立つ）。
+      // ここが無いと index%12 で既存の席に重なり、椅子1脚に2体が同居する
+      // （実測: 20セッションで8体が誰かの中に居た）。role:"stand" で座らせない。
+      const ov = world.overflow?.get(agent.id);
+      const stand = this.anchors.queue;
+      if (ov !== undefined && stand && stand[ov]) return { ...stand[ov], role: "stand" };
     }
     const a = list[index % list.length];
     if (a) return a;

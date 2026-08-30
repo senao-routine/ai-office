@@ -109,8 +109,18 @@ fi
 # test_scene_geometry.py も R80 Phase4 で撤去済み（3Dの間取り正本= ui/core/nav.js）
 
 echo "▶ 4/8 ユニットテスト (状態推定ゴールデン他)"
-python3 -m unittest discover -s tests -q 2>&1 | tail -2 | sed 's/^/  /'
-python3 -m unittest discover -s tests -q >/dev/null 2>&1 || ng "unittest失敗"
+# 1回だけ走らせて、出力と終了コードの両方を取る（従来は表示用と判定用で**2回**回しており、
+# 32秒×2の無駄に加えて「1回目green・2回目だけ落ちる」フレークを自ら作っていた）。
+_ut_log="$(mktemp -t aioffice_unittest)"
+python3 -m unittest discover -s tests -q >"$_ut_log" 2>&1
+_ut_rc=$?
+tail -2 "$_ut_log" | sed 's/^/  /'
+if [ "$_ut_rc" != "0" ]; then
+  grep -E "^(FAIL|ERROR):" "$_ut_log" | head -5 | sed 's/^/  /'
+  ng "unittest失敗（詳細: ${_ut_log}）"
+else
+  rm -f "$_ut_log"
+fi
 
 # テストポート: 既定4797（台帳）。dev.sh の fixtureサーバー等が使用中なら空きポートへ退避する。
 # 先客のまま固定ポートへ撃つと、テストenv注入なしの実サーバーに /api/project/pick が刺さり

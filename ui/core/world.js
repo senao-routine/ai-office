@@ -68,6 +68,7 @@ export function buildWorld(office) {
     a.shortName = l.short || a.name;
   }
 
+  const seats = assignSeats(agents);
   return {
     officeName: office.officeName || "",
     lang: office.lang || "ja",
@@ -76,7 +77,9 @@ export function buildWorld(office) {
     generatedAt: Number(office.generatedAt) || 0,
     setup: (office.setup && typeof office.setup === "object") ? office.setup : null,
     agents,
-    seats: assignSeats(agents),
+    seats,
+    // R86-K: 席にあぶれた人の立ち位置（13体目から。無ければ空Map＝従来と完全に同じ）
+    overflow: assignOverflow(agents, seats),
     counts: countByZone(agents),
     tasks: office.tasks || { pending: 0, inProgress: 0, completed: 0 },
     // R86-I: 「今日のオフィス」の実数（件数のみ・本文は載らない）
@@ -94,7 +97,7 @@ function emptyWorld() {
   return {
     officeName: "", lang: "ja", edition: null, features: {}, generatedAt: 0,
     setup: null,
-    agents: [], seats: new Map(), history: [],
+    agents: [], seats: new Map(), overflow: new Map(), history: [],
     counts: { desk: 0, meeting: 0, queue: 0, lounge: 0, external: 0, attention: 0 },
     tasks: { pending: 0, inProgress: 0, completed: 0 }, today: null,
     relay: null, launchable: [], avatarMode: "project",
@@ -283,6 +286,28 @@ export function assignSeats(agents, slots = DESK_SLOTS) {
     seats.set(a.id, idx);
   }
   return seats;
+}
+
+/**
+ * R86-K: 机が尽きたセッションの立ち位置。
+ *
+ * 実測（2026-08-30）: 机は12席しかなく、**13体目からは既存の席に重ねて描かれていた**
+ * （描画側の `index % list.length` フォールバック）＝椅子1脚に2体が同居する絵になる。
+ * 20体で8体が誰かの中に居た。席にあぶれた人には「立ち作業」の場所を配る。
+ * spare は待機列の空きスロット数（そこも尽きたら描画側の従来フォールバックへ）。
+ */
+export function assignOverflow(agents, seats, spare = QUEUE_SLOTS) {
+  const out = new Map();
+  const list = Array.isArray(agents) ? agents : [];
+  let next = list.filter((a) => zoneOf(a) === "queue").length;   // 実際の待機列の後ろから
+  for (const a of list) {
+    if (!a || zoneOf(a) !== "desk") continue;
+    if (seats && seats.has(a.id)) continue;
+    if (next >= spare) break;
+    out.set(a.id, next);
+    next += 1;
+  }
+  return out;
 }
 
 /**

@@ -494,3 +494,24 @@ test("buildWorld が badge/shortName を配る（R86-I）", () => {
   assert.equal(byName["制作本部(works) 7号"].shortName, "works 7");
   assert.equal(byName["制作本部(works)"].badge, "W");
 });
+
+test("assignOverflow: 席が尽きた人に立ち位置を配る（R86-K）", () => {
+  // 実測: 机は12席しかなく、13体目からは既存の席に重ねて描かれていた（椅子1脚に2体）
+  const mk = (n) => Array.from({ length: n }, (_, i) => proj({
+    projectId: "p" + String(i).padStart(2, "0"), session: "s" + i, state: "working" }));
+  const w20 = buildWorld({ roster: mk(20) });
+  const desk = w20.agents.filter((a) => a.zone === "desk");
+  const noSeat = desk.filter((a) => !w20.seats.has(a.id));
+  assert.equal(noSeat.length, 8, "12席を超えた分が席なしになっていない");
+  assert.ok(noSeat.every((a) => w20.overflow.has(a.id)), "席なしに立ち位置が配られていない");
+  // 立ち位置は重複しない（重なったら意味が無い）
+  const spots = [...w20.overflow.values()];
+  assert.equal(new Set(spots).size, spots.length, "立ち位置が重複している");
+  // 席がある人には配らない・12席以下では一切発生しない
+  assert.ok(desk.filter((a) => w20.seats.has(a.id)).every((a) => !w20.overflow.has(a.id)));
+  assert.equal(buildWorld({ roster: mk(12) }).overflow.size, 0, "12体以下で挙動が変わっている");
+  // 待機列の実占有分は避ける（❗持ちが並んでいる後ろに立つ）
+  const mixed = [...mk(14), proj({ projectId: "zz", session: "sz", attention: true })];
+  const wm = buildWorld({ roster: mixed });
+  assert.ok(Math.min(...wm.overflow.values()) >= 1, "待機列の先客に重ねている");
+});
