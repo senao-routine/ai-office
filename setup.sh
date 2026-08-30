@@ -63,9 +63,28 @@ if [ "$MODE" = "--check" ]; then
   else
     info "サーバーは停止中"
   fi
+  # R86-H: 承認・質問への回答は Stop hook とは別の口（PermissionRequest）。
+  # ここが未配線だと「❗は出るのに答えても届かない」＝いちばん分かりにくい壊れ方をする。
+  if python3 - "$HOME/.claude/settings.json" <<'PYEOF' 2>/dev/null
+import json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+except Exception:
+    sys.exit(1)
+groups = (d.get("hooks") or {}).get("PermissionRequest") or []
+hit = any("office-approval-wait" in (h.get("command") or "")
+          for g in groups if isinstance(g, dict)
+          for h in (g.get("hooks") or []) if isinstance(h, dict))
+sys.exit(0 if hit else 1)
+PYEOF
+  then
+    good "承認・質問への回答フックが配線済み（PermissionRequest）"
+  else
+    bad "承認フックが未配線（bash setup.sh で配線されます）"
+  fi
   [ -f "$HOME/.claude/office_relay.json" ] \
     && good "スマホ中継の設定あり（bash relay/setup.sh で作成済み）" \
-    || info "スマホ連携は未設定（有料機能・bash relay/setup.sh で設定）"
+    || info "スマホ連携は未設定（任意・bash relay/setup.sh で設定。自分のCloudflare無料枠で動きます）"
   say ""
   say "診断のみ実行しました（インストールはしていません）。"
   exit 0
@@ -133,8 +152,8 @@ if [ "$ng" -eq 0 ]; then
   say "  オフィスを開く:   open http://localhost:$PORT"
   say "  誰も居ないときは: open 'http://localhost:$PORT/?demo=1'  ← デモ"
   say ""
-  say "  スマホから承認・遠隔実行（有料機能）を使う場合:"
-  say "     bash relay/setup.sh    ← Cloudflareの設定まで1コマンドで行います"
+  say "  外出先からスマホで見る/答える場合（任意）:"
+  say "     bash relay/setup.sh    ← 自分のCloudflare無料枠に中継を置きます（1コマンド）"
   command -v open >/dev/null 2>&1 && open "http://localhost:$PORT" 2>/dev/null || true
   exit 0
 fi

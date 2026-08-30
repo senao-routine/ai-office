@@ -2,7 +2,7 @@
 
 **Mission control for your AI agent fleet — a live 3D robot office on your Mac, with real controls and a phone app so your agents never stall while you're away.**
 
-Every Claude Code session on your Mac walks into a glass-and-neon isometric office as a little white robot. Sessions in the same project fold into **one avatar** (`works ×9`), so twenty terminals read as a calm floor plan — who's typing, who's in a meeting with subagents, who's stuck waiting for you. Then you *act*: answer with number keys, tap a robot to open its status sheet, or approve from your phone on the train.
+Every Claude Code session on your Mac walks into a glass-and-neon isometric office as a little white robot. **One session, one robot** — the name you set with Claude Code's `/rename` becomes the avatar's name, so three or four sessions in the same folder stay distinguishable (a per-project mode is still available in config). Twenty terminals read as a calm floor plan — who's typing, who's in a meeting with subagents, who's stuck waiting for you. Then you *act*: answer with number keys, click a robot to open its status sheet, or **answer the permission prompt that stopped a terminal, right from this screen**.
 
 ![AI Office demo](docs/demo.gif)
 
@@ -63,10 +63,22 @@ bash setup.sh --no-daemon   # just run it here, don't install as a resident app
 Open <http://localhost:4780> — sessions on your Mac appear as robots.
 No sessions yet? `/?demo=1` shows a populated office.
 
+### Answering permission prompts from the office
+
+An inbox message can only reach a session at the end of a turn — so a session frozen on a
+permission dialog would never receive it. A `PermissionRequest` hook closes that gap: it posts
+what is being asked, the office shows it as fact (not a guess), and your answer comes back as the
+decision. **From the Mac's own screen (127.0.0.1) you can grant execution; from your phone you can
+only send words** — so a leaked relay token can never turn into arbitrary code execution.
+
 ### What it touches
 
-- `~/.claude/settings.json` — adds a Stop hook (a backup is kept). This is what lets your answers
-  reach the running session.
+- `~/.claude/settings.json` — adds two hooks (a backup is kept):
+  a **Stop** hook, which lets your instructions reach a session at the end of its turn, and a
+  **PermissionRequest** hook, which lets you answer the permission prompt or question that
+  stopped a terminal. Neither changes how your terminal behaves: if you don't answer from the
+  office, the usual dialog appears and you answer it there (and a human answer always wins,
+  even while the hook is waiting).
 - `~/Library/Application Support/AIOffice/` — the app and its data
 - `~/Library/LaunchAgents/com.senao.aioffice.plist` — starts the office at login
 - **macOS will ask for permission** the first time the office opens a Terminal for you
@@ -105,6 +117,18 @@ the cost dashboard are all included — no license, no subscription, no account,
 
 Like it? The [product page](https://routinelabo-lp.routinelabo-senao.workers.dev) has updates and a
 membership community (early builds, new tools, hands-on support).
+
+## Uninstalling
+
+```bash
+bash macapp/uninstall.sh              # remove the daemon and code (keeps your data/ config)
+bash macapp/uninstall.sh --purge-data # remove everything
+```
+
+The two hooks added to `~/.claude/settings.json` (`office-inbox-wait` / `office-approval-wait`)
+are not removed automatically — delete those blocks by hand or restore the `settings.json.bak-…`
+backup. Leaving them in place is harmless: with the office stopped they simply wait and time out,
+and your terminal behaves exactly as before.
 
 ## Requirements
 
