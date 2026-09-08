@@ -3,6 +3,9 @@
 //   node --test ui/core/nav.test.js
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { assignSeats } from "./world.js";
+import { buildLayout } from "./layout.js";
+import { LAYOUT_SPECS } from "./layout_specs.js";
 import {
   BOSS_WALK, CLEANER_ROUTE, IDLE_SPOTS, LAYOUT, PODS, REST_SPOTS, WALL,
   obstacleRects, routePath, segIntersectsRect, walkGraph,
@@ -105,10 +108,10 @@ test("R59: REST_SPOTS は床の内側・エリア外の席は障害物に載ら�
     areas[s.area] = (areas[s.area] || 0) + 1;
     assert.ok(s.x > WALL.left && s.x < WALL.right && s.z > WALL.back && s.z < WALL.front,
       `${s.area} が床の外`);
-    if (s.area === "lounge" || s.area === "sofa") {
+    if (["lounge", "sofa", "bench"].includes(s.area)) {
       // ソファ席は自エリアのゾーン矩形の中に載るのが意図（最終アプローチ扱い）。
       // ただし「別の」障害物には入っていないこと
-      const own = s.area === "lounge" ? "lounge" : "stage";
+      const own = s.area === "sofa" ? "stage" : s.area;
       for (const r of rects) {
         if (r.id === own) continue;
         const inside = s.x > r.x1 && s.x < r.x2 && s.z > r.z1 && s.z < r.z2;
@@ -283,3 +286,169 @@ test("R74: 右手前の通路幅＝第2↔第3・ラウンジ↔第3が人ひと
   // 南辺通路（z=8.45・R70で新設）を第3会議室が塞いでいない
   assert.ok(m3.z2 < 8.45, "第3会議室が南辺通路に掛かっている");
 });
+
+// R90-V7: every tier and unlock stage must satisfy the same navigation contract.
+import { specFor } from "./tier.js";
+const navigationSpecs = [...Object.entries(LAYOUT_SPECS),
+  ...Object.keys(LAYOUT_SPECS).flatMap((tier) => [0, 3, 5, 8, 12, 15, 20]
+    .map((level) => [`${tier}:Lv${level}`, specFor(tier, level)]))];
+for (const [id, spec] of navigationSpecs) {
+  const layout = buildLayout(spec);
+  const { nodes, edges } = layout.walkGraph;
+  const rects = layout.obstacleRects;
+  const margin = spec.navigation.margin;
+  const padded = rects.map((r) => ({ ...r,
+    x1: r.x1 - margin, x2: r.x2 + margin, z1: r.z1 - margin, z2: r.z2 + margin,
+  }));
+  const adj = nodes.map(() => []);
+  for (const [i, j] of edges) { adj[i].push(j); adj[j].push(i); }
+
+  test(`${id}: 縮約辺の途中と移動経路の途中から安全に再探索する`, () => {
+    const target = [layout.anchors.desk[0].x, layout.anchors.desk[0].z];
+    const starts = edges.filter(([i, j]) => Math.hypot(nodes[i][0] - nodes[j][0], nodes[i][1] - nodes[j][1]) > 1)
+      .flatMap(([i, j]) => [0.25, 0.5, 0.75].map((t) =>
+        nodes[i].map((value, axis) => value + t * (nodes[j][axis] - value))));
+    const destination = layout.anchors.meeting.byRoom.meet3?.[0] || layout.anchors.meeting.byRoom.meet2[0];
+    const outbound = routePath([-8.3, layout.WALL.front - 0.85], [destination.x, destination.z], layout.walkGraph);
+    for (let i = 1; i < outbound.length - 1; i++) {
+      starts.push(outbound[i - 1].map((value, axis) => (value + outbound[i][axis]) / 2));
+    }
+    if (id === "M") starts.push([6.7, 8.45]);  // Independent review reproduction.
+    for (const from of starts) {
+      const path = routePath(from, target, layout.walkGraph);
+      assert.deepEqual(path.at(-1), target);
+      for (let i = 1; i < path.length; i++) {
+        for (const r of rects) assert.equal(segIntersectsRect(...path[i - 1], ...path[i], r), false,
+          `${id}: reroute ${from}: ${path[i - 1]} -> ${path[i]} crosses ${r.id}`);
+      }
+    }
+  });
+
+  test(`${id}: 机8→ラウンジ0は実物の受付カウンターを避ける`, () => {
+    const q = layout.LAYOUT.queueZone;
+    // Independent dimensions from iso/office.js: top 3.4 x 1.0 at q+(1.6,1.2).
+    const counter = { x1: q.x - 0.1, x2: q.x + 3.3, z1: q.z + 0.7, z2: q.z + 1.7 };
+    assert.deepEqual(rects.find((r) => r.id === "reception"), { id: "reception", ...counter });
+    const desk = layout.anchors.desk[Math.min(8, layout.anchors.desk.length - 1)];
+    const lounge = layout.anchors.lounge[0];
+    const path = routePath([desk.x, desk.z], [lounge.x, lounge.z], layout.walkGraph);
+    assert.deepEqual(path.at(-1), [lounge.x, lounge.z]);
+    for (let i = 1; i < path.length; i++) {
+      assert.equal(segIntersectsRect(...path[i - 1], ...path[i], counter), false);
+    }
+  });
+
+  if (spec.id !== "S") test(`${id}: 実席割当の12人同時移動が全員の目的席に到達する`, () => {
+    const agents = Array.from({ length: 12 }, (_, n) => ({ id: `employee-${n}`, state: "working" }));
+    const seats = assignSeats(agents, layout.anchors.desk.length);
+    assert.equal(seats.size, 12);
+    const rooms = Object.values(layout.anchors.meeting.byRoom).flat();
+    const pairs = [...seats.values()].map((seat, n) => [layout.anchors.desk[seat], rooms[n % rooms.length]]);
+    for (const [a, b] of pairs) {
+      const path = routePath([a.x, a.z], [b.x, b.z], layout.walkGraph);
+      assert.deepEqual(path.at(-1), [b.x, b.z]);
+    }
+  });
+
+  test(`${id}: 全エッジが軸平行・全障害物と非交差・余白込みの通路幅 >= 0.9m`, () => {
+    assert.ok(nodes.length > 1 && edges.length > 0);
+    assert.ok(margin * 2 >= 0.9);
+    for (const [i, j] of edges) {
+      const a = nodes[i];
+      const b = nodes[j];
+      assert.ok(a[0] === b[0] || a[1] === b[1]);
+      assert.notDeepEqual(a, b);
+      for (const r of [...rects, ...padded]) {
+        assert.equal(segIntersectsRect(...a, ...b, r), false,
+          `${id}: ${a} -> ${b} overlaps ${r.id}`);
+      }
+    }
+    for (const [x, z] of nodes) {
+      assert.ok(x >= layout.WALL.left + margin - 1e-9 && x <= layout.WALL.right - margin + 1e-9);
+      assert.ok(z >= layout.WALL.back + margin - 1e-9 && z <= layout.WALL.front - margin + 1e-9);
+    }
+  });
+
+  test(`${id}: グラフ全体が連結している（Dijkstra の到達不能による直線化を防ぐ）`, () => {
+    const seen = new Set([0]);
+    const queue = [0];
+    for (let head = 0; head < queue.length; head++) {
+      for (const j of adj[queue[head]]) {
+        if (!seen.has(j)) { seen.add(j); queue.push(j); }
+      }
+    }
+    assert.equal(seen.size, nodes.length);
+    assert.equal(new Set(nodes.map((p) => p.join(","))).size, nodes.length);
+    assert.equal(new Set(edges.map(([i, j]) => [Math.min(i, j), Math.max(i, j)].join(","))).size, edges.length);
+  });
+
+  test(`${id}: 0.5mグリッドを保持し、直線上の中間ノードだけ間引く`, () => {
+    for (let i = 0; i < nodes.length; i++) {
+      const [x, z] = nodes[i];
+      for (const n of [(layout.WALL.right - margin - x) / 0.5, (layout.WALL.front - margin - z) / 0.5]) {
+        assert.ok(Math.abs(n - Math.round(n)) < 1e-8);
+      }
+      if (adj[i].length !== 2) continue;
+      const [a, b] = adj[i].map((j) => nodes[j]);
+      assert.ok(a[0] !== b[0] && a[1] !== b[1], `直線上の次数2ノードが残っている: ${nodes[i]}`);
+    }
+    assert.ok(edges.some(([i, j]) => Math.hypot(nodes[i][0] - nodes[j][0], nodes[i][1] - nodes[j][1]) > 0.5),
+      "直線のグリッド辺が縮約されている");
+  });
+
+  test(`${id}: 入口から全種類の席へ到達し、往復経路は目的の部屋以外を横切らない`, () => {
+    const targets = [
+      ...layout.anchors.desk.map((a) => [a, null]),
+      ...layout.anchors.queue.map((a) => [a, null]),
+      ...layout.anchors.external.map((a) => [a, null]),
+      ...layout.idleSpots.map((a) => [a, null]),
+      ...layout.restSpots.map((a) => [a, a.area === "sofa" ? "stage" : a.area]),
+      ...Object.entries(layout.anchors.meeting.byRoom).flatMap(([room, seats]) => seats.map((a) => [a, room])),
+      ...Object.entries(layout.anchors.chibi).flatMap(([room, seats]) => seats.map((a) => [a, room])),
+    ];
+    const entrance = [-8.3, layout.WALL.front - 0.85];
+    for (const [anchor, own] of targets) {
+      const target = [anchor.x, anchor.z];
+      for (const [from, to] of [[entrance, target], [target, entrance]]) {
+        const path = routePath(from, to, layout.walkGraph);
+        assert.ok(path.length >= 2);
+        assert.deepEqual(path[0], from);
+        const last = path[path.length - 1];
+        assert.ok(Math.hypot(last[0] - to[0], last[1] - to[1]) < 0.15);
+        for (let i = 0; i + 1 < path.length; i++) {
+          const a = path[i];
+          const b = path[i + 1];
+          assert.ok([...a, ...b].every(Number.isFinite));
+          const approach = i === 0 || i === path.length - 2;
+          if (approach) assert.ok(Math.hypot(a[0] - b[0], a[1] - b[1]) < 6.5);
+          for (const r of rects) {
+            if (approach && r.id === own) continue;
+            assert.equal(segIntersectsRect(...a, ...b, r), false,
+              `${id}: ${from} -> ${to}: ${a} -> ${b} crosses ${r.id}`);
+          }
+        }
+      }
+    }
+  });
+
+  test(`${id}: 掃除ロボの閉路とボスの見回り路も障害物と交差しない`, () => {
+    const cleaner = layout.cleanerRoute;
+    assert.deepEqual(cleaner[0], cleaner[cleaner.length - 1]);
+    for (const [route, start, end] of [[cleaner, 1, cleaner.length], [layout.bossWalk, 2, layout.bossWalk.length - 1]]) {
+      for (let i = start; i < end; i++) {
+        for (const r of rects) assert.equal(segIntersectsRect(...route[i - 1], ...route[i], r), false, r.id);
+      }
+    }
+  });
+
+  test(`${id}: 待機スポットは全障害物の外、休憩は自エリア以外を避ける`, () => {
+    for (const spot of [...layout.idleSpots, ...layout.restSpots]) {
+      assert.ok(spot.x > layout.WALL.left && spot.x < layout.WALL.right);
+      assert.ok(spot.z > layout.WALL.back && spot.z < layout.WALL.front);
+      const own = spot.area === "sofa" ? "stage" : spot.area;
+      for (const r of rects.filter((r) => r.id !== own)) {
+        assert.ok(!(spot.x > r.x1 && spot.x < r.x2 && spot.z > r.z1 && spot.z < r.z2), r.id);
+      }
+    }
+  });
+}

@@ -8,20 +8,29 @@ Claude のトランスクリプトは読み取り専用であり、このモジ�
 """
 import base64
 import copy
-import fcntl
 import hashlib
 import json
 import math
 import os
 import re
 import socket
+import sys
 import threading
 import time
 from datetime import datetime
+from functools import partial
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
+try:
+    import office_common
+except ModuleNotFoundError:  # importlibでファイルを直接読む既存テスト向け
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    try:
+        import office_common
+    finally:
+        del sys.path[0]
 
 _HOME = Path(os.environ.get("OFFICE_HOME") or Path.home())
 PROJECTS = _HOME / ".claude" / "projects"
@@ -146,24 +155,7 @@ _REFRESHING = False
 _REFRESH_THREAD = None
 
 
-class _file_flock:
-    """対象ファイルごとの小さなプロセス間ロック。常に _LOCK の後に取得する。"""
-
-    def __init__(self, target):
-        target = Path(target)
-        self._lockpath = target.with_name(target.name + ".lock")
-
-    def __enter__(self):
-        self._lockpath.parent.mkdir(parents=True, exist_ok=True)
-        self._file = open(self._lockpath, "w", encoding="utf-8")
-        fcntl.flock(self._file, fcntl.LOCK_EX)
-        return self._file
-
-    def __exit__(self, *_exc):
-        try:
-            fcntl.flock(self._file, fcntl.LOCK_UN)
-        finally:
-            self._file.close()
+_file_flock = office_common.file_flock
 
 
 def _zero_tokens():
@@ -804,23 +796,7 @@ def _codex_candidates():
     return candidates[:5]
 
 
-def _tail_lines(path):
-    size = path.stat().st_size
-    start = max(0, size - CODEX_TAIL_BYTES)
-    with path.open("rb") as fh:
-        previous = b"\n"
-        if start:
-            fh.seek(start - 1)
-            previous = fh.read(1)
-        fh.seek(start)
-        data = fh.read()
-    # tail の先頭が行境界なら完全行を保持し、行途中からなら断片だけを捨てる。
-    if start and previous != b"\n":
-        newline = data.find(b"\n")
-        if newline < 0:
-            return []
-        data = data[newline + 1:]
-    return data.splitlines()
+_tail_lines = partial(office_common.tail_lines_exact, nbytes=CODEX_TAIL_BYTES)
 
 
 def _secondary_gauge(secondary):

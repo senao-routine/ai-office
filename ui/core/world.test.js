@@ -113,6 +113,52 @@ test("stableIndex: 決定論で範囲内", () => {
   }
 });
 
+test("assignSeats: 同じ cwd の別セッションIDは同じ島（buildWorld 経由）", () => {
+  const w = buildWorld({ roster: [
+    proj({ projectId: "s-a", session: "a", cwd: "/projects/oak/", title: "Alpha" }),
+    proj({ projectId: "s-b", session: "b", cwd: "/projects/oak", title: "Beta" }),
+    proj({ projectId: "s-c", session: "c", cwd: "/projects/moss" }),
+  ] });
+  assert.equal(Math.floor(w.seats.get("s-a") / 2), Math.floor(w.seats.get("s-b") / 2));
+  assert.notEqual(Math.floor(w.seats.get("s-a") / 2), Math.floor(w.seats.get("s-c") / 2));
+  assert.equal(w.agents.find((a) => a.id === "s-a").name, "Alpha");
+});
+
+test("assignSeats: プロジェクト衝突と入力順の変更でも決定論・入力不変", () => {
+  const agents = Object.freeze(Array.from({ length: 6 }, (_, i) => Object.freeze({
+    id: `s${i}`, session: `s${i}`, cwd: `/projects/p${Math.floor(i / 2)}`, state: "working",
+  })));
+  const before = JSON.stringify(agents), first = assignSeats(agents, 6);
+  assert.deepEqual([...first], [...assignSeats([...agents].reverse(), 6)]);
+  assert.equal(JSON.stringify(agents), before);
+  for (let i = 0; i < 6; i += 2) assert.equal(Math.floor(first.get(`s${i}`) / 2), Math.floor(first.get(`s${i + 1}`) / 2));
+  assert.equal(new Set(first.values()).size, 6);
+});
+
+test("assignSeats: 2席を超すプロジェクトは追加島へ、非机セッションは除外", () => {
+  const agents = Array.from({ length: 5 }, (_, i) => ({ id: `a${i}`, cwd: "/projects/oak", state: "working" }));
+  const out = assignSeats([...agents,
+    { id: "question", cwd: "/projects/oak", attention: true },
+    { id: "meeting", cwd: "/projects/oak", minions: 2, state: "working" },
+    { id: "rest", cwd: "/projects/oak", state: "resting" },
+    { id: "remote", cwd: "/projects/oak", external: "openclaw" },
+  ], 6);
+  assert.equal(out.size, 5);
+  assert.equal(Math.floor(out.get("a0") / 2), Math.floor(out.get("a1") / 2));
+  assert.equal(Math.floor(out.get("a2") / 2), Math.floor(out.get("a3") / 2));
+  assert.equal(new Set([...out.values()].map((v) => Math.floor(v / 2))).size, 3);
+});
+
+test("assignSeats: cwd未搬送・奇数容量・満席でも空席を残さず重複しない", () => {
+  const agents = Array.from({ length: 8 }, (_, i) => ({ id: `p${i}`, state: "working" }));
+  assert.deepEqual([...assignSeats(agents, 5).values()].sort((a, b) => a - b), [0, 1, 2, 3, 4]);
+  assert.equal(assignSeats(agents, 0).size, 0);
+  assert.equal(assignSeats(null).size, 0);
+  const sameProject = agents.slice(0, 2).map((a) => ({ ...a, projectId: "group" }));
+  const seats = assignSeats(sameProject, 4);
+  assert.equal(Math.floor(seats.get("p0") / 2), Math.floor(seats.get("p1") / 2));
+});
+
 // ── buildWorld ────────────────────────────────────────────────
 test("buildWorld: roster[] があればそれを使う", () => {
   const w = buildWorld({
@@ -514,4 +560,13 @@ test("assignOverflow: 席が尽きた人に立ち位置を配る（R86-K）", ()
   const mixed = [...mk(14), proj({ projectId: "zz", session: "sz", attention: true })];
   const wm = buildWorld({ roster: mixed });
   assert.ok(Math.min(...wm.overflow.values()) >= 1, "待機列の先客に重ねている");
+});
+
+test("explicit accessory overrides survive world normalization; null disables keyword hats", () => {
+  const make = (arch) => buildWorld({ roster: [{ projectId: "012345abcdef", name: "Video editor", arch }] }).agents[0].arch;
+  const expected = { phones: "video", cap: "dev", beret: "design", pencil: "writer", bowtie: "ops",
+    mortar: "research", headset: "support", hardhat: "infra", eyeshade: "finance" };
+  for (const [choice, kind] of Object.entries(expected)) assert.equal(make(choice).kind, kind);
+  assert.equal(make(null).kind, "generic");
+  assert.equal(make("invalid").kind, "video");
 });

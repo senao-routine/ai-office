@@ -3,22 +3,35 @@
 import {
   chatBlend, chatPose, chatSpeaker, chibiPose, mixPose, pathTravel, poseFor,
   relaxPose, seedOf, smoothstep, thinkingPose, walkPhaseFor, walkPose,
+  approvalPose, celebratePose, enterPose, leavePose, questionPose, readPose, runPose,
+  ENTER_SECONDS, LEAVE_SECONDS, CELEBRATE_SECONDS,
+  celebrationFlash,
 } from "/ui/core/anim.js";
-import {
-  BOSS_WALK, CLEANER_ROUTE, IDLE_SPOTS, REST_SPOTS, routePath, walkGraph,
-} from "/ui/core/nav.js";
-import { frozen, rand, resetRand } from "/ui/platform/clock.js";
+import { actFor } from "/ui/core/act.js";
+import { exprFor } from "/ui/core/expr.js";
+import { growthChanges } from "/ui/core/growth.js";
+import { createDirector } from "/ui/core/broadcast.js";
+import { routePath } from "/ui/core/nav.js";
+import { buildLayout } from "/ui/core/layout.js";
+import { DEFAULT_SPEC } from "/ui/core/layout_specs.js";
+import { decorationsFor, specFor, tierFor } from "/ui/core/tier.js";
+import { createGrowth } from "/ui/platform/growth.js";
+import { frozen, localHour, rand, resetRand, randState, withRandState } from "/ui/platform/clock.js";
 import * as THREE from "/ui/vendor/three/three.module.min.js";
 import {
-  LAYOUT, buildMonitors, buildOffice, chibiSeats, externalAnchors, loungeAnchors,
-  BOSS_SEAT, COFFEE_STOP, ENTRANCE, HOLO_PANELS, envTexture, floorTexture,
-  keyboardTexture, meetingAnchors, meetingAnchorsByRoom, queueAnchors, rugTexture,
-  screenTexture, seatAnchors, skyTexture, slab, woodTexture,
+  buildMonitors, buildOffice, officeStops, projectSignAnchors,
+  floorTexture, floorNormalTexture, updateClock, keyboardTexture, rugTexture, skyTexture, woodTexture,
 } from "./office.js";
 import {
-  LOBSTER_TINT, RobotBatch, applyPose, makeChibiSkeleton, makeCleanerBot, makeSkeleton,
+  LOBSTER_TINT, GRAPHITE_TINT, RobotBatch, applyPose, makeChibiSkeleton, makeCleanerBot, makeSkeleton,
 } from "./robot.js";
-import { assignMeetingRooms, assignRestSpots, stableIndex } from "/ui/core/world.js";
+import { assignMeetingRooms, assignRestSpots, assignSeats, assignOverflow, stableIndex } from "/ui/core/world.js";
+
+import { ActivityScreens, boardTexture } from "./screens.js";
+import { leafAtlasTexture } from "./plants.js";
+import { PostProcess } from "./post.js";
+import { roomEnvironment } from "./env.js";
+import { markerTexture } from "./markers.js";
 
 const CAPACITY = 40;                 // 同時に描けるロボット数の上限（本人32+ボス+会議チビ最大8・R56）
 const CHIBI_MAX = 8;                 // 会議チビロボの総数上限（席は4室×4だが描画予算で全体8体）
@@ -26,13 +39,15 @@ const CHIBI_MAX = 8;                 // 会議チビロボの総数上限（席�
 // 主要3室が満席のときだけ開く（ユーザー仕様「合計3つの会議室が使われる」）。
 const RESERVE_ROOMS = ["meet3"];
 const CHIBI_WHITE = new THREE.Color(0xffffff);   // チビのアクセント淡色化（lerp先）
-// 胸リングの状態色。HUD側のドットと同じ意味（作業=シアン/待機=琥珀/❗=赤/休憩=灰/外部=青）
+// Linear RGB stays <= .85, below bloom's 1.0 threshold; no additive/emissive light.
+const CELEBRATION_REFLECTION = new THREE.Color(.85, .80, .70);
+// 胸リングの状態色。HUD側のドットと同じ意味（作業=セージ/待機=琥珀/❗=赤/休憩=灰/外部=茶）
 const ACCENTS = {
-  attention: new THREE.Color(0xff5a7e),
-  working: new THREE.Color(0x53e0c4),
-  waiting: new THREE.Color(0xffb340),
-  resting: new THREE.Color(0xaab2d8),
-  external: new THREE.Color(0x5aa2ff),
+  attention: new THREE.Color(0xc0483a),
+  working: new THREE.Color(0x7a9469),
+  waiting: new THREE.Color(0xc28a3a),
+  resting: new THREE.Color(0xb4aca0),
+  external: new THREE.Color(0x8a6a45),
 };
 function accentFor(agent) {
   if (agent.attention) return ACCENTS.attention;
@@ -42,106 +57,109 @@ function accentFor(agent) {
   return ACCENTS.resting;
 }
 const std = (o) => new THREE.MeshStandardMaterial(o);
-const emis = (c, i) => std({ color: c, emissive: c, emissiveIntensity: i, roughness: 0.35 });
+// Guide specifies daylight values; the morning/evening anchors are 07/11/18h.
+// Outside that range hold the nearest daylight preset (no night scene).
+const DAY_KEY = new THREE.Vector3(-15, 17, -19);
+const HOUR_PRESETS = [
+  { hour: 7, color: new THREE.Color(0xffe6c8), intensity: 1.3,
+    position: new THREE.Vector3(-15, Math.hypot(15, 19) * Math.tan(28 * Math.PI / 180), -19), lamp: 2.8 },
+  { hour: 11, color: new THREE.Color(0xfff3e0), intensity: 1.6, position: DAY_KEY, lamp: 2.8 },
+  { hour: 18, color: new THREE.Color(0xffd2a6), intensity: 1.2, position: DAY_KEY, lamp: 4.2 },
+];
 
-function makeMaterials() {
+/** Guide §3: four Physical instances (white/shell/visor/linen); glass stays Standard. */
+export function makeMaterials(quality = "high") {
+  const tile = (file, texture = rugTexture()) => { texture.userData.file = file; return texture; };
+  const oak = tile("oak_floor.webp", floorTexture());
+  const wood = tile("oak_floor.webp", woodTexture());
+  const crossOak = tile("oak_floor.webp", floorTexture()); crossOak.rotation = Math.PI / 2;
+  const linenMap = tile("linen.webp"), feltMap = tile("felt.webp"), juteMap = tile("jute.webp");
+  const rattanMap = tile("rattan.webp");
+  const sky = tile("window_day.webp", skyTexture());
+  const rugArt = rugTexture(); rugArt.repeat.set(1, 1);
+  rugArt.wrapS = rugArt.wrapT = THREE.ClampToEdgeWrapping; tile("rugart.webp", rugArt);
+  const cloth = { color: 0xffffff, roughness: .95, map: linenMap, vertexColors: true };
+  const linen = quality === "mobile" ? std(cloth) : new THREE.MeshPhysicalMaterial({ ...cloth,
+    sheen: .5, sheenColor: 0xfff6e8, sheenRoughness: .85 });
+  const leafCard = std({ color: 0xffffff, roughness: .65, map: leafAtlasTexture(),
+    alphaTest: .5, side: THREE.DoubleSide, vertexColors: true });
+  const artCanvas = document.createElement("canvas"); artCanvas.width = 512; artCanvas.height = 320;
+  const ctx = artCanvas.getContext("2d");
+  ctx.fillStyle = "#f1ede7"; ctx.fillRect(0, 0, 512, 320);
+  ctx.strokeStyle = "#5f7d59"; ctx.lineWidth = 3;
+  for (const x of [128, 384]) {
+    ctx.beginPath(); ctx.moveTo(x, 280); ctx.lineTo(x, 40);
+    for (let y = 75; y < 260; y += 35) {
+      ctx.moveTo(x, y + 20); ctx.lineTo(x - 35, y); ctx.moveTo(x, y + 30); ctx.lineTo(x + 35, y + 10);
+    }
+    ctx.stroke();
+  }
+  const artMap = new THREE.CanvasTexture(artCanvas); artMap.colorSpace = THREE.SRGBColorSpace;
   return {
-    // 床・土台
-    base: std({ color: 0xcfd4ea, roughness: 0.7, metalness: 0.05 }),
-    // 床はわずかに沈めた白（真っ白は「明るい一様面」に数えられ、実際のっぺり見える）
-    floor: std({ map: floorTexture(), color: 0xe7ecfb, roughness: 0.13, metalness: 0.40 }),
-    // 台座は床と明確に差を付ける（差が小さいと段差ごと消えて見える・実際に消えた）
-    floor2: std({ map: floorTexture(), color: 0xd3dcfa, roughness: 0.16, metalness: 0.34 }),
-    woodFloor: std({ color: 0xdcc19a, roughness: 0.6 }),
-    darkFloor: std({ color: 0x2e3352, roughness: 0.38, metalness: 0.3 }),
-    // 面
-    // ロボの殻はクリアコート＝参考画像の「つやのある白いトイ」の質感
-    white: new THREE.MeshPhysicalMaterial({ color: 0xeef2fd, roughness: 0.24,
-      metalness: 0.10, clearcoat: 0.6, clearcoatRoughness: 0.22 }),
-    shell: new THREE.MeshPhysicalMaterial({ color: 0xf4f5fd, roughness: 0.20,
-      metalness: 0.06, clearcoat: 0.6, clearcoatRoughness: 0.22 }),
-    dark: std({ color: 0x171623, roughness: 0.20, metalness: 0.62 }),
-    darker: std({ color: 0x0c0b14, roughness: 0.20, metalness: 0.62 }),
-    steel: std({ color: 0x9a9ab4, roughness: 0.18, metalness: 0.78 }),
-    wood: std({ map: woodTexture(), color: 0xe3c9a3, roughness: 0.55 }),
-    wood2: std({ map: woodTexture(), color: 0xd2b184, roughness: 0.58 }),
-    // 椅子・ソファ（大きい面＝色数はここで稼ぐ）
-    seat: std({ color: 0x1b2150, roughness: 0.50, metalness: 0.16 }),
-    seatB: std({ color: 0x2f5f7a, roughness: 0.52, metalness: 0.12 }),
-    seatC: std({ color: 0x4a2f6b, roughness: 0.52, metalness: 0.12 }),
-    sofa: std({ color: 0x4f55b4, roughness: 0.78 }),
-    sofaB: std({ color: 0x7a6fc8, roughness: 0.78 }),
-    sofaC: std({ color: 0x5f8fb8, roughness: 0.78 }),
-    cushionA: std({ map: rugTexture(), color: 0x8f94dd, roughness: 0.86 }),
-    cushionB: std({ color: 0xffd98a, roughness: 0.86 }),
-    cushionC: std({ map: rugTexture(), color: 0xe58aa8, roughness: 0.86 }),
-    // ラウンジのデザインラグ（GPT-Imageデカール差し替え口。未ロード時は織り目のまま）
-    rugArt: std({ map: rugTexture(), color: 0xb9b4e4, roughness: 0.9 }),
-    // エリアラグ（広い床の「明るい一様面」を大きな面で分割する＝品質ゲート対策の本体）
-    rug: std({ map: rugTexture(), color: 0xb2bbe8, roughness: 0.92 }),
-    rugB: std({ map: rugTexture(), color: 0x9fa9d8, roughness: 0.92 }),
-    panelA: std({ color: 0x3d4a80, roughness: 0.7 }),
-    panelB: std({ color: 0x5a6bb5, roughness: 0.7 }),
-    // 小物
-    paper: std({ color: 0xf7f4ea, roughness: 0.9 }),
-    mugA: std({ color: 0xe0538a, roughness: 0.5 }),
-    mugB: std({ color: 0x4fc9ff, roughness: 0.5 }),
-    mugC: std({ color: 0xf5a524, roughness: 0.5 }),
-    bookA: std({ color: 0xc0455f, roughness: 0.8 }),
-    bookB: std({ color: 0x2f7fbf, roughness: 0.8 }),
-    bookC: std({ color: 0xe0a53c, roughness: 0.8 }),
-    bookD: std({ color: 0x4b9a72, roughness: 0.8 }),
-    bookE: std({ color: 0x8a5cff, roughness: 0.8 }),
-    // 植物
-    leaf: std({ color: 0x2f7a50, roughness: 0.84 }),
-    leaf2: std({ color: 0x63b482, roughness: 0.84 }),
-    pot: std({ color: 0xe8eaf6, roughness: 0.48 }),
-    // テクスチャ面
-    kbd: std({ map: keyboardTexture(), roughness: 0.55, metalness: 0.05 }),
-    sky: std({ map: skyTexture(), emissive: 0xffffff, emissiveMap: skyTexture(),
-      emissiveIntensity: 1.25, roughness: 0.14, metalness: 0.25 }),
-    // 発光
-    stage: std({ color: 0xbcd4ff, roughness: 0.25, metalness: 0.25,
-      emissive: 0x5a90ff, emissiveIntensity: 0.55 }),
-    holo: new THREE.MeshStandardMaterial({
-      color: 0xa8c6ff, emissive: 0x7fb0ff, emissiveIntensity: 1.9,
-      transparent: true, opacity: 0.66, roughness: 0.2, side: THREE.DoubleSide }),
-    screenGlow: std({ color: 0x2a4a9a, emissive: 0x4b7cf0, emissiveIntensity: 2.0,
-      roughness: 0.25 }),
-    // 胸リング/アンテナ先端: インスタンスカラー（状態色）をそのまま光らせる
+    base: std({ color: 0xe6ded2, roughness: .85 }),
+    floor: std({ color: 0xf0e6d8, roughness: .55, map: oak,
+      normalMap: floorNormalTexture(), normalScale: new THREE.Vector2(.35, .35) }),
+    floor2: std({ color: 0xf0eae1, roughness: .80 }),
+    woodFloor: std({ color: 0xffffff, roughness: .60, map: crossOak }),
+    darkFloor: std({ color: 0x8e8880, roughness: .85 }),
+    white: new THREE.MeshPhysicalMaterial({ color: 0xf7f4ef, roughness: .80 }),
+    // Neutral material color: the palette is supplied once by instanceColor.
+    shell: new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: .32, clearcoat: .70,
+      clearcoatRoughness: .18, envMapIntensity: 1.0, vertexColors: true }),
+    dark: std({ color: 0x2e2d2c, roughness: .55, metalness: .10 }),
+    darker: std({ color: 0x232120, roughness: .60, metalness: .10 }),
+    steel: std({ color: 0xb3b0aa, roughness: .35, metalness: .85 }),
+    wood: std({ color: 0xffffff, roughness: .45, map: wood }),
+    wood2: std({ color: 0xffffff, roughness: .48, map: wood }),
+    seat: std({ color: 0xb2da9c, roughness: .90, map: feltMap }),
+    seatB: std({ color: 0xa2d393, roughness: .90, map: feltMap }),
+    seatC: std({ color: 0xc0e6ab, roughness: .90, map: feltMap }),
+    sofa: linen, sofaB: linen, linen,
+    sofaC: std({ color: 0xece4d8, roughness: .92, map: linenMap }),
+    cushionA: std({ color: 0xb2da9c, roughness: .95, map: linenMap }),
+    cushionB: std({ color: 0xeee6da, roughness: .95, map: linenMap }),
+    cushionC: std({ color: 0xc0e6ab, roughness: .95, map: linenMap }),
+    rug: std({ color: 0xffffff, roughness: 1, map: juteMap }),
+    rugB: std({ color: 0xf0e2cc, roughness: 1, map: juteMap }),
+    rugArt: std({ color: 0xffffff, roughness: .95, map: rugArt }),
+    panelA: std({ color: 0xb2da9c, roughness: .95, map: feltMap }),
+    panelB: std({ color: 0xa2d393, roughness: .95, map: feltMap }),
+    felt: std({ color: 0xb2da9c, roughness: .95, map: feltMap }),
+    paper: std({ color: 0xf7f4ea, roughness: .92 }),
+    mugA: std({ color: 0xd8cfc2, roughness: .40 }),
+    mugB: std({ color: 0x7a9469, roughness: .40 }),
+    mugC: std({ color: 0xc28a3a, roughness: .40 }),
+    bookA: std({ color: 0xa8574a, roughness: .85 }),
+    bookB: std({ color: 0x5f7d59, roughness: .85 }),
+    bookC: std({ color: 0xc9a86a, roughness: .85 }),
+    bookD: std({ color: 0x7d766c, roughness: .85 }),
+    bookE: std({ color: 0x8a6a45, roughness: .85 }),
+    leaf: leafCard, leaf2: leafCard, leafCard,
+    pot: std({ color: 0xe0d6c6, roughness: .35 }),
+    potTerra: std({ color: 0x8a6a45, roughness: .80 }),
+    kbd: std({ color: 0xe8e3db, roughness: .60, map: keyboardTexture() }),
+    sky: std({ color: 0xffffff, roughness: .20, map: sky, emissiveMap: sky,
+      emissive: 0xffffff, emissiveIntensity: 1.15 }),
     accent: new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false }),
-    neon: emis(0x8a5cff, 6.0),
-    neonC: emis(0x4fc9ff, 5.2),
-    // ロボットの顔
-    visor: std({ color: 0x101020, emissive: 0x353564, emissiveIntensity: 0.5,
-      roughness: 0.12, metalness: 0.42 }),
-    eye: std({ color: 0x9fe8ff, emissive: 0x66d8ff, emissiveIntensity: 3.4,
-      roughness: 0.2, toneMapped: false }),
-    // ガラス・影
-    glass: new THREE.MeshPhysicalMaterial({
-      color: 0xa9c8ff, transmission: 0.55, thickness: 0.6, roughness: 0.05,
-      ior: 1.45, metalness: 0.12, transparent: true, opacity: 0.34,
-      clearcoat: 1, clearcoatRoughness: 0.03,
-      emissive: 0x4a78d8, emissiveIntensity: 0.32 }),
-    // 接地影は「柔らかいラジアル」1択（硬い角丸板の影は模型っぽさの主因・参考画像は全部ソフト）
-    shadow: new THREE.MeshBasicMaterial({
-      map: softShadowTexture(), color: 0x2c2647, transparent: true,
-      depthWrite: false, opacity: 0.62 }),
-    islandShadow: new THREE.MeshBasicMaterial({
-      map: softShadowTexture(), color: 0x4a4386, transparent: true,
-      depthWrite: false, opacity: 0.30 }),
-    // 発光まわりのフェイクブルーム（加算合成のラジアルグロー・ポストプロセス無しで光らせる）
-    // 床の擬似映り込み（縦グラデのアルファ・加算）
-    reflP: reflMaterial(0x9a7cff),
-    reflC: reflMaterial(0xcfdcff),
-    glowP: glowMaterial(0x8a5cff),
-    glowC: glowMaterial(0x4fc9ff),
-    glowW: glowMaterial(0xffb85c),
-    crown: std({ color: 0xf5c542, metalness: 0.85, roughness: 0.22,
-      emissive: 0x8a6a10, emissiveIntensity: 0.35 }),
-    // デスクランプの発光部（暖色。寒色空間への対比＝居心地の色）
-    lampWarm: std({ color: 0xffe3b0, emissive: 0xffc87a, emissiveIntensity: 2.8,
-      roughness: 0.4, toneMapped: false }),
+    visor: new THREE.MeshPhysicalMaterial({ color: 0x262626, roughness: .12,
+      clearcoat: 1, clearcoatRoughness: .08 }),
+    glass: std({ color: 0xffffff, roughness: .04, transparent: true, opacity: .10,
+      envMapIntensity: 1.4, depthWrite: false, side: THREE.DoubleSide }),
+    glassPane: std({ color: 0xffffff, roughness: .04, transparent: true, opacity: .08,
+      envMapIntensity: 1.4, depthWrite: false, side: THREE.DoubleSide }),
+    joint: std({ color: 0x5e5a55, roughness: .70, vertexColors: true }),
+    shadow: new THREE.MeshBasicMaterial({ map: softShadowTexture(), color: 0x3a2e20,
+      transparent: true, depthWrite: false, opacity: .55 }),
+    islandShadow: new THREE.MeshBasicMaterial({ map: softShadowTexture(), color: 0x4a3d2c,
+      transparent: true, depthWrite: false, opacity: .22 }),
+    glowW: glowMaterial(0xffd9a0),
+    crown: std({ color: 0xd8b45c, metalness: .70, roughness: .30 }),
+    lampWarm: std({ color: 0xffe3b0, emissive: 0xffc87a, emissiveIntensity: 1.3,
+      roughness: .40, toneMapped: false }),
+    rattan: std({ color: 0xffffff, roughness: .75, map: rattanMap }),
+    wallart: new THREE.MeshBasicMaterial({ color: 0xffffff, map: artMap }),
+    signWood: std({ color: 0xc9a86a, roughness: .70 }),
+    board: new THREE.MeshBasicMaterial({ map: boardTexture() }),
   };
 }
 
@@ -164,31 +182,12 @@ function softShadowTexture() {
   if (!_softShadowTex) _softShadowTex = radialTexture(1.0, 0.45);
   return _softShadowTex;
 }
-let _reflTex = null;
-function reflMaterial(color) {
-  if (!_reflTex) {
-    const c = document.createElement("canvas");
-    c.width = 64; c.height = 256;
-    const g = c.getContext("2d");
-    const grd = g.createLinearGradient(0, 0, 0, 256);
-    grd.addColorStop(0, "rgba(255,255,255,.50)");     // v=1側（壁際）が明るい
-    grd.addColorStop(0.55, "rgba(255,255,255,.10)");
-    grd.addColorStop(1, "rgba(255,255,255,0)");
-    g.fillStyle = grd; g.fillRect(0, 0, 64, 256);
-    _reflTex = new THREE.CanvasTexture(c);
-    _reflTex.colorSpace = THREE.SRGBColorSpace;
-  }
-  return new THREE.MeshBasicMaterial({
-    map: _reflTex, color, transparent: true, blending: THREE.AdditiveBlending,
-    depthWrite: false, toneMapped: false });
-}
-
 let _glowTex = null;
 function glowMaterial(color) {
   if (!_glowTex) _glowTex = radialTexture(0.85, 0.28);
   return new THREE.MeshBasicMaterial({
     map: _glowTex, color, transparent: true, blending: THREE.AdditiveBlending,
-    depthWrite: false, toneMapped: false, side: THREE.DoubleSide });
+    depthWrite: false, toneMapped: false, opacity: .18, side: THREE.DoubleSide });
 }
 
 export class IsoScene {
@@ -196,29 +195,39 @@ export class IsoScene {
     this.container = container;
     this.actors = new Map();          // id → {nodes, from, to, startedAt, seed}
     this.disposed = false;
+    this.growth = createGrowth();
+    this._setLayoutModel(DEFAULT_SPEC);
+    this.layoutKey = "M:legacy";
     this.seeded = false;              // 初回描画を済ませたか（出勤演出の出し分け）
 
+    const q = new URLSearchParams(typeof location === "undefined" ? "" : location.search);
+    this.streaming = q.get("stream") === "1";
+    const requestedQuality = this.streaming ? "off" : q.get("quality") || "high";
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    // 解像度: 1に固定するとRetinaで常にぼやける。ヘッドレスの dsf は 1 なので
-    // golden は安定したまま、実機だけ2倍の密度で描ける。
+    this.post = new PostProcess(this.renderer, {
+      quality: requestedQuality, tilt: q.get("tilt") === "1",
+    });
     this.renderer.setPixelRatio(Math.min(
-      typeof window === "undefined" ? 1 : (window.devicePixelRatio || 1), 2));
+      typeof window === "undefined" ? 1 : (window.devicePixelRatio || 1),
+      this.post.quality === "mobile" ? 1.5 : 2));
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 0.94;   // 参考画像の平均輝度0.70に寄せる
+    this.renderer.shadowMap.type = q.get("shadow") === "vsm" ? THREE.VSMShadowMap : THREE.PCFShadowMap;
+    this.renderer.toneMapping = THREE.NeutralToneMapping;
+    this.renderer.toneMappingExposure = 1.0;
+    if (this.streaming) {
+      this.renderer.setClearColor(0x000000, 0);
+    }
     container.append(this.renderer.domElement);
 
     this.scene = new THREE.Scene();
-    // 奥ほど色を抜く。参考画像は同じ植物でも奥ほど彩度が落ちて明度が上がる。
-    // 色は chroma>=26 側に置く（一様な明面として数えられないため）。
-    this.scene.fog = new THREE.Fog(0xdfe8ff, 68, 140);
-    // 映り込み。参考画像の床にはラックの紫が、ガラスには窓の白筋が映っている。
-    // 追加ドロー0で metalness>0 の全面に色の変化が乗る＝色数にも効く。
-    this.envMap = envTexture();
-    this.scene.environment = this.envMap;
-    this.scene.environmentIntensity = 0.34;
-    this.materials = makeMaterials();
+    this.scene.fog = new THREE.Fog(0xf4efe7, 70, 150);
+    this.environments = roomEnvironment(this.renderer);
+    this.scene.environment = this.environments.day;
+    // Environment windows already face the office's -X and -Z window walls.
+    this.scene.environmentRotation.y = 0;
+    this.scene.environmentIntensity = 0.60;
+    resetRand(); // All procedural textures and plants consume clock.rand in construction order.
+    this.materials = makeMaterials(this.post.quality);
     // GPT-Image生成デカール（ui/iso/tex/*.webp・コミット済みアセット）。
     // 非同期ロードなので「全部確定するまで probe.ready を抑え、確定のたび再描画」を守る
     // （守らないと golden が差し替え前後どちらを撮るか不定になりフレークする）。
@@ -228,6 +237,7 @@ export class IsoScene {
       this.assetsPending += 1;
       new THREE.TextureLoader().load(url,
         (t) => {
+          if (this.disposed) { t.dispose(); this.assetsPending -= 1; return; }
           t.colorSpace = THREE.SRGBColorSpace;
           apply(t);
           this.assetsPending -= 1;
@@ -236,22 +246,32 @@ export class IsoScene {
         undefined,
         () => { this.assetsPending -= 1; this._rerender(); });
     };
-    swapTex("/ui/iso/tex/city.webp", (t) => {
-      const sky = this.materials.sky;
-      sky.map = t; sky.emissiveMap = t; sky.emissiveIntensity = 1.05; sky.needsUpdate = true;
+    // Update the existing texture images: repeat/rotation/anisotropy survive async loading.
+    const texturesByFile = new Map();
+    for (const mat of Object.values(this.materials)) {
+      const texture = mat.map, file = texture?.userData.file;
+      if (!file) continue;
+      if (!texturesByFile.has(file)) texturesByFile.set(file, new Set());
+      texturesByFile.get(file).add(texture);
+    }
+    for (const [file, textures] of texturesByFile) swapTex(`/ui/iso/tex/${file}`, (loaded) => {
+      for (const texture of textures) { texture.image = loaded.image; texture.needsUpdate = true; }
+      loaded.dispose();
     });
-    swapTex("/ui/iso/tex/rugart.webp", (t) => {
-      const m = this.materials.rugArt;
-      m.map = t; m.color.set(0xffffff); m.needsUpdate = true;
-    });
-    this._swapTex = swapTex;              // モニタ構築後のデカール差し替えで使う
+    for (const [index, file] of ["wallart_a.webp", "wallart_b.webp"].entries()) {
+      swapTex(`/ui/iso/tex/${file}`, (loaded) => {
+        const map = this.materials.wallart.map;
+        map.image.getContext("2d").drawImage(loaded.image, index * 256, 0, 256, 320);
+        map.needsUpdate = true; loaded.dispose();
+      });
+    }
+    this._swapTex = swapTex;
 
     // カメラ。構図は方位角(az)と仰角(el)の2つだけで決まる。
     //   方位角 45° = 真横からの等角（初期案）
     //          0°  = 入口の正面から見る（初期案から反時計回りに45°）
     //   仰角   高いほど俯瞰（床が面として見える）・低いほど水平（奥行きが潰れる）
     // ?az=<度>&el=<度> で試せる（構図の詰めはブラウザで回して決める）。
-    const q = new URLSearchParams(typeof location === "undefined" ? "" : location.search);
     const num = (k, d) => {
       const v = Number.parseFloat(q.get(k));
       return Number.isFinite(v) ? v : d;
@@ -260,7 +280,7 @@ export class IsoScene {
     const ELEVATION = num("el", 40) * Math.PI / 180;   // 上から見下ろす（?el= で調整可）
     // 下端の余分（HUDカードぶんシーンを上へ逃がす量・?pad= で調整可）。
     // 0.17 は「右下ラウンジが見切れない」構図比較でユーザーが選んだ値（2026-07-30）。
-    this.botPad = num("pad", 0.17);
+    this.botPad = this.streaming ? 0 : num("pad", 0.17);
     const DIST = 52;
     this.target = new THREE.Vector3(-0.2, 0.7, -0.6);
     this.camera = new THREE.OrthographicCamera(-10, 10, 6, -6, 0.1, 260);
@@ -272,91 +292,48 @@ export class IsoScene {
     this.camera.lookAt(this.target);
     // 収めたい範囲（床＋壁の高さ）。画角はここから自動で決めるので余白が出ない。
     this.contentBox = new THREE.Box3(
-      new THREE.Vector3(-14.65, 0, -10.35),
-      new THREE.Vector3(14.55, 2.8, 9.1),
+      new THREE.Vector3(this.model.WALL.left - 0.25, 0, this.model.LAYOUT.floor.z - this.model.LAYOUT.floor.d / 2 - 0.25),
+      new THREE.Vector3(this.model.WALL.right + 0.15, 2.8, this.model.LAYOUT.floor.z + this.model.LAYOUT.floor.d / 2 + 0.20),
     );
 
-    this.scene.add(new THREE.HemisphereLight(0xe8f2ff, 0x8a97cc, 0.46));
-    const key = new THREE.DirectionalLight(0xffffff, 2.15);
-    key.position.set(-14, 20, -18);   // 窓＝奥左から差す（カメラと同象限だと影が見えない）
-    key.castShadow = true;
-    key.shadow.mapSize.set(3072, 3072);
-    Object.assign(key.shadow.camera,
-      { left: -33, right: 33, top: 33, bottom: -33, near: 1, far: 105 });
-    key.shadow.bias = -0.0005;
-    key.shadow.normalBias = 0.018;
-    key.shadow.radius = 2.4;   // 参考画像の影は輪郭が溶けるほど柔らかい
-    this.scene.add(key);
-    const fill = new THREE.DirectionalLight(0xcfe0ff, 0.45);
-    fill.position.set(14, 10, 15);
-    this.scene.add(fill);
-    const rim = new THREE.DirectionalLight(0x7c5cff, 1.10);
-    rim.position.set(-8, 5, -13);
-    this.scene.add(rim);
+    this.hemi = new THREE.HemisphereLight(0xf0f4fa, 0xd9c9b0, 0.60);
+    this.scene.add(this.hemi);
+    this.key = new THREE.DirectionalLight(0xfff3e0, 1.60);
+    this.key.position.set(-15, 17, -19);
+    this.key.castShadow = true;
+    this.key.shadow.mapSize.set(2048, 2048);
+    this.key.shadow.intensity = 0.55;
+    this.key.shadow.bias = -0.0004;
+    this.key.shadow.normalBias = 0.02;
+    this.scene.add(this.key, this.key.target);
+    this.fill = new THREE.DirectionalLight(0xe9efe6, 0.45);
+    this.fill.position.set(14, 10, 15);
+    this.scene.add(this.fill);
+    this.rim = new THREE.DirectionalLight(0xffe9cf, 0.35);
+    this.rim.position.set(-8, 5, -13);
+    this.scene.add(this.rim);
+    this._manualHour = null;
+    this._applyHour(localHour());
 
-    resetRand();                       // 配置の乱数は毎回同じ（決定論）
-    // 画面は自発光。MeshStandard だとライティング次第で沈むので Basic（常に一定）。
-    // R68: wrapT=Repeat で UV スクロール（update が offset.y を t の関数で流す）
-    this.screenMats = ["code", "chart", "dash", "term"].map((k, i) => {
-      const map = screenTexture(k, 3 + i * 7);
-      map.wrapS = THREE.RepeatWrapping;
-      map.wrapT = THREE.RepeatWrapping;
-      return new THREE.MeshBasicMaterial({ map, toneMapped: false, side: THREE.DoubleSide });
-    });
-
-    // 画面マテリアルを materials へ入れてバッチに乗せる（12枚が4ドローで済む）
-    this.screenMats.forEach((m, i) => { this.materials[`screen${i}`] = m; });
-    this.staticMeshes = buildOffice(this.materials, rand);
+    this.displays = new ActivityScreens(this.materials.board.map);
+    this._staticSeed = randState();
+    this.staticMeshes = buildOffice(this.materials, this.spec, this.model);
     // シーン調査用の窓口（隠れた退行はレイキャストで特定できる。埋没バグの発見実績あり）
     if (typeof window !== "undefined") window.__debugScene = this;
     for (const m of this.staticMeshes) this.scene.add(m);
-    this.monitors = buildMonitors(this.screenMats, this.materials);
+    this.monitors = buildMonitors(this.displays, this.materials, this.model);
     this.scene.add(this.monitors);
-    const swappable = this.monitors.userData.swappable || {};
-    if (swappable.signMat) {
-      this._swapTex("/ui/iso/tex/sign.webp", (t) => {
-        swappable.signMat.map = t; swappable.signMat.needsUpdate = true;
-      });
-    }
-    if (swappable.boardMat) {
-      this._swapTex("/ui/iso/tex/board.webp", (t) => {
-        swappable.boardMat.map = t; swappable.boardMat.needsUpdate = true;
-      });
-    }
-    this._swapTex("/ui/iso/tex/screen_code.webp", (t) => {
-      t.wrapS = THREE.RepeatWrapping; t.wrapT = THREE.RepeatWrapping;   // スクロール継続
-      this.screenMats[0].map = t; this.screenMats[0].needsUpdate = true;
-    });
-    this._swapTex("/ui/iso/tex/screen_dash.webp", (t) => {
-      t.wrapS = THREE.RepeatWrapping; t.wrapT = THREE.RepeatWrapping;
-      this.screenMats[2].map = t; this.screenMats[2].needsUpdate = true;
-    });
 
     this.robots = new RobotBatch(this.scene, this.materials, CAPACITY);
     // ボスロボ（データ非連動の常駐デコ・王冠つき・クリックで「ボス指令」）
     this.boss = makeSkeleton();
     this.boss.root.scale.setScalar(1.85);
-    this.bossAccent = new THREE.Color(0xf5c542);
+    this.bossAccent = new THREE.Color(0xd8b45c);
 
     // ❗マーカー（承認/質問まちの頭上・ユーザーFB）。スプライト=常にカメラを向く
-    const mkAttnTex = () => {
-      const c = document.createElement("canvas");
-      c.width = 128; c.height = 128;
-      const g = c.getContext("2d");
-      g.beginPath(); g.arc(64, 64, 56, 0, 7);
-      g.fillStyle = "#e0538a"; g.fill();
-      g.lineWidth = 8; g.strokeStyle = "#ffffff"; g.stroke();
-      g.fillStyle = "#ffffff";
-      g.font = "bold 84px -apple-system, sans-serif";
-      g.textAlign = "center"; g.textBaseline = "middle";
-      g.fillText("!", 64, 70);
-      const t = new THREE.CanvasTexture(c);
-      t.colorSpace = THREE.SRGBColorSpace;
-      return t;
-    };
     this.attnMarkers = [];
     const attnMat = new THREE.SpriteMaterial({
-      map: mkAttnTex(), transparent: true, depthTest: false, toneMapped: false });
+      map: markerTexture("attention"), transparent: true, depthTest: false, toneMapped: false });
     for (let i = 0; i < 6; i++) {
       const sp = new THREE.Sprite(attnMat);
       sp.scale.set(0.62, 0.62, 1);
@@ -368,33 +345,9 @@ export class IsoScene {
 
     // 💭マーカー（kind==="think" の頭上・R56）。❗と同じスプライトプールの流儀。
     // 絵文字フォント依存を避け、雲形＋3点を手で描く（決定論）。
-    const mkThinkTex = () => {
-      const c = document.createElement("canvas");
-      c.width = 128; c.height = 128;
-      const g = c.getContext("2d");
-      const cloud = (fill, stroke) => {
-        g.beginPath();
-        g.ellipse(66, 52, 46, 32, 0, 0, 7);
-        g.fillStyle = fill; g.fill();
-        if (stroke) { g.lineWidth = 6; g.strokeStyle = stroke; g.stroke(); }
-      };
-      cloud("#ffffff", "#8a5cff");
-      for (const [x, r] of [[30, 9], [18, 5]]) {           // 尻尾の小円
-        g.beginPath(); g.arc(x, 96 + (9 - r), r, 0, 7);
-        g.fillStyle = "#ffffff"; g.fill();
-        g.lineWidth = 4; g.strokeStyle = "#8a5cff"; g.stroke();
-      }
-      g.fillStyle = "#6c5cd8";
-      for (const dx of [-18, 0, 18]) {                     // 思考中の「…」
-        g.beginPath(); g.arc(66 + dx, 54, 6.5, 0, 7); g.fill();
-      }
-      const t = new THREE.CanvasTexture(c);
-      t.colorSpace = THREE.SRGBColorSpace;
-      return t;
-    };
     this.thinkMarkers = [];
     const thinkMat = new THREE.SpriteMaterial({
-      map: mkThinkTex(), transparent: true, depthTest: false, toneMapped: false });
+      map: markerTexture("think"), transparent: true, depthTest: false, toneMapped: false });
     for (let i = 0; i < 6; i++) {
       const sp = new THREE.Sprite(thinkMat);
       sp.scale.set(0.58, 0.58, 1);
@@ -404,29 +357,9 @@ export class IsoScene {
       this.thinkMarkers.push(sp);
     }
     // 💬 おしゃべりドット（R59・休憩の会話の話し手の頭上）。優先順は ❗ > 💭 > 💬
-    const mkChatTex = () => {
-      const c = document.createElement("canvas");
-      c.width = 128; c.height = 128;
-      const g = c.getContext("2d");
-      g.beginPath();
-      g.ellipse(64, 52, 44, 30, 0, 0, 7);
-      g.fillStyle = "#ffffff"; g.fill();
-      g.lineWidth = 6; g.strokeStyle = "#22a06b"; g.stroke();
-      g.beginPath();                                       // 吹き出しの尻尾
-      g.moveTo(42, 78); g.lineTo(30, 100); g.lineTo(58, 82); g.closePath();
-      g.fillStyle = "#ffffff"; g.fill();
-      g.lineWidth = 4; g.strokeStyle = "#22a06b"; g.stroke();
-      g.fillStyle = "#1c8a5c";
-      for (const dx of [-16, 0, 16]) {                     // 話している「…」
-        g.beginPath(); g.arc(64 + dx, 54, 6, 0, 7); g.fill();
-      }
-      const t = new THREE.CanvasTexture(c);
-      t.colorSpace = THREE.SRGBColorSpace;
-      return t;
-    };
     this.chatMarkers = [];
     const chatMat = new THREE.SpriteMaterial({
-      map: mkChatTex(), transparent: true, depthTest: false, toneMapped: false });
+      map: markerTexture("chat"), transparent: true, depthTest: false, toneMapped: false });
     for (let i = 0; i < 4; i++) {
       const sp = new THREE.Sprite(chatMat);
       sp.scale.set(0.5, 0.5, 1);
@@ -437,29 +370,14 @@ export class IsoScene {
     }
     // 会議チビロボ（部下）の骨格プール（メッシュ無し＝スケルトンだけ・遅延生成）
     this.chibiPool = [];
-    this._chibiSeats = chibiSeats();
     this._chibiTint = new THREE.Color();
     // R58: 通路グラフ（机すり抜け根絶）。歩行は必ずこのレーンを経由する
-    this.navGraph = walkGraph();
 
     // ── R68: 生命感の描画状態（すべて「初回=-∞」＝frozen では遷移完了状態で描く） ──
     // ✓マーカー（❗解消の瞬間・0.6秒だけ頭上に出す）
-    const mkDoneTex = () => {
-      const c = document.createElement("canvas");
-      c.width = 128; c.height = 128;
-      const g = c.getContext("2d");
-      g.beginPath(); g.arc(64, 64, 54, 0, 7);
-      g.fillStyle = "#22a06b"; g.fill();
-      g.lineWidth = 8; g.strokeStyle = "#ffffff"; g.stroke();
-      g.lineWidth = 13; g.lineCap = "round";
-      g.beginPath(); g.moveTo(38, 66); g.lineTo(56, 86); g.lineTo(92, 44); g.stroke();
-      const t = new THREE.CanvasTexture(c);
-      t.colorSpace = THREE.SRGBColorSpace;
-      return t;
-    };
     this.doneMarkers = [];
     const doneMat = new THREE.SpriteMaterial({
-      map: mkDoneTex(), transparent: true, depthTest: false, toneMapped: false });
+      map: markerTexture("done"), transparent: true, depthTest: false, toneMapped: false });
     for (let i = 0; i < 4; i++) {
       const sp = new THREE.Sprite(doneMat);
       sp.visible = false;
@@ -469,41 +387,123 @@ export class IsoScene {
     }
     this.markerSince = new Map();      // "attn:<id>"等 → 初認識t（ポップイン用）
     this.attnResolved = new Map();     // id → {at, x, y, z}（✓演出）
+    this.levelUps = new Map();        // live-only event timestamps; level baseline is separate
+    this.levels = new Map();
     this.chibiSeen = new Map();        // "table:idx" → 初認識t（登場バウンス）
     this.chibiGone = new Map();        // "table:idx" → {at, seat, seed, tint}（解散シュリンク）
-
-    // ホログラム（静的バッチから独立＝回転＋脈動できる。HOLO_PANELS が配置の正本）
-    this.holoPanels = HOLO_PANELS.map(([hx, hy, hz, hw, ry]) => {
-      const mesh = new THREE.Mesh(slab(hw, 0.035, hw * 0.62, 0.07), this.materials.holo);
-      mesh.position.set(hx, hy, hz);
-      mesh.rotation.y = ry;
-      mesh.userData.baseYaw = ry;
-      this.scene.add(mesh);
-      return mesh;
-    });
 
     // 🧹 掃除ロボ（t>=30 で通路を永久巡回・golden の t=3.2 では非表示）
     this.cleaner = makeCleanerBot(this.materials);
     this.cleaner.visible = false;
     this.scene.add(this.cleaner);
-    this._cleanerTotal = 0;
-    for (let i = 1; i < CLEANER_ROUTE.length; i++) {
-      this._cleanerTotal += Math.hypot(
-        CLEANER_ROUTE[i][0] - CLEANER_ROUTE[i - 1][0],
-        CLEANER_ROUTE[i][1] - CLEANER_ROUTE[i - 1][1]);
-    }
-
-    this._meetingRooms = meetingAnchorsByRoom();   // R70: 3室分散（assignMeetingRoomsが選ぶ）
-    this.anchors = {
-      desk: seatAnchors(),
-      meeting: meetingAnchors(),
-      lounge: loungeAnchors(),
-      queue: queueAnchors(),
-      external: externalAnchors(),
-    };
     this.viewScale = 1;
     this.fitMode = "contain";
     this.resize();
+  }
+
+  _setLayoutModel(spec) {
+    this.spec = spec;
+    this.model = buildLayout(spec);
+    this.stops = officeStops(spec, this.model);
+    this.navGraph = this.model.walkGraph;
+    this._meetingRooms = this.model.anchors.meeting.byRoom;
+    this._chibiSeats = this.model.anchors.chibi;
+    this.anchors = { ...this.model.anchors, meeting: Object.values(this._meetingRooms).flat() };
+    this._meetAssignWorld = null;
+    this._cleanerTotal = this.model.cleanerRoute.slice(1).reduce((sum, point, i) =>
+      sum + Math.hypot(point[0] - this.model.cleanerRoute[i][0], point[1] - this.model.cleanerRoute[i][1]), 0);
+  }
+
+  /** Share the actual seat assignment with desktop/PWA labels without mutating core worlds. */
+  prepareWorld(world) {
+    if (world === this._preparedWorld || world === this._sourceWorld) return this._preparedWorld;
+    this.maxSeen = this.growth.observe(world.agents);
+    const level = world.growth?.office?.level;
+    const tier = tierFor({ agents: world.agents, maxSeen: this.maxSeen, officeLevel: level });
+    const key = `${tier}:${level == null ? "legacy" : JSON.stringify(decorationsFor(level))}`;
+    if (key !== this.layoutKey) {
+      this._disposeStatic();
+      this._setLayoutModel(specFor(tier, level));
+      this.layoutKey = key;
+      this._sourceWorld = this._preparedWorld = null;
+      this.displays.resize(this.anchors.desk.length);
+      withRandState(this._staticSeed, () => {
+        this.staticMeshes = buildOffice(this.materials, this.spec, this.model);
+        this.monitors = buildMonitors(this.displays, this.materials, this.model);
+      });
+      for (const mesh of this.staticMeshes) this.scene.add(mesh);
+      this.scene.add(this.monitors);
+      const { WALL } = this.model;
+      this.contentBox.min.set(WALL.left - .25, 0, WALL.back - .25);
+      this.contentBox.max.set(WALL.right + .15, 2.8, WALL.front + .20);
+      this._fitShadowCamera();
+      // Initial fit includes the selected tier; later growth preserves pan/zoom/focus.
+      if (!this.seeded) this.resize();
+      for (const actor of this.actors.values()) actor.reroute = true;
+    }
+    this._sourceWorld = world;
+    const seats = assignSeats(world.agents, this.anchors.desk.length);
+    this._preparedWorld = { ...world, seats, overflow: assignOverflow(world.agents, seats) };
+    return this._preparedWorld;
+  }
+
+  projectSignAnchors() { return projectSignAnchors(this.model); }
+
+  /** Dispose only geometry and the layout-owned light map. Shared materials/actors survive. */
+  _disposeStatic() {
+    for (const mesh of this.staticMeshes) {
+      mesh.geometry.dispose();
+      this.scene.remove(mesh);
+    }
+    this.monitors.traverse((object) => { if (object.geometry) object.geometry.dispose(); });
+    this.scene.remove(this.monitors);
+    this.materials.floor.lightMap?.dispose();
+    this.materials.floor.lightMap = null;
+  }
+
+  /** Explicit scene override, also usable while ?t= freezes the animation clock. */
+  setHour(h) {
+    if (!Number.isFinite(h)) return;
+    this._manualHour = Math.min(24, Math.max(0, h));
+    this._applyHour(this._manualHour);
+    this._rerender();
+  }
+
+  _applyHour(hour) {
+    const h = Math.min(18, Math.max(7, hour));
+    if (this._lightingHour === h) return;
+    this._lightingHour = h;
+    const [a, b] = h <= 11 ? HOUR_PRESETS.slice(0, 2) : HOUR_PRESETS.slice(1, 3);
+    const k = smoothstep(a.hour, b.hour, h);
+    this.key.color.copy(a.color).lerp(b.color, k);
+    this.key.intensity = THREE.MathUtils.lerp(a.intensity, b.intensity, k);
+    this.key.position.copy(a.position).lerp(b.position, k);
+    this._lampIntensity = THREE.MathUtils.lerp(a.lamp, b.lamp, k);
+    this.materials.lampWarm.emissiveIntensity = this._lampIntensity;
+    this.scene.environment = h >= 16 ? this.environments.evening : this.environments.day;
+    this._fitShadowCamera();
+  }
+
+  /** Fit all eight content corners in light space, including the base below y=0. */
+  _fitShadowCamera() {
+    this.key.updateMatrixWorld();
+    this.key.target.updateMatrixWorld();
+    this.key.shadow.updateMatrices(this.key);
+    const camera = this.key.shadow.camera;
+    const bounds = this.contentBox.clone();
+    bounds.min.y = Math.min(bounds.min.y, -0.72);
+    const lightBounds = bounds.applyMatrix4(camera.matrixWorldInverse);
+    const pad = 0.24; // Two penumbra widths beyond the projected content AABB.
+    Object.assign(camera, {
+      left: lightBounds.min.x - pad, right: lightBounds.max.x + pad,
+      bottom: lightBounds.min.y - pad, top: lightBounds.max.y + pad,
+      near: Math.max(0.1, -lightBounds.max.z - pad),
+      far: Math.max(1, -lightBounds.min.z + pad),
+    });
+    camera.updateProjectionMatrix();
+    const texel = Math.max((camera.right - camera.left) / 2048, (camera.top - camera.bottom) / 2048);
+    this.key.shadow.radius = 0.12 / texel;
+    this.key.shadow.updateMatrices(this.key);
   }
 
   /**
@@ -511,6 +511,22 @@ export class IsoScene {
    * 収めたい範囲の8隅をカメラ空間へ投影し、それが必ず入る最小の画角にする。
    * 手で VIEW を決めると窓の比率が変わるたびに床が余る／見切れるので、計算で出す。
    */
+  /** User-selected views leave the default camera and frozen captures untouched. */
+  setCameraView({ az, el, zoom }) {
+    if (![az, el, zoom].every(Number.isFinite) || zoom <= 0) return;
+    this.stopCinematic();
+    const a = az * Math.PI / 180, e = el * Math.PI / 180;
+    this.camera.position.set(this.target.x + Math.sin(a) * Math.cos(e) * 52,
+      this.target.y + Math.sin(e) * 52, this.target.z + Math.cos(a) * Math.cos(e) * 52);
+    this.camera.lookAt(this.target);
+    this.camera.updateMatrixWorld();
+    this._userScale = 1 / zoom;
+    this._userPanX = 0; this._userPanY = 0;
+    this.resize();
+    if (this._cinematicPaused) this._cinematicFrame = { ...this._frame };
+    this._rerender();
+  }
+
   /** R77: カメラの寄り（1=全景フィット・小さいほど寄る）。縦長画面向け。 */
   setViewScale(k, fitMode) {
     const v = Number(k);
@@ -592,6 +608,8 @@ export class IsoScene {
     this.camera.bottom = this._frame.bottom;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(w, h, false);
+    this.post.resize();
+    this._fitShadowCamera();
   }
 
   /**
@@ -600,11 +618,11 @@ export class IsoScene {
    */
   excursionFor(agent, t) {
     // ガードは15秒（R68: 開幕の一番見られる時間帯に誰も動かない空白を短縮。golden=t3.2は不変）
-    if (agent.zone !== "desk" || agent.state !== "working" || t < 15) return null;
+    if (!this.stops.coffee || agent.zone !== "desk" || agent.state !== "working" || t < 15) return null;
     const ph = (((t + seedOf(agent.id) * 40) % 260) + 260) % 260;
     if (ph >= 26) return null;
     const slot = stableIndex(agent.id, 3);
-    return { x: COFFEE_STOP.x - 0.8 + slot * 0.75, z: COFFEE_STOP.z,
+    return { x: this.stops.coffee.x - 0.8 + slot * 0.75, z: this.stops.coffee.z,
       yaw: Math.PI, y: 0, role: "stand" };
   }
 
@@ -621,7 +639,7 @@ export class IsoScene {
     const ph = ((t % 238) + 238) % 238;
     const slot = stableIndex(agent.id, 7);
     if (ph < slot * 34 || ph >= slot * 34 + 34) return null;
-    const spot = IDLE_SPOTS[stableIndex(agent.id, IDLE_SPOTS.length)];
+    const spot = this.model.idleSpots[stableIndex(agent.id, this.model.idleSpots.length)];
     return { x: spot.x, z: spot.z, yaw: spot.yaw, y: 0, role: "stand" };
   }
 
@@ -631,6 +649,7 @@ export class IsoScene {
    * 初回は at=-Infinity＝遷移完了状態で始まる → frozen(?t=固定) の golden 不変。
    */
   _track(actor, key, target, t, dur = 0.45, angular = false) {
+    if (frozen) return target;
     let tr = actor[key];
     if (!tr) {
       tr = actor[key] = { from: target, to: target, at: -Infinity };
@@ -653,7 +672,7 @@ export class IsoScene {
   _popScale(key, t) {
     let since = this.markerSince.get(key);
     if (since === undefined) {
-      since = this.seeded ? t : -Infinity;
+      since = this.seeded && !frozen ? t : -Infinity;
       this.markerSince.set(key, since);
     }
     const dt = t - since;
@@ -684,7 +703,7 @@ export class IsoScene {
     }
     const a = list[index % list.length];
     if (a) return a;
-    return { x: 0, z: LAYOUT.floor.z, yaw: 0, y: 0 };
+    return { x: 0, z: this.model.LAYOUT.floor.z, yaw: 0, y: 0 };
   }
 
   _roomAssign(world) {
@@ -710,6 +729,7 @@ export class IsoScene {
   /** world を反映する。位置が変わったアクターは歩いて移動する。 */
   update(world, t) {
     if (this.disposed) return;
+    world = this.prepareWorld(world);
     this._lastWorld = world;
     this._lastT = t;
     // レイアウトが確定してから初回 resize が走るとは限らないので、変化を見て追従する
@@ -721,22 +741,11 @@ export class IsoScene {
     }
 
     // ── R68: 環境に t を流す（全て t の純関数＝同じ t なら同じ絵・決定論のまま） ──
-    // ①スクリーン: UVスクロールでコード/ログが流れる（webpデカール差し替え後もループ）
-    this.screenMats.forEach((m, i) => {
-      if (m.map) m.map.offset.y = -(((t * 0.045 + i * 0.17) % 1 + 1) % 1);
-    });
-    // ②ネオン/ランプ/画面グローの呼吸（2系統の位相差で交互に息づく）
-    const M = this.materials;
-    M.neon.emissiveIntensity = 6.0 + Math.sin(t * 0.9) * 0.35;
-    M.neonC.emissiveIntensity = 5.2 + Math.sin(t * 0.9 + Math.PI / 2) * 0.30;
-    M.lampWarm.emissiveIntensity = 2.8 + Math.sin(t * 1.3) * 0.12;
-    M.screenGlow.emissiveIntensity = 2.0 + Math.sin(t * 0.7 + 1.1) * 0.15;
-    M.stage.emissiveIntensity = 0.55 + Math.sin(t * 0.5 + 2.3) * 0.06;
-    // ③ホログラム: ゆっくり自転＋脈動（静的バッチ外の個別メッシュ・+3ドロー）
-    M.holo.emissiveIntensity = 1.9 + Math.sin(t * 1.1) * 0.25;
-    this.holoPanels.forEach((mesh, i) => {
-      mesh.rotation.y = mesh.userData.baseYaw + t * 0.15 + i * 0.9;
-    });
+    this.displays.update(world);
+    const hour = localHour();
+    updateClock(this.monitors, frozen ? 11 : hour);
+    this._applyHour(this._manualHour ?? hour);
+    this.materials.lampWarm.emissiveIntensity = this._lampIntensity + Math.sin(t * 1.3) * 0.06;
     // ④カメラの呼吸ドリフト（非frozen限定＝goldenは完全不変。振幅は視野の約1%）
     //   ＋R70 フォーカスズーム: シートで選んだロボへ 0.5s で寄る（0.90倍・操作イベント起点。
     //   golden はシート閉じ=フォーカス無しで不変。frozen 中の openCompose は1フレームで完了状態）
@@ -812,19 +821,28 @@ export class IsoScene {
       const speed = 0.55;
       const period = this._cleanerTotal / speed;
       const ct = (((t - 30) % period) + period) % period;
-      const cm = pathTravel(CLEANER_ROUTE, 0, ct, speed);
+      const cm = pathTravel(this.model.cleanerRoute, 0, ct, speed);
       this.cleaner.position.set(cm.x, 0, cm.z);
       this.cleaner.rotation.y = cm.yaw + Math.sin(t * 2.6) * 0.10;
     }
 
     const seen = new Set();
     const perZone = {};
+    let welcome = false;
+    const growth = growthChanges(this.levels, world.growth);
+    this.levels = growth.levels;
+    if (this.seeded && !frozen) {
+      for (const change of growth.changes) this.levelUps.set(change.id, { at: t });
+    }
+    for (const [id, event] of this.levelUps) {
+      if (frozen || t - event.at >= CELEBRATE_SECONDS || !world.agents.some(a => a.id === id)) this.levelUps.delete(id);
+    }
 
     // R59: 休憩スポットの分散割当（決定論）＋エリア別の会話グループ
-    const restAssign = assignRestSpots(world.agents, REST_SPOTS);
+    const restAssign = assignRestSpots(world.agents, this.model.restSpots);
     const restGroups = {};
     for (const [id, si] of restAssign) {
-      const area = REST_SPOTS[si].area;
+      const area = this.model.restSpots[si].area;
       (restGroups[area] = restGroups[area] || []).push({ id, si });
     }
     for (const g of Object.values(restGroups)) g.sort((a, b) => a.si - b.si);
@@ -834,7 +852,7 @@ export class IsoScene {
       const idx = (perZone[agent.zone] = (perZone[agent.zone] ?? -1) + 1);
       const restIdx = restAssign.get(agent.id);
       const target = this.excursionFor(agent, t) || this.idleLifeFor(agent, t)
-        || (restIdx !== undefined ? REST_SPOTS[restIdx]
+        || (restIdx !== undefined ? this.model.restSpots[restIdx]
           : this.anchorFor(agent, world, idx));
 
       let actor = this.actors.get(agent.id);
@@ -846,46 +864,56 @@ export class IsoScene {
         // R58: 歩行は通路グラフ経由＝机・部屋を突き抜けない（routePath）。
         actor = {
           nodes: makeSkeleton(),
-          path: this.seeded
-            ? routePath([ENTRANCE.x, ENTRANCE.z], [target.x, target.z], this.navGraph)
+          path: this.seeded && !frozen
+            ? routePath([this.stops.entrance.x, this.stops.entrance.z], [target.x, target.z], this.navGraph)
             : [[target.x, target.z]],
           dest: [target.x, target.z],
           y: target.y, yaw: target.yaw,
           targetY: target.y, targetYaw: target.yaw,
           startedAt: t, seed: seedOf(agent.id),
+          enteringAt: this.seeded && !frozen ? t : null,
         };
         actor.nodes.root.scale.setScalar(1.62);   // 主役は大きめ（部屋拡張で負けない）
-        // R75: 外部(OpenClaw)社員はロブスターbot＝殻を赤く・手をハサミに・触角を伸ばす。
-        // 比率（かわいさの本体）は変えず、識別できる特徴だけ足す。
-        actor.lobster = Boolean(agent.external);
-        if (actor.lobster) {
-          actor.nodes.antStem.scale.set(1, 2.2, 1);
-          actor.nodes.antStem.position.y += 0.06;
-          actor.nodes.antTip.position.y += 0.19;
-        }
         this.actors.set(agent.id, actor);
-      } else if (actor.dest[0] !== target.x || actor.dest[1] !== target.z) {
+        welcome ||= this.seeded && !frozen;
+      } else if (actor.reroute || actor.leavingAt != null || actor.dest[0] !== target.x || actor.dest[1] !== target.z) {
         // 目的地が変わった＝ゾーン移動。いまの位置から通路経由で歩き直す
         const cur = pathTravel(actor.path, actor.startedAt, t);
-        actor.path = routePath([cur.x, cur.z], [target.x, target.z], this.navGraph);
+        actor.path = frozen ? [[target.x, target.z]]
+          : routePath([cur.x, cur.z], [target.x, target.z], this.navGraph);
+        actor.reroute = false;
         actor.dest = [target.x, target.z];
         actor.startedAt = t;
         actor.targetY = target.y;
         actor.targetYaw = target.yaw;
+        actor.leavingAt = null;
       }
 
+      const act = actFor(agent, t, actor.seed);
+      actor.act = act;
+      const attention = act.expr === "question";
+      if (!frozen && actor.attention && !attention) this.attnResolved.set(agent.id, { at: t });
+      actor.attention = attention;
+
+      const provider = agent.provider || agent.vendor
+        || agent.sessions?.find((session) => session.session === agent.session)?.vendor
+        || agent.source || agent.external?.provider || agent.external;
+      // Re-evaluate when a project's active session changes vendor. Legacy cx- IDs are Codex.
+      actor.graphite = provider === "codex" || (!provider && agent.session?.startsWith("cx-"));
+      actor.lobster = !actor.graphite && (provider === "openclaw" || Boolean(agent.external));
+      actor.vendor = actor.graphite ? "codex" : actor.lobster ? "openclaw" : "claude";
       const m = pathTravel(actor.path, actor.startedAt, t);
       const walking = m.u < 1 && m.total > 0.05;
       actor.walking = walking;                     // 💬マーカーの判定で使う（R59）
       // R56: 思考中（kind==="think"）は自席で考え込むポーズ（ゾーンの優先は変えない）
       const thinking = !walking && agent.zone === "desk"
-        && agent.kind === "think" && !target.role;
+        && act.pose === "think" && !target.role;
       // R59: 休憩の社交。同エリアに2体以上=向かい合っておしゃべり・1体=くつろぎ変奏
       let pose = null;
       let poseKind = "";                           // R68: 遷移検出用のポーズ種別キー
       let chatYaw = null;
       if (!walking && restIdx !== undefined) {
-        const spot = REST_SPOTS[restIdx];
+        const spot = this.model.restSpots[restIdx];
         const group = restGroups[spot.area] || [];
         if (group.length >= 2) {
           const my = group.findIndex((e) => e.id === agent.id);
@@ -898,8 +926,8 @@ export class IsoScene {
           let cz = 0;
           for (const e of group) {
             if (e.id === agent.id) continue;
-            cx += REST_SPOTS[e.si].x;
-            cz += REST_SPOTS[e.si].z;
+            cx += this.model.restSpots[e.si].x;
+            cz += this.model.restSpots[e.si].z;
           }
           const n1 = group.length - 1;
           const dx = cx / n1 - spot.x;
@@ -924,11 +952,45 @@ export class IsoScene {
         poseKind = thinking ? "think"
           : (walking ? "walk" : `${agent.zone}:${target.role || ""}`);
       }
+      // Keep location-specific legs/hip height; gestures only change the upper body.
+      const upper = (gesture) => ({ ...pose, headYaw: gesture.headYaw,
+        headPitch: gesture.headPitch, arms: gesture.arms });
+      const levelUp = this.levelUps.get(agent.id);
+      const approved = this.attnResolved.get(agent.id);
+      if (walking) {
+        if (actor.enteringAt != null && t - actor.enteringAt < ENTER_SECONDS) {
+          pose = enterPose(t - actor.enteringAt, actor.seed, walkPhaseFor(m.dist, actor.seed));
+          poseKind = "enter";
+        } else if (act.pose === "run") {
+          pose = runPose(t, actor.seed, walkPhaseFor(m.dist, actor.seed));
+          poseKind = "run";
+        }
+      }
+      if (attention) {
+        pose = upper(questionPose(t, actor.seed)); poseKind = walking ? "walk:question" : "question";
+      } else if (!frozen && levelUp) {
+        const gesture = celebratePose(t - levelUp.at, actor.seed);
+        pose = { ...upper(gesture), hipY: pose.hipY + gesture.hipY - .44 };
+        poseKind = walking ? "walk:celebrate" : "celebrate";
+      } else if (!frozen && approved && t - approved.at < .9) {
+        const nod = approvalPose(t - approved.at, actor.seed);
+        pose = { ...pose, headYaw: nod.headYaw, headPitch: nod.headPitch };
+        poseKind = walking ? "walk:approval" : "approval";
+      } else if (!walking && act.pose === "read") {
+        pose = upper(readPose(t, actor.seed)); poseKind = `read:${act.prop || ""}`;
+      } else if (!walking && act.prop === "mug") {
+        // Keep lounge conversation/relaxation; only the hand holding the cup changes.
+        pose = { ...pose, arms: [pose.arms[0], { side: 1, shoulder: -.65,
+          elbow: -1.2 + Math.sin(t * .6 + actor.seed) * .15 }] };
+        poseKind += ":mug";
+      }
+      actor.prop = attention || poseKind === "enter" || (!frozen && (levelUp || (approved && t - approved.at < .9)))
+        ? null : act.prop;
       // R68: ポーズ種別が変わったら 0.45秒かけて前のポーズから補間（座↔立のスナップ根絶）。
       // 初回は poseChangedAt=-Infinity ＝補間完了状態 → frozen の golden 不変。
       if (actor.poseKind !== poseKind) {
         actor.poseFrom = actor.lastPose || null;
-        actor.poseChangedAt = actor.poseKind === undefined ? -Infinity : t;
+        actor.poseChangedAt = actor.poseKind === undefined || frozen ? -Infinity : t;
         actor.poseKind = poseKind;
       }
       const blended = mixPose(actor.poseFrom, pose,
@@ -938,6 +1000,8 @@ export class IsoScene {
       // R80.7: タップ挨拶＝腕を上げて振る＋ぴょこ＋首かしげ（0.9秒・タップ起点のみ
       // ＝goldenは不変）。ポーズ適用の直後・root配置の前に上書きする。
       actor.agentArch = agent.arch || null;
+      actor.expression = !attention && !frozen && (levelUp || (approved && t - approved.at < .9))
+        ? "happy" : act.expr;
       if (this._greet && this._greet.has(agent.id)) {
         let gt = this._greet.get(agent.id);
         if (gt === null) { gt = t; this._greet.set(agent.id, t); }
@@ -986,35 +1050,48 @@ export class IsoScene {
       actor.accentCur.copy(actor.accentFrom)
         .lerp(actor.accentTo, smoothstep(0, 0.4, t - (actor.accentAt ?? -Infinity)));
       actor.accent = actor.accentCur;
+      if (!frozen && levelUp && !attention) {
+        actor.flashAccent ||= new THREE.Color();
+        actor.accent = actor.flashAccent.copy(actor.accentCur)
+          .lerp(CELEBRATION_REFLECTION, celebrationFlash(t - levelUp.at));
+      }
     }
 
     // R68: 退勤＝即消滅ではなく、入口まで歩いて退場してから消える（出勤と対称）
     for (const [id, actor] of [...this.actors]) {
       if (seen.has(id)) { actor.leavingAt = null; continue; }
-      if (!this.seeded) { this.actors.delete(id); continue; }   // 初回シードは従来どおり
-      if (!actor.leavingAt) {
-        const cur = pathTravel(actor.path, actor.startedAt, t);
+      if (!this.seeded || frozen) { this.actors.delete(id); continue; }
+      if (actor.leavingAt == null) {
+        const pos = actor.nodes.root.position;
         actor.leavingAt = t;
-        actor.path = routePath([cur.x, cur.z], [ENTRANCE.x, ENTRANCE.z], this.navGraph);
-        actor.dest = [ENTRANCE.x, ENTRANCE.z];
-        actor.startedAt = t;
-        actor.poseKind = "walk";       // 座り姿勢からの立ち上がりも mixPose で繋ぐ
+        actor.path = routePath([pos.x, pos.z], [this.stops.entrance.x, this.stops.entrance.z], this.navGraph);
+        actor.dest = [this.stops.entrance.x, this.stops.entrance.z];
+        actor.startedAt = t + LEAVE_SECONDS;
+        actor.poseKind = "leave";
         actor.poseFrom = actor.lastPose || null;
         actor.poseChangedAt = t;
       }
+      const dt = t - actor.leavingAt;
       const m = pathTravel(actor.path, actor.startedAt, t);
-      if (m.u >= 1 || t - actor.leavingAt > 20) {   // 到着（保険=20秒）で退場完了
+      if (dt >= LEAVE_SECONDS && m.u >= 1) {
         this.actors.delete(id);
         continue;
       }
-      const blended = mixPose(actor.poseFrom,
-        walkPose(walkPhaseFor(m.dist, actor.seed)),
-        smoothstep(0, 0.45, t - actor.poseChangedAt));
+      const preparing = dt < LEAVE_SECONDS;
+      const next = preparing ? leavePose(dt, actor.seed) : walkPose(walkPhaseFor(m.dist, actor.seed));
+      if (!preparing && actor.poseKind !== "exit") {
+        actor.poseFrom = actor.lastPose;
+        actor.poseChangedAt = t;
+        actor.poseKind = "exit";
+      }
+      const blended = mixPose(actor.poseFrom, next, smoothstep(0, .45, t - actor.poseChangedAt));
       actor.lastPose = blended;
       applyPose(actor.nodes, blended);
-      const dispY = this._track(actor, "trY", 0, t);
+      actor.prop = null;
+      const dispY = this._track(actor, "trY", preparing ? (actor.targetY ?? 0) : 0, t);
+      actor.expression = exprFor({ state: "waiting" }, t, actor.seed);
       actor.nodes.root.position.set(m.x, dispY, m.z);
-      actor.nodes.root.rotation.y = m.yaw;
+      actor.nodes.root.rotation.y = this._track(actor, "trYaw", m.yaw, t, .45, true);
     }
 
     this.robots.begin();
@@ -1022,33 +1099,48 @@ export class IsoScene {
     for (const [aid, actor] of this.actors) {
       if (n++ >= CAPACITY) break;
       this.robots.push(actor.nodes, actor.accent || null,
-        actor.lobster ? LOBSTER_TINT : null,
-        actor.lobster ? null : this._archFor(actor.agentArch, aid));
+        actor.lobster ? LOBSTER_TINT : actor.graphite ? GRAPHITE_TINT : null,
+        this._archFor(actor.agentArch, aid), actor.vendor, actor.expression, actor.prop);
     }
-    // ボス: 普段は壇上で悠然と頷き、300秒周期で20秒だけ北通路を見回る（R68・t>=30）。
-    // 巡回路は BOSS_WALK（既存レーン上＝交差0を nav.test がピン）。壇との段差は
-    // 経路の始端/終端で滑らかに昇降する。
-    let bossWalking = false;
+    // Reuse this.model.bossWalk's north lane for patrol and an out-and-back welcome trip.
+    // A trip starts at the displayed position, so an arrival during patrol cannot teleport the boss.
     const bph = ((t % 300) + 300) % 300;
-    if (t >= 30 && bph < 20) {
-      const route = [[BOSS_SEAT.x, BOSS_SEAT.z], ...BOSS_WALK, [BOSS_SEAT.x, BOSS_SEAT.z]];
-      const bm = pathTravel(route, 0, bph, 1.15);
-      if (bm.u < 1) {
-        bossWalking = true;
-        applyPose(this.boss, walkPose(walkPhaseFor(bm.dist, 7.7)));
-        const lift = BOSS_SEAT.baseY - 0.35;
-        const y = lift * (1 - smoothstep(0.02, 0.10, bm.u))
-          + lift * smoothstep(0.90, 0.98, bm.u);
-        this.boss.root.position.set(bm.x, y, bm.z);
-        this.boss.root.rotation.y = bm.yaw;
+    const patrol = t >= 30 && bph < 20;
+    if (this.seeded && !frozen && ((welcome && !this.bossTrip?.welcome)
+      || (patrol && !this.bossPatrol && !this.bossTrip))) {
+      const pos = this.boss.root.position;
+      const lane = welcome ? this.model.bossWalk.slice(0, 2) : this.model.bossWalk;
+      const outbound = routePath([pos.x, pos.z], lane[0], this.navGraph);
+      outbound.push(...lane.slice(1));
+      if (welcome) outbound.push(...routePath(lane.at(-1), [this.stops.entrance.x, this.stops.entrance.z], this.navGraph).slice(1));
+      const route = [...outbound, ...routePath(outbound.at(-1), [this.stops.boss.x, this.stops.boss.z], this.navGraph).slice(1)];
+      this.bossTrip = { route, at: t, welcome, poseFrom: this.bossLastPose, yFrom: pos.y };
+    }
+    this.bossPatrol = patrol;
+    const trip = !frozen && this.seeded ? this.bossTrip : null;
+    const bm = trip ? pathTravel(trip.route, trip.at, t, 1.15) : null;
+    const bossWalking = bm && bm.u < 1;
+    let bossPose = poseFor("meeting", t * .55, 7.7);
+    if (bossWalking) {
+      bossPose = mixPose(trip.poseFrom, walkPose(walkPhaseFor(bm.dist, 7.7)), smoothstep(0, .45, t - trip.at));
+      const y = trip.yFrom * (1 - smoothstep(0, .5, t - trip.at));
+      this.boss.root.position.set(bm.x, y, bm.z);
+      this.boss.root.rotation.y = this._track(this.boss, "trYaw", bm.yaw, t, .3, true);
+    } else {
+      if (trip) {
+        this.bossReturn = { at: t, pose: this.bossLastPose, y: this.boss.root.position.y };
+        this.bossTrip = null;
       }
+      const back = !frozen ? this.bossReturn : null;
+      const k = back ? smoothstep(0, .45, t - back.at) : 1;
+      bossPose = mixPose(back?.pose, bossPose, k);
+      const y = (back?.y ?? 0) * (1 - k) + (this.stops.boss.baseY - .35) * k;
+      this.boss.root.position.set(this.stops.boss.x, y, this.stops.boss.z);
+      this.boss.root.rotation.y = this._track(this.boss, "trYaw", 0, t, .45, true);
     }
-    if (!bossWalking) {
-      applyPose(this.boss, poseFor("meeting", t * 0.55, 7.7));
-      this.boss.root.position.set(BOSS_SEAT.x, BOSS_SEAT.baseY - 0.35, BOSS_SEAT.z);
-      this.boss.root.rotation.y = 0;
-    }
-    this.robots.push(this.boss, this.bossAccent);
+    applyPose(this.boss, bossPose);
+    this.bossLastPose = bossPose;
+    this.robots.push(this.boss, this.bossAccent, null, null, "claude", exprFor({ state: "waiting" }, t, 7.7));
 
     // R56: 会議チビロボ＝minions を親と同じ卓の縁に立たせて頷かせる（上限4/卓・8/全体）。
     // InstancedMesh への行列追加だけ＝drawCalls は増えない。位相は親id+序数で分散。
@@ -1089,8 +1181,8 @@ export class IsoScene {
         ch.root.rotation.y = seat.yaw;
         // アクセントは親の淡色版＝「同じチームの部下」が色で伝わる
         this._chibiTint.copy(actor.accent || ACCENTS.resting).lerp(CHIBI_WHITE, 0.45);
-        this._chibiMeta.set(key, { seat, seed, tint: this._chibiTint.clone() });
-        this.robots.push(ch, this._chibiTint);
+        this._chibiMeta.set(key, { seat, seed, tint: this._chibiTint.clone(), vendor: actor.vendor });
+        this.robots.push(ch, this._chibiTint, null, null, actor.vendor, exprFor({ state: "waiting" }, t, seed));
       }
     }
     // 解散したチビ（前フレームまで居た席）は0.3秒縮んで消える
@@ -1109,7 +1201,7 @@ export class IsoScene {
       ch.root.scale.setScalar(0.95 * Math.max(0.001, k));
       ch.root.position.set(gone.seat.x, gone.seat.y, gone.seat.z);
       ch.root.rotation.y = gone.seat.yaw;
-      this.robots.push(ch, gone.tint);
+      this.robots.push(ch, gone.tint, null, null, gone.vendor, exprFor({ state: "waiting" }, t, gone.seed));
     }
     this.robots.end();
 
@@ -1118,7 +1210,7 @@ export class IsoScene {
     const attnNow = new Set();
     for (const agent of world.agents) {
       if (mi >= this.attnMarkers.length) break;
-      if (!agent.attention) continue;
+      if (!this.actors.get(agent.id)?.attention) continue;
       attnNow.add(agent.id);
       const actor = this.actors.get(agent.id);
       if (!actor) continue;
@@ -1136,23 +1228,22 @@ export class IsoScene {
       const id = key.slice(5);
       if (attnNow.has(id)) continue;
       this.markerSince.delete(key);
-      const actor = this.actors.get(id);
-      const inWorld = world.agents.some((a) => a.id === id);
-      if (actor && inWorld && this.seeded) this.attnResolved.set(id, { at: t });
+      // Answer events are detected per actor, independently of the six-sprite pool.
+    }
+    for (const [id, event] of this.attnResolved) {
+      if (frozen || t - event.at >= .9 || !seen.has(id)) this.attnResolved.delete(id);
     }
     let di = 0;
-    for (const [id, res] of [...this.attnResolved]) {
-      const dt = t - res.at;
-      const actor = this.actors.get(id);
-      if (dt > 0.6 || !actor || di >= this.doneMarkers.length) {
-        this.attnResolved.delete(id);
-        continue;
-      }
-      const sp = this.doneMarkers[di++];
-      const pos = actor.nodes.root.position;
-      const s = 0.60 * smoothstep(0, 0.15, dt) * (1 - smoothstep(0.42, 0.6, dt));
-      sp.scale.set(Math.max(0.001, s), Math.max(0.001, s), 1);
-      sp.position.set(pos.x, pos.y + 2.55 + dt * 0.5, pos.z);   // ふわっと昇って消える
+    // Share the existing four ✓ sprites; attention retains priority over completion.
+    const done = new Map([...this.attnResolved, ...this.levelUps]);
+    for (const [id, res] of done) {
+      const dt = t - res.at, actor = this.actors.get(id);
+      const duration = this.levelUps.has(id) ? CELEBRATE_SECONDS : .6;
+      if (frozen || dt < 0 || dt >= duration || !actor || actor.attention || di >= this.doneMarkers.length) continue;
+      const sp = this.doneMarkers[di++], pos = actor.nodes.root.position;
+      const s = .60 * smoothstep(0, .15, dt) * (1 - smoothstep(duration - .18, duration, dt));
+      sp.scale.set(Math.max(.001, s), Math.max(.001, s), 1);
+      sp.position.set(pos.x, pos.y + 2.55 + dt * .5, pos.z);
       sp.visible = true;
     }
     for (; di < this.doneMarkers.length; di++) this.doneMarkers[di].visible = false;
@@ -1162,7 +1253,7 @@ export class IsoScene {
     const thinkNow = new Set();
     for (const agent of world.agents) {
       if (ti >= this.thinkMarkers.length) break;
-      if (agent.attention || agent.kind !== "think") continue;
+      if (this.actors.get(agent.id)?.attention || this.actors.get(agent.id)?.act.pose !== "think") continue;
       const actor = this.actors.get(agent.id);
       if (!actor) continue;
       thinkNow.add(agent.id);
@@ -1205,7 +1296,8 @@ export class IsoScene {
       if (key.startsWith("chat:") && !chatNow.has(key)) this.markerSince.delete(key);
     }
     this.seeded = true;            // 次に現れた社員からは入口から歩かせる
-    this.renderer.render(this.scene, this.camera);
+    if (this.streaming) this.cinematic(t);
+    this.robots.faces.render(this.renderer, () => this.post.render(this.scene, this.camera));
   }
 
   /** 画面座標へ投影（ガラスのフローティングラベルを貼るため）。 */
@@ -1218,7 +1310,7 @@ export class IsoScene {
 
   /** ボスロボのスクリーン座標（クリック判定用・胸のあたり）。 */
   projectBoss() {
-    return this.project(BOSS_SEAT.x, 1.5, BOSS_SEAT.z);
+    return this.project(this.stops.boss.x, 1.5, this.stops.boss.z);
   }
 
   /**
@@ -1262,20 +1354,64 @@ export class IsoScene {
     const KIND_PART = { video: "phones", audio: "phones", dev: "cap",
       design: "beret", writer: "pencil", ops: "bowtie", research: "mortar",
       support: "headset", infra: "hardhat", finance: "eyeshade" };
+    const palette = { video: 0x5e5a55, audio: 0x5f7d59, dev: 0x5f7d59, design: 0x8a6a45,
+      writer: 0xc9a86a, ops: 0x2e2d2c, research: 0x5e5a55, support: 0x8a6a45,
+      infra: 0xc9a86a, finance: 0x5f7d59 };
     const built = {
       kind: arch.kind,
       part: KIND_PART[arch.kind] || null,
-      tintC: new THREE.Color(arch.tint[0], arch.tint[1], arch.tint[2]),
-      accC: arch.acc ? new THREE.Color(arch.acc[0], arch.acc[1], arch.acc[2]) : null,
+      tintC: new THREE.Color(...[...arch.tint].sort((a, b) => b - a)), // warm ordering preserves tint variation
+      accC: arch.acc ? new THREE.Color(palette[arch.kind] || 0x5e5a55) : null,
     };
     this._archCache.set(cacheKey, built);
     return built;
+  }
+
+  /** Broadcast framing is separate from the user's zoom/pan and never writes them. */
+  cinematic(t) {
+    if (!this._frame || !this._lastWorld) return;
+    this._director ||= createDirector();
+    if (!this._cinematicPaused) {
+      const shot = this._director(this._lastWorld.agents, t, { frozen, bossWalking: Boolean(this.bossTrip) });
+      const base = this._frame;
+      let goal = { ...base };
+      const target = shot.kind === "boss" ? this.boss.root
+        : shot.id ? this.actors.get(shot.id)?.nodes.root : null;
+      if (target) {
+        this.camera.updateMatrixWorld();
+        const point = target.position.clone(); point.y += 0.9;
+        point.applyMatrix4(this.camera.matrixWorldInverse);
+        const hw = (base.right - base.left) * .46, hh = (base.top - base.bottom) * .46;
+        goal = { left: point.x - hw, right: point.x + hw, top: point.y + hh, bottom: point.y - hh };
+      }
+      if (this._cinematicShot !== shot.sequence) {
+        this._cinematicFrom = this._cinematicFrame || goal;
+        this._cinematicShot = shot.sequence;
+      }
+      // Frozen renders always use the first shot, with no interpolation or wall-clock drift.
+      const k = frozen ? 1 : smoothstep(0, .9, t - shot.started);
+      this._cinematicFrame = Object.fromEntries(Object.keys(goal).map((key) =>
+        [key, this._cinematicFrom[key] + (goal[key] - this._cinematicFrom[key]) * k]));
+    }
+    const f = this._cinematicFrame || this._frame, scale = this._userScale ?? 1;
+    const cx = (f.left + f.right) / 2 + (this._userPanX || 0);
+    const cy = (f.top + f.bottom) / 2 + (this._userPanY || 0);
+    const hw = (f.right - f.left) / 2 * scale, hh = (f.top - f.bottom) / 2 * scale;
+    Object.assign(this.camera, { left: cx - hw, right: cx + hw, top: cy + hh, bottom: cy - hh });
+    this.camera.updateProjectionMatrix();
+  }
+
+  stopCinematic() {
+    if (!this.streaming && !this._director) return;
+    this._cinematicPaused = true;
+    this._cinematicFrame ||= { ...this._frame };
   }
 
   /** R80.6: ピンチズーム。factor>1=寄る。pxX/pxY=ピボット（canvas px・省略時は中央）。
    *  指の下の点が動かないよう、スケール変化ぶんをパンへ繰り込む。 */
   viewZoomBy(factor, pxX, pxY) {
     if (!this._frame || !isFinite(factor) || factor <= 0) return;
+    this.stopCinematic();
     const el = this.renderer.domElement;
     const W = el.clientWidth || 1;
     const H = el.clientHeight || 1;
@@ -1295,6 +1431,7 @@ export class IsoScene {
   /** R80.6: ドラッグでパン（canvas pxで受け、カメラ座標へ換算）。 */
   viewPanBy(dxPx, dyPx) {
     if (!this._frame) return;
+    this.stopCinematic();
     const el = this.renderer.domElement;
     const W = el.clientWidth || 1;
     const H = el.clientHeight || 1;
@@ -1306,6 +1443,8 @@ export class IsoScene {
   }
 
   viewReset() {
+    this.stopCinematic();
+    if (this._cinematicPaused) this._cinematicFrame = { ...this._frame };
     this._userScale = 1;
     this._userPanX = 0;
     this._userPanY = 0;
@@ -1332,6 +1471,7 @@ export class IsoScene {
   /** R70: フォーカスズーム＝シートで選んだロボへ0.5sで寄る（update④が補間を描く）。 */
   focusOn(agentId) {
     if (!agentId || !this.actors.has(agentId)) return;
+    this.stopCinematic();
     this._focusId = agentId;
     this._focusAnim = { t0: null, k0: this._focusK ?? 0, k1: 1 };
   }
@@ -1346,15 +1486,24 @@ export class IsoScene {
     // 名札は足元の下（頭上の大きな札はオフィスを隠す＝ユーザーFBで変更）
     // R59: 休憩の分散割当がある社員は、ロボ本体と同じ休憩スポットを指す
     // （assignRestSpots は純関数＝update() と同じ入力から同じ席が出る）
-    const ri = assignRestSpots(world.agents, REST_SPOTS).get(agent.id);
-    const a = ri !== undefined ? REST_SPOTS[ri] : this.anchorFor(agent, world, index);
+    const ri = assignRestSpots(world.agents, this.model.restSpots).get(agent.id);
+    const a = ri !== undefined ? this.model.restSpots[ri] : this.anchorFor(agent, world, index);
     return this.project(a.x, Math.max(0, (a.y || 0) - 0.02), a.z);
   }
 
   stats() {
     const info = this.renderer.info;
+    const materials = new Set(Object.values(this.materials));
+    this.scene.traverse((o) => {
+      for (const mat of Array.isArray(o.material) ? o.material : [o.material]) if (mat) materials.add(mat);
+    });
     return {
+      tier: this.spec.id,
+      deskSeats: this.anchors.desk.length,
+      maxSeen: this.maxSeen ?? 0,
       drawCalls: info.render.calls,
+      materials: materials.size,
+      quality: this.post.quality,
       triangles: info.render.triangles,
       geometries: info.memory.geometries,
       textures: info.memory.textures,
@@ -1366,18 +1515,16 @@ export class IsoScene {
   dispose() {
     this.disposed = true;
     this.robots.dispose();
-    for (const m of this.staticMeshes) {
-      m.geometry.dispose();
-      this.scene.remove(m);
-    }
-    this.monitors.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
-    for (const m of Object.values(this.materials)) m.dispose?.();
-    for (const m of this.screenMats) {
-      m.map?.dispose();
-      m.emissiveMap?.dispose();
+    this._disposeStatic();
+    const textures = new Set();
+    for (const m of new Set(Object.values(this.materials))) {
+      for (const key of ["map", "normalMap", "emissiveMap", "lightMap"]) if (m[key]) textures.add(m[key]);
       m.dispose();
     }
-    this.envMap?.dispose();
+    for (const texture of textures) texture.dispose();
+    this.displays.dispose();
+    this.environments.dispose();
+    this.post.dispose();
     this.renderer.dispose();
     this.renderer.domElement.remove();
     // WebGL コンテキストは明示的に手放す（スタイル切替でリークさせない）

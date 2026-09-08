@@ -39,25 +39,58 @@ CORE_FORBIDDEN = [
 ]
 
 # import の向きの禁止（from パス → 禁止する参照元ディレクトリ）
+# R90-S1: presentation は ui/iso に統合。ui/hud はスタイル非依存の操作系。
+#   hud は core/platform だけを見る＝どのスタイルからも使えるが、スタイルを知らない。
 IMPORT_RULES = [
-    ("ui/core", r"/ui/(platform|iso|pixel)/", "core が上位層を import している"),
-    ("ui/platform", r"/ui/(iso|pixel)/", "platform が presentation を import している"),
-    ("ui/iso", r"/ui/pixel/", "iso が pixel を import している（presentation は互いに独立）"),
+    ("ui/core", r"/ui/(platform|iso|hud|pixel|pwa)/", "core が上位層を import している"),
+    ("ui/platform", r"/ui/(iso|hud|pixel|pwa)/", "platform が presentation を import している"),
+    ("ui/hud", r"/ui/(iso|pixel|pwa)/", "hud が presentation を import している（hud は core/platform のみ）"),
+    ("ui/iso", r"/ui/pixel/", "iso が他スタイルを import している（presentation は互いに独立）"),
     ("ui/pixel", r"/ui/iso/", "pixel が iso を import している（presentation は互いに独立）"),
 ]
 
-_BLOCK = re.compile(r"/\*.*?\*/", re.S)
-_LINE = re.compile(r"(^|[^:])//.*$", re.M)
-_STR = re.compile(r"(['\"`])(?:\\.|(?!\1).)*\1", re.S)
-
-
 def strip_noise(src):
-    """コメントと文字列リテラルを潰す（誤検知を防ぐ）。行数は保つ。"""
-    def blank(m):
-        return re.sub(r"[^\n]", " ", m.group(0))
-    src = _BLOCK.sub(blank, src)
-    src = _LINE.sub(lambda m: m.group(1) + " " * (len(m.group(0)) - len(m.group(1))), src)
-    return _STR.sub(blank, src)
+    """コメントと文字列リテラルを潰す（誤検知を防ぐ）。行数は保つ。
+
+    R90-P1 で踏んだ罠: 以前は正規表現 3 本で潰していたが、`(['"`])(?:\\.|(?!\\1).)*\\1` は
+    改行の無い巨大な 1 行（ui/pwa/app.html＝実ファイル化した PWA シェル）でバックトラックが爆発し
+    2 分以上止まった（dev.sh --check・verify ▶2b・PostToolUse hook が全部詰まる）。
+    線形の状態機械に置き換える（入力長に比例・正規表現なし）。"""
+    out = []
+    i, n = 0, len(src)
+    while i < n:
+        c = src[i]
+        nxt = src[i + 1] if i + 1 < n else ""
+        if c == "/" and nxt == "*":                       # ブロックコメント
+            j = src.find("*/", i + 2)
+            j = n if j < 0 else j + 2
+            out.append("".join("\n" if ch == "\n" else " " for ch in src[i:j]))
+            i = j
+        elif c == "/" and nxt == "/" and (i == 0 or src[i - 1] != ":"):   # 行コメント（http:// は除外）
+            j = src.find("\n", i)
+            j = n if j < 0 else j
+            out.append(" " * (j - i))
+            i = j
+        elif c in "'\"`":                                 # 文字列（エスケープを跨ぐ・テンプレは改行可）
+            q = c
+            j = i + 1
+            while j < n:
+                ch = src[j]
+                if ch == "\\":
+                    j += 2
+                    continue
+                if ch == q:
+                    j += 1
+                    break
+                if ch == "\n" and q != "`":               # 閉じ忘れの通常文字列は行末で打ち切る
+                    break
+                j += 1
+            out.append("".join("\n" if ch == "\n" else " " for ch in src[i:j]))
+            i = j
+        else:
+            out.append(c)
+            i += 1
+    return "".join(out)
 
 
 def imports_of(src):
@@ -89,7 +122,15 @@ def main():
             if not rel.startswith(prefix + "/"):
                 continue
             for spec in imports_of(raw):
-                if re.search(bad, spec):
+                # 相対 import（./x.js, ../core/x.js）は自分の位置から絶対化して判定する
+                # （"../iso/scene3d.js" のような他スタイル参照を見逃さないため・R90-H）
+                spec_abs = spec
+                if spec.startswith("."):
+                    try:
+                        spec_abs = "/" + (path.parent / spec).resolve().relative_to(ROOT).as_posix()
+                    except ValueError:
+                        pass                      # リポ外へ抜ける相対参照はそのまま判定
+                if re.search(bad, spec_abs):
                     problems.append(f"{rel} {why}: {spec}")
 
         for spec in imports_of(raw):

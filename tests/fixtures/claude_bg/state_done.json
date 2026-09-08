@@ -1,0 +1,26 @@
+{
+  "state": "done",
+  "detail": "合成テストが完了しました",
+  "tempo": "idle",
+  "inFlight": {"tasks": 0, "queued": 0, "kinds": []},
+  "fan": [
+    {"kind": "shell", "label": "dummy", "startedAt": 1699999900000, "doneAt": 1699999940000},
+    {"kind": "todo", "label": "dummy", "startedAt": 1699999910000, "doneAt": 1699999930000}
+  ],
+  "tokens": 1800,
+  "name": "fixture-finisher",
+  "nameSource": "auto",
+  "sessionId": "session-launch-3",
+  "resumeSessionId": "session-resume-3",
+  "linkScanPath": "/fixture/projects/demo/transcript-3.jsonl",
+  "cwd": "/fixture/project",
+  "template": "bg",
+  "daemonShort": "b0000003",
+  "cliVersion": "2.1.258",
+  "createdAt": "2023-11-14T22:03:20.000Z",
+  "updatedAt": "2023-11-14T22:13:00.000Z",
+  "intent": "dummy",
+  "output": {"result": "dummy"},
+  "respawnFlags": "dummy",
+  "bridgeUrl": "dummy"
+}

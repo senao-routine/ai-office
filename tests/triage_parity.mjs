@@ -1,21 +1,19 @@
 // R80-A11: PWAの❗並び順が、正本 ui/core/world.js の attentionQueue と**同じ先頭**を選ぶことの機械ピン。
 // 従来スマホは session の辞書順で並べており、「Macで言われた相手」と「スマホで最初に出る相手」が
 // 食い違っていた（同じ❗キューを見ているのに順序の正本が2つあった）。
-// gloss_parity と同じ流儀＝worker.js から該当片を抽出して実行し、core と突き合わせる。
-import { readFileSync } from "node:fs";
+// gloss_parity と同じ流儀＝app_html.js から該当片を抽出して実行し、core と突き合わせる。
+import { APP_HTML as src } from "../relay/src/app_html.js";
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-const src = readFileSync(join(ROOT, "relay/src/worker.js"), "utf8");
-const begin = src.indexOf("// PWA_TRIAGE_BEGIN");
-const end = src.indexOf("// PWA_TRIAGE_END");
-assert.ok(begin >= 0 && end > begin, "PWA_TRIAGE markers not found in worker.js");
+const begin = src.indexOf("var STARVE_MIN=15;");
+const end = src.indexOf("function pushHintDismissed(", begin);
+assert.ok(begin >= 0 && end > begin, "PWA_TRIAGE source not found in app_html.js");
 
-// worker.js は「JS文字列を + で連ねた1本のスクリプト」なので、文字列リテラルを繋いで実体を得る
-const chunk = src.slice(begin, end);
-const code = [...chunk.matchAll(/^'(.*)' \+$/gm)].map((m) => m[1]).join("\n");
+// 生成モジュールを評価した配信HTMLから、対象関数の範囲だけを抽出。
+const code = src.slice(begin, end);
 assert.ok(code.includes("function triageSort"), "triageSort を抽出できていない");
 
 globalThis.__triage = {};
@@ -26,9 +24,9 @@ globalThis.__triage = {};
   " return x < y ? -1 : x > y ? 1 : 0; };\n" +
   "globalThis.rankEmp = (e) => needsAttn(e) ? 0 : isPend(e) ? 1 :" +
   " e.state === 'working' ? 2 : e.state === 'waiting' ? 3 : 4;\n" +
-  code.replace(/^var STARVE_MIN=15;$/m, "globalThis.STARVE_MIN = 15;")
+  code.replace(/^var STARVE_MIN=15;/, "globalThis.STARVE_MIN = 15;")
       .replace("function attnRank", "globalThis.attnRank = function attnRank")
-      .replace("function triageSort", "globalThis.triageSort = function triageSort"),
+      .replace("function triageSort", ";globalThis.triageSort = function triageSort"),
 );
 
 const world = await import(join(ROOT, "ui/core/world.js"));

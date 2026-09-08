@@ -12,8 +12,8 @@ export class ApiError extends Error {
   }
 }
 
-export async function api(path, { method = "GET", body = null, signal = null } = {}) {
-  const opts = { method, headers: { ...HEADERS }, signal };
+export async function api(path, { method = "GET", body = null, signal = null, keepalive = false } = {}) {
+  const opts = { method, headers: { ...HEADERS }, signal, keepalive };
   if (body !== null) {
     opts.headers["Content-Type"] = "application/json";
     opts.body = JSON.stringify(body);
@@ -35,6 +35,15 @@ export async function api(path, { method = "GET", body = null, signal = null } =
 }
 
 export const getOffice = (signal) => api("/api/office", { signal });
+export const getDigest = (signal, day = null, since = null) => {
+  const query = new URLSearchParams();
+  if (day !== null) query.set("day", day);
+  if (since !== null) query.set("since", since);
+  return api(`/api/digest${query.size ? `?${query}` : ""}`, { signal });
+};
+export const getTimeline = (since, signal) =>
+  api(`/api/timeline?since=${encodeURIComponent(since)}&limit=500`, { signal });
+export const postSeen = () => api("/api/seen", { method: "POST", body: {}, keepalive: true });
 // getProjects は R85-2 で撤去（import元ゼロのデッドエクスポートだった。PCの起動導線は office_json.launchable を使う）。
 export const getStatusBoard = (signal) => api("/api/status_board", { signal });
 
@@ -62,6 +71,16 @@ export const setOfficeKey = (name, value) =>
 /** ➕新プロジェクト（P1）: フォルダ選択（ネイティブダイアログ・最大300秒）→登録。 */
 export const pickProjectFolder = () =>
   api("/api/project/pick", { method: "POST", body: {} });
+/** Same NFC cwd hash as project_id_for; the server still checks projects_index. */
+export async function projectIdForPath(path) {
+  const bytes = new TextEncoder().encode(path.normalize("NFC"));
+  const hash = await crypto.subtle.digest("SHA-1", bytes);
+  return [...new Uint8Array(hash)].map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 12);
+}
+export const setProjectArch = (projectId, arch) =>
+  api("/api/project/arch", { method: "POST", body: { projectId, arch } });
+export const hireSession = (projectId, prompt, worktree = false) =>
+  api("/api/hire", { method: "POST", body: { projectId, prompt, worktree } });
 export const newProject = (path, name, { launch = true } = {}) =>
   api("/api/project/new", { method: "POST", body: { path, name, launch } });
 
@@ -104,6 +123,74 @@ export const getRecipes = () => api("/api/recipes");
 export const setRecipes = (recipes) =>
   api("/api/recipes/set", { method: "POST", body: { recipes } });
 
+/** ヘッダ必須の SSE を fetch で購読。hello で接続確定、切断時は3秒後に再接続。 */
+export function events(onPoke, onDrop, onOpen) {
+  let stopped = false;
+  let timer = 0;
+  let since = null;
+  let ac = null;
+
+  const connect = async () => {
+    ac = new AbortController();
+    let reader;
+    try {
+      const path = since === null ? "/api/events" : `/api/events?since=${since}`;
+      const res = await fetch(path, { headers: { ...HEADERS }, signal: ac.signal });
+      if (!res.ok || !res.body || !res.headers.get("Content-Type")?.startsWith("text/event-stream")) {
+        throw new ApiError("イベントに接続できません", res.status, path);
+      }
+      reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let kind = "";
+      let lines = [];
+      const dispatch = () => {
+        if (!lines.length) return;
+        let data;
+        try { data = JSON.parse(lines.join("\n")); } catch { return; }
+        if (!Number.isSafeInteger(data?.seq) || data.seq < 0) return;
+        if (kind === "hello" && data.v === 2) {
+          if (since === null || since > data.seq) since = data.seq;
+          onOpen?.(data);
+        } else if (kind === "poke") {
+          since = data.seq;
+          onPoke(data);
+        }
+      };
+      while (!stopped) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let end;
+        while ((end = buffer.indexOf("\n")) !== -1) {
+          const line = buffer.slice(0, end).replace(/\r$/, "");
+          buffer = buffer.slice(end + 1);
+          if (!line) {
+            dispatch();
+            kind = "";
+            lines = [];
+          } else if (line.startsWith("event:")) {
+            kind = line.slice(6).replace(/^ /, "");
+          } else if (line.startsWith("data:")) {
+            lines.push(line.slice(5).replace(/^ /, ""));
+          }
+        }
+      }
+    } catch {
+      // 接続失敗・切断中も通常のポーリングが状態を取得する。
+    } finally {
+      reader?.releaseLock();
+      ac.abort();
+      if (!stopped) {
+        onDrop?.();
+        timer = setTimeout(connect, 3000);
+      }
+    }
+  };
+  connect();
+  return () => { stopped = true; clearTimeout(timer); ac?.abort(); };
+}
+
 /**
  * 一定間隔でポーリングし、コールバックへ渡す。
  * 2回連続で失敗したらオフライン扱いにする（現行UIと同じ判定）。
@@ -112,21 +199,43 @@ export function poll(fetcher, onData, onOffline, intervalMs = 3000) {
   let fails = 0;
   let timer = 0;
   let stopped = false;
+  let running = false;
+  let pending = false;
   const ac = new AbortController();
 
   const run = async () => {
     if (stopped) return;
+    if (running) { pending = true; return; }
+    clearTimeout(timer);
+    running = true;
     try {
       const data = await fetcher(ac.signal);
+      if (stopped) return;
       fails = 0;
       onOffline?.(false);
       onData(data);
     } catch (err) {
-      if (err.name === "AbortError") return;
+      if (stopped || err.name === "AbortError") return;
       if (++fails >= 2) onOffline?.(true, err);
+    } finally {
+      running = false;
+      if (!stopped) {
+        timer = setTimeout(run, pending ? 0 : intervalMs);
+        pending = false;
+      }
     }
-    if (!stopped) timer = setTimeout(run, intervalMs);
   };
+  // 呼び出し可能な解除関数は従来どおり。即時更新は多重 fetch を作らず1回に束ねる。
+  const stop = () => { stopped = true; clearTimeout(timer); ac.abort(); };
+  stop.refresh = run;
+  stop.setInterval = (ms) => {
+    intervalMs = ms;
+    if (!stopped && !running) {
+      clearTimeout(timer);
+      timer = setTimeout(run, intervalMs);
+    }
+  };
+  Object.defineProperty(stop, "intervalMs", { get: () => intervalMs });
   run();
-  return () => { stopped = true; clearTimeout(timer); ac.abort(); };
+  return stop;
 }

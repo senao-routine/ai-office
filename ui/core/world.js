@@ -9,7 +9,8 @@
 //     tools/js_layer_lint.py が機械で落とす。
 // ──────────────────────────────────────────────────────────────
 
-import { archetypeFor } from "./archetype.js";
+import { activityKind, archetypeFor } from "./archetype.js";
+import { DEFAULT_SPEC } from "./layout_specs.js";
 
 /** 席の数。使われないスロットは机ごと描かない＝空席を作らないための上限。 */
 export const DESK_SLOTS = 12;
@@ -30,15 +31,19 @@ export function buildWorld(office) {
   const agents = triageSort(raw).map((p) => ({
     id: p.projectId || p.session || "",
     session: p.session || "",
+    projectKey: projectKey(p),
+    projectName: p.name || p.dept || p.disp || "",
     // R85-1: /rename のセッション名が最優先（disp/採番はサーバー側で無改変のまま）
     name: p.title || p.disp || p.name || p.dept || "",
     role: p.role || "",
+    ...(Object.hasOwn(p, "arch") ? { arch: p.arch } : {}),
     dept: p.dept || "",
     crew: Number(p.crew) || 1,
     state: p.state || "idle",
     kind: p.kind || "idle",
     zone: zoneOf(p),
     activity: activityText(p),
+    verb: p.verb || "", target: p.target || "",
     attention: needsAttention(p),
     approvalMin: Number(p.approvalMin) || 0,
     question: p.question || "",
@@ -72,9 +77,8 @@ export function buildWorld(office) {
   return {
     officeName: office.officeName || "",
     lang: office.lang || "ja",
-    edition: office.edition?.id || null,
-    features: office.edition?.features || {},
     generatedAt: Number(office.generatedAt) || 0,
+    growth: office.growth || null,
     setup: (office.setup && typeof office.setup === "object") ? office.setup : null,
     agents,
     seats,
@@ -86,6 +90,7 @@ export function buildWorld(office) {
     today: (office.today && typeof office.today === "object") ? office.today : null,
     history: Array.isArray(office.history) ? office.history : [],
     // R85-3: PC機能パリティ＝スマホだけが読んでいた搬送済みデータをPCへも通す
+    actions: (office.actions && typeof office.actions === "object") ? office.actions : null,
     relay: (office.relay && typeof office.relay === "object") ? office.relay : null,
     launchable: Array.isArray(office.launchable) ? office.launchable : [],
     // R86-A: アバター粒度（ヘッダー文言の分岐用。旧serverは未搬送=project）
@@ -95,7 +100,7 @@ export function buildWorld(office) {
 
 function emptyWorld() {
   return {
-    officeName: "", lang: "ja", edition: null, features: {}, generatedAt: 0,
+    officeName: "", lang: "ja", generatedAt: 0,
     setup: null,
     agents: [], seats: new Map(), overflow: new Map(), history: [],
     counts: { desk: 0, meeting: 0, queue: 0, lounge: 0, external: 0, attention: 0 },
@@ -167,7 +172,6 @@ const GLOSS = {
   waiting: { ja: "⏳ 次の指示を待っています", en: "⏳ Waiting for input" },
   resting: { ja: "☕ ひと休み中", en: "☕ Taking a break" },
 };
-const CODE_EXT = /\.(py|js|mjs|ts|tsx|jsx|css|html|sh|json|yml|yaml|toml|swift|rs|go|c|h|cpp)\b/i;
 
 /**
  * エージェントの「今何してます?」一言。優先順:
@@ -181,28 +185,9 @@ export function activityGloss(a, lang = "ja") {
   const L = (key) => (GLOSS[key] ? GLOSS[key][lang === "en" ? "en" : "ja"] : "");
   const now = Array.isArray(a.work?.now) ? a.work.now.find((s) => s && s.trim()) : "";
   if (now) return "📋 " + tidyActivity(now, 42);
-  if (a.state === "resting") return L("resting");
-  const verb = String(a.verb || "").trim();
-  const raw = `${verb} ${a.target || ""}`.trim();
-  if (a.kind === "think" || /考え中|Thinking/i.test(verb)) return L("think");
-  if (/指示待ち|Waiting/i.test(verb)) return L("waiting");
-  if (/報告中|Reporting|Replying|応答中/i.test(verb)) return L("report");
-  if (/調査中|Reading|Searching|検索中/i.test(verb)) return L("research");
-  const target = String(a.target || "");
-  if (/実行中|Running/i.test(verb)) {
-    if (/verify|pytest|unittest|node --test|\btest\b|spec|smoke/i.test(target)) return L("test");
-    if (/git |commit|push|merge|rebase|deploy/i.test(target)) return L("ship");
-    if (/npm|pip|install|build|make|brew/i.test(target)) return L("build");
-    return L("run");
-  }
-  if (/編集中|Editing/i.test(verb)) {
-    if (/\.md\b|readme|docs?\//i.test(target)) return L("docs");
-    if (CODE_EXT.test(target)) return L("code");
-    return L("code");
-  }
-  if (/執筆中|Writing/i.test(verb)) {
-    return /\.md\b|readme/i.test(target) ? L("docs") : L("write");
-  }
+  const kind = activityKind(a);
+  if (kind) return L(kind);
+  const raw = `${String(a.verb || "").trim()} ${a.target || ""}`.trim();
   const tidied = tidyActivity(raw, 42);
   return tidied || (a.state === "working" ? L("run") : L("waiting"));
 }
@@ -266,24 +251,57 @@ export function triageSort(employees) {
 }
 
 /**
- * 席の割当。同じプロジェクトは毎回同じ席に座る（筋肉記憶）ので、
- * id のハッシュを希望席にして衝突時だけ線形に空きを探す。
- * 乱数も時刻も使わない＝同じ入力なら必ず同じ配置（決定論）。
+ * cwd を正規化してプロジェクトを識別。未搬送の場合は既存の識別子へ縮退する。
+ */
+function projectKey(a) {
+  if (a.projectKey) return a.projectKey;
+  const cwd = typeof a.cwd === "string" ? a.cwd.normalize("NFC").replace(/\/+$/, "") || (a.cwd ? "/" : "") : "";
+  return cwd ? `cwd:${cwd}` : `id:${a.projectId || a.id || a.session || ""}`;
+}
+
+/** Project first, then seats. Two consecutive anchors are the two sides of a pod.
+ * Multi-session projects get whole pods first; spare half-pods remain usable when
+ * there are more projects than islands. Sorting makes collisions input-order independent.
  */
 export function assignSeats(agents, slots = DESK_SLOTS) {
   const seats = new Map();
-  const taken = new Set();
-  const deskAgents = (Array.isArray(agents) ? agents : []).filter((a) => zoneOf(a) === "desk");
-  for (const a of deskAgents) {
-    const want = stableIndex(a.id || a.session || "", slots);
-    let idx = -1;
-    for (let i = 0; i < slots; i++) {
-      const cand = (want + i) % slots;
-      if (!taken.has(cand)) { idx = cand; break; }
+  if (!Number.isFinite(slots) || slots < 1) return seats;
+  slots = Math.floor(slots);
+  const size = DEFAULT_SPEC.desks.seatsPerPod, pods = Math.ceil(slots / size);
+  const groups = new Map(), taken = new Set(), owned = new Set();
+  for (const a of Array.isArray(agents) ? agents : []) {
+    if (!a || zoneOf(a) !== "desk") continue;
+    const key = projectKey(a);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(a);
+  }
+  const cmp = (a, b) => a < b ? -1 : a > b ? 1 : 0;
+  const ordered = [...groups].sort(([ka, a], [kb, b]) =>
+    Number(b.length > 1) - Number(a.length > 1) || cmp(ka, kb));
+  const pending = [];
+  for (const [key, members] of ordered) {
+    const sorted = [...members].sort((a, b) => cmp(String(a.id || a.session || ""), String(b.id || b.session || "")));
+    const want = stableIndex(key, pods);
+    let next = 0;
+    for (let i = 0; i < pods && next < sorted.length; i++) {
+      const pod = (want + i) % pods;
+      if (owned.has(pod)) continue;
+      owned.add(pod);
+      for (let j = 0; j < size && next < sorted.length; j++) {
+        const slot = pod * size + j;
+        if (slot >= slots) break;
+        seats.set(sorted[next++].id, slot); taken.add(slot);
+      }
     }
-    if (idx < 0) continue;              // 席が尽きたらフリーアドレス（描画側が立ち位置を決める）
-    taken.add(idx);
-    seats.set(a.id, idx);
+    pending.push(...sorted.slice(next));
+  }
+  for (const a of pending) {
+    const want = stableIndex(projectKey(a), pods) * size;
+    for (let i = 0; i < slots; i++) {
+      const slot = (want + i) % slots;
+      if (taken.has(slot)) continue;
+      seats.set(a.id, slot); taken.add(slot); break;
+    }
   }
   return seats;
 }
@@ -510,7 +528,6 @@ export function summarizeWorld(office) {
   return {
     officeName: w.officeName,
     lang: w.lang,
-    edition: w.edition,
     counts: office.counts ?? null,
     zones: w.counts,
     agents: w.agents.map((a) => ({

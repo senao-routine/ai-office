@@ -1,0 +1,8 @@
+{"v":1,"ts":1800000000.0,"ev":"PostToolUse","sid":"sess-events001","cwdh":"0123456789ab","tool":"Edit","tgt":"report.md","kind":"","nt":"","sub":"","task":"","ok":true,"src":"","plen":0}
+{"v":1,"ts":1800000001.0,"ev":"PostToolUse","sid":"sess-events001","cwdh":"0123456789ab","tool":"Bash","tgt":"","kind":"git:commit","nt":"","sub":"","task":"","ok":true,"src":"","plen":0}
+{"v":1,"ts":1800000002.0,"ev":"Stop","sid":"sess-events001","cwdh":"0123456789ab","tool":"","tgt":"","kind":"","nt":"","sub":"","task":"","ok":true,"src":"","plen":0}
+{"v":1,"ts":1800000003.0,"ev":"PreToolUse","sid":"sess-events001","cwdh":"0123456789ab","tool":"Edit","tgt":"report.md","kind":"","nt":"","sub":"","task":"","ok":true,"src":"","plen":0}
+{"v":1,"ts":1800000004.0,"ev":"Notification","sid":"sess-events001","cwdh":"0123456789ab","tool":"","tgt":"","kind":"","nt":"permission_prompt","sub":"","task":"","ok":true,"src":"","plen":0}
+{"v":1,"ts":1800000005.0,"ev":"UserPromptSubmit","sid":"sess-events001","cwdh":"0123456789ab","tool":"","tgt":"","kind":"","nt":"","sub":"","task":"","ok":true,"src":"","plen":12}
+{"v":1,"ts":1800000006.0,"ev":"PermissionRequest","sid":"sess-events001","cwdh":"0123456789ab","tool":"Bash","tgt":"","kind":"git:push","nt":"","sub":"","task":"","ok":true,"src":"","plen":0}
+{"v":1,"ts":1800000007.0,"ev":"SessionEnd","sid":"sess-events001","cwdh":"0123456789ab","tool":"","tgt":"","kind":"","nt":"","sub":"","task":"","ok":true,"src":"logout","plen":0}

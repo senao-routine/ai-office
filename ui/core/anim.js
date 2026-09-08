@@ -189,6 +189,79 @@ export function tabletPose(t, seed = 0) {
   };
 }
 
+/** Read a document held forward, with a slow scan across the page. */
+export function readPose(t, seed = 0) {
+  const pose = tabletPose(t, seed);
+  pose.headPitch = .28 + Math.sin(t * .7 + seed) * .025;
+  pose.headYaw = Math.sin(t * .42 + seed) * .12;
+  pose.arms[1].elbow += Math.sin(t * .9 + seed) * .06;
+  return pose;
+}
+
+/** Brisk walking. Optional distance phase keeps feet tied to the existing path. */
+export function runPose(t, seed = 0, phase = walkPhaseFor(t * RIG.speed, seed)) {
+  const pose = walkPose(phase);
+  pose.headPitch = .13;
+  for (const arm of pose.arms) arm.elbow -= .65;
+  return pose;
+}
+
+/** Raised hand for attention; standing legs are adapted by the presentation layer. */
+export function questionPose(t, seed = 0) {
+  const pose = seatedPose(t, seed);
+  pose.headPitch = -.06;
+  pose.arms[1] = { side: 1, shoulder: -2.65 + Math.sin(t * 1.8 + seed) * .07, elbow: -.18 };
+  return pose;
+}
+
+// Transient envelopes vanish at both endpoints; t is seconds since the event.
+export const ENTER_SECONDS = .9;
+export const LEAVE_SECONDS = .7;
+export const CELEBRATE_SECONDS = 1.2;
+const gesture = (t, duration) => smoothstep(0, duration * .22, t)
+  * (1 - smoothstep(duration * .68, duration, t));
+
+/** A small acknowledgement nod immediately after an answer. */
+export function approvalPose(t, seed = 0) {
+  const pose = seatedPose(t, seed);
+  pose.headPitch += gesture(t, .9) * (.10 + .14 * Math.sin(t * Math.PI * 4));
+  return pose;
+}
+
+/** First .9 seconds of an arrival: a walking greeting, then ordinary walking. */
+export function enterPose(t, seed = 0, phase = walkPhaseFor(t * RIG.speed, seed)) {
+  const pose = walkPose(phase), k = gesture(t, ENTER_SECONDS);
+  pose.arms[1].shoulder += (-2.3 - pose.arms[1].shoulder) * k;
+  pose.arms[1].elbow += (-.25 - pose.arms[1].elbow) * k;
+  pose.headYaw += .12 * k;
+  return pose;
+}
+
+/** Stand, acknowledge and pause before following the exit path. */
+export function leavePose(t, seed = 0) {
+  const pose = idlePose(t, seed), k = gesture(t, LEAVE_SECONDS);
+  pose.headPitch += .18 * k;
+  pose.arms[1].shoulder -= 1.2 * k;
+  return pose;
+}
+
+/** Brief seated celebration. Every value depends only on elapsed t and seed. */
+export function celebratePose(t, seed = 0) {
+  const pose = seatedPose(t, seed), k = gesture(t, CELEBRATE_SECONDS);
+  pose.hipY += .065 * k;
+  pose.headPitch -= .16 * k;
+  for (const arm of pose.arms) {
+    arm.shoulder += (-2.5 - arm.shoulder) * k;
+    arm.elbow += (-.3 - arm.elbow) * k;
+  }
+  return pose;
+}
+
+/** A short, weak reflection pulse; no light/emissive state or retained clock. */
+export function celebrationFlash(t) {
+  return .16 * gesture(t, .65);
+}
+
 /**
  * 状態に応じたポーズを1つ選ぶ。ゾーンが決まればポーズも決まる（場所＝状態）。
  * role は同じゾーン内での役割違い（会議の発表者・ラウンジのタブレット）。

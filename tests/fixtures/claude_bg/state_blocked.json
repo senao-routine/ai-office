@@ -1,0 +1,23 @@
+{
+  "state": "blocked",
+  "detail": "入力を待っています",
+  "tempo": "idle",
+  "inFlight": {"tasks": 0, "queued": 1, "kinds": ["todo"]},
+  "fan": [{"kind": "todo", "label": "dummy", "startedAt": 0, "doneAt": 0}],
+  "tokens": 1500,
+  "name": "fixture-waiter",
+  "nameSource": "user",
+  "sessionId": "session-launch-2",
+  "resumeSessionId": "session-resume-2",
+  "linkScanPath": "/fixture/projects/demo/transcript-2.jsonl",
+  "cwd": "/fixture/project",
+  "template": "bg",
+  "daemonShort": "b0000002",
+  "cliVersion": "2.1.258",
+  "createdAt": "2023-11-14T22:03:20.000Z",
+  "updatedAt": "2023-11-14T22:13:10.000Z",
+  "intent": "dummy",
+  "output": {"result": "dummy"},
+  "respawnFlags": "dummy",
+  "bridgeUrl": "dummy"
+}

@@ -160,6 +160,19 @@ def parse_action(text):
         if not (isinstance(pid, str) and PROJID_RE.match(pid)):
             return None
         return {"kind": "launch", "project": pid, "reqId": req_id}
+    if kind == "hire":
+        # R90-D11: 遠隔の雇用（受理は office_server 側の config remoteHire で判定。ここは形だけ）
+        pid = d.get("project")
+        prompt = d.get("prompt")
+        name = d.get("name") or ""
+        if not (isinstance(pid, str) and PROJID_RE.match(pid)):
+            return None
+        if not (isinstance(prompt, str) and 0 < len(prompt.strip()) <= 2000):
+            return None
+        if not isinstance(name, str) or len(name) > 30:
+            return None
+        return {"kind": "hire", "project": pid, "prompt": prompt.strip(), "name": name.strip(),
+                "worktree": d.get("worktree") is True, "reqId": req_id}
     return None
 
 
@@ -253,6 +266,33 @@ def _register(record):
         for rid in done[:-RESULT_KEEP]:
             _ORDER.remove(rid)
             del _ACTIONS[rid]
+
+
+def reserve_result(req_id, kind, label, **extra):
+    """R90-D11: reqId を**原子的に**予約する（(record, created)）。既に同じ reqId があれば
+    その record を返して created=False＝呼び出し側は起動しない（at-least-once の再配達で二重起動しない・
+    _ORDER に同じ ID を二重登録しない）。record は state="running" で入り、完了時に同じ dict を更新する。"""
+    with _LOCK:
+        if req_id in _ACTIONS:
+            return _ACTIONS[req_id], False
+        record = {"reqId": req_id, "kind": kind, "recipe": extra.pop("recipe", ""),
+                  "label": str(label)[:60], "state": "running",
+                  "startedAt": time.time(), "endedAt": None, "exitCode": None,
+                  "durationMs": 0, "bytes": 0, "output": "", **extra}
+        _ACTIONS[req_id] = record
+        _ORDER.append(req_id)
+        return record, True
+
+
+def finish_result(record, state, **extra):
+    """reserve_result で予約した record を完了状態へ（同じ dict を更新・監査に1行）。"""
+    with _LOCK:
+        record["state"] = state
+        record["endedAt"] = time.time()
+        record["durationMs"] = int((record["endedAt"] - record["startedAt"]) * 1000)
+        record.update(extra)
+    _audit(record)
+    return record
 
 
 def register_result(req_id, kind, label, state, **extra):
@@ -438,6 +478,7 @@ def results_public(limit=8):
                 "startedAt": r["startedAt"], "durationMs": r.get("durationMs", 0),
                 "exitCode": r.get("exitCode"), "bytes": r.get("bytes", 0),
                 "output": scrub_output(r.get("output", "")),
+                **({"bgId": r["bgId"]} if r.get("bgId") else {}),
             })
         return out
 

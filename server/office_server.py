@@ -24,36 +24,63 @@ AIオフィス — このMacで動いている Claude Code セッションを
 import ast
 import base64
 import binascii
-from datetime import datetime
+import copy
+from datetime import datetime, timedelta
 import errno
-import fcntl
 import hashlib
 import hmac
+import importlib
 import json
 import os
+import queue
 import re
 import secrets
 import shutil
+import socket
+import signal
 import subprocess
 import sys
 import threading
 import time
+import uuid
 import unicodedata
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote
+
+
+def _load_office_events():
+    """D6 の任意アダプタ。未同梱なら従来の状態推定だけを使う。"""
+    try:
+        return importlib.import_module("office_events")
+    except ModuleNotFoundError as exc:
+        if exc.name != "office_events":
+            raise
+        return None
+
+
 try:
+    import office_common
     import projects_index
     import status_board
     import openclaw_source
     import office_actions
+    import source_claude_bg
+    import source_codex
+    import office_timeline
+    office_events = _load_office_events()
 except ModuleNotFoundError:  # importlibでファイルを直接読む既存テスト向け
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     try:
+        import office_common
         import projects_index
         import status_board
         import openclaw_source
         import office_actions
+        import source_claude_bg
+        import source_codex
+        import office_timeline
+        office_events = _load_office_events()
     finally:
         del sys.path[0]
 
@@ -169,25 +196,6 @@ def load_config():
     return {"officeName": default_office_name(office_lang({})), "projects": {}}
 
 
-# R42.1 エディション（claude=Claude Code専用 / openclaw=OpenClaw専用 / hybrid=混合）。
-# 商品の分割線はここが単一正本。config正本は office_config.json トップレベル "edition"
-# （P4常駐/dev/relay/mcpが同一configを見る機構に乗る）。office_layout.json には置かない。
-VALID_EDITIONS = ("claude", "openclaw", "hybrid")
-
-
-def edition(config=None):
-    """解決順= OFFICE_EDITION env > config "edition" > 既定 hybrid（開発リポは無指定=全機能）。
-    空文字は未指定扱い（install変数の未展開事故で機能を落とさない）・不正値は claude（安全側）。"""
-    raw = os.environ.get("OFFICE_EDITION")
-    if raw is None or not str(raw).strip():
-        cfg = config if isinstance(config, dict) else load_config()
-        raw = cfg.get("edition")
-    if raw is None or not str(raw).strip():
-        return "hybrid"
-    val = str(raw).strip().lower()
-    return val if val in VALID_EDITIONS else "claude"
-
-
 AVATAR_MODES = ("session", "project")
 
 
@@ -203,34 +211,8 @@ def avatar_mode(config=None):
     return val if val in AVATAR_MODES else "session"
 
 
-def edition_features(ed):
-    """機能マトリクス＝表示分岐の単一集約点。UI/PWA はこの features だけを見る。
-
-    2026-08-10 ライセンス廃止（ユーザー決定）: 署名鍵による機能ゲートを全廃し、
-    **クローンした全員がスマホ連携・Push・遠隔実行・コスト表示まで使える**。
-    価値は配布経路（note/Discord）＋更新＋コミュニティで作る（詳細= docs/収益化アーキテクチャ）。
-    edition（claude/hybrid/openclaw）は「どの種類のエージェントを表示するか」の**表示モード**として
-    のみ残す＝有料ゲートではない（検証器・鍵・/api/license/* は R85-2 で撤去済み）。"""
-    return {
-        "claudeSessions": ed in ("claude", "hybrid"),
-        "openclaw": ed in ("openclaw", "hybrid"),
-        "relayPwa": True,
-        "push": True,
-        "costDash": True,
-    }
-
-
-def tail_lines(path, nbytes=TAIL_BYTES):
-    try:
-        size = path.stat().st_size
-        with open(path, "rb") as f:
-            f.seek(max(0, size - nbytes))
-            data = f.read()
-        text = data.decode("utf-8", errors="ignore")
-        lines = text.splitlines()
-        return lines[1:] if size > nbytes and len(lines) > 1 else lines
-    except OSError:
-        return []
+tail_lines = office_common.tail_lines
+_file_flock = office_common.file_flock
 
 
 def short(s, n):
@@ -552,7 +534,8 @@ def _task_result_text(block):
 # R64: セッションごとの増分読みオフセット {session_key: {"offset": int, "seen": epoch}}。
 # 旧実装は毎回「末尾2MB窓」だけを読むため、長大セッション（実測55MB）ではTaskCreateが
 # 窓外へ流れてタスクが丸ごと消えた。前回読んだ位置から増分だけ処理して恒久追跡する。
-_TASK_OFFSETS = {}
+_TASK_TAIL = office_common.IncrementalTail(TASK_TAIL_BYTES)
+_TASK_OFFSETS = _TASK_TAIL.offsets
 
 
 def _pick_task_lines(lines):
@@ -578,41 +561,10 @@ def _task_lines(path, session_key=None, now=None):
     オフセットは「最後に読んだ完全行(\\n終端)の直後」＝書き込み途中の不完全行を跨がない。
     末尾の完全行がTaskCreateなら、その行頭で止める（対になるtool_resultが未着のため
     次回まとめて処理する。同一IDの再処理は"set"上書きで冪等）。ファイル縮小はリセット。"""
-    try:
-        size = path.stat().st_size
-    except OSError:
-        return []
-    state = _TASK_OFFSETS.get(session_key) if session_key else None
-    start = None
-    if state and 0 <= state["offset"] <= size:
-        start = state["offset"]
-    if start is None:
-        start = max(0, size - TASK_TAIL_BYTES)
-    if start >= size:
-        if state is not None and now is not None:
-            state["seen"] = now
-        return []
-    try:
-        with open(path, "rb") as f:
-            f.seek(start)
-            data = f.read(size - start)
-    except OSError:
-        return []
-    end_of_last_full = data.rfind(b"\n")
-    if end_of_last_full < 0:
-        return []                      # 完全行がまだ無い＝次回へ持ち越し
-    chunk = data[:end_of_last_full + 1]
-    text = chunk.decode("utf-8", errors="ignore")
-    lines = text.splitlines()
-    if start > 0 and state is None and lines:
-        lines = lines[1:]              # tail窓の先頭は行の途中＝捨てる（従来と同じ）
-    consumed = len(chunk)
-    if lines and '"TaskCreate"' in lines[-1]:
-        consumed -= len(lines[-1].encode("utf-8", errors="ignore")) + 1
-        lines = lines[:-1]
-    if session_key:
-        _TASK_OFFSETS[session_key] = {"offset": start + consumed,
-                                      "seen": now if now is not None else 0.0}
+    reader = _TASK_TAIL if session_key else office_common.IncrementalTail(TASK_TAIL_BYTES)
+    reader.initial_bytes = TASK_TAIL_BYTES
+    lines = reader.read(path, session_key, now=now,
+                        hold_last=lambda line: '"TaskCreate"' in line)
     return _pick_task_lines(lines)
 
 
@@ -764,7 +716,7 @@ def _remembered_tasks(session_key, task_lines, now, fallback_time):
                 if key != session_key
                 and now - (_TASK_OFFSETS.get(key) or {}).get("seen", 0.0) > SHOW_WINDOW]:
         _TASK_MEMORY.pop(key, None)
-        _TASK_OFFSETS.pop(key, None)
+        _TASK_TAIL.drop(key)
     if not memory:
         _TASK_MEMORY.pop(session_key, None)
         return {}
@@ -1195,6 +1147,7 @@ def parse_session(path, now):
 
     employee = {
         "session": path.stem,
+        "vendor": "claude",
         "cwd": cwd,
         "branch": branch,
         # R85-1: /rename のセッション名（無ければ""）。表示側が title || disp で名前を合成する。
@@ -1282,8 +1235,10 @@ def project_config_key(cwd, config, dirname=""):
     return None
 
 
-def project_label(cwd, dirname, config):
+def project_label(cwd, dirname, config, home_cwd=""):
     pat = project_config_key(cwd, config, dirname)
+    if pat is None and home_cwd:
+        pat = project_config_key(home_cwd, config)
     if pat is not None:
         meta = config["projects"][pat]
         return (meta.get("name") or Path(cwd).name, meta.get("role", ""))
@@ -1296,6 +1251,28 @@ def load_history():
         return json.loads(HISTORY_FILE.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return []
+
+
+def events_wired():
+    """R90-D5: イベント記録 hook（hooks/office-event.sh）が ~/.claude/settings.json に配線済みか。
+    Stop に1つでも office-event.sh の entry があれば true（17 イベント全部の検査は install.sh の仕事）。
+    hook_installed() と同じく設定以外は読まない・壊れていれば false。"""
+    settings_file = _HOME / ".claude" / "settings.json"
+    try:
+        settings = json.loads(settings_file.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return False
+    hooks = settings.get("hooks") if isinstance(settings, dict) else None
+    groups = hooks.get("Stop") if isinstance(hooks, dict) else None
+    if isinstance(groups, dict):
+        groups = [groups]
+    if not isinstance(groups, list):
+        return False
+    ours = 'bash "$HOME/.claude/hooks/office-event.sh"'      # hooks/install.sh の EV_CMD と同一文字列
+    return any(isinstance(h, dict) and h.get("command") == ours
+               and (not str(g.get("matcher") or "").strip() or g.get("matcher") == "*")   # installer の _unrestricted と同じ
+               for g in groups if isinstance(g, dict)
+               for h in (g.get("hooks") if isinstance(g.get("hooks"), list) else []))
 
 
 def hook_installed():
@@ -1350,6 +1327,7 @@ def _session_brief(e):
     """内訳表示用の最小情報。本文・パスは**構造的に持たない**（redactionに頼らない）。"""
     return {
         "session": e.get("session", ""),
+        "vendor": e.get("vendor", "claude"),
         "state": e.get("state", ""),
         "age": int(e.get("age") or 0),
         "attention": bool(e.get("approvalMin") or e.get("question")),
@@ -1402,7 +1380,9 @@ def group_by_project(employees, lang="ja", mode="project"):
             pid = project_id_for(lead.get("cwd", ""), lead.get("dept", ""))
         proj = {
             "projectId": pid,
+            **({"arch": lead["arch"]} if "arch" in lead else {}),
             "session": lead.get("session", ""),          # 代表＝指示の宛先
+            "vendor": lead.get("vendor", "claude"),
             "name": lead.get("dept", ""),
             "role": lead.get("role", ""),
             "cwd": lead.get("cwd", ""),
@@ -1435,6 +1415,12 @@ def group_by_project(employees, lang="ja", mode="project"):
         titled = sorted((m for m in members if m.get("title")),
                         key=lambda m: m.get("session", ""))
         proj["title"] = titled[0]["title"] if titled else ""
+        if "bg" in lead:
+            proj["bg"] = {field: copy.deepcopy(lead["bg"][field]) for field in
+                          ("id", "name", "state", "detail", "tempo", "inFlight", "fan")
+                          if field in lead["bg"]}
+            if lead["bg"].get("detail"):
+                proj["detail"] = lead["bg"]["detail"]
         if lead.get("external"):
             proj["external"] = lead["external"]
         if lead.get("questionOptions"):
@@ -1502,6 +1488,8 @@ def prune_inbox_litter(now=None):
     if now - _LAST_PRUNE[0] < _PRUNE_EVERY:
         return 0
     _LAST_PRUNE[0] = now
+    if office_events is not None:
+        office_events.prune(_HOME)
     removed = 0
     try:
         entries = list(INBOX.iterdir())
@@ -1525,16 +1513,19 @@ def scan_office():
     now = time.time()
     prune_inbox_litter(now)
     config = load_config()
-    ed = edition(config)
-    edition_info = {"id": ed, "features": edition_features(ed)}
     global _LANG
     _LANG = office_lang(config)
-    setup = {"hookInstalled": hook_installed()}
+    bg = source_claude_bg.bg_index(_HOME, now)
+    agents = (source_claude_bg.agents_cli(_HOME, now)
+              if os.environ.get("OFFICE_AGENTS_CLI") != "0" else {})
+    sources = {
+        "claude": {"fg": 0, "bg": 0, "agentsCli": bool(agents)},
+        "codex": {"connected": False, "n": 0, "reason": "disabled"},
+        "openclaw": {"connected": False},
+    }
+    setup = {"hookInstalled": hook_installed(), "eventsWired": events_wired()}
     employees = []
-    # claudeSessions=false（openclaw専用エディション）や PROJECTS 不在では transcript を読まない
-    # （R42.3: 早期returnを廃止＝openclaw社員はPROJECTS不在のMacでも表示できる）
-    scan_dirs = (PROJECTS.iterdir()
-                 if edition_info["features"]["claudeSessions"] and PROJECTS.is_dir() else ())
+    scan_dirs = PROJECTS.iterdir() if PROJECTS.is_dir() else ()
     for proj in scan_dirs:
         if not proj.is_dir():
             continue
@@ -1545,6 +1536,16 @@ def scan_office():
             except OSError:
                 continue
             info = parse_session(f, now)
+            if info:
+                job = bg.lookup(info["session"]) or bg.lookup(f.stem)
+                info = source_claude_bg.overlay(info, job, agents.get(info["session"]), now)
+                # D6 接続口: overlay(info, home, now)。公式状態より強く、承認掲示より弱い。
+                # 心拍だけが listening の正本なのでイベントでは上書きさせない。
+                if office_events is not None and not info.get("ask"):
+                    listening = info["listening"]
+                    info = office_events.overlay(info, _HOME, now)
+                    if info.get("gone"): continue
+                    info["listening"] = listening
             # R86-D: mtime のゲートを通っても、**中身**が SHOW_WINDOW より古ければ退勤扱い。
             # Claude Code がアイドルな transcript を1時間ごとに touch するため、mtime だけだと
             # 数十時間前に終わったセッションが居座り続ける（実測53%が幽霊）。
@@ -1555,10 +1556,12 @@ def scan_office():
             if info and info.get("age", 0) > SHOW_WINDOW and not info.get("ask"):
                 continue
             if info:
-                dept, role = project_label(info["cwd"], proj.name, config)
+                dept, role = project_label(info["cwd"], proj.name, config,
+                                           home_cwd=(job or {}).get("cwd", ""))
                 info["dept"] = dept
                 info["role"] = role
                 employees.append(info)
+                sources["claude"]["bg" if info.get("bg") else "fg"] += 1
     employees.sort(key=lambda e: e["mtime"], reverse=True)
     counts = {}
     for e in employees:
@@ -1570,9 +1573,26 @@ def scan_office():
 
     # R42.3: OpenClaw社員のマージ（disp採番後に追加＝oc名前空間で独立採番済み。
     # UIは employees[].external の休眠配線で点灯・PWAは机割当から除外済み）
-    if edition_info["features"]["openclaw"]:
-        oc_emps, _oc_meta = openclaw_source.openclaw_employees(_HOME, now, lang=_LANG)
-        employees.extend(oc_emps)
+    oc_emps, _oc_meta = openclaw_source.openclaw_employees(_HOME, now, lang=_LANG)
+    employees.extend(oc_emps)
+    sources["openclaw"]["connected"] = bool(_oc_meta.get("connected"))
+
+    source_config = config.get("sources")
+    if not isinstance(source_config, dict):
+        source_config = {}
+    if (source_config.get("codex", True)
+            and os.environ.get("OFFICE_SOURCES_CODEX") != "0"):
+        codex_emps, codex_meta = source_codex.codex_employees(_HOME, now, lang=_LANG)
+        codex_counts = {}
+        for e in codex_emps:
+            n = codex_counts.get(e["dept"], 0) + 1
+            codex_counts[e["dept"]] = n
+            e["disp"] = (e["dept"] if n == 1
+                         else f"{e['dept']} #{n}" if _LANG == "en"
+                         else f"{e['dept']} {n}号")
+        employees.extend(codex_emps)
+        sources["codex"] = {"connected": bool(codex_meta.get("connected")),
+                            "n": len(codex_emps), "reason": codex_meta.get("reason", "")}
 
     # 送信履歴（配達状況つき・新しい順12件）＋ R86-I「今日のオフィス」の実数
     # （画面に載せるのは件数だけ＝本文は乗らない。台帳は50件保持なので大量に送った日は
@@ -1599,6 +1619,15 @@ def scan_office():
     # 「office_json に projects を混ぜない」既存の privacy 番人と衝突させない）。
     # R86-A: 粒度は avatarMode（既定 session=1アバター=1セッション・ユーザー裁定）。
     mode = avatar_mode(config)
+    # Explicit accessory overrides also apply to Codex and background worktrees.
+    for e in employees:
+        pat = project_config_key(e.get("cwd", ""), config)
+        if pat is None:
+            pat = project_config_key((e.get("bg") or {}).get("cwd", ""), config)
+        meta = config.get("projects", {}).get(pat, {})
+        if "arch" in meta and (meta["arch"] is None or
+                               isinstance(meta["arch"], str) and meta["arch"] in PROJECT_ARCHES):
+            e["arch"] = meta["arch"]
     roster = group_by_project(employees, _LANG, mode=mode)
 
     # R79-10 遠隔実行: 許可リスト（表示用の最小ビュー＝argv/cwd/envは載せない）と実行結果。
@@ -1611,16 +1640,39 @@ def scan_office():
     }
     # R80: 中継の今日の使用量（未設定/古い＝None＝UIは何も出さない）
     relay_view = relay_usage()
+    event_seq = office_events.seq() if office_events is not None else 0
+    last_events = office_events.recent(since_seq=event_seq - 1, limit=1) if event_seq else []
+
+    # D8: local-only material for digest/XP; failures never affect office_json.
+    try:
+        timeline = sys.modules.get("office_timeline")
+        if timeline is not None:
+            project_ids = {member["session"]: project["projectId"]
+                           for project in roster for member in project["sessions"]}
+            timeline.record_states([dict(e, projectId=project_ids.get(e["session"],
+                project_id_for(e.get("cwd", ""), e.get("dept", "")))) for e in employees], now)
+    except Exception:
+        pass
+
+    try:
+        growth = office_timeline.growth_json(_HOME, now)
+    except Exception:
+        growth = office_timeline.growth_from_events([])
 
     return {
+        # R90-D12: スキーマ版。docs/office-json.md が正本（v2 = sources/events/growth を持つ形）。
+        "v": 2,
         "officeName": config.get("officeName") or default_office_name(_LANG),
         "employees": employees,
+        "sources": sources,
         "roster": roster,
         "history": hist,
         "today": today_view,
         "generatedAt": now,
         "setup": setup,
-        "edition": edition_info,
+        "events": {"seq": event_seq, "wired": setup["eventsWired"],
+                   "lastTs": last_events[0]["ts"] if last_events else 0},
+        "growth": growth,
         "actions": actions_view,
         "relay": relay_view,
         "res": res_summary(now),
@@ -1645,32 +1697,19 @@ _cache = {"t": 0.0, "data": None}
 _OPENCLAW_CACHE_SEC = 60.0
 _openclaw_cache = {"at": None, "data": None}
 _lock = threading.Lock()
+
+
+def _invalidate_cache():
+    with _lock:
+        _cache["t"] = 0.0
+
+
 _KEY_NAMES = frozenset({
     "OPENAI_API_KEY", "X_BEARER_TOKEN", "OPENAI_ADMIN_KEY",
     # R63: APIプロバイダ統合コスト（保存先・検証は既存経路のまま）
     "OPENROUTER_API_KEY", "MOONSHOT_API_KEY", "DEEPSEEK_API_KEY", "GROQ_API_KEY",
 })
 _KEY_VALUE = re.compile(r"^[A-Za-z0-9%_\-\.=/+]{20,300}$")
-
-
-class _file_flock:
-    """任意ファイルのプロセス間ロック。daemon(launchd)・dev(officectl)・relay_agent・mcp_office が
-    同じ config/history を共有するため、スレッドロック(_lock)に加えて flock で read-modify-write を
-    直列化する（lost update 防止）。常に _lock → flock の順で取る（デッドロック回避）。"""
-    def __init__(self, target):
-        self._lockpath = Path(target).with_name(Path(target).name + ".lock")
-
-    def __enter__(self):
-        self._lockpath.parent.mkdir(parents=True, exist_ok=True)
-        self._f = open(self._lockpath, "w")
-        fcntl.flock(self._f, fcntl.LOCK_EX)
-        return self._f
-
-    def __exit__(self, *exc):
-        try:
-            fcntl.flock(self._f, fcntl.LOCK_UN)
-        finally:
-            self._f.close()
 
 
 # 掟: レイアウトはローカル設定＝office_json に混ぜない（中継に載せない）。
@@ -1909,6 +1948,108 @@ def _record_instruction_history(session, text):
         _cache["t"] = 0.0
 
 
+# R90-D10: Codex CLI のセッション（session="cx-<thread id>"）への配達。
+# Stop hook（office_inbox）は Claude Code 固有の経路なので使えない。Codex CLI 0.149+ の
+# `codex queue --thread <id> --message <text>` が「実行中セッションへ外部から指示を積む」公式の口。
+#   - argv 固定・shell=False・timeout・start_new_session（office_actions と同じ Popen の掟）
+#   - text は `--message=<text>` の結合形で渡す（先頭が `-` の本文をオプションと誤認させない）
+#   - rc≠0 は正直に失敗を返す（セッション未起動＝届かない。inbox に溜めて「あとで届く」ふりをしない）
+#   - 常駐（launchd）の PATH には codex が無いことが多いので実体を自前で解決する
+CODEX_QUEUE_TIMEOUT = float(os.environ.get("OFFICE_CODEX_QUEUE_TIMEOUT") or 20)
+SSE_WRITE_TIMEOUT = float(os.environ.get("OFFICE_SSE_WRITE_TIMEOUT") or 20)   # R90-D7: 読まないクライアントを切る
+_FIXED_PATH = ("/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin")
+
+
+class CodexUnavailable(OSError):
+    """R90-D10: Codex への**一時的な**配達失敗（応答なし・起動不能）。OSError 派生にしておくと
+    relay_agent の既存規則「OSError＝残置して次周で再配達（ack しない）」に乗る＝指示を失わない。
+    rc≠0（セッション未起動）や入力不正は恒久＝False で返す（relay は ack して落とす）。"""
+
+
+def _child_env(bin_):
+    """子プロセスの最小 env。PATH は「実体のディレクトリ → 親の PATH → 既知の固定 dir」の順（重複除去）。
+    npm 版の codex/claude は `#!/usr/bin/env node` の Node ラッパーなので、nvm 等で入れた node が
+    固定 PATH から見えないと必ず失敗する（Astra レビュー指摘）。親の PATH を残せば daemon（launchd）
+    でも plist の PATH が引き継がれる。秘密になりうる他の env は渡さない。"""
+    dirs = []
+    for d in ([os.path.dirname(bin_)] if bin_ else []) + os.environ.get("PATH", "").split(":") + list(_FIXED_PATH):
+        if d and d not in dirs:
+            dirs.append(d)
+    node = shutil.which("node")
+    if node and os.path.dirname(node) not in dirs:
+        dirs.append(os.path.dirname(node))
+    return {"PATH": ":".join(dirs), "HOME": str(Path.home()), "LANG": "en_US.UTF-8", "TERM": "dumb"}
+
+
+def _run_child(argv, timeout, cwd=None):
+    """argv 固定・shell=False・独立プロセスグループで実行し (rc, stdout, stderr) を返す。
+    タイムアウト時は**プロセスグループごと** SIGKILL（npm ラッパーが spawn する実体＝孫まで止める）して
+    subprocess.TimeoutExpired を上げる。OSError（起動不能）はそのまま上げる。"""
+    proc = subprocess.Popen(argv, cwd=cwd, shell=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                            stdin=subprocess.DEVNULL, start_new_session=True, env=_child_env(argv[0]))
+    try:
+        out, err = proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            pass
+        try:
+            proc.communicate(timeout=2)
+        except subprocess.TimeoutExpired:
+            pass
+        raise
+    return proc.returncode, out.decode("utf-8", "replace"), err.decode("utf-8", "replace")
+
+_CODEX_BIN_CANDIDATES = ("~/.npm-global/bin/codex", "/opt/homebrew/bin/codex", "/usr/local/bin/codex")
+
+
+def _codex_bin():
+    """codex の実体。OFFICE_CODEX_BIN（テスト注入口）> PATH > 既知の置き場。無ければ None。"""
+    override = os.environ.get("OFFICE_CODEX_BIN")
+    if override:
+        return override if os.access(override, os.X_OK) else None
+    found = shutil.which("codex")
+    if found:
+        return found
+    for cand in _CODEX_BIN_CANDIDATES:
+        p = os.path.expanduser(cand)
+        if os.access(p, os.X_OK):
+            return p
+    return None
+
+
+def _deliver_codex(session, text):
+    thread = session[3:]
+    if not re.fullmatch(r"[A-Za-z0-9-]{4,61}", thread):
+        return False, "session id が不正です"
+    fake = os.environ.get("OFFICE_FAKE_CODEX")
+    if fake:
+        Path(fake).write_text(json.dumps({"thread": thread, "text": text}, ensure_ascii=False),
+                              encoding="utf-8")
+        _record_instruction_history(session, text)
+        return True, L_now("Codex のキューに積みました（次のターンで読まれます）",
+                           "Queued to Codex (read on its next turn)")
+    bin_ = _codex_bin()
+    if not bin_:
+        # 未導入は恒久（再試行しても直らない）＝False で返す
+        return False, L_now("codex コマンドが見つかりません（Codex CLI が未導入か PATH 外）",
+                            "codex CLI not found (not installed or outside PATH)")
+    argv = [bin_, "queue", "--thread", thread, "--message=" + text]
+    try:
+        rc, _out, _err = _run_child(argv, CODEX_QUEUE_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        raise CodexUnavailable("codex queue timed out")
+    except OSError as e:
+        raise CodexUnavailable(f"codex queue could not start: {e}")
+    if rc != 0:
+        return False, L_now("Codex へ届けられませんでした（セッションが起動していない可能性）",
+                            "Could not reach Codex (the session may not be running)")
+    _record_instruction_history(session, text)
+    return True, L_now("Codex のキューに積みました（次のターンで読まれます）",
+                       "Queued to Codex (read on its next turn)")
+
+
 def post_instruction(session, text):
     """指示を投函（Stop hook の office-inbox-wait.sh が配達する）。
     R42.5: oc-宛（OpenClaw・別Mac）は office_inbox でなく OC_OUTBOX へ＝relay_agent が
@@ -1920,6 +2061,8 @@ def post_instruction(session, text):
         return False, "指示が空です"
     if len(text) > 4000:
         return False, "指示が長すぎます(4000字まで)"
+    if "\x00" in text:
+        return False, "指示に使えない文字（NUL）が含まれています"
     if session.startswith("oc-"):
         OC_OUTBOX.mkdir(parents=True, exist_ok=True)
         name = f"{int(time.time() * 1000)}-000.json"
@@ -1934,6 +2077,8 @@ def post_instruction(session, text):
         _record_instruction_history(session, text)
         return True, L_now("OpenClaw へ転送待ちに置きました（中継が配達します）",
                            "Queued for OpenClaw (the relay will deliver it)")
+    if session.startswith("cx-"):
+        return _deliver_codex(session, text)
     INBOX.mkdir(parents=True, exist_ok=True)
     tmp = INBOX / f".{session}.tmp"
     # R79: TTL を持たせる。旧実装は期限が無く、閉じたセッション宛の指示が**無期限に保留**
@@ -2151,6 +2296,63 @@ def _write_config(cfg):
     tmp = cf.with_name(cf.name + ".tmp")
     tmp.write_text(json.dumps(cfg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     tmp.replace(cf)
+
+
+def set_lang(value):
+    """言語設定をプロセス間で直列化して保存し、表示キャッシュを失効する。"""
+    if value not in LANGS:
+        return False, "lang must be ja/en"
+    with _lock, _file_flock(config_file()):
+        cf = config_file()
+        try:
+            cfg = json.loads(cf.read_text(encoding="utf-8")) if cf.exists() else {"projects": {}}
+        except (OSError, json.JSONDecodeError):
+            return False, "office_config.json が読めません（壊れている可能性・手動確認を）"
+        if not isinstance(cfg, dict):
+            return False, "office_config.json が読めません（壊れている可能性・手動確認を）"
+        cfg["lang"] = value
+        _write_config(cfg)
+        _cache["t"] = 0.0
+    return True, value
+
+
+PROJECT_ARCHES = frozenset(("phones", "cap", "beret", "pencil", "bowtie",
+                           "mortar", "headset", "hardhat", "eyeshade"))
+
+
+def set_project_arch(project_id, arch):
+    """Resolve an observed local project, then use the shared config RMW lock."""
+    if not isinstance(project_id, str) or not re.fullmatch(r"[0-9a-f]{12}", project_id):
+        return False, "invalid projectId"
+    if arch is not None and (not isinstance(arch, str) or arch not in PROJECT_ARCHES):
+        return False, "invalid accessory"
+    cwd = next((p.get("cwd") for p in office_json().get("roster", [])
+                if p.get("projectId") == project_id and not p.get("external")), "")
+    if not cwd:
+        cwd = next((p.get("cwd") for p in projects_index.projects_json().get("projects", [])
+                    if p.get("cwd") and project_id_for(p["cwd"]) == project_id), "")
+    if not cwd:
+        return False, "unknown project"
+    with _lock, _file_flock(config_file()):
+        cf = config_file()
+        try:
+            cfg = json.loads(cf.read_text(encoding="utf-8")) if cf.exists() else {"projects": {}}
+            if not isinstance(cfg, dict) or not isinstance(cfg.get("projects", {}), dict):
+                return False, "invalid office_config.json"
+            projects = cfg.setdefault("projects", {})
+            key = project_config_key(cwd, cfg) or project_pattern(cwd)
+            meta = projects.get(key, {})
+            if not isinstance(meta, dict):
+                return False, "invalid project config"
+            if key in projects:
+                projects[key] = {**meta, "arch": arch}
+            else:
+                cfg["projects"] = {key: {"arch": arch}, **projects}
+            _write_config(cfg)
+            _cache["t"] = 0.0
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            return False, "could not save office_config.json"
+    return True, "saved"
 
 
 def add_project(path, name, role, launch=False):
@@ -2464,6 +2666,65 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _send_sse_headers(self):
+        # HTTP/1.0: Content-Length を付けず、切断までストリームを送る。
+        # 読まないクライアントで送信バッファが満杯になると write が無期限に止まり、購読キューも溜まる
+        # （Astra レビュー指摘）→ ソケットに書き込みタイムアウトを付け、timeout で unsubscribe へ落とす。
+        try:
+            self.connection.settimeout(SSE_WRITE_TIMEOUT)
+        except (OSError, AttributeError):
+            pass
+        self.close_connection = True
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+
+    def _events(self):
+        if office_events is None or os.environ.get("OFFICE_EVENTS") == "0":
+            return self._deny(503, "events unavailable")
+        qs = parse_qs(self.path.partition("?")[2], keep_blank_values=True)
+        raw_since = qs.get("since", [None])
+        if (len(raw_since) != 1 or raw_since[0] is not None
+                and not re.fullmatch(r"[0-9]{1,20}", raw_since[0])):
+            return self._deny(400, "bad since")
+        subscriber = office_events.subscribe()
+        if subscriber is None:
+            return self._deny(429, "too many event subscribers")
+
+        def send(kind, data):
+            body = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
+            self.wfile.write(f"event: {kind}\ndata: {body}\n\n".encode("utf-8"))
+            self.wfile.flush()
+
+        try:
+            self._send_sse_headers()
+            current = office_events.seq()
+            # 再起動前の大きなカーソルでも、その後のライブ通知を捨てない。
+            last = current if raw_since[0] is None else min(int(raw_since[0]), current)
+            send("hello", {"seq": current, "v": 2})
+
+            def poke(event):
+                nonlocal last
+                if event["seq"] > last:
+                    # hook の追加フィールドや本文は SSE に載せない。
+                    send("poke", {key: event[key] for key in ("seq", "ts", "ev", "sid")})
+                    last = event["seq"]
+
+            # 先に subscribe 済みなので、履歴取得との間のイベントもキューに残る。
+            for event in office_events.recent(last, limit=office_events.RING):
+                poke(event)
+            while True:
+                try:
+                    poke(subscriber.get(timeout=15))
+                except queue.Empty:
+                    self.wfile.write(b": ping\n\n")
+                    self.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError, TimeoutError, socket.timeout, OSError):
+            pass
+        finally:
+            office_events.unsubscribe(subscriber)
+
     def _deny(self, code=403, msg="forbidden"):
         body = json.dumps({"ok": False, "error": msg}, ensure_ascii=False).encode("utf-8")
         self._send(code, body, "application/json; charset=utf-8")
@@ -2481,10 +2742,37 @@ class Handler(BaseHTTPRequestHandler):
         origin = self.headers.get("Origin")
         return not origin or bool(_LOOPBACK_ORIGIN.match(origin))
 
+    def _activity(self, route):
+        if self.client_address[0] not in ("127.0.0.1", "::1") or not self._csrf_ok():
+            return self._deny(403, "cross-site request blocked")
+        qs = parse_qs(self.path.partition("?")[2], keep_blank_values=True)
+        allowed = {"since", "sid", "limit"} if route == "/api/timeline" else {"day", "since"}
+        if any(key not in allowed or len(values) != 1 or not values[0] or len(values[0]) > 128
+               for key, values in qs.items()):
+            return self._deny(400, "bad query")
+        try:
+            since = float(qs["since"][0]) if "since" in qs else None
+            if route == "/api/timeline":
+                data = office_timeline.timeline_json(_HOME, since=since if since is not None else 0,
+                    sid=qs.get("sid", [""])[0], limit=int(qs.get("limit", ["200"])[0]))
+            else:
+                data = office_timeline.digest_json(_HOME, day=qs.get("day", [None])[0], since=since)
+        except (ValueError, OverflowError, OSError):
+            return self._deny(400, "bad query")
+        self._send(200, json.dumps(data, ensure_ascii=False).encode("utf-8"),
+                   "application/json; charset=utf-8")
+
     def do_GET(self):
         if not self._host_ok():
             return self._deny(403, "invalid host")
-        if self.path.startswith("/api/office"):
+        route = self.path.split("?", 1)[0]
+        if route in ("/api/timeline", "/api/digest"):
+            return self._activity(route)
+        if self.path.split("?", 1)[0] == "/api/events":
+            if not self._csrf_ok():
+                return self._deny(403, "cross-site request blocked")
+            return self._events()
+        elif self.path.startswith("/api/office"):
             # M4: 他GETと同様CSRFゲートを掛ける。office_json は templates全文・recipes・
             # results.output・question本文を含み、かつ res_summary() が**ユーザーのAPIキーで
             # 外部HTTP**を誘発する（純粋な読取ではない）＝任意Webページからの副作用を防ぐ。
@@ -2497,8 +2785,6 @@ class Handler(BaseHTTPRequestHandler):
             # 外部接続の器はローカルUI専用。office_jsonへは混ぜない。
             if not self._csrf_ok():
                 return self._deny(403, "cross-site request blocked")
-            if not edition_features(edition()).get("openclaw"):
-                return self._deny(403, "openclaw is not part of this edition")
             self._send(200, json.dumps(external_openclaw_json(), ensure_ascii=False).encode("utf-8"),
                        "application/json; charset=utf-8")
         elif self.path.startswith("/api/pair/list"):
@@ -2602,7 +2888,6 @@ class Handler(BaseHTTPRequestHandler):
         if not self._csrf_ok():
             return self._deny(403, "cross-site request blocked")
         route = self.path.split("?", 1)[0]
-        # R42.2 の有料機能ゲートは R84 全機能無料化で撤去（features は常に全ON）。
         try:
             n = int(self.headers.get("Content-Length", 0))
             body_limit = 100_000
@@ -2612,8 +2897,29 @@ class Handler(BaseHTTPRequestHandler):
         if not isinstance(data, dict):
             data = {}
         extra = {}
-        if self.path.startswith("/api/instruct"):
-            ok, msg = post_instruction(data.get("session", ""), data.get("text", ""))
+        if route == "/api/seen":
+            if self.client_address[0] not in ("127.0.0.1", "::1"):
+                return self._deny(403, "loopback required")
+            try:
+                result = office_timeline.mark_seen(_HOME)
+            except OSError:
+                return self._deny(500, "could not save seen time")
+            return self._send(200, json.dumps(result).encode("utf-8"),
+                              "application/json; charset=utf-8")
+        elif route == "/api/project/arch":
+            if self.client_address[0] not in ("127.0.0.1", "::1"):
+                return self._deny(403, "loopback required")
+            if "arch" not in data:
+                return self._deny(400, "accessory required")
+            ok, msg = set_project_arch(data.get("projectId"), data["arch"])
+        elif self.path.startswith("/api/instruct"):
+            try:
+                ok, msg = post_instruction(data.get("session", ""), data.get("text", ""))
+            except OSError:
+                # R90-D10: Codex への一時障害（応答なし・起動不能）。relay は残置して再試行するが、
+                # ローカル UI には正直に失敗を返す（例外を握って接続を切らない）
+                ok, msg = False, L_now("Codex が応答しません（少し待ってからもう一度）",
+                                       "Codex did not respond (try again shortly)")
         elif route == "/api/approval/reply":
             # R86-H: 止まっているセッションへ「いま」答える（指示ポストは**ターンが終わるまで
             # 届かない**ので、承認まちの相手には構造的に届かなかった＝ユーザー報告の本体）。
@@ -2705,6 +3011,10 @@ class Handler(BaseHTTPRequestHandler):
                 except OSError as e:
                     ok, msg = False, f"保存できません: {e}"
             extra = {"recipes": recipes, "errors": errors}
+        elif self.path == "/api/hire":
+            # R90-D11: ローカル（loopback+CSRF）からの雇用。パスは受け取らず projectId で引き当てる
+            ok, msg, extra = hire_session(data.get("projectId"), data.get("prompt"), data.get("name") or "",
+                                          worktree=bool(data.get("worktree")))
         elif self.path.startswith("/api/action/exec"):
             # R79-10: 実行者は office_server（Automation TCC同意済み＝osascript経路を持つ）。
             # relay_agent は act-封筒を検証してここへ 127.0.0.1 で回すだけの配達員でいる。
@@ -2972,6 +3282,110 @@ def _launch_target_for(project_id):
     return "", ""
 
 
+# ── R90-D11: 雇う（新しいバックグラウンドセッションを起こす）＝ `claude --bg -n <name> "<prompt>"` ──
+# 掟:
+#   - cwd は projects_index に在る登録済みプロジェクトだけ（_launch_target_for＝「任意パスは起動できない」不変条件）
+#   - argv 固定・shell=False・timeout・start_new_session・最小 env（office_actions と同じ Popen の掟）
+#   - ローカル（loopback+CSRF）からのみ。中継からは config remoteHire:true のときだけ（既定 OFF＝
+#     新規セッションは承認フックを通らない bypass 設定で起動されうるため、遠隔の既定は閉じる）
+#   - 同時に走らせるのは 2 本まで（claude --bg は数秒で返るが、連打で Terminal を溢れさせない）
+_HIRE_LOCK = threading.Lock()
+_HIRE_ACTIVE = {"n": 0}
+HIRE_MAX_ACTIVE = 2
+HIRE_TIMEOUT = float(os.environ.get("OFFICE_HIRE_TIMEOUT") or 30)
+_CLAUDE_BIN_CANDIDATES = ("~/.npm-global/bin/claude", "~/.local/bin/claude", "/opt/homebrew/bin/claude",
+                          "/usr/local/bin/claude", "~/.claude/local/claude")
+_HIRE_NAME_RE = re.compile(r"^[A-Za-z0-9 _-]{1,30}$")
+
+
+def _claude_bin():
+    """claude CLI の実体。OFFICE_CLAUDE_BIN（テスト注入口）> PATH > 既知の置き場。無ければ None。"""
+    override = os.environ.get("OFFICE_CLAUDE_BIN")
+    if override:
+        return override if os.access(override, os.X_OK) else None
+    found = shutil.which("claude")
+    if found:
+        return found
+    for cand in _CLAUDE_BIN_CANDIDATES:
+        c = os.path.expanduser(cand)
+        if os.access(c, os.X_OK):
+            return c
+    return None
+
+
+def hire_session(project_id, prompt, name="", worktree=False, req_id=None, device=""):
+    """(ok, msg, extra) を返す。extra.state ∈ denied/busy/done/failed/duplicate。
+    device は遠隔（act 封筒）の検証済み端末ID＝監査記録に残す（ローカルは空）。"""
+    project_id = str(project_id or "")
+    if not re.fullmatch(r"[0-9a-f]{12}", project_id):
+        return False, "projectId が不正です", {"state": "denied"}
+    prompt = " ".join(str(prompt or "").split())
+    if not prompt:
+        return False, "何をしてもらうか（指示）が空です", {"state": "denied"}
+    if "\x00" in prompt or "\x00" in str(name or ""):
+        return False, "使えない文字（NUL）が含まれています", {"state": "denied"}
+    if len(prompt) > 4000:
+        return False, "指示が長すぎます(4000字まで)", {"state": "denied"}
+    name = str(name or "").strip()
+    if name and not _HIRE_NAME_RE.match(name):
+        return False, "名前は英数字・空白・_- で30字までです", {"state": "denied"}
+    target, label = _launch_target_for(project_id)
+    if not target:
+        return False, "未登録のプロジェクトです（過去に開いたプロジェクトだけ雇えます）", {"state": "denied"}
+    req_id = req_id or uuid.uuid4().hex[:16]
+    # reqId を原子的に予約（同じ reqId の再配達・並列検証で二重起動しない＝Astra レビュー指摘）
+    rec, created = office_actions.reserve_result(req_id, "hire", name or label, device=device)
+    if not created:
+        return rec["state"] in ("done", "running"), rec["state"], {"state": rec["state"], "reqId": req_id,
+                                                                  "bgId": rec.get("bgId", "")}
+    with _HIRE_LOCK:
+        if _HIRE_ACTIVE["n"] >= HIRE_MAX_ACTIVE:
+            office_actions.finish_result(rec, "busy", reason="max-active")
+            return False, "いま雇用中です（少し待ってから）", {"state": "busy", "reqId": req_id}
+        _HIRE_ACTIVE["n"] += 1
+    try:
+        fake = os.environ.get("OFFICE_FAKE_HIRE")
+        if fake:
+            Path(fake).write_text(json.dumps({"cwd": target, "prompt": prompt, "name": name,
+                                              "worktree": bool(worktree)}, ensure_ascii=False),
+                                  encoding="utf-8")
+            bg_id, rc = "fake0001", 0
+        else:
+            bin_ = _claude_bin()
+            if not bin_:
+                office_actions.finish_result(rec, "failed", reason="claude-not-found")
+                return False, "claude コマンドが見つかりません", {"state": "failed", "reqId": req_id}
+            # ★ `--` でオプションを終端してから本文を渡す。これが無いと `--exec=<cmd>` のような本文が
+            #   claude のオプション（--exec はシェル実行モード）に化け、`-w` は次の引数を worktree 名として食う
+            #   （Astra レビューで実証）。
+            argv = [bin_, "--bg"]
+            if name:
+                argv += ["-n", name]
+            if worktree:
+                argv += ["-w"]
+            argv += ["--", prompt]
+            try:
+                rc, out, err = _run_child(argv, HIRE_TIMEOUT, cwd=target)
+            except subprocess.TimeoutExpired:
+                office_actions.finish_result(rec, "failed", reason="timeout")
+                return False, "起動が応答しませんでした", {"state": "failed", "reqId": req_id}
+            except OSError as e:
+                office_actions.finish_result(rec, "failed", reason=str(e)[:80])
+                return False, "claude を起動できませんでした", {"state": "failed", "reqId": req_id}
+            m = re.search(r"\b([0-9a-f]{8})\b", out + "\n" + err)
+            bg_id = m.group(1) if m else ""
+        if rc != 0:
+            office_actions.finish_result(rec, "failed", exitCode=rc)
+            return False, "起動に失敗しました（claude --bg が非0で終了）", {"state": "failed", "reqId": req_id}
+        office_actions.finish_result(rec, "done", bgId=bg_id, exitCode=0)
+        notify_mac(L_now("🧑‍💼 入社", "🧑‍💼 New hire"), f"{label}: {name or prompt[:40]}")
+        return True, L_now("雇いました（入口から出勤します）", "Hired (arriving at the entrance)"), \
+            {"state": "done", "reqId": req_id, "bgId": bg_id}
+    finally:
+        with _HIRE_LOCK:
+            _HIRE_ACTIVE["n"] -= 1
+
+
 def _action_exec(data):
     """R79-10: act-封筒の中身（署名検証は relay_agent 側で完了済み）を実行する。
     (ok, msg, extra) を返す。**必ず1つの終了状態に落ちる**（denied/busy/running/…）。
@@ -2993,6 +3407,18 @@ def _action_exec(data):
         state, rec = office_actions.start_action(act, recipes, device=device)
         return state in ("running", "done"), state, {"state": state, "reqId": rec["reqId"],
                                                      "label": rec["label"]}
+    if act["kind"] == "hire":
+        # R90-D11: 遠隔からの雇用は config remoteHire:true のときだけ（既定 OFF）
+        for r in office_actions.results_public(limit=office_actions.RESULT_KEEP):
+            if r["reqId"] == act["reqId"]:
+                return True, r["state"], {"state": r["state"], "reqId": r["reqId"]}
+        if load_config().get("remoteHire") is not True:
+            office_actions.register_result(act["reqId"], "hire", act.get("name") or "hire", "denied",
+                                           reason="remote-hire-off", device=device)
+            return False, "denied", {"state": "denied", "reqId": act["reqId"], "reason": "remote-hire-off"}
+        ok, msg, extra = hire_session(act["project"], act["prompt"], act.get("name", ""),
+                                      worktree=bool(act.get("worktree")), req_id=act["reqId"], device=device)
+        return ok, extra.get("state", "failed"), {**extra, "label": act.get("name") or ""}
     if act["kind"] == "launch":
         # 既知の reqId は再実行しない（Terminalが二重に開く驚きを避ける）
         for r in office_actions.results_public(limit=office_actions.RESULT_KEEP):
@@ -3030,7 +3456,7 @@ def notify_mac(title, body):
         subprocess.run(
             ["osascript", "-e",
              'display notification "{}" with title "{}" sound name "Glass"'.format(
-                 str(body).replace("\\", "").replace('"', "'")[:120],
+                 str(body).replace("\\", "").replace('"', "'")[:500],
                  str(title).replace("\\", "").replace('"', "'")[:60])],
             capture_output=True, timeout=10)
     except (OSError, subprocess.TimeoutExpired):
@@ -3054,17 +3480,28 @@ def attention_diff(prev_ids, roster):
 
 
 def _attn_track(seen, roster, now_ts):
-    """❗の滞在時間トラッキング（純関数・R54）。seen={projectId: 初見epoch} を更新し、
+    """❗の滞在時間トラッキング。seen に初見epochと質問元sessionを保持し、
     解消した分の待たせ秒リストを返す。日報の「答えた❗・平均待たせ時間」の材料。"""
-    cur = set()
+    cur = {}
     for prj in roster or []:
         if prj.get("question") or (prj.get("approvalMin") or 0) > 0:
-            cur.add(prj.get("projectId") or prj.get("session") or "")
-    new_seen = {pid: ts for pid, ts in (seen or {}).items() if pid in cur}
-    for pid in cur:
-        new_seen.setdefault(pid, now_ts)
-    resolved = [max(0.0, now_ts - ts) for pid, ts in (seen or {}).items()
-                if pid not in cur]
+            cur[prj.get("projectId") or prj.get("session") or ""] = prj.get("session", "")
+    new_seen = {pid: value for pid, value in (seen or {}).items() if pid in cur}
+    for pid, sid in cur.items():
+        new_seen.setdefault(pid, {"ts": now_ts, "session": sid} if sid else now_ts)
+    # Accept the historical timestamp-only values too. With no known owner,
+    # the writer resolves the existing ask span instead of using the new lead.
+    finished = [(pid, value.get("session", "") if isinstance(value, dict) else "",
+                 max(0.0, now_ts - (value["ts"] if isinstance(value, dict) else value)))
+                for pid, value in (seen or {}).items() if pid not in cur]
+    resolved = [waited for _, _, waited in finished]
+    try:
+        timeline = sys.modules.get("office_timeline")
+        if timeline is not None:
+            for pid, sid, waited in finished:
+                timeline.record_ask_resolved(pid, sid, waited, now_ts)
+    except Exception:
+        pass
     return new_seen, resolved
 
 
@@ -3090,14 +3527,161 @@ def _append_daily_stats(resolved_secs, day):
 
 def _load_daily_stats(day):
     try:
+        digest = office_timeline.digest_json(_HOME, day=day, since=0)
+        if digest["available"]:
+            totals = digest["totals"]
+            return {"answered": totals["asksAnswered"],
+                    "totalWaitSec": totals["avgWaitSec"] * totals["asksAnswered"],
+                    "medianWaitSec": totals["medianWaitSec"]}
+    except (OSError, ValueError, KeyError, AttributeError):
+        pass
+    try:
         d = json.loads((DAILY_DIR / f"{day}.stats.json").read_text(encoding="utf-8"))
         return d if isinstance(d, dict) else {}
     except (OSError, json.JSONDecodeError):
         return {}
 
 
+def _notification_digest(day, since=0, now=None):
+    """Optional timeline reader; unavailable days retain the stats-only report."""
+    try:
+        data = office_timeline.digest_json(_HOME, day=day, since=since, now=now)
+        return data if data.get("available") else None
+    except Exception:
+        return None
+
+
+def _notification_projects(office, attention=False):
+    projects = {}
+    for index, row in enumerate(office.get("roster") or office.get("employees") or []):
+        if attention and not (row.get("attention") or row.get("ask")
+                              or row.get("question") or (row.get("approvalMin") or 0) > 0):
+            continue
+        projects[row.get("projectId") or row.get("session") or index] = row
+    return list(projects.values())
+
+
+def _notification_ask(row):
+    ask = row.get("ask") or {}
+    if ask.get("kind") == "permission":
+        # Only a tool identifier, never the command/question/title from the ask.
+        tool = ask.get("tool") or row.get("stuckTool") or ""
+        tool = tool if re.fullmatch(r"[A-Za-z][A-Za-z0-9_.:-]{0,63}", tool) else ""
+        return L_now(f"{tool} の許可" if tool else "許可",
+                     f"{tool} permission" if tool else "permission")
+    if ask.get("kind") == "question" or row.get("question"):
+        return L_now("質問", "an answer")
+    return L_now("承認", "approval")
+
+
+def _notification_asked_at(row, now):
+    ask = row.get("ask") or {}
+    if isinstance(ask.get("ts"), (int, float)):
+        return ask["ts"]
+    # Project age belongs to the most recently active member, not necessarily
+    # the representative who is asking. Session briefs retain that member's age.
+    lead = next((s for s in row.get("sessions", [])
+                 if s.get("session") == row.get("session")), row)
+    age = (row.get("approvalMin") or 0) * 60 or lead.get("age") or 0
+    return now - age
+
+
+def _notification_wait(row, now):
+    return max(0, int((now - _notification_asked_at(row, now)) // 60))
+
+
+def build_morning_report(office, now=None):
+    """One unread summary across local midnights; None means deliberate silence."""
+    now = time.time() if now is None else now
+    today = datetime.fromtimestamp(now).date()
+    try:
+        digest = office_timeline.digest_json(_HOME, day=today.isoformat(), now=now)
+        since = digest["since"]   # Same server-owned timestamp as /api/seen.
+    except Exception:
+        return None              # No unread evidence in legacy cumulative stats.
+    done = digest["totals"].get("tasksDone", 0)
+    # The timeline retains 90 days. Include yesterday's evening even when the
+    # last visit was before midnight; a day digest alone would miss that work.
+    first = max(datetime.fromtimestamp(since).date(), today - timedelta(days=90))
+    day = first
+    while day < today:
+        previous = _notification_digest(day.isoformat(), since=since, now=now)
+        if previous:
+            done += previous["totals"].get("tasksDone", 0)
+        day += timedelta(days=1)
+    waiting = _notification_projects(office, attention=True)
+    new_attention = any(since < _notification_asked_at(row, now) <= now for row in waiting)
+    if not done and not new_attention:
+        # An ask can arise and be answered before 08:30. Query existence only,
+        # without the timeline endpoint's 500-event limit or any message text.
+        try:
+            db = office_timeline._reader(_HOME)
+            try:
+                new_attention = bool(db.execute("""SELECT 1 FROM spans
+                    WHERE start>? AND start<=? AND kind='ask' AND label='confirmed'
+                    LIMIT 1""", (since, now)).fetchone())
+            finally:
+                db.close()
+        except Exception:
+            pass
+    if not done and not new_attention:
+        return None
+    title = L_now("🏢 おはようございます", "🏢 Good morning")
+    body = L_now(f"{title} — 夜のあいだに ✅{done}件 終了、❗{len(waiting)}体 が待っています",
+                 f"{title} — Overnight: ✅{done} completed, ❗{len(waiting)} waiting")
+    if waiting:
+        top = max(waiting, key=lambda row: _notification_wait(row, now))
+        minutes = _notification_wait(top, now)
+        elapsed = (L_now(f"{minutes // 60}時間", f"{minutes // 60}h") if minutes >= 60
+                   else L_now(f"{minutes}分", f"{minutes}m"))
+        disp = " ".join(str(top.get("title") or top.get("disp") or "?").split())[:80]
+        body += L_now(f"（{disp}・{_notification_ask(top)}・{elapsed}）",
+                      f" ({disp} · {_notification_ask(top)} · {elapsed})")
+    return title, body
+
+
+def _build_digest_report(office, date_label, digest):
+    totals = digest["totals"]
+    answered = totals.get("asksAnswered", 0)
+    wait_min = round(totals.get("medianWaitSec", 0) / 60)
+    done = totals.get("tasksDone", 0)
+    roster = _notification_projects(office)
+    waiting = len(_notification_projects(office, attention=True))
+    start = datetime.strptime(date_label, "%Y-%m-%d")
+    previous = _notification_digest((start - timedelta(days=1)).strftime("%Y-%m-%d"))
+    comparison = ""
+    if previous and previous["totals"].get("asksAnswered"):
+        minutes = round(previous["totals"].get("medianWaitSec", 0) / 60)
+        comparison = L_now(f"・昨日 {minutes}分", f"; yesterday {minutes} min")
+    title = L_now("🏢 今日のオフィス", "🏢 Today's office")
+    body = L_now(f"{title} — ❗{answered}件に答えた（中央値 {wait_min}分{comparison}）"
+                 f" · ✅{done}件 · 稼働 {len(roster)}",
+                 f"{title} — Answered ❗{answered} (median {wait_min} min{comparison})"
+                 f" · ✅{done} completed · Active {len(roster)}")
+    try:
+        before = office_timeline.growth_json(_HOME, now=start.timestamp() - 0.000001)["office"]["level"]
+        now = office.get("generatedAt") or time.time()
+        end = min(now, (start + timedelta(days=1)).timestamp() - 0.000001)
+        growth = (office.get("growth") if start.timestamp() <= now <= end else None)
+        after = (growth or office_timeline.growth_json(_HOME, now=end))["office"]["level"]
+        if after > before:
+            body += f" · Lv.{before}→{after}"
+    except Exception:
+        pass
+    if waiting:
+        body += L_now(f" · 止まったまま帰る子: {waiting}体", f" · Still waiting at closing: {waiting}")
+    lines = [f"# AIオフィス日報 {date_label}", "", body, "",
+             f"- 出勤プロジェクト: {len(roster)}", f"- 完了タスク: {done}",
+             f"- 答えた❗: {answered} 件（待たせ中央値 {wait_min}分）",
+             f"- 稼働時間: {totals.get('activeMin', 0):g}分"]
+    return title, body, "\n".join(lines) + "\n"
+
+
 def build_daily_report(office, date_label):
-    """今日のオフィス日報。office_json だけから作る（実データ以外は書かない）。"""
+    """日報。応答実績は digest を優先し、未観測日は従来の stats を読む。"""
+    digest = _notification_digest(date_label)
+    if digest:
+        return _build_digest_report(office, date_label, digest)
     roster = office.get("roster") or []
     hist = office.get("history") or []
     tasks = office.get("tasks") or {}
@@ -3116,16 +3700,21 @@ def build_daily_report(office, date_label):
     stats = _load_daily_stats(date_label)
     answered = stats.get("answered") or 0
     if answered:
-        avg_min = round((stats.get("totalWaitSec") or 0) / answered / 60)
-        lines.append(f"- 答えた❗: {answered} 件（平均待たせ {avg_min}分）")
+        if "medianWaitSec" in stats:
+            wait_min = round(stats["medianWaitSec"] / 60)
+            lines.append(f"- 答えた❗: {answered} 件（待たせ中央値 {wait_min}分）")
+        else:
+            avg_min = round((stats.get("totalWaitSec") or 0) / answered / 60)
+            lines.append(f"- 答えた❗: {answered} 件（平均待たせ {avg_min}分）")
         body += f" / ❗応答{answered}件"
     return "🏢 今日のAIオフィス", body, "\n".join(lines) + "\n"
 
 
 def _watch_loop():
-    """60秒ごとに❗エッジ検出→通知・18時以降に日報（日1回）。"""
+    """60秒ごとに❗エッジ検出・08:30の未読まとめ・18時以降の日報。"""
     prev = set()
     seen = {}      # R54: ❗の滞在時間（projectId→初見epoch）＝日報の応答実績
+    morning_day = None
     while True:
         time.sleep(60)
         try:
@@ -3145,8 +3734,17 @@ def _watch_loop():
                                    f"approval wait {top['approvalMin']}m"))
                 notify_mac(f"❗ {top['disp']}{extra}", what)
             now_local = datetime.now()
+            day = now_local.strftime("%Y-%m-%d")
+            if now_local.hour == 8 and now_local.minute >= 30 and morning_day != day:
+                marker = DAILY_DIR / f"{day}.morning"
+                if not marker.exists():
+                    report = build_morning_report(office, now=now_local.timestamp())
+                    DAILY_DIR.mkdir(parents=True, exist_ok=True)
+                    marker.touch()  # Also remember silence; later events get ordinary edge pushes.
+                    if report:
+                        notify_mac(*report)
+                morning_day = day
             if now_local.hour >= DAILY_HOUR:
-                day = now_local.strftime("%Y-%m-%d")
                 out = DAILY_DIR / f"{day}.md"
                 if not out.exists():
                     title, body, md = build_daily_report(office, day)
@@ -3192,12 +3790,27 @@ def main():
               "`officectl.sh stop`、常駐(launchd)と衝突なら `launchctl bootout` を確認してください",
               file=sys.stderr, flush=True)
         sys.exit(1)
-    start_watcher()
     print(f"🏢 AIオフィス起動: http://localhost:{args.port}  (Ctrl+Cで停止)")
+    events_enabled = office_events is not None and os.environ.get("OFFICE_EVENTS") != "0"
+    timeline = None
     try:
+        if os.environ.get("OFFICE_TIMELINE") != "0":
+            try:
+                timeline = importlib.import_module("office_timeline")
+                timeline.start(_HOME)
+            except Exception:
+                timeline = None
+        if events_enabled:
+            office_events.start(_HOME, on_change=lambda kind: _invalidate_cache())
+        start_watcher()
         srv.serve_forever()
     except KeyboardInterrupt:
         print("\n退勤しました。")
+    finally:
+        if events_enabled:
+            office_events.stop()
+        if timeline is not None:
+            timeline.stop()
 
 
 if __name__ == "__main__":

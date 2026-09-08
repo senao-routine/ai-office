@@ -9,12 +9,16 @@
 
 使い方: python3 tests/ui_onboard_smoke.py   （verify.sh ▶7 から呼ぶ・Playwright必要）
 """
+import os
 import json
 import pathlib
 import shutil
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
+# R90-S1: 製品の既定スタイル iso（方向C）を検査する。
+STYLE = os.environ.get("UI_STYLE", "iso")
+
 sys.path.insert(0, str(ROOT / "tools"))
 from ui_shot import SWIFTSHADER, VIEWPORT, free_port, start_server  # noqa: E402
 
@@ -23,9 +27,6 @@ INBOX = ROOT / ".ui_shot_home" / ".claude" / "office_inbox"
 EMPTY_WORLD = {
     "officeName": "AI Office", "lang": "ja", "generatedAt": 1753799999,
     "setup": {"hookInstalled": False},
-    "edition": {"id": "claude",
-                "features": {"claudeSessions": True, "openclaw": False,
-                             "relayPwa": False, "push": False, "costDash": False}},
     "counts": {}, "history": [], "employees": [], "roster": [],
     "tasks": {"pending": 0, "inProgress": 0, "completed": 0},
 }
@@ -51,7 +52,7 @@ def main():
             page.route("**/api/office*", lambda route: route.fulfill(
                 status=200, content_type="application/json; charset=utf-8",
                 body=json.dumps(EMPTY_WORLD, ensure_ascii=False)))
-            page.goto(f"http://127.0.0.1:{port}/?ui=iso&t=3.2&seed=11")
+            page.goto(f"http://127.0.0.1:{port}/?ui={STYLE}&t=3.2&seed=11")
             page.wait_for_function("window.__office && window.__office.ready", timeout=30000)
             page.wait_for_timeout(300)
             ob = page.query_selector(".onboard")
@@ -78,7 +79,7 @@ def main():
             page.on("pageerror", lambda e: errors.append(f"pageerror: {e}"))
             page.on("console", lambda m: errors.append(f"console.error: {m.text}")
                     if m.type == "error" else None)
-            page.goto(f"http://127.0.0.1:{port}/?ui=iso&demo=1&t=3.2&seed=11")
+            page.goto(f"http://127.0.0.1:{port}/?ui={STYLE}&demo=1&t=3.2&seed=11")
             page.wait_for_function("window.__office && window.__office.ready", timeout=30000)
             page.wait_for_timeout(300)
             rows = page.query_selector_all(".arow")

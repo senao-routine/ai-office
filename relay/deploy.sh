@@ -18,15 +18,15 @@ ROOT="$(cd "$HERE/.." && pwd)"
 # 照合は python3（本製品の必須要件）で1パス＝1.2MBのバンドルでも一瞬。
 BANNED_SHA="c55fd8a7f68dd354 5d1f2281b3389cb5 bda574c0a28461f7 4dcaad6bf9930ef3 4b262af2a4c3fded 74acd9c3a32df2fa"
 
-echo "▶ 公開前 禁止語ゲート（relay/src + wrangler.jsonc・ハッシュ照合）"
-if ! BANNED_SHA="$BANNED_SHA" python3 - "$HERE/src" "$HERE/wrangler.jsonc" <<'PYGATE'
+echo "▶ 公開前 禁止語ゲート（relay/src (app_html.js含む) + ui/pwa/* + wrangler.jsonc・ハッシュ照合）"
+if ! BANNED_SHA="$BANNED_SHA" python3 - "$HERE/src" "$ROOT/ui/pwa" "$HERE/wrangler.jsonc" <<'PYGATE'
 import hashlib, os, re, sys
 from pathlib import Path
 banned = set(os.environ.get("BANNED_SHA", "").split())
 targets = []
 for arg in sys.argv[1:]:
     p = Path(arg)
-    targets += sorted(p.glob("*.js")) if p.is_dir() else [p]
+    targets += sorted(f for f in p.glob("*") if f.is_file()) if p.is_dir() else [p]
 word = re.compile(r"[A-Za-z\u00c0-\uffff]+")
 hits = []
 for f in targets:

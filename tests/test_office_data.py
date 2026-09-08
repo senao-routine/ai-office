@@ -6,9 +6,13 @@ import importlib.util
 import json
 import os
 import shutil
+import subprocess
+import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -76,20 +80,113 @@ class OfficeDataTest(unittest.TestCase):
         os.environ["OFFICE_HOME"] = str(home)
         o = _load("office_hook_true", ROOT / "server" / "office_server.py")
         snapshot = o.office_json()
-        self.assertEqual(snapshot["setup"], {"hookInstalled": True})
+        self.assertEqual(snapshot["setup"], {"hookInstalled": True, "eventsWired": False})
         self.assertNotIn("settings.json", json.dumps(snapshot, ensure_ascii=False))
         self.assertNotIn("test-secret", json.dumps(snapshot, ensure_ascii=False))
+
+    def test_events_wired_accepts_wildcard_matcher_like_installer(self):
+        home = self._tmpdir("events_star_")
+        (home / ".claude").mkdir()
+        cmd = 'bash "$HOME/.claude/hooks/office-event.sh"'
+        (home / ".claude" / "settings.json").write_text(json.dumps({"hooks": {"Stop": [
+            {"matcher": "*", "hooks": [{"type": "command", "command": cmd, "async": True}]}]}}), encoding="utf-8")
+        os.environ["OFFICE_HOME"] = str(home)
+        o = _load("office_events_star", ROOT / "server" / "office_server.py")
+        self.assertTrue(o.events_wired())
+        (home / ".claude" / "settings.json").write_text(json.dumps({"hooks": {"Stop": [
+            {"matcher": "Edit", "hooks": [{"type": "command", "command": cmd, "async": True}]},
+            {"hooks": [{"type": "command", "command": "bash /other/office-event.sh"}]}]}}), encoding="utf-8")
+        self.assertFalse(o.events_wired())                # 限定 matcher・他プロジェクト同名は配線と数えない
 
     def test_office_json_setup_hook_installed_false_for_missing_or_invalid_settings(self):
         home = self._tmpdir("hook_false_")
         (home / ".claude").mkdir()
         os.environ["OFFICE_HOME"] = str(home)
         o = _load("office_hook_missing", ROOT / "server" / "office_server.py")
-        self.assertEqual(o.office_json()["setup"], {"hookInstalled": False})
+        self.assertEqual(o.office_json()["setup"], {"hookInstalled": False, "eventsWired": False})
 
         (home / ".claude" / "settings.json").write_text("{broken", encoding="utf-8")
         o = _load("office_hook_invalid", ROOT / "server" / "office_server.py")
-        self.assertEqual(o.office_json()["setup"], {"hookInstalled": False})
+        self.assertEqual(o.office_json()["setup"], {"hookInstalled": False, "eventsWired": False})
+
+
+class SourcesMetadataTest(unittest.TestCase):
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory(prefix="office_sources_")
+        self.addCleanup(tmp.cleanup)
+        result = subprocess.run([sys.executable, str(ROOT / "tests/make_home.py")],
+                                env=dict(os.environ, TMPDIR=tmp.name),
+                                capture_output=True, text=True, check=True)
+        self.home = Path(result.stdout)
+        self.now = time.time()
+        raw = json.loads((ROOT / "tests/fixtures/openclaw_status.json").read_text(encoding="utf-8"))
+        raw["generatedAt"] = self.now
+        oc_fixture = self.home / "openclaw.json"
+        oc_fixture.write_text(json.dumps(raw), encoding="utf-8")
+        env = patch.dict(os.environ, {
+            "OFFICE_HOME": str(self.home), "OFFICE_DATA": str(self.home),
+            "OFFICE_CONFIG": str(self.home / "office_config.json"),
+            "OFFICE_AGENTS_CLI": "1", "OFFICE_SOURCES_CODEX": "1",
+            "OFFICE_AGENTS_FIXTURE": str(self.home / ".claude/jobs/agents.json"),
+            "OFFICE_OPENCLAW_FIXTURE": str(oc_fixture), "OFFICE_EDITION": "hybrid",
+            "OFFICE_LANG": "en",
+        })
+        env.start()
+        self.addCleanup(env.stop)
+        self.office = _load("office_sources_metadata", ROOT / "server/office_server.py")
+
+    def test_sources_report_counts_and_connections_without_paths(self):
+        data = self.office.office_json()
+        sources = data["sources"]
+        self.assertEqual(sources, {
+            "claude": {"fg": 1, "bg": 1, "agentsCli": True},
+            "codex": {"connected": True, "n": 2, "reason": ""},
+            "openclaw": {"connected": True},
+        })
+        for key in ("fg", "bg"):
+            self.assertIs(type(sources["claude"][key]), int)
+        self.assertIs(type(sources["codex"]["n"]), int)
+        self.assertIs(type(sources["claude"]["agentsCli"]), bool)
+        for vendor in ("codex", "openclaw"):
+            self.assertIs(type(sources[vendor]["connected"]), bool)
+        encoded = json.dumps(sources)
+        for forbidden in ("/", "\\", str(self.home), "cwd", "session", "detail"):
+            self.assertNotIn(forbidden, encoded)
+        employees = data["employees"]
+        self.assertEqual({e["vendor"] for e in employees}, {"claude", "codex", "openclaw"})
+        self.assertTrue(all("disp" in e for e in employees))
+        codex = [e for e in employees if e["vendor"] == "codex"]
+        self.assertEqual([e["session"] for e in codex], ["cx-cx-parent-a", "cx-cx-parent-b"])
+        self.assertEqual(codex[0]["verb"], "running")
+        self.assertEqual(codex[0]["minions"], 1)
+        self.assertEqual([e["vendor"] for e in employees[-2:]], ["codex", "codex"])
+
+    def test_codex_can_be_disabled_by_source_config_or_env(self):
+        for config, env in (({"sources": {"codex": False}}, {}),
+                            ({}, {"OFFICE_SOURCES_CODEX": "0"})):
+            with self.subTest(config=config, env=env), \
+                    patch.object(self.office, "load_config", return_value=config), \
+                    patch.dict(os.environ, env), \
+                    patch.object(self.office.source_codex, "codex_employees") as source:
+                data = self.office.scan_office()
+                source.assert_not_called()
+                self.assertFalse(any(e["vendor"] == "codex" for e in data["employees"]))
+                self.assertEqual(data["sources"]["codex"],
+                                 {"connected": False, "n": 0, "reason": "disabled"})
+
+    def test_retired_edition_cannot_disable_any_source(self):
+        for ed in ("claude", "hybrid", "openclaw"):
+            with patch.dict(os.environ, {"OFFICE_EDITION": ed}), \
+                    patch.object(self.office, "load_config", return_value={"edition": ed}):
+                data = self.office.scan_office()
+                self.assertEqual({e["vendor"] for e in data["employees"]}, {"claude", "codex", "openclaw"})
+                self.assertNotIn("edition", data)
+
+    def test_missing_codex_is_disconnected_with_stable_metadata_shape(self):
+        with patch.object(self.office, "_HOME", self.home / "missing-home"):
+            data = self.office.scan_office()
+        self.assertEqual(data["sources"]["codex"],
+                         {"connected": False, "n": 0, "reason": "missing"})
 
 
 class PageFallbackTest(unittest.TestCase):

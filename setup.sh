@@ -82,6 +82,10 @@ PYEOF
   else
     bad "承認フックが未配線（bash setup.sh で配線されます）"
   fi
+  # R90-D5: イベント記録 hook（即時反映・留守中ダイジェストの材料。async なのでターンを止めない）
+  grep -q "office-event.sh" "$HOME/.claude/settings.json" 2>/dev/null \
+    && good "イベント記録 hook が配線済み（即時反映・ダイジェスト）" \
+    || info "イベント記録 hook は未配線（bash setup.sh で配線されます）"
   [ -f "$HOME/.claude/office_relay.json" ] \
     && good "スマホ中継の設定あり（bash relay/setup.sh で作成済み）" \
     || info "スマホ連携は未設定（任意・bash relay/setup.sh で設定。自分のCloudflare無料枠で動きます）"
@@ -155,6 +159,20 @@ if [ "$ng" -eq 0 ]; then
   say "  外出先からスマホで見る/答える場合（任意）:"
   say "     bash relay/setup.sh    ← 自分のCloudflare無料枠に中継を置きます（1コマンド）"
   command -v open >/dev/null 2>&1 && open "http://localhost:$PORT" 2>/dev/null || true
+  # R90-U4: optional first question; Enter/EOF skips, and failure never fails setup.
+  say ""
+  say "  いま1体出勤させて❗を体験しますか？ [Y/n]（Enterでスキップ）"
+  FIRST_SESSION=""
+  read -r FIRST_SESSION || FIRST_SESSION=""
+  case "$FIRST_SESSION" in
+    y|Y|yes|YES|Yes)
+      if (cd "$HERE" && claude --bg "README を1行で要約し、AskUserQuestion で続けるか聞いて"); then
+        info "起動しました。オフィスで❗が出るのをお待ちください。"
+      else
+        info "体験セッションは起動できませんでした。セットアップは完了しています。"
+      fi
+      ;;
+  esac
   exit 0
 fi
 say "⚠️ $ng 件が未完了です。上の ❌ の行を解消してから、もう一度 bash setup.sh を実行してください。"

@@ -139,10 +139,12 @@ class ProjectsIndexTests(unittest.TestCase):
         # R80.6: res(Claude枠%の最小ゲージ)・launchable(projectId+名前のみ)を意図的に追加。
         # R82: templates（ユーザー定義定型文=遠隔利用が目的の意図的搬送）も追加。
         # R85-2: rosterCounts は撤去（読者ゼロ）。R86-A: avatarMode（session/project・機微なし）追加。
-        self.assertEqual({"officeName", "employees", "history", "today", "generatedAt", "setup",
-                          "counts", "edition", "lang", "avatarMode", "roster", "tasks",
-                          "actions", "relay", "res", "launchable", "templates"},
+        # R90-D12: "v" はスキーマ版（docs/office-json.md が正本・中継 allowlist にも入っている）。
+        self.assertEqual({"v", "officeName", "employees", "history", "today", "generatedAt", "setup",
+                          "counts", "lang", "avatarMode", "roster", "tasks",
+                          "actions", "relay", "res", "launchable", "templates", "sources", "events", "growth"},
                          set(data))
+        self.assertEqual(data["v"], 2)
         self.assertNotIn("projects", data)
         # launchable は中継へ流れる前提＝ローカルパスを1バイトも運ばない（projectIdはハッシュ）
         for pj in data["launchable"]:

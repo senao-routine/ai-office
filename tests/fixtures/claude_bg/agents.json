@@ -1,0 +1,12 @@
+[
+  {
+    "cwd": "/fixture/project", "kind": "background", "startedAt": 1699999400000,
+    "id": "b0000001", "state": "working", "pid": 456, "status": "running",
+    "waitingFor": "", "sessionId": "session-launch-1", "name": "fixture-bot"
+  },
+  {
+    "cwd": "/fixture/interactive", "kind": "interactive", "startedAt": 1699999500000,
+    "id": "i0000001", "state": "blocked", "pid": 789, "status": "idle",
+    "waitingFor": "input needed", "sessionId": "session-interactive-1", "name": "fixture-interactive"
+  }
+]

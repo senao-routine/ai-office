@@ -9,7 +9,7 @@
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 mkdir -p "$HOME/.claude/hooks"
-for f in office-inbox-wait.sh office-approval-wait.sh office-statusline-capture.sh; do
+for f in office-inbox-wait.sh office-approval-wait.sh office-statusline-capture.sh office-event.sh; do
   cp "$HERE/$f" "$HOME/.claude/hooks/$f" && chmod +x "$HOME/.claude/hooks/$f"
   echo "✓ 配布: $HOME/.claude/hooks/$f"
 done
@@ -139,6 +139,62 @@ elif mode == "--wire":
           "（承認・質問をAIオフィスから答えられます。新しいセッションから有効）")
 else:
     print("⚠ 承認・質問の受け答えが未配線です。自動配線: bash hooks/install.sh --wire")
+
+# R90-D5: イベント記録 hook（hooks/office-event.sh・記録専用・"async": true＝ターンを止めない）。
+# 17 イベントに同じ1行を配線する。Stop は inbox-wait と**別 group**（asyncRewake の判定に干渉しない）。
+# 既存 group には触らない（他プロジェクトの hook と同居）。配線済みでも async が落ちていれば自己修復。
+EVENTS = ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure",
+          "PermissionRequest", "PermissionDenied", "Stop", "StopFailure", "SubagentStart",
+          "SubagentStop", "TaskCreated", "TaskCompleted", "Notification", "SessionEnd",
+          "PreCompact", "PostCompact"]
+EV_CMD = 'bash "$HOME/.claude/hooks/office-event.sh"'
+
+
+def ev_hook():
+    return {"hooks": [{"type": "command", "command": EV_CMD, "timeout": 10, "async": True}]}
+
+
+hooks_root = data.setdefault("hooks", {})
+
+
+def _is_ours(h):
+    # 他プロジェクトの同名 hook（/other/office-event.sh 等）を巻き込まない＝配布先の完全一致だけを「自分」とみなす
+    return isinstance(h, dict) and h.get("type", "command") == "command" and h.get("command") == EV_CMD
+
+
+def _unrestricted(grp):
+    # matcher 付き group（例 "Edit|Write"）は一部のツールしか記録しない＝イベント全体の配線とは数えない
+    return not isinstance(grp, dict) or not str(grp.get("matcher") or "").strip() or grp.get("matcher") == "*"
+
+
+missing, healed = [], 0
+for ev in EVENTS:
+    groups = hooks_root.get(ev)
+    if not isinstance(groups, list):
+        groups = hooks_root[ev] = []
+    found = [h for grp in groups if isinstance(grp, dict) and _unrestricted(grp)
+             for h in grp.get("hooks", []) if _is_ours(h)]
+    if not found:
+        missing.append(ev)
+        continue
+    for h in found:
+        if h.get("async") is not True:
+            h["async"] = True
+            healed += 1
+if not missing:
+    if healed:
+        save(data)
+        print(f"✓ イベント記録 hook の async を修復しました（{healed} 件）")
+    else:
+        print(f"✓ ~/.claude/settings.json のイベント記録 hook 配線を確認（{len(EVENTS)} イベント）")
+elif mode == "--wire":
+    for ev in missing:
+        hooks_root[ev].append(ev_hook())
+    save(data)
+    print(f"✓ イベント記録 hook を配線しました（{len(missing)} イベント・async＝ターンを止めない。"
+          "新しいセッションから有効）")
+else:
+    print("ℹ 即時反映・留守中ダイジェストの材料（イベント記録）は未配線です: bash hooks/install.sh --wire")
 
 if "office-statusline-capture" not in str((data.get("statusLine") or {}).get("command", "")):
     print("ℹ Claude枠%の実測ゲージ: bash hooks/install.sh --statusline で配線できます")

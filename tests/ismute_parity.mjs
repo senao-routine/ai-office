@@ -4,24 +4,20 @@
 // この判定が食い違うと最悪の形で壊れる: ❗が立っている（＝ターンが終わらず届かない）のに
 // 片方の画面だけ「届きます」と言う。実際 R86-E では working を一律除外していたため
 // **❗が立ってから最初の164秒だけ警告が消える**穴があった（実測）。
-import { readFileSync } from "node:fs";
+import { APP_HTML as src } from "../relay/src/app_html.js";
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-const src = readFileSync(join(ROOT, "relay/src/worker.js"), "utf8");
-const begin = src.indexOf("// PWA_ISMUTE_BEGIN");
-const end = src.indexOf("// PWA_ISMUTE_END");
-assert.ok(begin >= 0 && end > begin, "PWA_ISMUTE markers not found in worker.js");
+const begin = src.indexOf("function isMute(");
+const end = src.indexOf("function muteChip(", begin);
+assert.ok(begin >= 0 && end > begin, "PWA_ISMUTE source not found in app_html.js");
 
-// 抽出片は worker.js のJS文字列連結なので、'...' + の骨組みを剥がして関数本体を得る
-const chunk = src.slice(begin, end)
-  .split("\n").filter((l) => l.trim().startsWith("'"))
-  .map((l) => l.trim().replace(/^'/, "").replace(/'\s*\+?\s*$/, ""))
-  .join("");
+// 生成モジュールを評価した配信HTMLから、対象関数の範囲だけを抽出。
+const chunk = src.slice(begin, end);
 globalThis.__ismuteParity = {};
-// PWA 側は needsAttn（worker.js の別関数）に依存する。正本と同義の実装を与える
+// PWA 側は needsAttn（APP_HTML 内の別関数）に依存する。正本と同義の実装を与える
 globalThis.needsAttn = (e) => (e.approvalMin > 0) || !!e.question;
 (0, eval)(chunk.replace("function isMute", "__ismuteParity.isMute = function isMute"));
 const pwa = globalThis.__ismuteParity.isMute;

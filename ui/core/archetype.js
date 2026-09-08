@@ -21,6 +21,11 @@ export const ARCHETYPE_RULES = [
   ["dev", /開発|コード|アプリ|エンジニア|dev|code|app|api|server|サーバ|基盤|ツール|edit/i],
 ];
 
+export const ACCESSORIES = Object.freeze({
+  phones: "video", cap: "dev", beret: "design", pencil: "writer", bowtie: "ops",
+  mortar: "research", headset: "support", hardhat: "infra", eyeshade: "finance",
+});
+
 const STYLE = {
   video: { tint: [0.87, 0.92, 1.0], acc: [0.22, 0.24, 0.32] },     // 🎧=ダークグレー
   audio: { tint: [0.88, 0.97, 0.97], acc: [0.16, 0.45, 0.48] },    // 🎧=ティール（部品共有）
@@ -52,10 +57,37 @@ function hashStr(s) {
 
 /** agent（buildWorldの1件）→ {kind, tint, acc}。kind="generic" はアクセサリなし。 */
 export function archetypeFor(agent) {
+  if (agent && Object.hasOwn(agent, "arch")) {
+    const kind = typeof agent.arch === "string" && Object.hasOwn(ACCESSORIES, agent.arch)
+      ? ACCESSORIES[agent.arch] : null;
+    if (kind) return { kind, ...STYLE[kind] };
+    if (agent.arch === null) return { kind: "generic", tint: [1, 1, 1], acc: null };
+  }
   const text = [agent?.name, agent?.role, agent?.dept].filter(Boolean).join(" ");
   for (const [kind, re] of ARCHETYPE_RULES) {
     if (re.test(text)) return { kind, tint: STYLE[kind].tint, acc: STYLE[kind].acc };
   }
   const h = hashStr(String(agent?.id || agent?.session || ""));
   return { kind: "generic", tint: PASTELS[h % PASTELS.length], acc: null };
+}
+
+/** Shared verb/target classification for activityGloss and actFor (ja/en). */
+export function activityKind(a) {
+  if (!a) return null;
+  if (a.state === "resting") return "resting";
+  const verb = String(a.verb || "").trim();
+  const target = String(a.target || "");
+  if (a.kind === "think" || /考え中|Thinking/i.test(verb)) return "think";
+  if (/指示待ち|Waiting/i.test(verb)) return "waiting";
+  if (/報告中|Reporting|Replying|応答中/i.test(verb)) return "report";
+  if (/調査中|Reading|Searching|検索中/i.test(verb)) return "research";
+  if (/実行中|Running/i.test(verb)) {
+    if (/verify|pytest|unittest|node --test|\btest\b|spec|smoke/i.test(target)) return "test";
+    if (/git |commit|push|merge|rebase|deploy/i.test(target)) return "ship";
+    if (/npm|pip|install|build|make|brew/i.test(target)) return "build";
+    return "run";
+  }
+  if (/編集中|Editing/i.test(verb)) return /\.md\b|readme|docs?\//i.test(target) ? "docs" : "code";
+  if (/執筆中|Writing/i.test(verb)) return /\.md\b|readme/i.test(target) ? "docs" : "write";
+  return null;
 }

@@ -1,0 +1,17 @@
+{
+  "proto": 1,
+  "supervisorPid": 123,
+  "updatedAt": 1700000000000,
+  "workers": {
+    "b0000001": {
+      "pid": 456,
+      "procStart": "2023-11-14T22:03:20.000Z",
+      "sessionId": "session-launch-1",
+      "cliVersion": "2.1.258",
+      "startedAt": 1699999400000,
+      "attempt": 1,
+      "cwd": "/fixture/project",
+      "dispatch": {"launch": {"flagArgs": "dummy"}}
+    }
+  }
+}

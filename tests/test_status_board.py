@@ -953,10 +953,11 @@ class PrivacyIsolationRegressionTest(unittest.TestCase):
             # R80.6: res は claude_gauge_public の**最小形だけ**（%とstale。account/emailは
             # 構造的に出さない＝中継に新しい秘密を運ばない）。launchable も projectId+名前のみ。
             # R85-2: rosterCounts は撤去（読者ゼロ）。R86-A: avatarMode 追加（機微なし）。
-            self.assertEqual(set(snapshot), {"officeName", "employees", "history", "today", "generatedAt",
-                                             "setup", "counts", "edition", "lang", "avatarMode",
+            # R90-D12: "v" はスキーマ版（docs/office-json.md が正本）。
+            self.assertEqual(set(snapshot), {"v", "officeName", "employees", "history", "today", "generatedAt",
+                                             "setup", "counts", "lang", "avatarMode",
                                              "roster", "tasks", "actions",
-                                             "relay", "res", "launchable", "templates"})
+                                             "relay", "res", "launchable", "templates", "sources", "events", "growth"})
             for tp in snapshot["templates"]:
                 self.assertEqual({"label", "text"}, set(tp))
             if snapshot["res"] is not None:

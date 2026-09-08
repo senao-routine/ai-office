@@ -6,7 +6,8 @@
 デスクトップと同じ three.js シーンをスマホで動かすには、モジュール一式を Worker が
 `/ui/...` の**同じパス**で返す必要がある（import 指定子を書き換えないための条件）。
 
-生成物: relay/src/modules_data.js（git追跡必須。未追跡だとクリーンcloneのdeployが壊れる）
+生成物: relay/src/modules_data.js / app_html.js（git追跡必須）。
+ui/hud-tokens.css の共通トークンを ui/iso/style.css と ui/pwa/app.css にも展開する。
 使い方:
     python3 tools/gen_pwa_modules.py           # 生成
     python3 tools/gen_pwa_modules.py --check   # ui/ との一致（ドリフト検知・verify用）
@@ -20,9 +21,14 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "relay" / "src" / "modules_data.js"
+APP_OUT = ROOT / "relay" / "src" / "app_html.js"
+HUD_SOURCE = ROOT / "ui" / "hud-tokens.css"
+HUD_TARGETS = [ROOT / "ui" / "iso" / "style.css", ROOT / "ui" / "pwa" / "app.css"]
+HUD_BEGIN = "/* HUD_TOKENS_BEGIN (generated: ui/hud-tokens.css) */"
+HUD_END = "/* HUD_TOKENS_END */"
 
 # 入口＝3Dシーンとワールド構築。ここから import を辿って閉包を作る
-ENTRIES = ["/ui/pwa/boot3d.js"]   # ここから import を辿れば scene3d/world/clock/three が揃う
+ENTRIES = ["/ui/pwa/boot3d.js"]   # boot3dから方向Cのui/isoだけを辿る。
 # JSからURLで読む静的アセット（importでは辿れない）。3Dシーンのテクスチャ一式。
 ASSET_DIRS = ["ui/iso/tex"]
 ASSET_MIME = {".webp": "image/webp", ".png": "image/png", ".jpg": "image/jpeg"}
@@ -93,7 +99,7 @@ def render(mods, assets):
         lines.append(f"  {json.dumps(url)}: {json.dumps(src)},")
     lines.append("});")
     lines.append("")
-    lines.append("// テクスチャ（base64）。Worker が /ui/iso/tex/... で返す")
+    lines.append("// テクスチャ（base64）。Worker が /ui/iso*/tex/... で返す")
     lines.append("export const ASSETS = Object.assign(Object.create(null), {")
     for url, (mime, b64) in assets.items():
         lines.append(f"  {json.dumps(url)}: [{json.dumps(mime)}, {json.dumps(b64)}],")
@@ -102,22 +108,70 @@ def render(mods, assets):
     return "\n".join(lines)
 
 
+def render_hud_css():
+    """同じトークンブロックを両画面へ展開。--check時は書き込まず差分を検知。"""
+    block = HUD_BEGIN + "\n" + HUD_SOURCE.read_text(encoding="utf-8").strip() + "\n" + HUD_END
+    outputs = {}
+    for path in HUD_TARGETS:
+        css = path.read_text(encoding="utf-8")
+        if css.count(HUD_BEGIN) != 1 or css.count(HUD_END) != 1:
+            raise SystemExit(f"✗ {path.relative_to(ROOT)} の HUD_TOKENS マーカーは1組必要")
+        begin, end = css.index(HUD_BEGIN), css.index(HUD_END) + len(HUD_END)
+        if end <= begin:
+            raise SystemExit(f"✗ {path.relative_to(ROOT)} の HUD_TOKENS マーカー順が不正")
+        outputs[path] = css[:begin] + block + css[end:]
+    return outputs
+
+
+def render_app_html(hud_css):
+    """ローカル配信用の参照タグをインライン化する。空白・改行もそのまま保持。"""
+    pwa = ROOT / "ui" / "pwa"
+    html = (pwa / "app.html").read_bytes().decode("utf-8")
+    for name, placeholder, tag in (
+        ("app.css", '<link rel="stylesheet" href="./app.css" data-pwa-inline>', "style"),
+        ("app.js", '<script src="./app.js" data-pwa-inline></script>', "script"),
+    ):
+        if html.count(placeholder) != 1:
+            raise SystemExit(f"✗ app.html の {name} プレースホルダは1個必要")
+        content = hud_css[pwa / name] if name == "app.css" else (pwa / name).read_bytes().decode("utf-8")
+        html = html.replace(placeholder, f"<{tag}>{content}</{tag}>")
+    return (
+        "// 自動生成: tools/gen_pwa_modules.py（手で編集しない）\n"
+        "// ui/pwa/app.html・app.css・app.js をバイトを変えずインライン化。\n"
+        f"export const APP_HTML = {json.dumps(html, ensure_ascii=False)};\n"
+    )
+
+
 def main(argv):
+    hud_css = render_hud_css()
     mods = collect()
+    if "/ui/iso/scene3d.js" not in mods or any(re.match(r"/ui/iso[^/]+/", url) for url in mods):
+        raise SystemExit("✗ PWAのシーンは /ui/iso/ だけを同梱する")
     assets = collect_assets()
     body = render(mods, assets)
+    app_body = render_app_html(hud_css)
     kb = len(body.encode("utf-8")) // 1024
     if "--check" in argv:
-        if not OUT.is_file():
-            print("✗ modules_data.js が無い（python3 tools/gen_pwa_modules.py で生成）")
-            return 1
-        if OUT.read_text(encoding="utf-8") != body:
-            print("✗ modules_data.js が ui/ と不一致（再生成してコミット）")
+        drift = False
+        for path, expected in [*hud_css.items(), (OUT, body), (APP_OUT, app_body)]:
+            if not path.is_file():
+                print(f"✗ {path.name} が無い（python3 tools/gen_pwa_modules.py で生成）")
+                drift = True
+            elif path.read_bytes() != expected.encode("utf-8"):
+                print(f"✗ {path.name} が ui/ と不一致（再生成してコミット）")
+                drift = True
+        if drift:
             return 1
         print(f"✓ relay/src/modules_data.js は最新（JS {len(mods)}本＋tex {len(assets)}枚・{kb}KB）")
+        print("✓ relay/src/app_html.js は最新（ui/pwa/app.html・app.css・app.js）")
+        print("✓ HUDトークンは両画面で最新（ui/hud-tokens.css）")
         return 0
+    for path, css in hud_css.items():
+        path.write_text(css, encoding="utf-8")
     OUT.write_text(body, encoding="utf-8")
+    APP_OUT.write_bytes(app_body.encode("utf-8"))
     print(f"✓ 生成: relay/src/modules_data.js（JS {len(mods)}本＋tex {len(assets)}枚・{kb}KB）")
+    print("✓ 生成: relay/src/app_html.js")
     for url in mods:
         print(f"    {url}")
     return 0

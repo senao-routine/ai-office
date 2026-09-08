@@ -86,6 +86,32 @@ class OfficeLangTest(unittest.TestCase):
         os.environ["OFFICE_LANG"] = " En "
         self.assertEqual(office.office_lang(), "en")  # 大小・空白は正規化
 
+    def test_set_lang_persists_and_invalidates_cached_office(self):
+        cfg = {"projects": {"demo": {"name": "Demo"}}, "lang": "ja", "edition": "hybrid"}
+        path = self._config(cfg)
+        self.assertEqual(office.office_json()["lang"], "ja")
+        self.assertGreater(office._cache["t"], 0)
+
+        self.assertEqual(office.set_lang("en"), (True, "en"))
+
+        self.assertEqual(json.loads(path.read_text(encoding="utf-8")), {**cfg, "lang": "en"})
+        self.assertEqual(office._cache["t"], 0)
+        self.assertEqual(office.office_json()["lang"], "en")
+        self.assertEqual(office.scan_office()["lang"], "en")
+        self.assertEqual(office._LANG, "en")
+
+    def test_set_lang_invalid_value_keeps_config_unchanged(self):
+        path = self._config({"projects": {}, "lang": "ja"})
+        before = path.read_bytes()
+        office.office_json()
+        cached_at = office._cache["t"]
+
+        self.assertEqual(office.set_lang("xx"), (False, "lang must be ja/en"))
+
+        self.assertEqual(path.read_bytes(), before)
+        self.assertEqual(office._cache["t"], cached_at)
+        self.assertEqual(office.office_json()["lang"], "ja")
+
     def test_os_locale_fallback(self):
         """R50提案2c: config/env 未指定なら OSロケール（en系のみ en）。config指定は勝つ。"""
         os.environ["LANG"] = "en_US.UTF-8"

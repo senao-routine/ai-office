@@ -121,7 +121,7 @@ class ScanMergeTest(unittest.TestCase):
         os.environ.pop("OFFICE_CONFIG", None)
         os.environ.pop("OFFICE_EDITION", None)
 
-    def test_hybrid_merges_oc_employees(self):
+    def test_all_sources_merge_oc_employees(self):
         data = office.scan_office()
         oc = [e for e in data["employees"] if e.get("external") == "openclaw"]
         self.assertEqual(len(oc), 3)
@@ -129,16 +129,12 @@ class ScanMergeTest(unittest.TestCase):
         # counts にも合算される（正直な稼働数）
         self.assertGreaterEqual(data["counts"]["working"], 1)
 
-    def test_claude_edition_hides_oc(self):
-        os.environ["OFFICE_EDITION"] = "claude"
-        data = office.scan_office()
-        self.assertEqual([e for e in data["employees"] if e.get("external")], [])
-
-    def test_openclaw_edition_shows_only_oc(self):
-        os.environ["OFFICE_EDITION"] = "openclaw"
-        data = office.scan_office()
-        self.assertEqual(len(data["employees"]), 3)
-        self.assertTrue(all(e.get("external") == "openclaw" for e in data["employees"]))
+    def test_retired_edition_env_cannot_hide_oc(self):
+        for value in ("claude", "openclaw", "invalid"):
+            os.environ["OFFICE_EDITION"] = value
+            data = office.scan_office()
+            self.assertEqual(len([e for e in data["employees"] if e.get("external")]), 3)
+            self.assertNotIn("edition", data)
 
     def test_external_view_summarizes(self):
         view = office.external_openclaw_json()

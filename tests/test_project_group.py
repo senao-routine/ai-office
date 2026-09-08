@@ -145,7 +145,7 @@ class ProjectGroupTest(unittest.TestCase):
         put("-Users-test-demo-project", "sess-brk000001.jsonl", "working_tool.jsonl", age=5)
         proj = office.scan_office()["roster"][0]
         entry = proj["sessions"][0]
-        self.assertEqual(set(entry), {"session", "state", "age", "attention", "minions", "pending"})
+        self.assertEqual(set(entry), {"session", "vendor", "state", "age", "attention", "minions", "pending"})
 
     # ── external は集約しない ────────────────────────────────
     def test_external_is_not_grouped(self):
@@ -195,6 +195,35 @@ class R69GroupTest(unittest.TestCase):
                 "state": "working", "minions": 0, "pending": False}
         base.update(over)
         return base
+
+    def test_vendor_and_background_metadata_follow_attention_lead(self):
+        bg = {"id": "job-1", "name": "helper", "state": "blocked", "detail": "入力待ち",
+              "tempo": "idle", "inFlight": {"tasks": 1}, "fan": {"todo": 2},
+              "template": "omitted", "nameSource": "auto"}
+        lead = self._emp("sess-lead", "/work/demo", "開発", age=90,
+                         approvalMin=1, vendor="claude", bg=bg)
+        recent = self._emp("cx-recent", "/work/demo", "開発", age=1, vendor="codex")
+        roster = office.group_by_project([recent, lead])[0]
+        self.assertEqual(roster["vendor"], "claude")
+        self.assertEqual(roster["detail"], "入力待ち")
+        self.assertEqual(set(roster["bg"]), {"id", "name", "state", "detail", "tempo", "inFlight", "fan"})
+        roster["bg"]["inFlight"]["tasks"] = 99
+        self.assertEqual(bg["inFlight"]["tasks"], 1, "集約結果から元employeeを変更しない")
+        lead["approvalMin"] = 0
+        roster = office.group_by_project([recent, lead])[0]
+        self.assertEqual(roster["vendor"], "codex")
+        self.assertNotIn("bg", roster)
+        self.assertNotIn("detail", roster)
+
+    def test_sessions_include_each_members_vendor(self):
+        employees = [self._emp("sess-a", "/work/demo", "開発", vendor="claude"),
+                     self._emp("cx-b", "/work/demo", "開発", vendor="codex")]
+        for mode in ("project", "session"):
+            with self.subTest(mode=mode):
+                sessions = [s for p in office.group_by_project(employees, mode=mode)
+                            for s in p["sessions"]]
+                self.assertEqual({s["session"]: s["vendor"] for s in sessions},
+                                 {"sess-a": "claude", "cx-b": "codex"})
 
     def test_numbering_is_stable_across_ordering(self):
         """同名dept×別cwdの「N号」は、employeesの並び順（=mtime変動）が変わっても回転しない。"""

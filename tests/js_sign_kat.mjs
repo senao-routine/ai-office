@@ -4,8 +4,8 @@
 // 揃っている」ことの機械的証明になる（相互運用の回帰網）。relay_e2e.sh から node で実行。
 //
 // さらに（重要）: 本KATが二重実装の自己複製に堕ちないよう、**本番PWA署名器**
-// （worker.js の APP_HTML 内 canonical 構築リテラル）を実ファイルから読んで、下の
-// 期待リテラルとバイト一致することも検証する。これで worker.js:APP_HTML の
+// （app_html.js の APP_HTML 内 canonical 構築リテラル）を実ファイルから読んで、下の
+// 期待リテラルとバイト一致することも検証する。これで app_html.js:APP_HTML の
 // フィールド順/区切りを変えたら（＝実機スマホのsigがズレる変更）この KAT が破れる。
 import { createHash, createHmac } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -30,12 +30,15 @@ if (sig !== KAT) {
   process.exit(1);
 }
 
-// 本番PWA署名器（worker.js APP_HTML）の canonical 構築リテラルが上と同型かをバイト一致で検査
+// 本番PWA署名器（app_html.js APP_HTML）の canonical 構築リテラルが上と同型かをバイト一致で検査
 const HERE = dirname(fileURLToPath(import.meta.url));
-const workerSrc = readFileSync(join(HERE, "..", "relay", "src", "worker.js"), "utf8");
+// 生成モジュールのJSON文字列を復号し、従来のリテラル表記に戻して同じ期待値と照合。
+const appModule = readFileSync(join(HERE, "..", "relay", "src", "app_html.js"), "utf8");
+const workerSrc = JSON.parse(appModule.match(/^export const APP_HTML = (.*);$/m)[1])
+  .replaceAll("\\", "\\\\");
 const EXPECT_APPHTML_CANON = String.raw`["aioffice-instruct","v1",cred.d,session,String(ts),nonce,th].join("\\n")`;
 if (!workerSrc.includes(EXPECT_APPHTML_CANON)) {
-  console.error("worker.js APP_HTML の canonical 構築が期待リテラルと不一致＝本番スマホ署名器がズレた");
+  console.error("app_html.js APP_HTML の canonical 構築が期待リテラルと不一致＝本番スマホ署名器がズレた");
   console.error("期待: " + EXPECT_APPHTML_CANON);
   process.exit(1);
 }

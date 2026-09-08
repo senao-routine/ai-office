@@ -1,8 +1,9 @@
 // スタイルの選択と永続化だけを持つ小さなモジュール。
 // R50-P6: ドット絵スタイルはユーザー判断で撤去（2026-07-30）＝現行は iso のみ。
 // 追加スタイルを試すときはここへ登録して boot.html の動的 import に乗せる。
+// R90-S1: 方向Cを ui/iso に統合。スタイルは1本、保存キーは既定切替時のまま維持する。
 export const STYLES = Object.freeze({ ISO: "iso" });
-export const STYLE_KEY = "aioffice.ui";
+export const STYLE_KEY = "aioffice.ui.v2";
 const VALID = new Set(Object.values(STYLES));
 
 /** ?ui=<style> > localStorage > 既定(iso) の順で解決する。不正値は既定へ落とす。 */
@@ -12,6 +13,7 @@ export function resolveStyle(search = location.search) {
   let saved = null;
   try {
     saved = localStorage.getItem(STYLE_KEY);
+    if (saved === "iso2") saved = STYLES.ISO; // R90-S1: 改名前の保存値を移行
   } catch {
     saved = null;                       // プライベートモード等で localStorage が使えない
   }

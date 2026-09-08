@@ -1,0 +1,30 @@
+{
+  "state": "working",
+  "detail": "合成テストを実行中",
+  "tempo": "busy",
+  "inFlight": {"tasks": 2, "queued": 1, "kinds": ["local_bash", "todo"], "drainableMonitors": 0},
+  "fan": [
+    {"kind": "shell", "label": "dummy", "startedAt": 1699999950000, "doneAt": 0},
+    {"kind": "shell", "label": "dummy", "startedAt": 1699999940000, "doneAt": 1699999960000},
+    {"kind": "todo", "label": "dummy", "startedAt": 0, "doneAt": 0},
+    {"kind": "todo", "label": "dummy", "startedAt": 1699999970000, "doneAt": 0},
+    {"kind": "todo", "label": "dummy", "startedAt": 1699999930000, "doneAt": 1699999980000}
+  ],
+  "tokens": 1200,
+  "name": "fixture-bot",
+  "nameSource": "auto",
+  "sessionId": "session-launch-1",
+  "resumeSessionId": "session-resume-1",
+  "linkScanPath": "/fixture/projects/demo/transcript-1.jsonl",
+  "cwd": "/fixture/project",
+  "template": "bg",
+  "daemonShort": "b0000001",
+  "cliVersion": "2.1.258",
+  "createdAt": "2023-11-14T22:03:20.000Z",
+  "updatedAt": "2023-11-14T22:13:20.000Z",
+  "intent": "dummy",
+  "output": {"result": "dummy"},
+  "respawnFlags": "dummy",
+  "bridgeUrl": "dummy",
+  "children": "dummy"
+}

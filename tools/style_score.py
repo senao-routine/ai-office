@@ -57,7 +57,63 @@ GATES = {
 }
 
 
-def analyze(path):
+# R90-AD2: 見た目の方向が決まったら「参考＝そのボード」に切り替える（プロファイル）。
+#   legacy = 旧 iso（紫青のガラス UI・アクセントは紫）＝ S1 で ui/iso を消すまでの互換。
+#   c      = 方向C「写実寄り北欧オフィス」（2026-09-07 本人裁定）。参考= docs/art/board_C_overview.jpg。
+# c で測る指標が legacy と違うのは意図的:
+#   ・アクセント（セージ緑）は**面積が小さい**のが正しい（ボード実測 0.6%）。だから
+#     「アクセントが光る面積」ではなく「少しは在るか」の下限として使う。彩度の床も下げる
+#     （セージ #7c9a73 は max-min=39 しかなく、旧 55 では 1 画素も拾えない＝測定が壊れる）。
+#   ・代わりに**紫青ネオンの不在**を独立したゲートにする（legacy では「在ること」が下限だった）。
+PROFILES = {
+    "legacy": {
+        "reference": REFERENCE,
+        "gates": GATES,
+    },
+    "c": {
+        # docs/art/board_C_overview.jpg の実測（--calibrate --profile c）
+        "reference": {
+            "empty_floor": 0.191, "color_count": 92, "neon_cool": 0.000,
+            "accent_area": 0.006, "luma_std": 0.221, "luma_mean": 0.665,
+        },
+        "gates": {
+            "empty_floor": ("明るい一様面の割合", 0.0, 0.22, "少ないほど良い・参考は0.191"),
+            "color_count": ("色の種類数", 60, 400, "多いほど良い・参考は92"),
+            # 禁止色（シアン〜青〜紫）は「無い」が正解
+            # ＝旧UIの #7c5cff / #4f8dff / #53e0c4 が画面から消えたことの機械証明
+            "neon_cool": ("禁止色(青紫シアン)の面積", 0.0, 0.02, "無いほど良い・参考は0.000"),
+            # セージ緑が画面に少しは在る（椅子・葉・ラグ）。多すぎ＝緑一色も弾く。
+            "accent_area": ("アクセント(セージ)の面積", 0.001, 0.08, "参考は0.006・小さくてよい"),
+            # 下限は 0.17（参考ボードの全景 0.221 から）→ **0.15**（2026-09-08 実測で較正し直し）。
+            # 参考の 0.221 は「白い周囲＋外壁＋レイトレの室内」を含む全景の値で、部屋の中身だけを
+            # 切ると 0.189。さらに我々は俯瞰 40° の平行投影で**床の面積が参考より大きく壁が小さい**うえ
+            # GI が無い＝同じ絵でも構造的に散らばりが小さい。壁を明るく（#f6f2ec）し床AOをゾーン天面へ
+            # 焼いた状態の実測が 0.165 で、そこから落ちたら「のっぺりへの退行」と言える線として 0.15 を採る。
+            "luma_std": ("明度の標準偏差", 0.15, 0.40, "高いほど立体的・実測0.165/参考0.189(室内)"),
+            "luma_mean": ("平均輝度", 0.58, 0.80, "白飛び/暗すぎを弾く・参考は0.665"),
+        },
+        "accent_hue": 105.0,      # セージ緑
+        "accent_sat": 26,         # 低彩度のセージを拾う床（既定55だと 0 画素）
+    },
+}
+
+
+def _hue(r, g, b):
+    """RGB→色相（度・0..360）。彩度ゼロは 0 を返す（呼び出し側が彩度で先に切る）。"""
+    mx, mn = max(r, g, b), min(r, g, b)
+    if mx == mn:
+        return 0.0
+    d = float(mx - mn)
+    if mx == r:
+        h = ((g - b) / d) % 6
+    elif mx == g:
+        h = (b - r) / d + 2
+    else:
+        h = (r - g) / d + 4
+    return (h * 60.0) % 360.0
+
+
+def analyze(path, accent_hue=None, hue_width=30.0, accent_sat=55):
     from PIL import Image
     src = Image.open(path)
     # 透過PNG（3Dキャンバスのみ）なら、中身のある画素だけを測る。
@@ -102,17 +158,37 @@ def analyze(path):
                                 for (r, g, b), m in zip(px, mask) if m)
     color_count = sum(1 for _, c in quant.items() if c / total >= 0.002)
 
-    # 発光（紫〜青で明るい画素）
-    # ネオン＝明るく、かつ彩度が高い紫〜青。青みがかった白を拾わないよう彩度で切る。
-    glow = 0
+    # 発光（アクセント色で明るい画素）
+    # ネオン＝明るく、かつ彩度が高いアクセント色。青みがかった白を拾わないよう彩度で切る。
+    # R90-H: 既定（accent_hue=None）は従来どおり「青が最強＝紫〜青系」。新しい見た目では
+    # docs/art-direction.md のアクセント色相を --accent-hue で渡す（±hue_width 度）。
+    # accent_sat は彩度の床。低彩度のアクセント（セージ緑など）は 55 だと 1 画素も拾えず、
+    # 「測っているつもりで常に 0」になる（R90-AD2 で実測して踏んだ）。プロファイルが下げる。
+    glow = 0            # 従来の指標（accent_hue 未指定なら紫青）
+    cool = 0            # 禁止色（シアン〜青〜紫）の面積。accent_hue に関係なく常に測る
+    accent = 0          # アクセント色の面積（accent_hue 指定時のみ意味を持つ）
     for (r, g, b), m in zip(px, mask):
         if not m:
             continue
         mx, mn = max(r, g, b), min(r, g, b)
-        if mx < 110 or (mx - mn) < 55:
+        sat = mx - mn
+        # 禁止色は「青が最強」だけでは足りない。旧UIのシアン #53e0c4 は緑が最強（色相168°）で
+        # すり抜ける（Astra レビュー指摘・R90-AD2）。色相の帯 160〜300° で切る。
+        if mx >= 110 and sat >= 55 and 160.0 <= _hue(r, g, b) <= 300.0:
+            cool += 1
+        if accent_hue is not None and mx >= 110 and sat >= accent_sat:
+            if abs(((_hue(r, g, b) - accent_hue + 180) % 360) - 180) <= hue_width:
+                accent += 1
+        # glow_area（legacy 指標）の彩度の床も accent_sat に従う（既定 55＝従来と同値）。
+        if mx < 110 or sat < accent_sat:
             continue
-        if b >= mx and b > g + 20:            # 青が最強＝紫〜青系
-            glow += 1
+        if accent_hue is None:
+            if b >= mx and b > g + 20:        # 青が最強＝紫〜青系
+                glow += 1
+        else:
+            d = abs(((_hue(r, g, b) - accent_hue + 180) % 360) - 180)
+            if d <= hue_width:
+                glow += 1
 
     # 空き床: 明るい無彩色〜薄紫（床の色）で、かつ周囲も同じ色が続く領域。
     # 走査線ごとに「同系色が長く続く区間」を数え、その総面積を空き床とみなす。
@@ -138,36 +214,89 @@ def analyze(path):
         "empty_floor": empty / max(1, total / 2),
         "color_count": color_count,
         "glow_area": glow / total,
+        "neon_cool": cool / total,
+        "accent_area": accent / total,
         "luma_std": std,
         "luma_mean": mean,
     }
+
+
+def calibrate(path, accent_hue, hue_width, profile="legacy", accent_sat=55):
+    """R90-H: 採用したコンセプトボード（参考画像）を実測し、ゲート案を出す。
+    「参考画像自身が落ちるゲートは較正が間違っている」の原則を機械に置き換える:
+    参考の実測値が全項目通る範囲を、現行ゲートの幅を保ったまま提案する。
+    書き換えは人間が REFERENCE/GATES に写す（自動で書かない＝意図の無い緩和を防ぐ）。"""
+    gates = PROFILES[profile]["gates"]
+    got = analyze(path, accent_hue, hue_width, accent_sat)
+    print(f"較正: {path.name}（profile={profile}・"
+          f"accent_hue={accent_hue if accent_hue is not None else '紫青(既定)'}）")
+    print("  REFERENCE = {")
+    for key in gates:
+        v = got[key]
+        print(f'      "{key}": {v:.3f},' if v < 10 else f'      "{key}": {v:.0f},')
+    print("  }")
+    print("  ゲート案（参考が通る範囲・現行の幅を維持）:")
+    for key, (label, lo, hi, note) in gates.items():
+        v = got[key]
+        if key == "empty_floor":
+            lo2, hi2 = 0.0, max(hi, round(v + 0.01, 3))
+        elif key == "color_count":
+            lo2, hi2 = min(lo, int(v * 0.5)), hi
+        else:
+            span = hi - lo
+            lo2 = max(0.0, min(lo, round(v - span * 0.25, 3)))
+            hi2 = max(hi, round(v + span * 0.25, 3))
+        mark = "✓" if lo <= v <= hi else "→"
+        print(f"    {mark} {label:<16} 実測 {v:.3f}  現行 {lo:g}〜{hi:g}  案 {lo2:g}〜{hi2:g}")
+    return 0
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("image", nargs="?", default=str(ROOT / "tests/artifacts/ui_iso.png"))
     ap.add_argument("--shot", action="store_true", help="撮ってから採点する")
+    ap.add_argument("--style", default="iso", help="--shot で撮るスタイル（iso）")
+    ap.add_argument("--accent-hue", type=float, default=None,
+                    help="発光判定のアクセント色相（度）。未指定=従来の紫青。例: 緑 150")
+    ap.add_argument("--hue-width", type=float, default=30.0, help="色相の許容幅（±度・既定30）")
+    ap.add_argument("--profile", default="legacy", choices=sorted(PROFILES),
+                    help="ゲートの組（legacy=旧iso / c=方向C 写実寄り北欧・docs/art-direction.md）")
+    ap.add_argument("--accent-sat", type=int, default=None,
+                    help="アクセント判定の彩度の床（既定はプロファイル値・legacy は55）")
+    ap.add_argument("--calibrate", action="store_true",
+                    help="参考画像を実測して REFERENCE/GATES の案を出す（書き換えはしない）")
     args = ap.parse_args()
 
     if args.shot:
-        subprocess.run([sys.executable, str(ROOT / "tools/ui_shot.py"), "--style", "iso"],
+        subprocess.run([sys.executable, str(ROOT / "tools/ui_shot.py"), "--style", args.style],
                        cwd=str(ROOT), check=False)
+        if args.image == str(ROOT / "tests/artifacts/ui_iso.png"):
+            args.image = str(ROOT / f"tests/artifacts/ui_{args.style}_scene.png")
 
     path = pathlib.Path(args.image)
     if not path.is_file():
         print(f"画像がありません: {path}")
         return 1
 
-    got = analyze(path)
+    prof = PROFILES[args.profile]
+    gates, reference = prof["gates"], prof["reference"]
+    # プロファイルの既定（アクセント色相・彩度の床）。明示指定があればそちらが勝つ。
+    accent_hue = args.accent_hue if args.accent_hue is not None else prof.get("accent_hue")
+    accent_sat = args.accent_sat if args.accent_sat is not None else prof.get("accent_sat", 55)
+
+    if args.calibrate:
+        return calibrate(path, accent_hue, args.hue_width, args.profile, accent_sat)
+
+    got = analyze(path, accent_hue, args.hue_width, accent_sat)
     ng = 0
-    print(f"採点: {path.name}")
-    for key, (label, lo, hi, note) in GATES.items():
+    print(f"採点: {path.name}" + (f"（profile={args.profile}）" if args.profile != "legacy" else ""))
+    for key, (label, lo, hi, note) in gates.items():
         v = got[key]
         ok = lo <= v <= hi
         mark = "✓" if ok else "✗"
         if not ok:
             ng += 1
-        ref = REFERENCE.get(key)
+        ref = reference.get(key)
         fmt = f"{v:6.0f}" if v >= 10 else f"{v:6.3f}"
         refs = ("" if ref is None else
                 (f"  参考{ref:.0f}" if ref >= 10 else f"  参考{ref:.3f}"))

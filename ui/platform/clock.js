@@ -18,6 +18,34 @@ export const frozen = Number.isFinite(tParam);
 /** 固定時刻（frozen でなければ null） */
 export const frozenAt = frozen ? tParam : null;
 
+/** Epoch seconds for absence detection across reloads/sleep; frozen never reads a clock. */
+export const epochNow = () => frozen ? 0 : Date.now() / 1000;
+
+export const localDayStart = (epoch) => new Date(epoch * 1000).setHours(0, 0, 0, 0) / 1000;
+
+/** Local calendar days overlapping an absence, bounded by the API's 90-day retention. */
+export function absenceDays(since, until) {
+  if (!(since > 0) || until < since) return [];
+  const first = new Date(since * 1000);
+  const cursor = new Date(until * 1000);
+  first.setHours(0, 0, 0, 0); cursor.setHours(0, 0, 0, 0);
+  const days = [];
+  while (cursor >= first && days.length < 90) {
+    days.push(`${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}-${String(cursor.getDate()).padStart(2, "0")}`);
+    cursor.setDate(cursor.getDate() - 1);
+  }
+  return days;
+}
+
+/** Lighting wall-clock hours. Explicit hour wins over the frozen daytime default. */
+export function localHour() {
+  const fixed = Number.parseFloat(params.get("hour"));
+  if (Number.isFinite(fixed)) return Math.min(24, Math.max(0, fixed));
+  if (frozen) return 11;
+  const date = new Date();
+  return date.getHours() + date.getMinutes() / 60 + date.getSeconds() / 3600;
+}
+
 const started = typeof performance !== "undefined" ? performance.now() : 0;
 const SEED = Number.isFinite(seedParam) ? seedParam >>> 0 : 0x9e3779b9;
 
@@ -44,6 +72,15 @@ export function rand() {
 /** 乱数列を初期状態へ戻す（シーン再構築時に呼ぶ＝毎回同じ配置になる） */
 export function resetRand(seed = SEED) {
   _state = seed >>> 0;
+}
+
+/** Rebuild procedural static geometry without consuming the live random stream. */
+export const randState = () => _state;
+export function withRandState(state, build) {
+  const previous = _state;
+  _state = state >>> 0;
+  try { return build(); }
+  finally { _state = previous; }
 }
 
 /** 文字列から安定したハッシュを作る（個体ごとの位相差などに使う・乱数列を消費しない） */

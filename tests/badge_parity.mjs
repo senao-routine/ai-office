@@ -1,26 +1,19 @@
 // R86-I: 識別バッジ／短縮名の割り当てを Mac とスマホで**同一**に保つ機械ピン。
 // ここが食い違うと「PCでは7号なのにスマホでは制」＝同じ相手を別の記号で呼ぶ最悪の形になる
 // （R79-6で「識別記号を1本化」した設計そのものが崩れる）。
-import { readFileSync } from "node:fs";
+import { APP_HTML as src } from "../relay/src/app_html.js";
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-const src = readFileSync(join(ROOT, "relay/src/worker.js"), "utf8");
-const begin = src.indexOf("// PWA_BADGE_BEGIN");
-const end = src.indexOf("// PWA_BADGE_END");
-assert.ok(begin >= 0 && end > begin, "PWA_BADGE markers not found in worker.js");
-// ★抽出は「JS文字列として評価」する。素のテキストを切り貼りすると **\s が s に潰れる
-// エスケープ事故を検出できない**（実機で踏んだ: 正規表現が全部死んで短縮名が別物になった）。
-const expr = src.slice(begin, end)
-  .split("\n").filter((l) => l.trim().startsWith("'"))
-  .join("\n").replace(/\+\s*$/, "");
-const chunk = (0, eval)("(" + expr + ")");
-// 評価後の文字列には正規表現用の \s が**残っていなければならない**。
-// worker.js 側で \\s と書き忘れると、JS文字列のエスケープで s に潰れてここが落ちる
-// （＝実機で正規表現が全部死ぬ事故の唯一の機械検出点）。
-assert.ok(chunk.includes("[\\s"), "正規表現の \\s が潰れている（worker.js で \\\\s と書く）");
+const begin = src.indexOf("var SEQ_PATTERNS=");
+const end = src.indexOf("function idOf(", begin);
+assert.ok(begin >= 0 && end > begin, "PWA_BADGE source not found in app_html.js");
+// 生成モジュールを評価した配信HTMLから、対象関数の範囲だけを抽出。
+const chunk = src.slice(begin, end);
+// 配信する正規表現のエスケープが保たれていることも検査する。
+assert.ok(chunk.includes("[\\s"), "正規表現の \\s が潰れている（app_html.js）");
 assert.ok(chunk.includes("SEQ_PATTERNS"), "抽出に失敗");
 globalThis.__badge = {};
 globalThis.idOf = (e) => (e && (e.projectId || e.session)) || "";

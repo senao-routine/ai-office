@@ -12,7 +12,7 @@
 使い方:
   python3 tools/ui_shot.py --style iso                    # 撮って tests/artifacts/ へ
   python3 tools/ui_shot.py --style iso --t 3.2 --seed 11
-  python3 tools/ui_shot.py --update                       # 全スタイルの golden を撮り直す
+  python3 tools/ui_shot.py --update                       # iso の golden を撮り直す
   python3 tools/ui_shot.py --check                        # golden と比較（差分率で判定）
 
 注意:
@@ -33,7 +33,8 @@ ARTIFACTS = ROOT / "tests" / "artifacts"
 GOLDEN = ROOT / "tests" / "visual" / "golden"
 WORLD_FIXTURES = ROOT / "tests" / "fixtures" / "world"
 
-STYLES = ("iso",)          # ドット絵スタイルはユーザー判断で撤去（2026-07-30）
+# R90-S1: 方向Cの見た目を iso 1本に統合。
+STYLES = ("iso",)
 VIEWPORT = {"width": 1440, "height": 900}
 # 回帰テストは必ずこのバックエンドで撮る（実測: 2回実行でスクショhashが完全一致）
 SWIFTSHADER = ["--use-gl=swiftshader", "--disable-gpu"]
@@ -42,6 +43,34 @@ DIFF_LIMIT = 0.005          # 0.5%（旧scene_diff.py から引き継いだ基�
 # 性能ゲート: 素朴に Mesh を並べると 19体で 4700 ドローに達して 60fps が出ない。
 # InstancedMesh とジオメトリ統合を外した瞬間にここで落ちる。
 DRAW_CALL_LIMIT = 300
+# R90-H: マテリアル数の上限。stats() が返す materials を検査する。
+# マテリアルを増やすほど merge.js の静的バッチが割れて drawCalls が増える＝上流で止める。
+MATERIAL_LIMIT = 64
+
+
+def parse_viewport(s):
+    """'1440x900' → dict。不正なら既定。"""
+    try:
+        w, h = s.lower().split("x")
+        return {"width": int(w), "height": int(h)}
+    except (ValueError, AttributeError):
+        return dict(VIEWPORT)
+
+
+def golden_name(style, entry, query, explicit=None, viewport=None):
+    """golden/成果物のファイル名。既定はスタイル名。entry/query/viewport を付けた撮影は
+    'iso_stream1' / 'iso_390x844' のようにスラグを足して**別 golden** にする（R90-H）。
+    既定の viewport 以外で撮った絵が既定 golden（iso.png 等）を上書きしない、が契約。"""
+    if explicit:
+        return explicit
+    parts = [style]
+    if entry and entry != "/":
+        parts.append(pathlib.Path(entry).stem)
+    if query:
+        parts.append("".join(ch for ch in query if ch.isalnum()))
+    if viewport and viewport != VIEWPORT:
+        parts.append(f"{viewport['width']}x{viewport['height']}")
+    return "_".join(parts)
 
 
 def free_port():
@@ -68,14 +97,16 @@ def start_server(port, extra_env=None):
     raise SystemExit("サーバーが起動しませんでした")
 
 
-def shoot(style, t, seed, world, out, gpu=False, attempts=3):
+def shoot(style, t, seed, world, out, gpu=False, attempts=3, entry="/", query="",
+          viewport=None, name=None):
     """SwiftShader は 3D シーンを描くと稀にブラウザごと落ちる（TargetClosedError）。
     フレークするゲートは「落ちても無視する」文化を生んで嘘greenより有害なので、
     ここで吸収する。描画結果自体は決定論なのでリトライしても絵は変わらない（実測）。"""
     last = None
     for i in range(attempts):
         try:
-            return _shoot_once(style, t, seed, world, out, gpu)
+            return _shoot_once(style, t, seed, world, out, gpu, entry=entry, query=query,
+                               viewport=viewport, name=name or style)
         except Exception as exc:                      # noqa: BLE001 - 落ち方を問わず再試行
             last = exc
             if i + 1 < attempts:
@@ -84,9 +115,11 @@ def shoot(style, t, seed, world, out, gpu=False, attempts=3):
     raise last
 
 
-def _shoot_once(style, t, seed, world, out, gpu=False):
+def _shoot_once(style, t, seed, world, out, gpu=False, entry="/", query="", viewport=None,
+                name=None):
     from playwright.sync_api import sync_playwright
 
+    name = name or style
     payload = json.dumps(world, ensure_ascii=False)
     port = free_port()
     proc = start_server(port)
@@ -94,14 +127,19 @@ def _shoot_once(style, t, seed, world, out, gpu=False):
     try:
         with sync_playwright() as pw:
             browser = pw.chromium.launch(args=GPU if gpu else SWIFTSHADER)
-            page = browser.new_page(viewport=VIEWPORT, device_scale_factor=1)
+            page = browser.new_page(viewport=viewport or VIEWPORT, device_scale_factor=1)
             page.on("pageerror", lambda e: errors.append(f"pageerror: {e}"))
             page.on("console", lambda m: errors.append(f"console.error: {m.text}")
                     if m.type == "error" else None)
             # /api/office を fixture で差し替える＝実セッションの状態に左右されない
             page.route("**/api/office*", lambda route: route.fulfill(
                 status=200, content_type="application/json; charset=utf-8", body=payload))
-            page.goto(f"http://127.0.0.1:{port}/?ui={style}&t={t}&seed={seed}")
+            # R90-H: entry（/ui/pwa/app.html 等）と追加 query（stream=1&hour=18 等）で
+            # 同じスタイルの別 golden を撮れる。?ui= は PWA 入口では無視されるだけ。
+            url = f"http://127.0.0.1:{port}{entry}?ui={style}&t={t}&seed={seed}"
+            if query:
+                url += "&" + query.lstrip("&?")
+            page.goto(url)
             page.wait_for_function("window.__office && window.__office.ready", timeout=30000)
             page.wait_for_timeout(300)          # フォントとCSSの適用待ち
             dump = page.evaluate("window.__office.dumpWorld()")
@@ -113,7 +151,7 @@ def _shoot_once(style, t, seed, world, out, gpu=False):
             stage = page.query_selector("#stage")
             if stage:
                 ARTIFACTS.mkdir(parents=True, exist_ok=True)
-                stage.screenshot(path=str(ARTIFACTS / f"ui_{style}_stage.png"))
+                stage.screenshot(path=str(ARTIFACTS / f"ui_{name}_stage.png"))
             # 品質採点は3Dキャンバスだけを透過付きで撮る。
             # ステージ背景（CSSグラデーション）まで写すと、明るい背景が
             # 「空き床」として数えられ、床の色を参考画像に寄せるほど悪化する（実測で踏んだ）。
@@ -133,7 +171,7 @@ def _shoot_once(style, t, seed, world, out, gpu=False):
                 }""")
                 # 背景をマゼンタで塗ってから撮り、style_score 側でその色を除外する。
                 # omit_background は element screenshot では alpha を出さなかった（実測）。
-                canvas.screenshot(path=str(ARTIFACTS / f"ui_{style}_scene.png"))
+                canvas.screenshot(path=str(ARTIFACTS / f"ui_{name}_scene.png"))
                 page.evaluate("""() => {
                   const st = document.querySelector('#stage');
                   if (st) st.style.background = st.dataset.bgSaved || '';
@@ -161,7 +199,7 @@ def compare(a, b):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--style", choices=[*STYLES, "all"], default="all")
+    ap.add_argument("--style", choices=[*STYLES, "all"], default="iso")
     ap.add_argument("--t", type=float, default=3.2)
     ap.add_argument("--seed", type=int, default=11)
     ap.add_argument("--world", default="basic", help="tests/fixtures/world/<name>.json")
@@ -169,21 +207,34 @@ def main():
     ap.add_argument("--gpu", action="store_true", help="実GPUで撮る（見栄え確認用・goldenとは一致しない）")
     ap.add_argument("--update", action="store_true", help="golden を撮り直す")
     ap.add_argument("--check", action="store_true", help="golden と比較して差分率で判定")
+    # R90-H: 同じスタイルの別 golden（配信モード・夕方・PWA 縦画面）を撮るための3口
+    ap.add_argument("--query", default="", help="追加クエリ（例: 'stream=1' / 'hour=18'）")
+    ap.add_argument("--viewport", default=None, help="'幅x高さ'（例: 390x844）。既定 1440x900")
+    ap.add_argument("--entry", default="/", help="入口パス（例: /ui/pwa/app.html）。既定 /")
+    ap.add_argument("--name", default=None, help="golden/成果物名の明示（既定はスタイル＋クエリ由来）")
     args = ap.parse_args()
 
     world_path = WORLD_FIXTURES / f"{args.world}.json"
     world = json.loads(world_path.read_text(encoding="utf-8"))
     styles = STYLES if args.style == "all" else (args.style,)
+    viewport = parse_viewport(args.viewport) if args.viewport else None
+    if args.name and len(styles) != 1:
+        # 複数スタイルに同じ名前は付けられない（黙って捨てると別 golden の契約が破れる・Astra レビュー指摘）
+        print("  ✗ --name は --style <1つ> と一緒に使う（--style all では名前が衝突する）")
+        return 2
 
     ng = 0
     for style in styles:
-        golden = GOLDEN / f"{style}.png"
+        name = golden_name(style, args.entry, args.query, args.name, viewport)
+        golden = GOLDEN / f"{name}.png"
         out = pathlib.Path(args.out) if args.out else (
-            golden if args.update else ARTIFACTS / f"ui_{style}.png")
-        dump, errors, stats = shoot(style, args.t, args.seed, world, out, gpu=args.gpu)
+            golden if args.update else ARTIFACTS / f"ui_{name}.png")
+        dump, errors, stats = shoot(style, args.t, args.seed, world, out, gpu=args.gpu,
+                                    entry=args.entry, query=args.query, viewport=viewport,
+                                    name=name)
 
         if errors:
-            print(f"  ✗ {style}: JSエラー {errors[:3]}")
+            print(f"  ✗ {name}: JSエラー {errors[:3]}")
             ng += 1
             continue
         agents = (dump or {}).get("agents") or []
@@ -194,23 +245,27 @@ def main():
                 f"{k}={v:,}" if isinstance(v, int) else f"{k}={v}"
                 for k, v in sorted(stats.items()))
         shown = out.relative_to(ROOT) if out.is_relative_to(ROOT) else out
-        print(f"  ✓ {style}: {shown} (agents={len(agents)}){perf}")
+        print(f"  ✓ {name}: {shown} (agents={len(agents)}){perf}")
         if stats and stats.get("drawCalls", 0) > DRAW_CALL_LIMIT:
-            print(f"  ✗ {style}: drawCalls {stats['drawCalls']} > {DRAW_CALL_LIMIT}"
+            print(f"  ✗ {name}: drawCalls {stats['drawCalls']} > {DRAW_CALL_LIMIT}"
                   f"（InstancedMesh/ジオメトリ統合が外れている可能性）")
+            ng += 1
+        if stats and isinstance(stats.get("materials"), int) and stats["materials"] > MATERIAL_LIMIT:
+            print(f"  ✗ {name}: materials {stats['materials']} > {MATERIAL_LIMIT}"
+                  f"（マテリアルを増やすと静的バッチが割れる。既存キーを共有すること）")
             ng += 1
 
         if args.check:
             if not golden.is_file():
-                print(f"  ✗ {style}: golden がありません（--update で作成）: {golden.relative_to(ROOT)}")
+                print(f"  ✗ {name}: golden がありません（--update で作成）: {golden.relative_to(ROOT)}")
                 ng += 1
                 continue
             ratio, err = compare(out, golden)
             if err:
-                print(f"  ✗ {style}: {err}")
+                print(f"  ✗ {name}: {err}")
                 ng += 1
             elif ratio > DIFF_LIMIT:
-                print(f"  ✗ {style}: golden と {ratio * 100:.2f}% 差分（上限 {DIFF_LIMIT * 100:.1f}%）")
+                print(f"  ✗ {name}: golden と {ratio * 100:.2f}% 差分（上限 {DIFF_LIMIT * 100:.1f}%）")
                 ng += 1
             else:
                 print(f"    golden 一致（差分 {ratio * 100:.3f}%）")

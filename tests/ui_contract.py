@@ -23,7 +23,7 @@ import time
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 WORLDS = ROOT / "tests" / "fixtures" / "world"
-STYLES = ("iso",)
+STYLES = ("iso",)   # R90-S1: 方向Cを iso 1本に統合
 
 
 def free_port():
@@ -61,6 +61,60 @@ def dump_for(page, port, style, payload, world_name):
     dump = page.evaluate("window.__office.dumpWorld()")
     real = [e for e in errors if "Failed to load resource" not in e]
     return dump, real
+
+
+def check_sse_poll_interval(browser, port):
+    """Live SSE sets 15s polling; EOF restores 3s. Frozen pages never subscribe."""
+    page = browser.new_page(viewport={"width": 1440, "height": 900})
+    requests = []
+    page.on("request", lambda req: requests.append(req) if "/api/events" in req.url else None)
+    try:
+        page.goto(f"http://127.0.0.1:{port}/?ui=iso&t=3.2&seed=11")
+        page.wait_for_function("window.__office && window.__office.ready", timeout=30000)
+        assert not requests, "frozen iso opened SSE"
+
+        # Keep the real fetch/ReadableStream path, with a controlled EOF for the drop assertion.
+        page.add_init_script("""(() => {
+          const original = window.fetch.bind(window);
+          window.fetch = async (...args) => {
+            const res = await original(...args);
+            if (!String(args[0]).startsWith('/api/events') || !res.ok) return res;
+            const reader = res.body.getReader();
+            const body = new ReadableStream({
+              start(controller) {
+                let ended = false;
+                window.__endOfficeEvents = () => {
+                  if (ended) return;
+                  ended = true;
+                  controller.close();
+                  reader.cancel();
+                };
+                (async () => {
+                  try {
+                    while (!ended) {
+                      const {value, done} = await reader.read();
+                      if (ended) break;
+                      if (done) { ended = true; controller.close(); break; }
+                      controller.enqueue(value);
+                    }
+                  } catch (err) { if (!ended) controller.error(err); }
+                })();
+              }
+            });
+            return new Response(body, {status: res.status, headers: res.headers});
+          };
+        })();""")
+        page.goto(f"http://127.0.0.1:{port}/?ui=iso&seed=11")
+        page.wait_for_function("window.__office?.ready && window.__office.debug.pollMs === 15000",
+                               timeout=30000)
+        assert requests and requests[-1].headers.get("x-office-local") == "1", "SSE header missing"
+        page.evaluate("window.__endOfficeEvents()")
+        page.wait_for_function("window.__office.debug.pollMs === 3000", timeout=2000)
+        return None
+    except Exception as exc:
+        return str(exc)
+    finally:
+        page.close()
 
 
 def main():
@@ -118,6 +172,12 @@ def main():
                 crews = {x["disp"]: x["crew"] for x in a["agents"] if x["crew"] > 1}
                 extra = f" / 集約 {crews}" if crews else ""
                 print(f"  ✓ {world_path.stem}: dumpWorld 整合 (agents={got}{extra})")
+            error = check_sse_poll_interval(browser, port)
+            if error:
+                print(f"  ✗ iso SSEポーリング間隔: {error}")
+                ng += 1
+            else:
+                print("  ✓ iso SSE: 接続中15000ms・切断3000ms・frozen購読なし")
             browser.close()
     finally:
         proc.terminate()

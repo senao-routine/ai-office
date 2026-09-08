@@ -36,6 +36,11 @@ class HookWireTest(unittest.TestCase):
                    for h in grp.get("hooks", [])
                    if "office-inbox-wait" in h.get("command", ""))
 
+    def _inbox_hook(self):
+        """R90-D5 以降、Stop にはイベント記録 group も並ぶので並び順でなくコマンド名で引く。"""
+        return next(h for grp in self._stops() for h in grp.get("hooks", [])
+                    if "office-inbox-wait" in h.get("command", ""))
+
     def test_default_prints_snippet_without_writing(self):
         r = run_install(self.home)
         self.assertEqual(r.returncode, 0, r.stderr)
@@ -48,7 +53,7 @@ class HookWireTest(unittest.TestCase):
         r1 = run_install(self.home, "--wire")
         self.assertEqual(r1.returncode, 0, r1.stderr)
         self.assertEqual(self._wired_count(), 1)
-        hook = self._stops()[-1]["hooks"][0]
+        hook = self._inbox_hook()
         self.assertTrue(hook["asyncRewake"])
         # R86-D 不変条件: timeout は待機ループ（LOOPS×INTERVAL）より必ず長い。
         # 逆転すると Claude Code が hook を kill して**出力を破棄**するため、
@@ -75,7 +80,7 @@ class HookWireTest(unittest.TestCase):
         r = run_install(self.home, "--wire")
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(self._wired_count(), 1, "重複配線してはいけない")
-        hook = self._stops()[-1]["hooks"][0]
+        hook = self._inbox_hook()
         self.assertGreater(hook["timeout"], 12 * 3600)
         self.assertIn("timeout", r.stdout)
 
@@ -101,6 +106,98 @@ class HookWireTest(unittest.TestCase):
         r = run_install(self.home, "--wire")
         self.assertNotEqual(r.returncode, 0)
         self.assertEqual(self.settings.read_text(encoding="utf-8"), "{broken")  # 壊れた正本に触らない
+
+
+class EventWireTest(unittest.TestCase):
+    """R90-D5: イベント記録 hook（office-event.sh）を 17 イベントへ async で配線する。
+    既存 group（他プロジェクトの hook・inbox-wait）には触らず、2回実行で重複しない。"""
+
+    EVENTS = ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure",
+              "PermissionRequest", "PermissionDenied", "Stop", "StopFailure", "SubagentStart",
+              "SubagentStop", "TaskCreated", "TaskCompleted", "Notification", "SessionEnd",
+              "PreCompact", "PostCompact"]
+
+    def setUp(self):
+        self.home = Path(tempfile.mkdtemp(prefix="evwire_"))
+        self.settings = self.home / ".claude" / "settings.json"
+
+    def _hooks(self):
+        return json.loads(self.settings.read_text(encoding="utf-8"))["hooks"]
+
+    def _event_entries(self, ev):
+        return [h for grp in self._hooks().get(ev, []) for h in grp.get("hooks", [])
+                if h.get("command") == 'bash "$HOME/.claude/hooks/office-event.sh"']
+
+    def test_wire_all_events_async_and_idempotent(self):
+        r1 = run_install(self.home, "--wire")
+        self.assertEqual(r1.returncode, 0, r1.stderr)
+        self.assertTrue((self.home / ".claude" / "hooks" / "office-event.sh").exists())
+        for ev in self.EVENTS:
+            entries = self._event_entries(ev)
+            self.assertEqual(len(entries), 1, ev)
+            self.assertIs(entries[0]["async"], True, ev)
+            self.assertLessEqual(entries[0]["timeout"], 30, ev)
+        # Stop は inbox-wait と別 group（asyncRewake 判定に干渉しない）
+        stop_groups = self._hooks()["Stop"]
+        inbox = [g for g in stop_groups if any("office-inbox-wait" in h["command"] for h in g["hooks"])]
+        events = [g for g in stop_groups if any("office-event.sh" in h["command"] for h in g["hooks"])]
+        self.assertTrue(inbox and events and inbox[0] is not events[0])
+        self.assertFalse(any("office-event.sh" in h["command"] for h in inbox[0]["hooks"]))
+        r2 = run_install(self.home, "--wire")
+        self.assertIn("配線を確認", r2.stdout)
+        for ev in self.EVENTS:
+            self.assertEqual(len(self._event_entries(ev)), 1, ev)
+
+    def test_wire_preserves_existing_groups_and_heals_async(self):
+        self.settings.parent.mkdir(parents=True)
+        existing = {"hooks": {
+            "Stop": [{"hooks": [{"type": "command", "command": "bash other-stop.sh", "timeout": 20}]}],
+            "PostToolUse": [{"matcher": "Edit|Write", "hooks": [{"type": "command", "command": "bash quick.sh"}]},
+                            {"hooks": [{"type": "command", "command": 'bash "$HOME/.claude/hooks/office-event.sh"',
+                                        "timeout": 10}]}]}}
+        self.settings.write_text(json.dumps(existing), encoding="utf-8")
+        r = run_install(self.home, "--wire")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        hooks = self._hooks()
+        self.assertEqual(hooks["PostToolUse"][0]["matcher"], "Edit|Write")            # 既存 group 無改変
+        self.assertEqual(hooks["PostToolUse"][0]["hooks"][0]["command"], "bash quick.sh")
+        self.assertEqual(len(self._event_entries("PostToolUse")), 1)                  # 既配線は重複しない
+        self.assertIs(self._event_entries("PostToolUse")[0]["async"], True)           # async 欠落を自己修復
+        self.assertIn("bash other-stop.sh", [h["command"] for g in hooks["Stop"] for h in g["hooks"]])
+        self.assertEqual(len(self._event_entries("Stop")), 1)
+
+    def test_other_projects_same_named_hook_is_left_alone(self):
+        """他プロジェクトの office-event.sh（別パス）は自分の配線とみなさない＝触らず、自分の hook を別に足す。"""
+        self.settings.parent.mkdir(parents=True)
+        other = {"type": "command", "command": "bash /other-project/hooks/office-event.sh", "timeout": 60}
+        self.settings.write_text(json.dumps({"hooks": {"Stop": [{"hooks": [dict(other)]}]}}), encoding="utf-8")
+        r = run_install(self.home, "--wire")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        stop = self._hooks()["Stop"]
+        others = [h for g in stop for h in g["hooks"] if h["command"] == other["command"]]
+        self.assertEqual(others, [other])                       # 無改変（async を足していない）
+        self.assertEqual(len(self._event_entries("Stop")), 1)   # 自分の配線は別 entry として存在
+
+    def test_restricted_matcher_group_does_not_count_as_wired(self):
+        """matcher 付き group に自分のコマンドがあっても、イベント全体の配線とは数えず無制限 group を足す。"""
+        self.settings.parent.mkdir(parents=True)
+        self.settings.write_text(json.dumps({"hooks": {"PostToolUse": [
+            {"matcher": "Edit", "hooks": [{"type": "command",
+                                            "command": 'bash "$HOME/.claude/hooks/office-event.sh"', "timeout": 10}]}]}}),
+            encoding="utf-8")
+        r = run_install(self.home, "--wire")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        groups = self._hooks()["PostToolUse"]
+        self.assertEqual(groups[0]["matcher"], "Edit")          # 既存 group は無改変
+        unrestricted = [g for g in groups if not g.get("matcher")
+                        and any("office-event.sh" in h["command"] for h in g["hooks"])]
+        self.assertEqual(len(unrestricted), 1)
+
+    def test_default_mode_does_not_write_events(self):
+        r = run_install(self.home)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("イベント記録", r.stdout)
+        self.assertFalse(self.settings.exists())
 
 
 if __name__ == "__main__":

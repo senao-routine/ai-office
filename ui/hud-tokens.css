@@ -1,0 +1,22 @@
+/* HUDの共通正本。docs/art-direction.md §7。両画面への展開はgen_pwa_modules.py。 */
+:root {
+  --paper: #f7f4ef;
+  --paper-2: #efe9e1;
+  --paper-3: #e6dfd5;
+  --line: rgba(46,45,44,.14);
+  --ink: #2e2d2c;
+  --ink-2: #5e5a55;
+  --ink-3: #8a8279;
+  --accent: #5f7d59;
+  --accent-chip: #e3ebdd;
+  --accent-3d: #7a9469;
+  --warn: #c28a3a;
+  --warn-chip: #f3e9d9;
+  --alert: #c0483a;
+  --alert-chip: #f4e4df;
+  --rest: #b4aca0;
+  --on-accent: #ffffff;
+  --radius-sm: 10px;
+  --radius: 14px;
+  --shadow: 0 1px 2px rgba(46,45,44,.06);
+}

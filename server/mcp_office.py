@@ -2,9 +2,10 @@
 # -*- coding: utf-8 -*-
 """AI Office MCPサーバー（P5） — 標準ライブラリのみ・stdio JSON-RPC を手書き実装。
 
-他の Claude Code セッション（や OpenClaw）が MCP ツール2つで AI Office を操作する:
+他の Claude Code セッション（や OpenClaw）が MCP ツール3つで AI Office を操作する:
   - office_status   : Mac上の全セッション（AI社員）の出勤状況を要約
   - office_instruct : 指定セッションへ指示を投函（既存 post_instruction を再利用）
+  - office_digest   : 指定日の実績を数値と表示名だけで要約
 
 不変条件（掟）:
   * ネットワークを一切開かない（stdio のみ・:4780 サーバーの生死と独立）。
@@ -22,6 +23,7 @@ import re
 import sys
 import traceback
 import unicodedata
+from datetime import date
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -51,6 +53,12 @@ TOOLS = [
                                      "description": "宛先セッションID（office_statusのsession=を全文コピー推奨。一意なら前方一致や表示名でも可）"},
                          "text": {"type": "string", "maxLength": 4000, "description": "指示本文"}},
                      "required": ["session", "text"], "additionalProperties": False}},
+    {"name": "office_digest",
+     "description": "指定日のオフィス実績を数値と表示名だけで要約する。質問・指示・会話本文は含まない。",
+     "inputSchema": {"type": "object", "properties": {
+         "day": {"type": "string", "pattern": r"^\d{4}-\d{2}-\d{2}$",
+                 "description": "ローカル日付 YYYY-MM-DD（省略時は今日）"}},
+         "additionalProperties": False}},
 ]
 
 
@@ -135,6 +143,42 @@ def _tool_status():
     return "\n".join(lines)
 
 
+def _tool_digest(args):
+    if not isinstance(args, dict) or set(args) - {"day"}:
+        return "day（YYYY-MM-DD、省略可）を指定してください", True
+    day = args.get("day", date.today().isoformat())
+    if not isinstance(day, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", day):
+        return "day は YYYY-MM-DD 形式で指定してください", True
+    try:
+        date.fromisoformat(day)
+    except ValueError:
+        return "day は実在する日付を指定してください", True
+    digest = office._notification_digest(day)
+    if digest is None:
+        stats = office._load_daily_stats(day)
+        answered = stats.get("answered") or 0
+        wait = (stats.get("medianWaitSec") if "medianWaitSec" in stats else
+                (stats.get("totalWaitSec") or 0) / answered if answered else 0)
+        label = "中央値" if "medianWaitSec" in stats else "平均"
+        return f"🏢 {day} — ❗{answered}件に答えた（{label} {round(wait / 60)}分）", False
+
+    def metrics(row):
+        # Explicit numeric fields only: never serialize a digest/office object.
+        return (f"❗{row.get('asksAnswered', 0)}件に答えた"
+                f"（中央値 {round(row.get('medianWaitSec', 0) / 60)}分）"
+                f" · ✅{row.get('tasksDone', 0)}件 · 稼働 {row.get('activeMin', 0):g}分")
+
+    totals = digest["totals"]
+    lines = [f"🏢 {day} — {metrics(totals)} · XP {totals.get('xp', 0):g}"]
+    sessions = digest.get("sessions") or []
+    for row in sessions[:MAX_EMPLOYEES]:
+        name = " ".join(str(row.get("name") or "?").split())[:80]
+        lines.append(f"{name} — {metrics(row)}")
+    if len(sessions) > MAX_EMPLOYEES:
+        lines.append(f"…他{len(sessions) - MAX_EMPLOYEES}体")
+    return "\n".join(lines), False
+
+
 def _transcript_exists(session_id):
     """実トランスクリプト(*.jsonl)が存在するか。閉じたセッションは必ず残す＝孤児inbox防止。"""
     try:
@@ -211,6 +255,13 @@ def _tool_instruct(args):
 def _on_tools_call(mid, params):
     name = params.get("name")
     args = params.get("arguments") or {}
+    if name == "office_digest":
+        try:
+            text, is_err = _tool_digest(params.get("arguments", {}))
+            return _text(mid, text, is_err)
+        except Exception:
+            traceback.print_exc(file=sys.stderr)
+            return _text(mid, "office_digest の生成に失敗しました", True)
     if name == "office_status":
         try:
             return _text(mid, _tool_status())
@@ -235,7 +286,8 @@ def _on_initialize(mid, params):
         "capabilities": {"tools": {}},
         "serverInfo": SERVER_INFO,
         "instructions": ("office_status でMac上の全Claude Codeセッションを確認し、"
-                         "office_instruct で指示を投函できる。❗付き社員は人の対応待ち。"),
+                         "office_instruct で指示を投函、office_digest で日別実績を確認できる。"
+                         "❗付き社員は人の対応待ち。"),
     })
 
 

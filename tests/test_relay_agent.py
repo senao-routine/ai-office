@@ -441,8 +441,8 @@ class RelayAgentTest(unittest.TestCase):
         finally:
             ra.RELAY_TITLES = orig
 
-    def test_redact_keeps_edition_toplevel(self):
-        """R42.1: edition はPWAの表示分岐源＝redaction後もトップレベルに残る（本文/パス由来でない）。"""
+    def test_redact_drops_retired_edition_toplevel(self):
+        """Retired metadata from an older producer must not reach the relay."""
         snap = {
             "edition": {"id": "hybrid",
                         "features": {"claudeSessions": True, "openclaw": True}},
@@ -450,9 +450,7 @@ class RelayAgentTest(unittest.TestCase):
                            "target": "", "lastOrder": "", "branch": "", "feed": []}],
         }
         out = ra._redact_office_for_relay(snap)
-        self.assertEqual(out["edition"]["id"], "hybrid")
-        self.assertEqual(out["edition"]["features"],
-                         {"claudeSessions": True, "openclaw": True})
+        self.assertNotIn("edition", out)
         self.assertEqual(out["employees"][0]["lastSaid"], "")
 
     def test_redact_drops_history_bodies(self):
@@ -594,11 +592,7 @@ class RelayAgentTest(unittest.TestCase):
 
     # ── R80: 通信の安全弁（Cloudflare無料枠を割る前に自分で減速する） ──
     def test_r80_cross_do_throttle(self):
-        """C2: wantOpenclaw は **claude単体では常にFalse**・有効でも60秒に1回まで。
-        （Worker側で別DOへのRPC=1:1課金になり、WSの20:1圧縮を無効化するため）"""
-        ra._openclaw_enabled = lambda: False
-        self.assertFalse(ra._want_openclaw({}, 0.0))
-        ra._openclaw_enabled = lambda: True
+        """Cross-DO requests remain limited to once per 60 seconds."""
         state = {}
         self.assertTrue(ra._want_openclaw(state, 1000.0))       # 初回は取りに行く
         state["oc_fetched_at"] = 1000.0
@@ -741,14 +735,9 @@ class RelayAgentTest(unittest.TestCase):
             return {"ok": True, "json": ""}
         ra._req = fake
         ra.office.office_json = lambda: {"employees": []}
-        orig_feats = ra.office.edition_features
-        ra.office.edition_features = lambda ed, lic=None: {"openclaw": True, "relayPwa": True}
-        try:
-            n = ra.tick("http://x", "t")   # 例外が漏れないこと
-            self.assertEqual(n, 0)
-            self.assertTrue(any("site=" in u for u in calls), "mini集約が呼ばれていない")
-        finally:
-            ra.office.edition_features = orig_feats
+        n = ra.tick("http://x", "t")
+        self.assertEqual(n, 0)
+        self.assertTrue(any("site=" in u for u in calls), "mini aggregation was not called")
 
     def test_license_gate_removed(self):
         """R85-2: ライセンスゲートは撤去済み＝relay_agent に paywall 経路が存在しないことをピン
@@ -797,6 +786,70 @@ class RelayAgentTest(unittest.TestCase):
         blob = json.dumps(sent["body"], ensure_ascii=False)
         self.assertNotIn("秘密の本文", blob)
         self.assertNotIn("秘密の発言", blob)
+
+
+class AllowlistRedactionTest(unittest.TestCase):
+    """R90-D12: relay redaction は allowlist。office_json に足した新フィールドは既定で中継に載らない。"""
+
+    def test_unknown_and_local_only_keys_are_dropped(self):
+        snap = {"employees": [{"session": "s1", "state": "working", "bg": {"detail": "x", "fan": {}},
+                               "pid": 123, "tokens": 999, "homeCwd": "/Users/x/p", "zzz": 1, "detail": "verify 中"}],
+                "roster": [{"projectId": "abc", "session": "s1", "bg": {"id": "j"}, "detail": "verify 中",
+                            "sessions": [{"session": "s1", "state": "working", "pid": 5, "cwd": "/x", "vendor": "claude"}]}],
+                "timeline": [1, 2], "history": [{"text": "秘密"}], "growth": {"byProject": {"abc": {"xp": 10, "level": 0, "breakdown": {"tasks": 1}}},
+                                                                             "office": {"xp": 10, "level": 0, "nextAt": 100, "secret": 1}, "streak15": 2},
+                "sources": {"claude": {"fg": 1, "bg": 1, "agentsCli": True, "paths": ["/x"]}, "codex": {"connected": True, "n": 2, "reason": "ok"},
+                            "openclaw": {"connected": False, "site": "macmini"}},
+                "events": {"seq": 5, "wired": True, "lastTs": 1.0, "files": ["/x"]}}
+        orig = ra.RELAY_DETAIL
+        ra.RELAY_DETAIL = True                      # 環境変数 OFFICE_RELAY_DETAIL=0 の環境でも「既定=通す」を検査（レビュー指摘）
+        try:
+            out = ra._redact_office_for_relay(snap)
+        finally:
+            ra.RELAY_DETAIL = orig
+        e = out["employees"][0]
+        for k in ("bg", "pid", "tokens", "homeCwd", "zzz"):
+            self.assertNotIn(k, e, k)
+        self.assertEqual(e["detail"], "verify 中")
+        self.assertNotIn("timeline", out)
+        self.assertEqual(out["history"], [])
+        self.assertEqual(out["roster"][0]["sessions"], [{"session": "s1", "state": "working", "vendor": "claude"}])
+        self.assertNotIn("bg", out["roster"][0])
+        self.assertEqual(out["growth"], {"byProject": {"abc": {"xp": 10, "level": 0}},
+                                         "office": {"xp": 10, "level": 0, "nextAt": 100}, "streak15": 2})
+        self.assertEqual(out["sources"], {"claude": {"fg": 1, "bg": 1, "agentsCli": True},
+                                          "codex": {"connected": True, "n": 2}, "openclaw": {"connected": False}})
+        self.assertEqual(out["events"], {"seq": 5, "wired": True})
+        self.assertNotIn("/", json.dumps(out, ensure_ascii=False))
+
+    def test_detail_optout(self):
+        orig = ra.RELAY_DETAIL
+        try:
+            ra.RELAY_DETAIL = False
+            out = ra._redact_office_for_relay({"employees": [{"session": "s", "detail": "x"}]})
+            self.assertEqual(out["employees"][0]["detail"], "")
+        finally:
+            ra.RELAY_DETAIL = orig
+
+    def test_allowlist_covers_ui_and_pwa_field_reads(self):
+        """ui/core/world.js（p.xxx）と relay/src/worker.js の APP_HTML（e.xxx）が読む社員フィールドを
+        allowlist が包含する＝表示側が読むのに中継で落ちている、という食い違いを機械で止める。"""
+        import re
+        ignore = {"appendChild", "get", "length", "push", "map", "filter", "forEach", "classList", "style",
+                  "dataset", "textContent", "innerHTML", "hidden", "id", "className", "slice", "join",
+                  "split", "trim", "replace", "includes", "indexOf", "toLowerCase", "sort", "some", "find",
+                  "keys", "entries", "values", "children", "closest", "setAttribute", "remove", "focus",
+                  "then", "catch", "json", "ok", "status", "message", "type",
+                  # DOM/イベントオブジェクトの e.xxx（社員ではない）
+                  "data", "g", "notification", "waitUntil", "preventDefault", "stopPropagation", "key", "code",
+                  "touches", "changedTouches", "clientX", "clientY", "currentTarget", "timeStamp", "button",
+                  "deltaY", "deltaX", "scale", "pageX", "pageY", "error", "reason", "respondWith", "request"}
+        world = (ROOT / "ui" / "core" / "world.js").read_text(encoding="utf-8")
+        worker = (ROOT / "relay" / "src" / "worker.js").read_text(encoding="utf-8")
+        reads = set(re.findall(r"\bp\.([a-zA-Z]+)\b", world)) | set(re.findall(r"\be\.([a-zA-Z]+)\b", worker))
+        reads = {r for r in reads if r not in ignore and r[0].islower()}
+        missing = sorted(reads - set(ra._ALLOW_ENTRY))
+        self.assertEqual(missing, [], f"UI/PWA が読むのに allowlist に無い: {missing}")
 
 
 if __name__ == "__main__":

@@ -374,6 +374,24 @@ def _process_items(items):
 # プライバシー方針: 「本文は中継に流さない」（2026-07-09ユーザー選択）。残すのは状態/動作ログ/質問/名前/経過。
 # 本文をMac側で落とすので Cloudflare の DO にもスマホにも一切乗らない（表示側の隠蔽ではなく根元遮断）。
 _REDACT_FIELDS = ("lastSaid", "target", "lastOrder", "cwd", "branch")
+# R90-D12: denylist → **allowlist**。office_json に足した新フィールドは既定で中継に載らない
+# （載せたいものはここへ明示的に追加する＝掟の機械化。docs/office-json.md が同じ表を持つ）。
+# 互換: _REDACT_FIELDS の5キーはキーを残して空文字（PWA の `e.lastSaid` 参照と既存テストを壊さない）。
+_ALLOW_ENTRY = frozenset({
+    "session", "state", "kind", "verb", "age", "mtime", "minions", "pending", "listening", "attention",
+    "approvalMin", "question", "questionOptions", "stuckTool", "ask", "feed", "work", "skills",
+    "dept", "role", "disp", "title", "name", "external", "site", "crew", "projectId", "sessions",
+    "vendor", "detail", "arch",
+    "lastSaid", "target", "lastOrder", "cwd", "branch",      # 互換（空文字化）
+})
+_ALLOW_SESSION = frozenset({"session", "state", "age", "attention", "minions", "pending", "vendor"})
+_ALLOW_TOP = frozenset({
+    "officeName", "employees", "roster", "history", "today", "generatedAt", "setup",
+    "actions", "relay", "res", "templates", "launchable", "lang", "avatarMode", "counts", "tasks",
+    "v", "sources", "events", "growth",
+})
+# R90 裁定（2026-09-07）: bg の一行要約 detail は title と同じ扱い＝既定で通す・OFFICE_RELAY_DETAIL=0 で遮断
+RELAY_DETAIL = os.environ.get("OFFICE_RELAY_DETAIL", "1") not in ("0", "false")
 # R85-1: title（/rename のセッション名）は自由入力だが「ユーザーが意図して付けた短い表示名」
 # ＝dept/disp と同じ性格。「スマホにも同じ名前を出す」をユーザーが明示裁定（2026-08-26）した
 # ため既定で通す。OFFICE_RELAY_TITLES=0 で Mac 画面のみへ戻せる（値を空にする＝lastSaid と同流儀）。
@@ -453,11 +471,19 @@ def _redact_entry_for_relay(e):
     """社員/プロジェクト1件から本文・パスを落とす（employees[] と projects[] で共通）。"""
     if not isinstance(e, dict):
         return
+    for k in list(e):                       # R90-D12: allowlist 外のキーはここで消える（bg/pid/tokens/homeCwd…）
+        if k not in _ALLOW_ENTRY:
+            del e[k]
     for k in _REDACT_FIELDS:
         if k in e:
             e[k] = ""
     if not RELAY_TITLES and "title" in e:
         e["title"] = ""                    # R85-1: opt-out時はリネーム名も根元遮断
+    if "detail" in e:
+        e["detail"] = e["detail"][:200] if (RELAY_DETAIL and isinstance(e["detail"], str)) else ""
+    if isinstance(e.get("sessions"), list):
+        e["sessions"] = [{k: v for k, v in s.items() if k in _ALLOW_SESSION}
+                         for s in e["sessions"] if isinstance(s, dict)]
     fd = e.get("feed")
     if isinstance(fd, list):
         # 「💬 …」＝発言本文の要約行は除去。残す動作ログ行（実行中/編集中…）も、Bashコマンド・
@@ -486,10 +512,33 @@ def _redact_office_for_relay(office_snapshot):
     sessions[] は _session_brief が本文を構造的に持たない形で作っているのでそのまま通す。"""
     if not isinstance(office_snapshot, dict):
         return office_snapshot
+    for k in list(office_snapshot):        # R90-D12: トップレベルも allowlist
+        if k not in _ALLOW_TOP:
+            del office_snapshot[k]
     for e in office_snapshot.get("employees") or []:
         _redact_entry_for_relay(e)
     for p in office_snapshot.get("roster") or []:
         _redact_entry_for_relay(p)
+    # sources / events / growth は「件数・bool・数値」だけに刈る（形が増えても本文やパスが乗らない）
+    src = office_snapshot.get("sources")
+    if isinstance(src, dict):
+        office_snapshot["sources"] = {
+            "claude": {k: v for k, v in (src.get("claude") or {}).items() if k in ("fg", "bg", "agentsCli")},
+            "codex": {k: v for k, v in (src.get("codex") or {}).items() if k in ("connected", "n")},
+            "openclaw": {k: v for k, v in (src.get("openclaw") or {}).items() if k in ("connected",)},
+        }
+    ev = office_snapshot.get("events")
+    if isinstance(ev, dict):
+        office_snapshot["events"] = {k: v for k, v in ev.items() if k in ("seq", "wired")}
+    gr = office_snapshot.get("growth")
+    if isinstance(gr, dict):
+        by = gr.get("byProject") if isinstance(gr.get("byProject"), dict) else {}
+        office_snapshot["growth"] = {
+            "byProject": {pid: {k: v for k, v in (row or {}).items() if k in ("xp", "level")}
+                          for pid, row in by.items() if isinstance(row, dict)},
+            "office": {k: v for k, v in (gr.get("office") or {}).items() if k in ("xp", "level", "nextAt")},
+            "streak15": gr.get("streak15", 0),
+        }
     # history[] は指示の全文（Mac UIから打った機微になりうる本文）を含む。PWAは
     # history を描画しない＝送る必要が無いので丸ごと落とす（lastOrder と同じ思想）。
     if "history" in office_snapshot:
@@ -683,20 +732,8 @@ def _attention_keys(snapshot):
 OPENCLAW_MIN_INTERVAL = float(os.environ.get("OFFICE_OPENCLAW_INTERVAL", "60"))
 
 
-def _openclaw_enabled():
-    """エディション上 openclaw 連携が有効か（機能フラグの素の値）。"""
-    try:
-        return bool(office.edition_features(office.edition()).get("openclaw"))
-    except Exception:
-        return False
-
-
 def _want_openclaw(state=None, now=None):
-    """**この周で** openclaw集約を要求するか。エディション無効なら常に False
-    （claude単体のユーザーは cross-DO を1回も踏まない）。有効でも前回取得から
-    OPENCLAW_MIN_INTERVAL 秒未満なら False＝別DOを起こさない。"""
-    if not _openclaw_enabled():
-        return False
+    """Keep cross-DO aggregation throttled independently of display settings."""
     if not isinstance(state, dict):
         return True          # 状態を持たない呼び出し（後方互換）は従来どおり要求
     now = time.time() if now is None else now
@@ -732,15 +769,14 @@ def _sync_apply(d, state, snapshot, fp, send_office, now, url, token):
     delivered, ack_ids = _process_items(d.get("items") or [])
     state["acks"] = ack_ids
     # R42.5: oc-宛の転送（outboxが空ならリクエストゼロ・失敗は本流を巻き込まない）。
-    # 転送はエディションで判断する（間引きの対象は「集約の取得」だけ＝指示は遅らせない）
-    oc_on = _openclaw_enabled()
+    # Throttle aggregation only; instructions retain their existing delivery timing.
     try:
-        state["oc_sent"] = forward_oc_outbox(url, token) if oc_on else 0
+        state["oc_sent"] = forward_oc_outbox(url, token)
     except Exception as e:
         state["oc_sent"] = 0
         print(f"⚠ oc-転送のみ失敗（本流は完了済み）: {e}", flush=True)
     # R80-C2: 応答に openclaw が載っている周＝要求した周だけ保存し、取得時刻を刻む
-    if oc_on and d.get("openclaw") is not None:
+    if d.get("openclaw") is not None:
         state["oc_fetched_at"] = now
         try:
             _save_openclaw_contract(d.get("openclaw"))
@@ -901,10 +937,8 @@ def tick(url, token):
     except NET_ERRORS as e:
         print(f"⚠ 状況送信のみ失敗（配達は完了済み）: {e}", flush=True)
     try:
-        # openclaw機能が閉じたエディション(claude版)では転送も取得もしない
-        if office.edition_features(office.edition()).get("openclaw"):
-            forward_oc_outbox(url, token)
-            pull_openclaw_status(url, token)
+        forward_oc_outbox(url, token)
+        pull_openclaw_status(url, token)
     except Exception as e:
         print(f"⚠ OpenClaw集約のみ失敗（本流は完了済み）: {e}", flush=True)
     return n

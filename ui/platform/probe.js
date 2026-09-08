@@ -16,7 +16,7 @@ export { summarizeWorld } from "/ui/core/world.js";
 
 export const PROBE_VERSION = 1;
 
-export function installProbe({ style, dumpWorld, inject, t, isReady, stats, debug }) {
+export function installProbe({ style, dumpWorld, inject, t, isReady, stats, debug, pollMs }) {
   const probe = {
     version: PROBE_VERSION,
     style,
@@ -32,6 +32,10 @@ export function installProbe({ style, dumpWorld, inject, t, isReady, stats, debu
         例: iso の agentPoint(id)＝ロボット胴のスクリーン座標（クリック座標の暗算をしない掟）。 */
     debug: debug || null,
   };
+  if (pollMs) {
+    probe.debug ||= {};
+    Object.defineProperty(probe.debug, "pollMs", { get: pollMs, enumerable: true });
+  }
   // ready は「マウント済み **かつ** 最初のデータが届いた」を意味する。
   // 単なる true にすると、テストがデータ到着前に dumpWorld() を読んで
   // null を掴み、何も検証しないまま通ってしまう（実際に踏んだ）。

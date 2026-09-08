@@ -7,6 +7,7 @@
 
 使い方: python3 tests/ui_ops_smoke.py   （verify.sh ▶7 から呼ぶ・Playwright必要）
 """
+import os
 import json
 import pathlib
 import shutil
@@ -14,6 +15,9 @@ import sys
 import time
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
+# R90-S1: 製品の既定スタイル iso（方向C）を検査する。
+STYLE = os.environ.get("UI_STYLE", "iso")
+
 sys.path.insert(0, str(ROOT / "tools"))
 from ui_shot import SWIFTSHADER, VIEWPORT, free_port, start_server  # noqa: E402
 
@@ -93,7 +97,7 @@ def main():
                 route.fulfill(status=200, content_type="application/json; charset=utf-8",
                               body=json.dumps(body))
             page.route("**/api/session/dialog*", dlg_route)
-            page.goto(f"http://127.0.0.1:{port}/?ui=iso&t=3.2&seed=11")
+            page.goto(f"http://127.0.0.1:{port}/?ui={STYLE}&t=3.2&seed=11")
             page.wait_for_function("window.__office && window.__office.ready", timeout=30000)
             page.wait_for_timeout(300)
 
@@ -364,7 +368,7 @@ def main():
             live.route("**/api/status_board*", lambda route: route.fulfill(
                 status=200, content_type="application/json; charset=utf-8", body=sb_payload))
             live.route("**/api/session/dialog*", dlg_route)
-            live.goto(f"http://127.0.0.1:{port}/?ui=iso")          # frozen にしない
+            live.goto(f"http://127.0.0.1:{port}/?ui={STYLE}")          # frozen にしない
             live.wait_for_function("window.__office && window.__office.ready", timeout=60000)
             live.wait_for_timeout(600)
             probe_labels = (
@@ -599,7 +603,7 @@ def main():
             page3 = browser.new_page(viewport=VIEWPORT, device_scale_factor=1)
             page3.route("**/api/office*", lambda route: route.fulfill(
                 status=200, content_type="application/json; charset=utf-8", body=payload))
-            page3.goto(f"http://127.0.0.1:{port}/?ui=iso&seed=11")
+            page3.goto(f"http://127.0.0.1:{port}/?ui={STYLE}&seed=11")
             page3.wait_for_function("window.__office && window.__office.ready", timeout=60000)
             # R68の環境アニメ導入後、SwiftShaderのliveモードは初回描画が更に遅い
             #（オフライン検知(4)の150s待ちと同じ教訓）
@@ -619,11 +623,9 @@ def main():
             #      ?t=固定はポーリング自体を止めるので、このページだけ非frozenで開く）
             page2 = browser.new_page(viewport=VIEWPORT, device_scale_factor=1)
             calls = {"n": 0}
-            # あわせて 403ノイズ根絶ピン: costDash=false の world では
-            # /api/status_board への fetch 自体が発生しないこと（R42.2の教訓の新UI適用）
+            # All sources now share the cost panel; verify it still starts with office data.
             world2 = dict(world)
-            world2["edition"] = {"id": "claude",
-                                 "features": {**world["edition"]["features"], "costDash": False}}
+            world2.pop("edition", None)
             payload2 = json.dumps(world2, ensure_ascii=False)
             sb_calls = []
             page2.on("request", lambda r: sb_calls.append(r.url)
@@ -637,7 +639,7 @@ def main():
                 else:
                     route.abort()
             page2.route("**/api/office*", office_route)
-            page2.goto(f"http://127.0.0.1:{port}/?ui=iso&seed=11")
+            page2.goto(f"http://127.0.0.1:{port}/?ui={STYLE}&seed=11")
             page2.wait_for_function("window.__office && window.__office.ready", timeout=30000)
             try:
                 # SwiftShader は rAF が重くポーリング周期が実時間で数倍に伸びる（実測: 単体で
@@ -655,10 +657,10 @@ def main():
             except Exception:
                 print("  ✗ オフライン検知（.offline クラス）が発火しない")
                 ng += 1
-            if not sb_calls:
-                print("  ✓ Pro未解錠(costDash=false)では status_board を fetch しない（403ノイズ0）")
+            if sb_calls:
+                print("  ✓ コストパネル: 初回データ後に status_board を取得")
             else:
-                print(f"  ✗ 未解錠なのに status_board へ fetch: {len(sb_calls)}回")
+                print("  ✗ status_board の取得が始まらない")
                 ng += 1
             page2.close()
             browser.close()

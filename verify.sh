@@ -44,7 +44,11 @@ SHVAR
 echo "▶ 2b 新UI(R50) の層と core ユニット"
 # 層lint: ui/core が DOM/通信/時刻/乱数に触っていないこと＝core を node だけでテストできる前提を守る番人
 python3 tools/js_layer_lint.py || ng "R50 層lint 違反（core の逆流）"
+# R90: 未定義の CSS 変数は CSS がエラーにせず黙って無視する＝カードの背景だけ透明、のような
+# 「目で見るまで分からない壊れ方」になる（2026-09-08 にダイジェストのカードで実発生）。
+python3 tools/css_var_lint.py || ng "R90 CSS変数lint 違反（未定義の var()）"
 if command -v node >/dev/null 2>&1; then
+  node --test tests/sound.test.mjs || ng "R90 通知音・frozen境界"
   UIJS_NG=0
   for F in $(find ui -name '*.js' -not -path 'ui/vendor/*' 2>/dev/null); do
     node --check "$F" >/dev/null 2>&1 || { echo "    構文エラー: $F"; UIJS_NG=1; }
@@ -79,19 +83,22 @@ if bad:
 print(f"  ✓ config OK ({len(projects)}プロジェクト)")
 EOF
 
-echo "▶ 3b PWA同梱物 (modules_data.js が ui/ と一致・git追跡・worker構文)"
+echo "▶ 3b PWA同梱物 (modules_data.js / app_html.js が ui/ と一致・git追跡・worker構文)"
 # R79: スプライト同梱(sprites_data.js)は全廃＝アバターはモノグラム・シーンは3D ESM。
 # 生成物 relay/src/modules_data.js は worker.js が static import する＝未生成/未追跡だと
 # クリーンclone/CIで wrangler deploy が丸ごと失敗し既存relay全ルートが落ちる。
 # R77: PWAの3Dシーン用ESM同梱物も同じ掟（未生成/未追跡ならクリーンcloneのdeployが死ぬ）
 if python3 tools/gen_pwa_modules.py --check >/dev/null 2>&1; then
-  ok "modules_data.js が ui/ と一致 (PWA 3Dシーン)"
+  ok "modules_data.js / app_html.js が ui/ と一致 (PWA 3Dシーン・シェル)"
 else
-  ng "modules_data.js ドリフト/未生成 → python3 tools/gen_pwa_modules.py で再生成しコミット"
+  ng "PWA同梱物 ドリフト/未生成 → python3 tools/gen_pwa_modules.py で再生成しコミット"
 fi
 git ls-files --error-unmatch relay/src/modules_data.js >/dev/null 2>&1 \
   && ok "modules_data.js git追跡済み" \
   || ng "modules_data.js が未追跡 → git add relay/src/modules_data.js"
+git ls-files --error-unmatch relay/src/app_html.js >/dev/null 2>&1 \
+  && ok "app_html.js git追跡済み" \
+  || ng "app_html.js が未追跡 → git add relay/src/app_html.js"
 # R79: 撤去の恒久ピン＝スプライト同梱が「復活していない」ことを機械で守る
 if [ -f relay/src/sprites_data.js ] || [ -f tools/gen_pwa_sprites.py ]; then
   ng "スプライト同梱が復活している（R79で全廃＝アバターはモノグラム）"
@@ -100,9 +107,34 @@ else
 fi
 if command -v node >/dev/null 2>&1; then
   node --check relay/src/worker.js >/dev/null 2>&1 && ok "worker.js 構文OK" || ng "worker.js 構文エラー"
+  node tests/pwa_app_html_kat.mjs && ok "APP_HTML バイト同一 (SHA-256)" || ng "APP_HTML SHA-256 不一致"
 else
   echo "  - node無し → worker.js構文チェック省略"
 fi
+# R90-H: サイズゲート。PWA 同梱物とテクスチャは「増えても気づかない」種類の退行なので上限を機械で固定。
+#   modules_data.js raw ≤ 2.5MB / gzip ≤ 900KB（現状 1.26MB / 423KB）。
+#   ui/iso*/tex は合計 ≤ 600KB・1枚 ≤ 80KB（GPT-Image デカールを足すときの天井）。
+python3 - <<'EOF' || NG=$((NG+1))
+import gzip, pathlib, sys
+root = pathlib.Path(".")
+bad = []
+m = root / "relay/src/modules_data.js"
+if m.is_file():
+    raw = m.read_bytes()
+    gz = len(gzip.compress(raw, 6))
+    if len(raw) > 2_500_000: bad.append(f"modules_data.js raw {len(raw)//1024}KB > 2500KB")
+    if gz > 900_000: bad.append(f"modules_data.js gzip {gz//1024}KB > 900KB")
+    print(f"  ✓ modules_data.js サイズ raw {len(raw)//1024}KB / gzip {gz//1024}KB")
+for d in sorted(root.glob("ui/iso*/tex")):
+    files = [p for p in d.iterdir() if p.is_file()]
+    total = sum(p.stat().st_size for p in files)
+    for p in files:
+        if p.stat().st_size > 80_000: bad.append(f"{p} {p.stat().st_size//1024}KB > 80KB")
+    if total > 600_000: bad.append(f"{d} 合計 {total//1024}KB > 600KB")
+    print(f"  ✓ {d} {len(files)}枚 合計 {total//1024}KB")
+for b in bad: print(f"  ✗ {b}")
+sys.exit(1 if bad else 0)
+EOF
 
 
 # ▶3d scene_sync --check は R52 旧UI削除で退役。office_scene.json＋/api/layout＋
@@ -137,22 +169,77 @@ LAUNCH_MARKER="$VHOME/claude_launch.marker"
 mkdir -p "$VHOME/data"
 # 2026-08-10 ライセンス廃止: 機能ゲートが無いので鍵無しで全機能が使える（誰でも即開始）。
 OFFICE_HOME="$VHOME" OFFICE_CONFIG="$VHOME/office_config.json" OFFICE_PICK_DIR="$VHOME/pickme" \
-  OFFICE_DATA="$VHOME/data" OFFICE_FAKE_LAUNCH="$LAUNCH_MARKER" \
+  OFFICE_DATA="$VHOME/data" OFFICE_FAKE_LAUNCH="$LAUNCH_MARKER" OFFICE_FAKE_CODEX="$VHOME/codex_queue.marker" OFFICE_FAKE_HIRE="$VHOME/hire.marker" \
   python3 server/office_server.py --port $TPORT >/dev/null 2>&1 &
 SPID=$!
 sleep 1.2
 API=$(curl -s -H "X-Office-Local: 1" http://127.0.0.1:$TPORT/api/office)
 python3 - "$API" <<'EOF' || ng "APIスキーマ検証失敗"
 import json, sys
+from collections import Counter
 d = json.loads(sys.argv[1])
 emps = d["employees"]
-assert len(emps) == 2, f"社員数 {len(emps)} != 2"
+assert len(emps) == 4, f"社員数 {len(emps)} != 4"
+assert Counter(e["vendor"] for e in emps) == {"claude": 2, "codex": 2}
+assert d["sources"]["codex"]["connected"] is True
 for e in emps:
     for k in ("session", "state", "verb", "disp", "pending"):
         assert k in e, f"キー欠落: {k}"
 print(f"  ✓ /api/office スキーマOK (社員{len(emps)})")
 EOF
 H_LOCAL='-H X-Office-Local:1'
+# R90-D9: ローカル読み出し API と seen の CSRF 境界。
+CODE=$(curl -s --max-time 3 -o /dev/null -w "%{http_code}" $H_LOCAL "http://127.0.0.1:$TPORT/api/digest")
+[ "$CODE" = "200" ] && ok "/api/digest (200)" || ng "/api/digest 失敗 (code=$CODE)"
+CODE=$(curl -s --max-time 3 -o /dev/null -w "%{http_code}" $H_LOCAL "http://127.0.0.1:$TPORT/api/timeline")
+[ "$CODE" = "200" ] && ok "/api/timeline (200)" || ng "/api/timeline 失敗 (code=$CODE)"
+CODE=$(curl -s --max-time 3 -o /dev/null -w "%{http_code}" -X POST "http://127.0.0.1:$TPORT/api/seen")
+[ "$CODE" = "403" ] && ok "/api/seen CSRFガード (ヘッダ無403)" || ng "/api/seen CSRF失敗 (code=$CODE)"
+# SSE は close まで続くため curl の2秒タイムアウトは正常。先頭に hello が届くこと。
+SSE=$(curl -sN --max-time 2 -H X-Office-Local:1 "http://127.0.0.1:$TPORT/api/events" | head -c 200)
+case "$SSE" in
+  *"event: hello"*) ok "/api/events SSE hello" ;;
+  *) ng "/api/events SSE hello が届かない" ;;
+esac
+CODE=$(curl -s --max-time 2 -o /dev/null -w "%{http_code}" "http://127.0.0.1:$TPORT/api/events")
+[ "$CODE" = "403" ] && ok "/api/events CSRFガード (ヘッダ無403)" || ng "/api/events CSRF失敗 (code=$CODE)"
+curl -s $H_LOCAL http://127.0.0.1:$TPORT/api/office \
+  | python3 -c 'import sys,json; e=json.load(sys.stdin)["events"]; assert type(e["seq"]) is int and e["seq"] >= 3; assert type(e["wired"]) is bool; assert e["lastTs"] > 0' \
+  && ok "/api/office events.seq・events.wired・events.lastTs" || ng "/api/office イベント情報が欠落"
+# R90-H4: 言語切替の保存・キャッシュ失効を確認し、後続の日本語前提へ戻す。
+CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://127.0.0.1:$TPORT/api/lang $H_LOCAL \
+  -H "Origin: http://127.0.0.1:$TPORT" -H "Content-Type: application/json" -d '{"lang":"en"}')
+[ "$CODE" = "200" ] && ok "言語切替 en (200)" || ng "言語切替 en 失敗 (code=$CODE)"
+curl -s $H_LOCAL http://127.0.0.1:$TPORT/api/office \
+  | python3 -c 'import sys,json; assert json.load(sys.stdin)["lang"] == "en"' \
+  && ok "/api/office lang=en" || ng "/api/office に lang=en が反映されない"
+CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://127.0.0.1:$TPORT/api/lang $H_LOCAL \
+  -H "Origin: http://127.0.0.1:$TPORT" -H "Content-Type: application/json" -d '{"lang":"ja"}')
+[ "$CODE" = "200" ] && ok "言語切替 ja に復元 (200)" || ng "言語切替 ja 復元失敗 (code=$CODE)"
+# R90-D10: cx-（Codex）宛は inbox でなく `codex queue`（fake マーカー）へ。inbox にファイルができないことも見る。
+CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://127.0.0.1:$TPORT/api/instruct $H_LOCAL \
+  -H "Origin: http://127.0.0.1:$TPORT" -H "Content-Type: application/json" -d '{"session":"cx-parent-a","text":"verify から"}')
+if [ "$CODE" = "200" ] && grep -q '"thread": "parent-a"\|"thread":"parent-a"' "$VHOME/codex_queue.marker" 2>/dev/null \
+   && [ ! -f "$VHOME/.claude/office_inbox/cx-parent-a.json" ]; then
+  ok "cx- 宛は codex queue へ（inbox にファイルなし）"
+else
+  ng "cx- 宛の配達が不正 (code=$CODE marker=$(cat "$VHOME/codex_queue.marker" 2>/dev/null))"
+fi
+# R90-D11: 雇う＝登録済みプロジェクト（projects_index）だけ。fake マーカーに cwd/prompt/name が残る。未登録 projectId は denied。
+HIRE_PID=$(python3 -c 'import hashlib,unicodedata,sys; print(hashlib.sha1(unicodedata.normalize("NFC","/Users/test/demo-project").encode()).hexdigest()[:12])')
+CODE=$(curl -s -o "$VHOME/hire.out" -w "%{http_code}" -X POST http://127.0.0.1:$TPORT/api/hire $H_LOCAL \
+  -H "Origin: http://127.0.0.1:$TPORT" -H "Content-Type: application/json" -d "{\"projectId\":\"$HIRE_PID\",\"prompt\":\"verify から雇う\",\"name\":\"verify-bot\"}")
+if [ "$CODE" = "200" ] && grep -q '"name": "verify-bot"\|"name":"verify-bot"' "$VHOME/hire.marker" 2>/dev/null; then
+  ok "雇う: 登録済み projectId → claude --bg（fake マーカー）"
+else
+  ng "雇う: 配線が不正 (code=$CODE out=$(cat "$VHOME/hire.out" 2>/dev/null | head -c 160))"
+fi
+CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://127.0.0.1:$TPORT/api/hire $H_LOCAL \
+  -H "Origin: http://127.0.0.1:$TPORT" -H "Content-Type: application/json" -d '{"projectId":"0123456789ab","prompt":"x"}')
+[ "$CODE" != "200" ] && ok "雇う: 未登録 projectId は拒否 ($CODE)" || ng "雇う: 未登録 projectId が通ってしまう"
+curl -s $H_LOCAL http://127.0.0.1:$TPORT/api/office \
+  | python3 -c 'import sys,json; assert json.load(sys.stdin)["lang"] == "ja"' \
+  && ok "/api/office lang=ja に復元" || ng "/api/office の lang=ja 復元失敗"
 # R3: ローカルパス一覧はCSRF必須。6時間窓外の古いプロジェクトも返す。
 CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:$TPORT/api/projects)
 [ "$CODE" = "403" ] && ok "R3 projects CSRFガード (ヘッダ無403)" || ng "R3 projects CSRF失敗 (code=$CODE)"
@@ -304,48 +391,14 @@ CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://127.0.0.1:$TPORT/ap
 [ "$CODE" = "200" ] && grep -q '^OPENAI_API_KEY=' "$VHOME/.claude/office_secrets" \
   && ok "keys/set (200+office_secrets行生成)" || ng "keys/set失敗 (code=$CODE)"
 
-# R42.1 エディション: config差し替えで同一サーバーのまま検査（editionは毎スキャンでconfig再読込・cache 2秒）。
-# 検査後は必ず元configへ復元＋cache失効待ち（▶7 UIスモークは既定hybrid前提のため）。
-API=$(curl -s -H "X-Office-Local: 1" http://127.0.0.1:$TPORT/api/office)
-echo "$API" | python3 -c 'import sys,json; d=json.load(sys.stdin); e=d["edition"]; f=e["features"]; assert e["id"]=="hybrid" and f["claudeSessions"] and f["openclaw"] and f["costDash"], e; print("  ✓ R42.1+R84 edition既定=hybrid (鍵なしでfeatures全開)")' \
-  || ng "R42.1 edition既定がhybridでない: $(echo "$API" | head -c 160)"
-CFG_ORIG=$(cat "$VHOME/office_config.json")
-python3 - "$VHOME/office_config.json" claude <<'EOF'
-import json, sys
-p, ed = sys.argv[1], sys.argv[2]
-d = json.loads(open(p, encoding="utf-8").read()); d["edition"] = ed
-open(p, "w", encoding="utf-8").write(json.dumps(d, ensure_ascii=False))
-EOF
-sleep 2.2
-API=$(curl -s -H "X-Office-Local: 1" http://127.0.0.1:$TPORT/api/office)
-echo "$API" | python3 -c 'import sys,json; d=json.load(sys.stdin); e=d["edition"]; assert e["id"]=="claude" and e["features"]["openclaw"] is False, e; assert len(d["employees"])==2, len(d["employees"]); print("  ✓ R42.1 edition=claude (openclaw閉・claude社員は出る)")' \
-  || ng "R42.1 edition=claude 検査失敗: $(echo "$API" | head -c 160)"
-CODE=$(curl -s -o /dev/null -w "%{http_code}" $H_LOCAL http://127.0.0.1:$TPORT/api/external/openclaw)
-[ "$CODE" = "403" ] && ok "R42.1 claude版で /api/external/openclaw 403" || ng "R42.1 openclaw APIが閉じない (code=$CODE)"
-python3 - "$VHOME/office_config.json" openclaw <<'EOF'
-import json, sys
-p, ed = sys.argv[1], sys.argv[2]
-d = json.loads(open(p, encoding="utf-8").read()); d["edition"] = ed
-open(p, "w", encoding="utf-8").write(json.dumps(d, ensure_ascii=False))
-EOF
-sleep 2.2
-API=$(curl -s -H "X-Office-Local: 1" http://127.0.0.1:$TPORT/api/office)
-echo "$API" | python3 -c 'import sys,json; d=json.load(sys.stdin); e=d["edition"]; assert e["id"]=="openclaw" and e["features"]["claudeSessions"] is False, e; assert d["employees"]==[], "openclaw版でclaude社員が出ている"; print("  ✓ R42.1 edition=openclaw (transcriptスキャン停止=社員0)")' \
-  || ng "R42.1 edition=openclaw 検査失敗: $(echo "$API" | head -c 160)"
-CODE=$(curl -s -o /dev/null -w "%{http_code}" $H_LOCAL http://127.0.0.1:$TPORT/api/external/openclaw)
-[ "$CODE" = "200" ] && ok "R42.1 openclaw版で /api/external/openclaw 200" || ng "R42.1 openclaw APIが開かない (code=$CODE)"
-printf '%s' "$CFG_ORIG" > "$VHOME/office_config.json"
-sleep 2.2
-
 # 2026-08-10 ライセンス廃止: 鍵が無くても有料だった機能（中継/pair/コスト）が全員に開く。
 CODE=$(curl -s -o /dev/null -w "%{http_code}" $H_LOCAL http://127.0.0.1:$TPORT/api/status_board)
 [ "$CODE" = "200" ] && ok "ライセンス廃止: 鍵無しで status_board 200" || ng "status_boardが開かない (code=$CODE)"
 CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://127.0.0.1:$TPORT/api/pair/new $H_LOCAL \
   -H "Content-Type: application/json" -d '{"label":"nolic"}')
 [ "$CODE" = "200" ] && ok "ライセンス廃止: 鍵無しで pair/new 200" || ng "pair/newが開かない (code=$CODE)"
-R=$(curl -s $H_LOCAL http://127.0.0.1:$TPORT/api/office)
-echo "$R" | python3 -c 'import sys,json; d=json.load(sys.stdin); f=d["edition"]["features"]; assert f["relayPwa"] and f["push"] and f["costDash"], f; print("  \u2713 ライセンス廃止: edition.features 全ON")' \
-  || ng "features が全ONでない: $(echo "$R" | head -c 160)"
+CODE=$(curl -s -o /dev/null -w "%{http_code}" $H_LOCAL http://127.0.0.1:$TPORT/api/external/openclaw)
+[ "$CODE" = "200" ] && ok "全ソース利用: /api/external/openclaw 200" || ng "openclaw APIが開かない (code=$CODE)"
 
 # R42.3: OpenClaw契約statusを既定パス($VHOME/.claude/openclaw_status.json)へ設置→oc-社員がマージされる
 # （external viewは60秒キャッシュがありレースするため、office_json側の2秒キャッシュだけで検査）
@@ -374,6 +427,24 @@ RC=$?
 [ "$RC" = "2" ] && echo "$OUT" | grep -q "📨" && ok "配達 → exit 2 + 📨" || ng "配達テスト失敗 (rc=$RC)"
 OUT=$(echo '{"session_id":"hooktest-session-02"}' | OFFICE_HOME="$HDIR" OFFICE_WAIT_LOOPS=2 OFFICE_WAIT_INTERVAL=0 bash hooks/office-inbox-wait.sh)
 [ "$?" = "0" ] && ok "空inboxタイムアウト → exit 0" || ng "タイムアウト系失敗"
+# R90-D4: イベント記録 hook（本文を書かない・失敗は無出力 exit 0）
+EVOUT=$(printf '%s' '{"session_id":"hooktest-session-03","hook_event_name":"PostToolUse","cwd":"/Users/x/secret","tool_name":"Edit","tool_input":{"file_path":"/Users/x/secret/report.md","new_string":"TOKEN=abc"},"tool_response":{"content":"secret body"}}' \
+  | OFFICE_HOME="$HDIR" bash hooks/office-event.sh 2>&1); EVRC=$?
+EVLINE=$(cat "$HDIR"/.claude/office_events/*.jsonl 2>/dev/null | head -1)
+if [ "$EVRC" = "0" ] && [ -z "$EVOUT" ] && printf '%s' "$EVLINE" | grep -q '"tgt":"report.md"' \
+   && ! printf '%s' "$EVLINE" | grep -qE 'secret|TOKEN|/Users/x'; then
+  ok "イベント記録 hook: basename だけ記録・本文/パスなし・無出力 exit 0"
+else
+  ng "イベント記録 hook の記録内容が不正 (rc=$EVRC out='$EVOUT' line='$EVLINE')"
+fi
+EVOUT=$(printf '%s' '{"session_id":"hooktest-session-03","hook_event_name":"PostToolUse","cwd":"/w","tool_name":"Bash","tool_input":{"command":"git commit -m secret-msg"}}' \
+  | OFFICE_HOME="$HDIR" bash hooks/office-event.sh 2>&1)
+EVLINE=$(cat "$HDIR"/.claude/office_events/*.jsonl 2>/dev/null | tail -1)
+printf '%s' "$EVLINE" | grep -q '"kind":"git:commit"' && ! printf '%s' "$EVLINE" | grep -q 'secret-msg' \
+  && ok "イベント記録 hook: git commit は分類のみ（コマンド本文なし）" || ng "イベント記録 hook: git 分類が不正 ('$EVLINE')"
+EVOUT=$(printf '%s' '{not json' | OFFICE_HOME="$HDIR" bash hooks/office-event.sh 2>&1); EVRC=$?
+[ "$EVRC" = "0" ] && [ -z "$EVOUT" ] && [ "$(cat "$HDIR"/.claude/office_events/*.jsonl | wc -l | tr -d ' ')" = "2" ] \
+  && ok "イベント記録 hook: 壊れた入力は無出力 exit 0（追記なし）" || ng "イベント記録 hook: 壊れ入力の扱いが不正 (rc=$EVRC)"
 rm -rf "$HDIR"
 
 echo "▶ 7/8 UIスモーク (Playwright)"
@@ -420,7 +491,7 @@ elif [ -x "$VENV_PY" ] && "$VENV_PY" -c 'import playwright' >/dev/null 2>&1 \
     [ "$rc" = "0" ] || ng "${label}失敗 (exit $rc)"
   }
   # R52: 旧UI(?ui=legacy)削除に伴い legacy 3本（ui_smoke/edition_smoke/i18n_smoke）は退役。
-  # 後継カバレッジ= P1入社フロー→ui_admin_smoke／edition表示ゲート→test_edition+▶5 curl／
+  # 後継カバレッジ= P1入社フロー→ui_admin_smoke／全ソース表示→test_office_data+▶5 curl／
   # 日本語カナリア→i18n_iso_smoke（新UI・下で常設）
   # R50: 両スタイルが同じ意味を返すか（見た目は別物・情報は同一）＋ inject が本当に効いているか
   run_ui "R50 UI契約テスト" "$VENV_PY" tests/ui_contract.py
@@ -436,16 +507,22 @@ elif [ -x "$VENV_PY" ] && "$VENV_PY" -c 'import playwright' >/dev/null 2>&1 \
     "http://127.0.0.1:$TPORT" tests/artifacts/ui_webgl_fallback.png
   # R50提案2c: 新UIの日本語文字カナリア（lang=en で日本語0・旧i18n_smokeの新UI版）
   run_ui "R50 新UI i18nカナリア" "$VENV_PY" tests/i18n_iso_smoke.py
-  # R42.6骨格: エディション別表示（openclawダーク/バッジ/Claude面ゲート/②→③導線・claude無退行）
-  run_ui "R42.6 エディションUI(新)スモーク" "$VENV_PY" tests/edition_iso_smoke.py
   # R50: 新UIのビジュアル回帰。自前でサーバーを立て /api/office を fixture で差し替えるので
   # 実セッションの状態に左右されない。バックエンドは SwiftShader 固定（実測でビット一致）。
-  "$VENV_PY" tools/ui_shot.py --check | sed 's/^/  /'
-  [ "${PIPESTATUS[0]}" = "0" ] || ng "R50 新UIビジュアル回帰失敗 (exit ${PIPESTATUS[0]})"
-  # R50-P3: 3Dシーンの作り込みを機械採点（空き床・色数・発光・明度）。
-  # 閾値は参考画像2を実測して較正済み＝参考画像自身が全項目通る範囲にしてある。
-  "$VENV_PY" tools/style_score.py tests/artifacts/ui_iso_scene.png | sed 's/^/  /'
-  [ "${PIPESTATUS[0]}" = "0" ] || ng "R50 3D品質ゲート未達 (exit ${PIPESTATUS[0]})"
+  # R90-S1: 製品の見た目は iso（方向C）1本。
+  "$VENV_PY" tools/ui_shot.py --style iso --check | sed 's/^/  /'
+  [ "${PIPESTATUS[0]}" = "0" ] || ng "R90 新UI(iso)ビジュアル回帰失敗 (exit ${PIPESTATUS[0]})"
+  # R90-U5: 配信モード（HUD 全隠し・字幕帯・❗バッジ・balanced フィット）。
+  # 既定画面と別 golden なので、HUD を触った変更が配信を壊しても気づける。
+  "$VENV_PY" tools/ui_shot.py --style iso --query "stream=1" --check | sed 's/^/  /'
+  [ "${PIPESTATUS[0]}" = "0" ] || ng "R90 配信モードのビジュアル回帰失敗 (exit ${PIPESTATUS[0]})"
+  # R90-V7: 22体（本人の実運用と同数）の XL ティア。M だけ見ていると席あふれ・通路・
+  # 名札の密集が回帰しても気づけない（本番で実際に踏んだ）。
+  "$VENV_PY" tools/ui_shot.py --style iso --world xl22 --name xl22 --check | sed 's/^/  /'
+  [ "${PIPESTATUS[0]}" = "0" ] || ng "R90 XLティア(22体)ビジュアル回帰失敗 (exit ${PIPESTATUS[0]})"
+  # R90: 方向Cの参照画像で較正した3D品質ゲート（docs/art-direction.md）。
+  "$VENV_PY" tools/style_score.py --profile c tests/artifacts/ui_iso_scene.png | sed 's/^/  /'
+  [ "${PIPESTATUS[0]}" = "0" ] || ng "R90 3D品質ゲート未達 (iso/方向C) (exit ${PIPESTATUS[0]})"
 else
   echo "  - Playwright/Chromium venvなしまたは起動不可 → 省略（検収側で要実行）"
 fi
@@ -507,6 +584,90 @@ for e in emps:
 assert not bad, f"❗の偽陽性: 聞かれ得ないツールで承認まちが立っている {bad}"
 print(f"  ✓ R86-F ❗偽陽性カナリア OK (承認まち{sum(1 for e in emps if e.get('approvalMin'))}件は全て聞かれ得るツール)")
 EOF
+
+# R90-H3: 読む側の追加に先立って、本文を表示せずメタデータの形式を監視する。
+for _canary in jobs codex events; do
+  _canary_result=$(python3 - "$_canary" <<'EOF'
+import datetime, json, os, sqlite3, sys, time
+from contextlib import closing
+from pathlib import Path
+
+home = Path(os.environ.get("OFFICE_HOME") or Path.home())
+kind = sys.argv[1]
+
+def skip(message):
+    print(message)
+    sys.exit(3)
+
+try:
+    if kind == "jobs":
+        count = 0
+        for path in (home / ".claude/jobs").glob("*/state.json"):
+            state = json.loads(path.read_text(encoding="utf-8"))
+            updated = datetime.datetime.fromisoformat(state["updatedAt"].replace("Z", "+00:00"))
+            if time.time() - updated.timestamp() >= 3 * 3600:
+                continue
+            assert state["state"] in {"working", "blocked", "done", "failed", "stopped"}, "未知のstate"
+            for key in ("sessionId", "linkScanPath"):
+                assert isinstance(state.get(key), str) and state[key].strip(), f"{key} が空"
+            count += 1
+        if not count:
+            skip("Claude bg カナリア省略（直近3時間のjobなし）")
+        print(f"Claude bg カナリア OK ({count}件)")
+    elif kind == "codex":
+        schemas = {
+            "state_5.sqlite": {
+                "threads": {"id", "rollout_path", "updated_at", "source", "cwd", "archived"},
+                "thread_spawn_edges": {"parent_thread_id", "child_thread_id", "status"},
+            },
+            "thread_history_1.sqlite": {
+                "thread_turns": {"thread_id", "status", "started_at", "completed_at"},
+            },
+        }
+        count = 0
+        for filename, tables in schemas.items():
+            path = home / ".codex" / filename
+            if not path.is_file():
+                continue
+            with closing(sqlite3.connect(path.resolve().as_uri() + "?mode=ro",
+                                         uri=True, timeout=0.2)) as db:
+                for table, required in tables.items():
+                    columns = {row[1] for row in db.execute(f"PRAGMA table_info({table})")}
+                    assert required <= columns, f"{table} 必須列欠落: {','.join(sorted(required - columns))}"
+            count += 1
+        if not count:
+            skip("Codex sqlite カナリア省略（DBなし）")
+        print(f"Codex sqlite カナリア OK ({count} DB・未作成DBは省略)")
+    else:
+        path = home / ".claude/office_events" / f"{datetime.date.today().isoformat()}.jsonl"
+        if not path.is_file():
+            skip("hook events カナリア省略（当日ファイルなし）")
+        count = 0
+        with path.open(encoding="utf-8") as stream:
+            for line in stream:
+                event = json.loads(line)
+                assert event["v"] == 1, "v が1ではない"
+                for key in ("ev", "sid"):
+                    assert isinstance(event.get(key), str) and event[key].strip(), f"{key} が空"
+                count += 1
+        print(f"hook events カナリア OK ({count}行)")
+except sqlite3.OperationalError as exc:
+    if "locked" in str(exc).lower() or "busy" in str(exc).lower():
+        skip("Codex sqlite カナリア省略（ロック）")
+    print("Codex sqlite カナリア失敗（DB操作エラー）")
+    sys.exit(1)
+except (OSError, ValueError, TypeError, KeyError, AttributeError, AssertionError, sqlite3.DatabaseError):
+    # 本文やローカルパスを例外メッセージ経由でも出力しない。
+    print(f"{kind} カナリア失敗（形式変更または読み取りエラー）")
+    sys.exit(1)
+EOF
+)
+  case $? in
+    0) ok "$_canary_result" ;;
+    3) echo "  - $_canary_result" ;;
+    *) ng "$_canary_result" ;;
+  esac
+done
 
 echo "▶ 9 中継E2E (P2・任意=RUN_RELAY=1のとき。通常は 4/8 の relay_agent 単体テストがロジックを担保)"
 if [ "${RUN_RELAY:-}" = "1" ]; then

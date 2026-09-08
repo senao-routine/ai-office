@@ -1,0 +1,1737 @@
+{
+ "_note": "ビジュアル回帰用の固定ワールド。ui_shot.py が /api/office をこれで差し替えるので、実セッションの状態に左右されず同じ絵になる。フィールド名は scan_office() の出力と一致させること。",
+ "officeName": "せなおAIオフィス",
+ "lang": "ja",
+ "generatedAt": 1753800000.0,
+ "setup": {
+  "hookInstalled": true
+ },
+ "edition": {
+  "id": "hybrid",
+  "features": {
+   "claudeSessions": true,
+   "openclaw": true,
+   "relayPwa": true,
+   "push": true,
+   "costDash": true
+  },
+  "license": {
+   "valid": true,
+   "edition": "hybrid",
+   "reason": ""
+  }
+ },
+ "counts": {
+  "working": 13,
+  "waiting": 5,
+  "resting": 4,
+  "meeting": 0,
+  "external": 1
+ },
+ "history": [
+  {
+   "session": "sess-fixture-0001",
+   "disp": "ai-office",
+   "text": "テストを直してから push して",
+   "ts": 1753799880.0,
+   "pending": false
+  }
+ ],
+ "employees": [
+  {
+   "projectId": "b1aa6961bd08",
+   "session": "sess-xl-0000",
+   "name": "works 1号",
+   "role": "開発",
+   "cwd": "/Users/test/project/ai-office",
+   "branch": "master",
+   "crew": 1,
+   "state": "working",
+   "kind": "idle",
+   "verb": "編集中",
+   "target": "scene3d.js",
+   "age": 30,
+   "minions": 0,
+   "pending": false,
+   "attention": false,
+   "approvalMin": 0,
+   "question": "",
+   "stuckTool": "",
+   "lastSaid": "レンダラの骨格を通しました",
+   "lastOrder": "3Dの骨格を作って",
+   "feed": [
+    "編集中 scene3d.js",
+    "実行中 npm test",
+    "💬 レンダラの骨格を通しました"
+   ],
+   "skills": [],
+   "sprite": "/assets/sakutto.png",
+   "spriteWalk": "/assets/sakutto_walk.png",
+   "avatar": 0,
+   "work": {
+    "now": [
+     "scene3d の骨格"
+    ],
+    "next": [
+     "robot.js"
+    ],
+    "done": [
+     "静的ルート"
+    ],
+    "counts": {
+     "pending": 2,
+     "in_progress": 1,
+     "completed": 3
+    }
+   },
+   "disp": "works 1号",
+   "vendor": "claude"
+  },
+  {
+   "projectId": "36152f827d70",
+   "session": "sess-xl-0001",
+   "name": "ai-office 2号",
+   "role": "司令塔",
+   "cwd": "/Users/test/works",
+   "branch": "main",
+   "crew": 1,
+   "state": "working",
+   "kind": "idle",
+   "verb": "休憩中",
+   "target": "",
+   "age": 37,
+   "minions": 0,
+   "pending": false,
+   "attention": false,
+   "approvalMin": 0,
+   "question": "",
+   "stuckTool": "",
+   "lastSaid": "デプロイを流します",
+   "lastOrder": "本番へ出して",
+   "feed": [
+    "実行中 deploy.sh",
+    "編集中 worker.js"
+   ],
+   "skills": [],
+   "sprite": "/assets/works_hq.png",
+   "spriteWalk": "/assets/works_hq_walk.png",
+   "avatar": 1,
+   "disp": "ai-office 2号",
+   "vendor": "claude"
+  },
+  {
+   "projectId": "6cbbed52fe43",
+   "session": "sess-xl-0002",
+   "name": "blog 3号",
+   "role": "記事制作",
+   "cwd": "/Users/test/works/Blog_",
+   "branch": "main",
+   "crew": 1,
+   "state": "working",
+   "kind": "think",
+   "verb": "読み込み中",
+   "target": "draft.md",
+   "age": 44,
+   "minions": 0,
+   "pending": false,
+   "attention": true,
+   "approvalMin": 0,
+   "question": "",
+   "stuckTool": "",
+   "lastSaid": "",
+   "lastOrder": "",
+   "feed": [
+    "読み込み中 draft.md"
+   ],
+   "skills": [],
+   "sprite": "/assets/blog.png",
+   "spriteWalk": "/assets/blog_walk.png",
+   "avatar": 2,
+   "disp": "blog 3号",
+   "vendor": "claude"
+  },
+  {
+   "projectId": "d43fb5404758",
+   "session": "sess-xl-0003",
+   "name": "video 4号",
+   "role": "本編カット",
+   "cwd": "/Users/test/works/Claudecode",
+   "branch": "main",
+   "crew": 1,
+   "state": "working",
+   "kind": "idle",
+   "verb": "考え中…",
+   "target": "",
+   "age": 51,
+   "minions": 0,
+   "pending": false,
+   "attention": false,
+   "approvalMin": 0,
+   "question": "",
+   "stuckTool": "",
+   "lastSaid": "",
+   "lastOrder": "カットを詰めて",
+   "feed": [
+    "考え中…"
+   ],
+   "skills": [],
+   "sprite": "/assets/video.png",
+   "spriteWalk": "/assets/video_walk.png",
+   "avatar": 3,
+   "disp": "video 4号",
+   "vendor": "claude"
+  },
+  {
+   "projectId": "02c79e6f7582",
+   "session": "sess-xl-0004",
+   "name": "mimoji 5号",
+   "role": "スキルパック開発",
+   "cwd": "/Users/test/xpostSample",
+   "branch": "main",
+   "crew": 1,
+   "state": "working",
+   "kind": "idle",
+   "verb": "実行中",
+   "target": "git push",
+   "age": 58,
+   "minions": 2,
+   "pending": false,
+   "attention": false,
+   "approvalMin": 4,
+   "question": "",
+   "stuckTool": "実行中 git push",
+   "lastSaid": "",
+   "lastOrder": "",
+   "feed": [
+    "実行中 git push"
+   ],
+   "skills": [],
+   "sprite": "/assets/xpost.png",
+   "spriteWalk": "/assets/xpost_walk.png",
+   "avatar": 4,
+   "disp": "mimoji 5号",
+   "vendor": "claude"
+  },
+  {
+   "projectId": "53de53ca7c84",
+   "session": "sess-xl-0005",
+   "name": "harness 6号",
+   "role": "開発",
+   "cwd": "/Users/test/realmeetingmemo",
+   "branch": "main",
+   "crew": 1,
+   "state": "working",
+   "kind": "idle",
+   "verb": "指示待ち",
+   "target": "",
+   "age": 65,
+   "minions": 0,
+   "pending": true,
+   "attention": false,
+   "approvalMin": 0,
+   "question": "この設計で確定していいですか？",
+   "stuckTool": "",
+   "lastSaid": "この設計で確定していいですか？",
+   "lastOrder": "",
+   "feed": [
+    "💬 この設計で確定していいですか？"
+   ],
+   "skills": [],
+   "sprite": "/assets/memo.png",
+   "spriteWalk": "/assets/memo_walk.png",
+   "avatar": 5,
+   "questionOptions": [
+    {
+     "label": "案A で進める",
+     "description": "推奨",
+     "recommended": true
+    },
+    {
+     "label": "案B",
+     "description": ""
+    },
+    {
+     "label": "自分で書く",
+     "description": ""
+    }
+   ],
+   "disp": "harness 6号",
+   "vendor": "claude"
+  },
+  {
+   "projectId": "5b725b489b82",
+   "session": "sess-xl-0006",
+   "name": "works 7号",
+   "role": "受託",
+   "cwd": "/Users/test/ClientProject",
+   "branch": "main",
+   "crew": 1,
+   "state": "working",
+   "kind": "idle",
+   "verb": "休憩中",
+   "target": "",
+   "age": 72,
+   "minions": 0,
+   "pending": false,
+   "attention": false,
+   "approvalMin": 0,
+   "question": "",
+   "stuckTool": "",
+   "lastSaid": "",
+   "lastOrder": "",
+   "feed": [],
+   "skills": [],
+   "sprite": "/assets/ribbon.png",
+   "spriteWalk": "/assets/ribbon_walk.png",
+   "avatar": 6,
+   "disp": "works 7号",
+   "vendor": "claude"
+  },
+  {
+   "projectId": "f9fa314eba71",
+   "session": "sess-xl-0007",
+   "name": "ai-office 8号",
+   "role": "general",
+   "cwd": "",
+   "branch": "",
+   "crew": 1,
+   "state": "working",
+   "kind": "idle",
+   "verb": "応答中",
+   "target": "",
+   "age": 79,
+   "minions": 0,
+   "pending": false,
+   "attention": false,
+   "approvalMin": 0,
+   "question": "",
+   "stuckTool": "",
+   "lastSaid": "",
+   "lastOrder": "",
+   "feed": [
+    "応答中"
+   ],
+   "skills": [],
+   "sprite": "/assets/agent_bot.png",
+   "spriteWalk": "",
+   "avatar": 0,
+   "external": "openclaw",
+   "disp": "ai-office 8号",
+   "vendor": "claude"
+  },
+  {
+   "projectId": "c78c1a109239",
+   "session": "sess-xl-0008",
+   "name": "blog 9号",
+   "role": "広報",
+   "cwd": "/Users/test/PressRoom",
+   "branch": "main",
+   "crew": 1,
+   "state": "working",
+   "kind": "idle",
+   "verb": "休憩中",
+   "target": "",
+   "age": 86,
+   "minions": 0,
+   "pending": false,
+   "attention": false,
+   "approvalMin": 0,
+   "question": "",
+   "stuckTool": "",
+   "lastSaid": "",
+   "lastOrder": "",
+   "feed": [],
+   "skills": [],
+   "sprite": "/assets/generic_f2.png",
+   "spriteWalk": "/assets/generic_f2_walk.png",
+   "avatar": 7,
+   "disp": "blog 9号",
+   "vendor": "claude"
+  },
+  {
+   "projectId": "f0e981bbf260",
+   "session": "sess-xl-0009",
+   "name": "video 10号",
+   "role": "開発",
+   "cwd": "/Users/test/project/ai-office",
+   "branch": "master",
+   "crew": 1,
+   "state": "working",
+   "kind": "idle",
+   "verb": "編集中",
+   "target": "scene3d.js",
+   "age": 93,
+   "minions": 0,
+   "pending": false,
+   "attention": true,
+   "approvalMin": 0,
+   "question": "",
+   "stuckTool": "",
+   "lastSaid": "レンダラの骨格を通しました",
+   "lastOrder": "3Dの骨格を作って",
+   "feed": [
+    "編集中 scene3d.js",
+    "実行中 npm test",
+    "💬 レンダラの骨格を通しました"
+   ],
+   "skills": [],
+   "sprite": "/assets/sakutto.png",
+   "spriteWalk": "/assets/sakutto_walk.png",
+   "avatar": 0,
+   "work": {
+    "now": [
+     "scene3d の骨格"
+    ],
+    "next": [
+     "robot.js"
+    ],
+    "done": [
+     "静的ルート"
+    ],
+    "counts": {
+     "pending": 2,
+     "in_progress": 1,
+     "completed": 3
+    }
+   },
+   "disp": "video 10号",
+   "vendor": "claude"
+  },
+  {
+   "projectId": "d17b0ba38f03",
+   "session": "sess-xl-0010",
+   "name": "mimoji 11号",
+   "role": "司令塔",
+   "cwd": "/Users/test/works",
+   "branch": "main",
+   "crew": 1,
+   "state": "working",
+   "kind": "idle",
+   "verb": "休憩中",
+   "target": "",
+   "age": 100,
+   "minions": 0,
+   "pending": false,
+   "attention": false,
+   "approvalMin": 0,
+   "question": "",
+   "stuckTool": "",
+   "lastSaid": "デプロイを流します",
+   "lastOrder": "本番へ出して",
+   "feed": [
+    "実行中 deploy.sh",
+    "編集中 worker.js"
+   ],
+   "skills": [],
+   "sprite": "/assets/works_hq.png",
+   "spriteWalk": "/assets/works_hq_walk.png",
+   "avatar": 1,
+   "disp": "mimoji 11号",
+   "vendor": "claude"
+  },
+  {
+   "projectId": "e4a646c171b1",
+   "session": "sess-xl-0011",
+   "name": "harness 12号",
+   "role": "記事制作",
+   "cwd": "/Users/test/works/Blog_",
+   "branch": "main",
+   "crew": 1,
+   "state": "working",
+   "kind": "think",
+   "verb": "読み込み中",
+   "target": "draft.md",
+   "age": 107,
+   "minions": 0,
+   "pending": false,
+   "attention": false,
+   "approvalMin": 0,
+   "question": "",
+   "stuckTool": "",
+   "lastSaid": "",
+   "lastOrder": "",
+   "feed": [
+    "読み込み中 draft.md"
+   ],
+   "skills": [],
+   "sprite": "/assets/blog.png",
+   "spriteWalk": "/assets/blog_walk.png",
+   "avatar": 2,
+   "disp": "harness 12号",
+   "vendor": "claude"
+  },
+  {
+   "projectId": "bf4ff29a7598",
+   "session": "sess-xl-0012",
+   "name": "works 13号",
+   "role": "本編カット",
+   "cwd": "/Users/test/works/Claudecode",
+   "branch": "main",
+   "crew": 1,
+   "state": "working",
+   "kind": "idle",
+   "verb": "考え中…",
+   "target": "",
+   "age": 114,
+   "minions": 0,
+   "pending": false,
+   "attention": false,
+   "approvalMin": 0,
+   "question": "",
+   "stuckTool": "",
+   "lastSaid": "",
+   "lastOrder": "カットを詰めて",
+   "feed": [
+    "考え中…"
+   ],
+   "skills": [],
+   "sprite": "/assets/video.png",
+   "spriteWalk": "/assets/video_walk.png",
+   "avatar": 3,
+   "disp": "works 13号",
+   "vendor": "claude"
+  },
+  {
+   "projectId": "ab3bf2feb276",
+   "session": "sess-xl-0013",
+   "name": "ai-office 14号",
+   "role": "スキルパック開発",
+   "cwd": "/Users/test/xpostSample",
+   "branch": "main",
+   "crew": 1,
+   "state": "waiting",
+   "kind": "idle",
+   "verb": "実行中",
+   "target": "git push",
+   "age": 121,
+   "minions": 0,
+   "pending": false,
+   "attention": false,
+   "approvalMin": 4,
+   "question": "",
+   "stuckTool": "実行中 git push",
+   "lastSaid": "",
+   "lastOrder": "",
+   "feed": [
+    "実行中 git push"
+   ],
+   "skills": [],
+   "sprite": "/assets/xpost.png",
+   "spriteWalk": "/assets/xpost_walk.png",
+   "avatar": 4,
+   "disp": "ai-office 14号",
+   "vendor": "claude"
+  },
+  {
+   "projectId": "ea59a87c02c0",
+   "session": "sess-xl-0014",
+   "name": "blog 15号",
+   "role": "開発",
+   "cwd": "/Users/test/realmeetingmemo",
+   "branch": "main",
+   "crew": 1,
+   "state": "waiting",
+   "kind": "idle",
+   "verb": "指示待ち",
+   "target": "",
+   "age": 128,
+   "minions": 0,
+   "pending": false,
+   "attention": false,
+   "approvalMin": 0,
+   "question": "この設計で確定していいですか？",
+   "stuckTool": "",
+   "lastSaid": "この設計で確定していいですか？",
+   "lastOrder": "",
+   "feed": [
+    "💬 この設計で確定していいですか？"
+   ],
+   "skills": [],
+   "sprite": "/assets/memo.png",
+   "spriteWalk": "/assets/memo_walk.png",
+   "avatar": 5,
+   "questionOptions": [
+    {
+     "label": "案A で進める",
+     "description": "推奨",
+     "recommended": true
+    },
+    {
+     "label": "案B",
+     "description": ""
+    },
+    {
+     "label": "自分で書く",
+     "description": ""
+    }
+   ],
+   "disp": "blog 15号",
+   "vendor": "claude"
+  },
+  {
+   "projectId": "2ef0e52b34e1",
+   "session": "sess-xl-0015",
+   "name": "video 16号",
+   "role": "受託",
+   "cwd": "/Users/test/ClientProject",
+   "branch": "main",
+   "crew": 1,
+   "state": "waiting",
+   "kind": "idle",
+   "verb": "休憩中",
+   "target": "",
+   "age": 135,
+   "minions": 0,
+   "pending": false,
+   "attention": false,
+   "approvalMin": 0,
+   "question": "",
+   "stuckTool": "",
+   "lastSaid": "",
+   "lastOrder": "",
+   "feed": [],
+   "skills": [],
+   "sprite": "/assets/ribbon.png",
+   "spriteWalk": "/assets/ribbon_walk.png",
+   "avatar": 6,
+   "disp": "video 16号",
+   "vendor": "codex"
+  },
+  {
+   "projectId": "4fa6f713b9f5",
+   "session": "sess-xl-0016",
+   "name": "mimoji 17号",
+   "role": "general",
+   "cwd": "",
+   "branch": "",
+   "crew": 1,
+   "state": "waiting",
+   "kind": "idle",
+   "verb": "応答中",
+   "target": "",
+   "age": 142,
+   "minions": 0,
+   "pending": false,
+   "attention": false,
+   "approvalMin": 0,
+   "question": "",
+   "stuckTool": "",
+   "lastSaid": "",
+   "lastOrder": "",
+   "feed": [
+    "応答中"
+   ],
+   "skills": [],
+   "sprite": "/assets/agent_bot.png",
+   "spriteWalk": "",
+   "avatar": 0,
+   "external": "openclaw",
+   "disp": "mimoji 17号",
+   "vendor": "codex"
+  },
+  {
+   "projectId": "5560de15acf4",
+   "session": "sess-xl-0017",
+   "name": "harness 18号",
+   "role": "広報",
+   "cwd": "/Users/test/PressRoom",
+   "branch": "main",
+   "crew": 1,
+   "state": "waiting",
+   "kind": "idle",
+   "verb": "休憩中",
+   "target": "",
+   "age": 149,
+   "minions": 0,
+   "pending": false,
+   "attention": false,
+   "approvalMin": 0,
+   "question": "",
+   "stuckTool": "",
+   "lastSaid": "",
+   "lastOrder": "",
+   "feed": [],
+   "skills": [],
+   "sprite": "/assets/generic_f2.png",
+   "spriteWalk": "/assets/generic_f2_walk.png",
+   "avatar": 7,
+   "disp": "harness 18号",
+   "vendor": "codex"
+  },
+  {
+   "projectId": "5ecb3d0b0ddc",
+   "session": "sess-xl-0018",
+   "name": "works 19号",
+   "role": "開発",
+   "cwd": "/Users/test/project/ai-office",
+   "branch": "master",
+   "crew": 1,
+   "state": "resting",
+   "kind": "idle",
+   "verb": "編集中",
+   "target": "scene3d.js",
+   "age": 156,
+   "minions": 0,
+   "pending": false,
+   "attention": false,
+   "approvalMin": 0,
+   "question": "",
+   "stuckTool": "",
+   "lastSaid": "レンダラの骨格を通しました",
+   "lastOrder": "3Dの骨格を作って",
+   "feed": [
+    "編集中 scene3d.js",
+    "実行中 npm test",
+    "💬 レンダラの骨格を通しました"
+   ],
+   "skills": [],
+   "sprite": "/assets/sakutto.png",
+   "spriteWalk": "/assets/sakutto_walk.png",
+   "avatar": 0,
+   "work": {
+    "now": [
+     "scene3d の骨格"
+    ],
+    "next": [
+     "robot.js"
+    ],
+    "done": [
+     "静的ルート"
+    ],
+    "counts": {
+     "pending": 2,
+     "in_progress": 1,
+     "completed": 3
+    }
+   },
+   "disp": "works 19号",
+   "vendor": "codex"
+  },
+  {
+   "projectId": "ed80eafc49e7",
+   "session": "sess-xl-0019",
+   "name": "ai-office 20号",
+   "role": "司令塔",
+   "cwd": "/Users/test/works",
+   "branch": "main",
+   "crew": 1,
+   "state": "resting",
+   "kind": "idle",
+   "verb": "休憩中",
+   "target": "",
+   "age": 163,
+   "minions": 0,
+   "pending": false,
+   "attention": false,
+   "approvalMin": 0,
+   "question": "",
+   "stuckTool": "",
+   "lastSaid": "デプロイを流します",
+   "lastOrder": "本番へ出して",
+   "feed": [
+    "実行中 deploy.sh",
+    "編集中 worker.js"
+   ],
+   "skills": [],
+   "sprite": "/assets/works_hq.png",
+   "spriteWalk": "/assets/works_hq_walk.png",
+   "avatar": 1,
+   "disp": "ai-office 20号",
+   "vendor": "codex"
+  },
+  {
+   "projectId": "ba6657eaee25",
+   "session": "sess-xl-0020",
+   "name": "blog 21号",
+   "role": "記事制作",
+   "cwd": "/Users/test/works/Blog_",
+   "branch": "main",
+   "crew": 1,
+   "state": "resting",
+   "kind": "think",
+   "verb": "読み込み中",
+   "target": "draft.md",
+   "age": 170,
+   "minions": 0,
+   "pending": false,
+   "attention": false,
+   "approvalMin": 0,
+   "question": "",
+   "stuckTool": "",
+   "lastSaid": "",
+   "lastOrder": "",
+   "feed": [
+    "読み込み中 draft.md"
+   ],
+   "skills": [],
+   "sprite": "/assets/blog.png",
+   "spriteWalk": "/assets/blog_walk.png",
+   "avatar": 2,
+   "disp": "blog 21号",
+   "vendor": "codex"
+  },
+  {
+   "projectId": "a257bd60da6b",
+   "session": "sess-xl-0021",
+   "name": "video 22号",
+   "role": "本編カット",
+   "cwd": "/Users/test/works/Claudecode",
+   "branch": "main",
+   "crew": 1,
+   "state": "resting",
+   "kind": "idle",
+   "verb": "考え中…",
+   "target": "",
+   "age": 177,
+   "minions": 0,
+   "pending": false,
+   "attention": false,
+   "approvalMin": 0,
+   "question": "",
+   "stuckTool": "",
+   "lastSaid": "",
+   "lastOrder": "カットを詰めて",
+   "feed": [
+    "考え中…"
+   ],
+   "skills": [],
+   "sprite": "/assets/video.png",
+   "spriteWalk": "/assets/video_walk.png",
+   "avatar": 3,
+   "disp": "video 22号",
+   "vendor": "openclaw"
+  }
+ ],
+ "tasks": {
+  "pending": 2,
+  "inProgress": 1,
+  "completed": 3
+ },
+ "roster": [
+  {
+   "projectId": "b1aa6961bd08",
+   "session": "sess-xl-0000",
+   "name": "works 1号",
+   "role": "開発",
+   "cwd": "/Users/test/project/ai-office",
+   "branch": "master",
+   "crew": 1,
+   "state": "working",
+   "kind": "idle",
+   "verb": "編集中",
+   "target": "scene3d.js",
+   "age": 30,
+   "minions": 0,
+   "pending": false,
+   "attention": false,
+   "approvalMin": 0,
+   "question": "",
+   "stuckTool": "",
+   "lastSaid": "レンダラの骨格を通しました",
+   "lastOrder": "3Dの骨格を作って",
+   "feed": [
+    "編集中 scene3d.js",
+    "実行中 npm test",
+    "💬 レンダラの骨格を通しました"
+   ],
+   "skills": [],
+   "sprite": "/assets/sakutto.png",
+   "spriteWalk": "/assets/sakutto_walk.png",
+   "avatar": 0,
+   "sessions": [
+    {
+     "session": "sess-xl-0000",
+     "state": "working",
+     "age": 30
+    }
+   ],
+   "work": {
+    "now": [
+     "scene3d の骨格"
+    ],
+    "next": [
+     "robot.js"
+    ],
+    "done": [
+     "静的ルート"
+    ],
+    "counts": {
+     "pending": 2,
+     "in_progress": 1,
+     "completed": 3
+    }
+   },
+   "disp": "works 1号",
+   "vendor": "claude"
+  },
+  {
+   "projectId": "36152f827d70",
+   "session": "sess-xl-0001",
+   "name": "ai-office 2号",
+   "role": "司令塔",
+   "cwd": "/Users/test/works",
+   "branch": "main",
+   "crew": 1,
+   "state": "working",
+   "kind": "idle",
+   "verb": "休憩中",
+   "target": "",
+   "age": 37,
+   "minions": 0,
+   "pending": false,
+   "attention": false,
+   "approvalMin": 0,
+   "question": "",
+   "stuckTool": "",
+   "lastSaid": "デプロイを流します",
+   "lastOrder": "本番へ出して",
+   "feed": [
+    "実行中 deploy.sh",
+    "編集中 worker.js"
+   ],
+   "skills": [],
+   "sprite": "/assets/works_hq.png",
+   "spriteWalk": "/assets/works_hq_walk.png",
+   "avatar": 1,
+   "sessions": [
+    {
+     "session": "sess-xl-0001",
+     "state": "working",
+     "age": 37
+    }
+   ],
+   "disp": "ai-office 2号",
+   "vendor": "claude"
+  },
+  {
+   "projectId": "6cbbed52fe43",
+   "session": "sess-xl-0002",
+   "name": "blog 3号",
+   "role": "記事制作",
+   "cwd": "/Users/test/works/Blog_",
+   "branch": "main",
+   "crew": 1,
+   "state": "working",
+   "kind": "think",
+   "verb": "読み込み中",
+   "target": "draft.md",
+   "age": 44,
+   "minions": 0,
+   "pending": false,
+   "attention": true,
+   "approvalMin": 0,
+   "question": "",
+   "stuckTool": "",
+   "lastSaid": "",
+   "lastOrder": "",
+   "feed": [
+    "読み込み中 draft.md"
+   ],
+   "skills": [],
+   "sprite": "/assets/blog.png",
+   "spriteWalk": "/assets/blog_walk.png",
+   "avatar": 2,
+   "sessions": [
+    {
+     "session": "sess-xl-0002",
+     "state": "working",
+     "age": 44
+    }
+   ],
+   "disp": "blog 3号",
+   "vendor": "claude"
+  },
+  {
+   "projectId": "d43fb5404758",
+   "session": "sess-xl-0003",
+   "name": "video 4号",
+   "role": "本編カット",
+   "cwd": "/Users/test/works/Claudecode",
+   "branch": "main",
+   "crew": 1,
+   "state": "working",
+   "kind": "idle",
+   "verb": "考え中…",
+   "target": "",
+   "age": 51,
+   "minions": 0,
+   "pending": false,
+   "attention": false,
+   "approvalMin": 0,
+   "question": "",
+   "stuckTool": "",
+   "lastSaid": "",
+   "lastOrder": "カットを詰めて",
+   "feed": [
+    "考え中…"
+   ],
+   "skills": [],
+   "sprite": "/assets/video.png",
+   "spriteWalk": "/assets/video_walk.png",
+   "avatar": 3,
+   "sessions": [
+    {
+     "session": "sess-xl-0003",
+     "state": "working",
+     "age": 51
+    }
+   ],
+   "disp": "video 4号",
+   "vendor": "claude"
+  },
+  {
+   "projectId": "02c79e6f7582",
+   "session": "sess-xl-0004",
+   "name": "mimoji 5号",
+   "role": "スキルパック開発",
+   "cwd": "/Users/test/xpostSample",
+   "branch": "main",
+   "crew": 1,
+   "state": "working",
+   "kind": "idle",
+   "verb": "実行中",
+   "target": "git push",
+   "age": 58,
+   "minions": 2,
+   "pending": false,
+   "attention": false,
+   "approvalMin": 4,
+   "question": "",
+   "stuckTool": "実行中 git push",
+   "lastSaid": "",
+   "lastOrder": "",
+   "feed": [
+    "実行中 git push"
+   ],
+   "skills": [],
+   "sprite": "/assets/xpost.png",
+   "spriteWalk": "/assets/xpost_walk.png",
+   "avatar": 4,
+   "sessions": [
+    {
+     "session": "sess-xl-0004",
+     "state": "working",
+     "age": 58
+    }
+   ],
+   "disp": "mimoji 5号",
+   "vendor": "claude"
+  },
+  {
+   "projectId": "53de53ca7c84",
+   "session": "sess-xl-0005",
+   "name": "harness 6号",
+   "role": "開発",
+   "cwd": "/Users/test/realmeetingmemo",
+   "branch": "main",
+   "crew": 1,
+   "state": "working",
+   "kind": "idle",
+   "verb": "指示待ち",
+   "target": "",
+   "age": 65,
+   "minions": 0,
+   "pending": true,
+   "attention": false,
+   "approvalMin": 0,
+   "question": "この設計で確定していいですか？",
+   "stuckTool": "",
+   "lastSaid": "この設計で確定していいですか？",
+   "lastOrder": "",
+   "feed": [
+    "💬 この設計で確定していいですか？"
+   ],
+   "skills": [],
+   "sprite": "/assets/memo.png",
+   "spriteWalk": "/assets/memo_walk.png",
+   "avatar": 5,
+   "sessions": [
+    {
+     "session": "sess-xl-0005",
+     "state": "working",
+     "age": 65
+    }
+   ],
+   "questionOptions": [
+    {
+     "label": "案A で進める",
+     "description": "推奨",
+     "recommended": true
+    },
+    {
+     "label": "案B",
+     "description": ""
+    },
+    {
+     "label": "自分で書く",
+     "description": ""
+    }
+   ],
+   "disp": "harness 6号",
+   "vendor": "claude"
+  },
+  {
+   "projectId": "5b725b489b82",
+   "session": "sess-xl-0006",
+   "name": "works 7号",
+   "role": "受託",
+   "cwd": "/Users/test/ClientProject",
+   "branch": "main",
+   "crew": 1,
+   "state": "working",
+   "kind": "idle",
+   "verb": "休憩中",
+   "target": "",
+   "age": 72,
+   "minions": 0,
+   "pending": false,
+   "attention": false,
+   "approvalMin": 0,
+   "question": "",
+   "stuckTool": "",
+   "lastSaid": "",
+   "lastOrder": "",
+   "feed": [],
+   "skills": [],
+   "sprite": "/assets/ribbon.png",
+   "spriteWalk": "/assets/ribbon_walk.png",
+   "avatar": 6,
+   "sessions": [
+    {
+     "session": "sess-xl-0006",
+     "state": "working",
+     "age": 72
+    }
+   ],
+   "disp": "works 7号",
+   "vendor": "claude"
+  },
+  {
+   "projectId": "f9fa314eba71",
+   "session": "sess-xl-0007",
+   "name": "ai-office 8号",
+   "role": "general",
+   "cwd": "",
+   "branch": "",
+   "crew": 1,
+   "state": "working",
+   "kind": "idle",
+   "verb": "応答中",
+   "target": "",
+   "age": 79,
+   "minions": 0,
+   "pending": false,
+   "attention": false,
+   "approvalMin": 0,
+   "question": "",
+   "stuckTool": "",
+   "lastSaid": "",
+   "lastOrder": "",
+   "feed": [
+    "応答中"
+   ],
+   "skills": [],
+   "sprite": "/assets/agent_bot.png",
+   "spriteWalk": "",
+   "avatar": 0,
+   "sessions": [
+    {
+     "session": "sess-xl-0007",
+     "state": "working",
+     "age": 79
+    }
+   ],
+   "external": "openclaw",
+   "disp": "ai-office 8号",
+   "vendor": "claude"
+  },
+  {
+   "projectId": "c78c1a109239",
+   "session": "sess-xl-0008",
+   "name": "blog 9号",
+   "role": "広報",
+   "cwd": "/Users/test/PressRoom",
+   "branch": "main",
+   "crew": 1,
+   "state": "working",
+   "kind": "idle",
+   "verb": "休憩中",
+   "target": "",
+   "age": 86,
+   "minions": 0,
+   "pending": false,
+   "attention": false,
+   "approvalMin": 0,
+   "question": "",
+   "stuckTool": "",
+   "lastSaid": "",
+   "lastOrder": "",
+   "feed": [],
+   "skills": [],
+   "sprite": "/assets/generic_f2.png",
+   "spriteWalk": "/assets/generic_f2_walk.png",
+   "avatar": 7,
+   "sessions": [
+    {
+     "session": "sess-xl-0008",
+     "state": "working",
+     "age": 86
+    }
+   ],
+   "disp": "blog 9号",
+   "vendor": "claude"
+  },
+  {
+   "projectId": "f0e981bbf260",
+   "session": "sess-xl-0009",
+   "name": "video 10号",
+   "role": "開発",
+   "cwd": "/Users/test/project/ai-office",
+   "branch": "master",
+   "crew": 1,
+   "state": "working",
+   "kind": "idle",
+   "verb": "編集中",
+   "target": "scene3d.js",
+   "age": 93,
+   "minions": 0,
+   "pending": false,
+   "attention": true,
+   "approvalMin": 0,
+   "question": "",
+   "stuckTool": "",
+   "lastSaid": "レンダラの骨格を通しました",
+   "lastOrder": "3Dの骨格を作って",
+   "feed": [
+    "編集中 scene3d.js",
+    "実行中 npm test",
+    "💬 レンダラの骨格を通しました"
+   ],
+   "skills": [],
+   "sprite": "/assets/sakutto.png",
+   "spriteWalk": "/assets/sakutto_walk.png",
+   "avatar": 0,
+   "sessions": [
+    {
+     "session": "sess-xl-0009",
+     "state": "working",
+     "age": 93
+    }
+   ],
+   "work": {
+    "now": [
+     "scene3d の骨格"
+    ],
+    "next": [
+     "robot.js"
+    ],
+    "done": [
+     "静的ルート"
+    ],
+    "counts": {
+     "pending": 2,
+     "in_progress": 1,
+     "completed": 3
+    }
+   },
+   "disp": "video 10号",
+   "vendor": "claude"
+  },
+  {
+   "projectId": "d17b0ba38f03",
+   "session": "sess-xl-0010",
+   "name": "mimoji 11号",
+   "role": "司令塔",
+   "cwd": "/Users/test/works",
+   "branch": "main",
+   "crew": 1,
+   "state": "working",
+   "kind": "idle",
+   "verb": "休憩中",
+   "target": "",
+   "age": 100,
+   "minions": 0,
+   "pending": false,
+   "attention": false,
+   "approvalMin": 0,
+   "question": "",
+   "stuckTool": "",
+   "lastSaid": "デプロイを流します",
+   "lastOrder": "本番へ出して",
+   "feed": [
+    "実行中 deploy.sh",
+    "編集中 worker.js"
+   ],
+   "skills": [],
+   "sprite": "/assets/works_hq.png",
+   "spriteWalk": "/assets/works_hq_walk.png",
+   "avatar": 1,
+   "sessions": [
+    {
+     "session": "sess-xl-0010",
+     "state": "working",
+     "age": 100
+    }
+   ],
+   "disp": "mimoji 11号",
+   "vendor": "claude"
+  },
+  {
+   "projectId": "e4a646c171b1",
+   "session": "sess-xl-0011",
+   "name": "harness 12号",
+   "role": "記事制作",
+   "cwd": "/Users/test/works/Blog_",
+   "branch": "main",
+   "crew": 1,
+   "state": "working",
+   "kind": "think",
+   "verb": "読み込み中",
+   "target": "draft.md",
+   "age": 107,
+   "minions": 0,
+   "pending": false,
+   "attention": false,
+   "approvalMin": 0,
+   "question": "",
+   "stuckTool": "",
+   "lastSaid": "",
+   "lastOrder": "",
+   "feed": [
+    "読み込み中 draft.md"
+   ],
+   "skills": [],
+   "sprite": "/assets/blog.png",
+   "spriteWalk": "/assets/blog_walk.png",
+   "avatar": 2,
+   "sessions": [
+    {
+     "session": "sess-xl-0011",
+     "state": "working",
+     "age": 107
+    }
+   ],
+   "disp": "harness 12号",
+   "vendor": "claude"
+  },
+  {
+   "projectId": "bf4ff29a7598",
+   "session": "sess-xl-0012",
+   "name": "works 13号",
+   "role": "本編カット",
+   "cwd": "/Users/test/works/Claudecode",
+   "branch": "main",
+   "crew": 1,
+   "state": "working",
+   "kind": "idle",
+   "verb": "考え中…",
+   "target": "",
+   "age": 114,
+   "minions": 0,
+   "pending": false,
+   "attention": false,
+   "approvalMin": 0,
+   "question": "",
+   "stuckTool": "",
+   "lastSaid": "",
+   "lastOrder": "カットを詰めて",
+   "feed": [
+    "考え中…"
+   ],
+   "skills": [],
+   "sprite": "/assets/video.png",
+   "spriteWalk": "/assets/video_walk.png",
+   "avatar": 3,
+   "sessions": [
+    {
+     "session": "sess-xl-0012",
+     "state": "working",
+     "age": 114
+    }
+   ],
+   "disp": "works 13号",
+   "vendor": "claude"
+  },
+  {
+   "projectId": "ab3bf2feb276",
+   "session": "sess-xl-0013",
+   "name": "ai-office 14号",
+   "role": "スキルパック開発",
+   "cwd": "/Users/test/xpostSample",
+   "branch": "main",
+   "crew": 1,
+   "state": "waiting",
+   "kind": "idle",
+   "verb": "実行中",
+   "target": "git push",
+   "age": 121,
+   "minions": 0,
+   "pending": false,
+   "attention": false,
+   "approvalMin": 4,
+   "question": "",
+   "stuckTool": "実行中 git push",
+   "lastSaid": "",
+   "lastOrder": "",
+   "feed": [
+    "実行中 git push"
+   ],
+   "skills": [],
+   "sprite": "/assets/xpost.png",
+   "spriteWalk": "/assets/xpost_walk.png",
+   "avatar": 4,
+   "sessions": [
+    {
+     "session": "sess-xl-0013",
+     "state": "waiting",
+     "age": 121
+    }
+   ],
+   "disp": "ai-office 14号",
+   "vendor": "claude"
+  },
+  {
+   "projectId": "ea59a87c02c0",
+   "session": "sess-xl-0014",
+   "name": "blog 15号",
+   "role": "開発",
+   "cwd": "/Users/test/realmeetingmemo",
+   "branch": "main",
+   "crew": 1,
+   "state": "waiting",
+   "kind": "idle",
+   "verb": "指示待ち",
+   "target": "",
+   "age": 128,
+   "minions": 0,
+   "pending": false,
+   "attention": false,
+   "approvalMin": 0,
+   "question": "この設計で確定していいですか？",
+   "stuckTool": "",
+   "lastSaid": "この設計で確定していいですか？",
+   "lastOrder": "",
+   "feed": [
+    "💬 この設計で確定していいですか？"
+   ],
+   "skills": [],
+   "sprite": "/assets/memo.png",
+   "spriteWalk": "/assets/memo_walk.png",
+   "avatar": 5,
+   "sessions": [
+    {
+     "session": "sess-xl-0014",
+     "state": "waiting",
+     "age": 128
+    }
+   ],
+   "questionOptions": [
+    {
+     "label": "案A で進める",
+     "description": "推奨",
+     "recommended": true
+    },
+    {
+     "label": "案B",
+     "description": ""
+    },
+    {
+     "label": "自分で書く",
+     "description": ""
+    }
+   ],
+   "disp": "blog 15号",
+   "vendor": "claude"
+  },
+  {
+   "projectId": "2ef0e52b34e1",
+   "session": "sess-xl-0015",
+   "name": "video 16号",
+   "role": "受託",
+   "cwd": "/Users/test/ClientProject",
+   "branch": "main",
+   "crew": 1,
+   "state": "waiting",
+   "kind": "idle",
+   "verb": "休憩中",
+   "target": "",
+   "age": 135,
+   "minions": 0,
+   "pending": false,
+   "attention": false,
+   "approvalMin": 0,
+   "question": "",
+   "stuckTool": "",
+   "lastSaid": "",
+   "lastOrder": "",
+   "feed": [],
+   "skills": [],
+   "sprite": "/assets/ribbon.png",
+   "spriteWalk": "/assets/ribbon_walk.png",
+   "avatar": 6,
+   "sessions": [
+    {
+     "session": "sess-xl-0015",
+     "state": "waiting",
+     "age": 135
+    }
+   ],
+   "disp": "video 16号",
+   "vendor": "codex"
+  },
+  {
+   "projectId": "4fa6f713b9f5",
+   "session": "sess-xl-0016",
+   "name": "mimoji 17号",
+   "role": "general",
+   "cwd": "",
+   "branch": "",
+   "crew": 1,
+   "state": "waiting",
+   "kind": "idle",
+   "verb": "応答中",
+   "target": "",
+   "age": 142,
+   "minions": 0,
+   "pending": false,
+   "attention": false,
+   "approvalMin": 0,
+   "question": "",
+   "stuckTool": "",
+   "lastSaid": "",
+   "lastOrder": "",
+   "feed": [
+    "応答中"
+   ],
+   "skills": [],
+   "sprite": "/assets/agent_bot.png",
+   "spriteWalk": "",
+   "avatar": 0,
+   "sessions": [
+    {
+     "session": "sess-xl-0016",
+     "state": "waiting",
+     "age": 142
+    }
+   ],
+   "external": "openclaw",
+   "disp": "mimoji 17号",
+   "vendor": "codex"
+  },
+  {
+   "projectId": "5560de15acf4",
+   "session": "sess-xl-0017",
+   "name": "harness 18号",
+   "role": "広報",
+   "cwd": "/Users/test/PressRoom",
+   "branch": "main",
+   "crew": 1,
+   "state": "waiting",
+   "kind": "idle",
+   "verb": "休憩中",
+   "target": "",
+   "age": 149,
+   "minions": 0,
+   "pending": false,
+   "attention": false,
+   "approvalMin": 0,
+   "question": "",
+   "stuckTool": "",
+   "lastSaid": "",
+   "lastOrder": "",
+   "feed": [],
+   "skills": [],
+   "sprite": "/assets/generic_f2.png",
+   "spriteWalk": "/assets/generic_f2_walk.png",
+   "avatar": 7,
+   "sessions": [
+    {
+     "session": "sess-xl-0017",
+     "state": "waiting",
+     "age": 149
+    }
+   ],
+   "disp": "harness 18号",
+   "vendor": "codex"
+  },
+  {
+   "projectId": "5ecb3d0b0ddc",
+   "session": "sess-xl-0018",
+   "name": "works 19号",
+   "role": "開発",
+   "cwd": "/Users/test/project/ai-office",
+   "branch": "master",
+   "crew": 1,
+   "state": "resting",
+   "kind": "idle",
+   "verb": "編集中",
+   "target": "scene3d.js",
+   "age": 156,
+   "minions": 0,
+   "pending": false,
+   "attention": false,
+   "approvalMin": 0,
+   "question": "",
+   "stuckTool": "",
+   "lastSaid": "レンダラの骨格を通しました",
+   "lastOrder": "3Dの骨格を作って",
+   "feed": [
+    "編集中 scene3d.js",
+    "実行中 npm test",
+    "💬 レンダラの骨格を通しました"
+   ],
+   "skills": [],
+   "sprite": "/assets/sakutto.png",
+   "spriteWalk": "/assets/sakutto_walk.png",
+   "avatar": 0,
+   "sessions": [
+    {
+     "session": "sess-xl-0018",
+     "state": "resting",
+     "age": 156
+    }
+   ],
+   "work": {
+    "now": [
+     "scene3d の骨格"
+    ],
+    "next": [
+     "robot.js"
+    ],
+    "done": [
+     "静的ルート"
+    ],
+    "counts": {
+     "pending": 2,
+     "in_progress": 1,
+     "completed": 3
+    }
+   },
+   "disp": "works 19号",
+   "vendor": "codex"
+  },
+  {
+   "projectId": "ed80eafc49e7",
+   "session": "sess-xl-0019",
+   "name": "ai-office 20号",
+   "role": "司令塔",
+   "cwd": "/Users/test/works",
+   "branch": "main",
+   "crew": 1,
+   "state": "resting",
+   "kind": "idle",
+   "verb": "休憩中",
+   "target": "",
+   "age": 163,
+   "minions": 0,
+   "pending": false,
+   "attention": false,
+   "approvalMin": 0,
+   "question": "",
+   "stuckTool": "",
+   "lastSaid": "デプロイを流します",
+   "lastOrder": "本番へ出して",
+   "feed": [
+    "実行中 deploy.sh",
+    "編集中 worker.js"
+   ],
+   "skills": [],
+   "sprite": "/assets/works_hq.png",
+   "spriteWalk": "/assets/works_hq_walk.png",
+   "avatar": 1,
+   "sessions": [
+    {
+     "session": "sess-xl-0019",
+     "state": "resting",
+     "age": 163
+    }
+   ],
+   "disp": "ai-office 20号",
+   "vendor": "codex"
+  },
+  {
+   "projectId": "ba6657eaee25",
+   "session": "sess-xl-0020",
+   "name": "blog 21号",
+   "role": "記事制作",
+   "cwd": "/Users/test/works/Blog_",
+   "branch": "main",
+   "crew": 1,
+   "state": "resting",
+   "kind": "think",
+   "verb": "読み込み中",
+   "target": "draft.md",
+   "age": 170,
+   "minions": 0,
+   "pending": false,
+   "attention": false,
+   "approvalMin": 0,
+   "question": "",
+   "stuckTool": "",
+   "lastSaid": "",
+   "lastOrder": "",
+   "feed": [
+    "読み込み中 draft.md"
+   ],
+   "skills": [],
+   "sprite": "/assets/blog.png",
+   "spriteWalk": "/assets/blog_walk.png",
+   "avatar": 2,
+   "sessions": [
+    {
+     "session": "sess-xl-0020",
+     "state": "resting",
+     "age": 170
+    }
+   ],
+   "disp": "blog 21号",
+   "vendor": "codex"
+  },
+  {
+   "projectId": "a257bd60da6b",
+   "session": "sess-xl-0021",
+   "name": "video 22号",
+   "role": "本編カット",
+   "cwd": "/Users/test/works/Claudecode",
+   "branch": "main",
+   "crew": 1,
+   "state": "resting",
+   "kind": "idle",
+   "verb": "考え中…",
+   "target": "",
+   "age": 177,
+   "minions": 0,
+   "pending": false,
+   "attention": false,
+   "approvalMin": 0,
+   "question": "",
+   "stuckTool": "",
+   "lastSaid": "",
+   "lastOrder": "カットを詰めて",
+   "feed": [
+    "考え中…"
+   ],
+   "skills": [],
+   "sprite": "/assets/video.png",
+   "spriteWalk": "/assets/video_walk.png",
+   "avatar": 3,
+   "sessions": [
+    {
+     "session": "sess-xl-0021",
+     "state": "resting",
+     "age": 177
+    }
+   ],
+   "disp": "video 22号",
+   "vendor": "openclaw"
+  }
+ ],
+ "rosterCounts": {
+  "total": 9,
+  "working": 5,
+  "waiting": 2,
+  "resting": 2,
+  "attention": 2
+ },
+ "avatarMode": "session"
+}

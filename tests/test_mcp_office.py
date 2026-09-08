@@ -11,7 +11,9 @@ import sys
 import tempfile
 import time
 import unittest
+from datetime import date, datetime
 from pathlib import Path
+from unittest.mock import patch
 
 TESTS = Path(__file__).resolve().parent
 ROOT = TESTS.parent
@@ -80,7 +82,8 @@ class McpSubprocessTest(unittest.TestCase):
         self.assertIn("tools", byid[1]["result"]["capabilities"])
         self.assertEqual(byid[1]["result"]["serverInfo"]["name"], "aioffice")
         tools = byid[2]["result"]["tools"]
-        self.assertEqual(len(tools), 2)
+        self.assertEqual(len(tools), 3)
+        self.assertEqual({t["name"] for t in tools}, {"office_status", "office_instruct", "office_digest"})
         self.assertTrue(all(t["inputSchema"]["type"] == "object" for t in tools))
         self.assertFalse(byid[3]["result"]["isError"])           # 投函成功
         inbox = home / ".claude" / "office_inbox" / "sess-mcp00000001.json"
@@ -96,7 +99,44 @@ class McpSubprocessTest(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertEqual(len(resps), 2)
         self.assertEqual(resps[0]["result"]["serverInfo"]["name"], "aioffice")
-        self.assertEqual(len(resps[1]["result"]["tools"]), 2)
+        self.assertEqual(len(resps[1]["result"]["tools"]), 3)
+
+    def test_digest_stdio_day_default_privacy_and_eof(self):
+        home = _make_home()
+        spec = importlib.util.spec_from_file_location("mcp_digest_test", ROOT / "server/mcp_office.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        timeline = module.office.office_timeline
+        db = timeline._connect(home / timeline.DB_FILE)
+        ts = datetime(2026, 8, 1, 12).timestamp()
+        try:
+            db.execute("INSERT INTO sessions VALUES (?,?,?,?,?,?,?)",
+                       ("PRIVATE_SESSION", "claude", "PRIVATE_PATH", "project-a", "works 6号", ts, ts))
+            timeline._event(db, {"sid": "PRIVATE_SESSION", "ev": "TaskCompleted", "ts": ts,
+                                 "task": "PRIVATE_TASK", "tgt": "PRIVATE_BODY"})
+            db.commit()
+        finally:
+            db.close()
+        timeline.mark_seen(home)   # Digest tool requests the whole day, not unread-only data.
+        requests = [{"jsonrpc": "2.0", "id": i, "method": "tools/call",
+                     "params": {"name": "office_digest", "arguments": args}}
+                    for i, args in enumerate([{"day": "2026-08-01"}, {}, {"day": "2026-02-30"},
+                                               {"day": "../bad"}, {"day": 42}, [],
+                                               {"day": None}, {"extra": "x"}], 1)]
+        rc, responses, err, _ = self._spawn(requests, home=home)
+        self.assertEqual(rc, 0)
+        self.assertEqual(err, "")
+        self.assertEqual(len(responses), len(requests))
+        first = responses[0]["result"]
+        self.assertFalse(first["isError"])
+        text = first["content"][0]["text"]
+        self.assertIn("2026-08-01", text)
+        self.assertIn("works 6号", text)
+        self.assertIn("✅1件", text)
+        self.assertNotIn("PRIVATE_", text)
+        self.assertFalse(responses[1]["result"]["isError"])
+        self.assertIn(date.today().isoformat(), responses[1]["result"]["content"][0]["text"])
+        self.assertTrue(all(r["result"]["isError"] for r in responses[2:]))
 
     def test_id_zero_gets_response(self):
         _rc, resps, _e, _h = self._spawn([{"jsonrpc": "2.0", "id": 0, "method": "ping"}])
@@ -240,6 +280,14 @@ class McpResolveTest(unittest.TestCase):
     def test_import_no_env_mutation(self):
         # importlib ロードだけで OFFICE_DATA が変化しないこと（_adopt_p4_data は main からのみ）
         self.assertEqual(os.environ.get("OFFICE_DATA"), self._env_data)
+
+    def test_digest_stats_fallback_has_no_message_body(self):
+        with patch.object(self.m.office, "_notification_digest", return_value=None), \
+                patch.object(self.m.office, "_load_daily_stats", return_value={
+                    "answered": 2, "totalWaitSec": 360, "text": "PRIVATE_BODY"}):
+            text, error = self.m._tool_digest({"day": "2026-08-01"})
+        self.assertFalse(error)
+        self.assertEqual(text, "🏢 2026-08-01 — ❗2件に答えた（平均 3分）")
 
     def test_resolve_exact(self):
         self._emp("sess-abcdef01", "AI Office")

@@ -18,6 +18,9 @@ import tempfile
 import time
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
+# R90-S1: 製品の既定スタイル iso（方向C）を検査する。
+STYLE = os.environ.get("UI_STYLE", "iso")
+
 
 
 def free_port():
@@ -71,7 +74,7 @@ def main():
                     if m.type == "error" else None)
             page.route("**/api/office*", lambda route: route.fulfill(
                 status=200, content_type="application/json; charset=utf-8", body=payload))
-            page.goto(f"http://127.0.0.1:{port}/?ui=iso&t=3.2&seed=11")
+            page.goto(f"http://127.0.0.1:{port}/?ui={STYLE}&t=3.2&seed=11")
             page.wait_for_function("window.__office && window.__office.ready", timeout=30000)
 
             # (1) ➕新プロジェクト: pick(注入dir) → 名前入力 → 登録 → config+起動マーカー

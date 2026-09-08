@@ -65,6 +65,7 @@ def parse_openclaw_status(raw, now, lang="ja"):
         employees.append({
             "session": f"oc-{agent_id}",
             "external": "openclaw",
+            "vendor": "openclaw",
             "site": meta["site"],
             "dept": name,
             "role": channel,

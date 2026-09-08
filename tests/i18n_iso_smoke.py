@@ -18,6 +18,9 @@ import sys
 import time
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
+# R90-S1: 製品の既定スタイル iso（方向C）を検査する。
+STYLE = os.environ.get("UI_STYLE", "iso")
+
 sys.path.insert(0, str(ROOT / "tools"))
 from ui_shot import SWIFTSHADER, VIEWPORT, free_port  # noqa: E402
 
@@ -63,7 +66,7 @@ def main():
             page.on("pageerror", lambda e: errors.append(f"pageerror: {e}"))
             page.on("console", lambda m: errors.append(f"console.error: {m.text}")
                     if m.type == "error" else None)
-            page.goto(f"http://127.0.0.1:{port}/?ui=iso&demo=1&t=3.2&seed=11")
+            page.goto(f"http://127.0.0.1:{port}/?ui={STYLE}&demo=1&t=3.2&seed=11")
             page.wait_for_function("window.__office && window.__office.ready", timeout=30000)
             page.wait_for_timeout(400)
 

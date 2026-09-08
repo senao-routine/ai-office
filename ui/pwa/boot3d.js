@@ -16,7 +16,17 @@ const host = document.getElementById("scene3d");
 let scene = null;
 if (host) {
   try {
-    scene = new IsoScene(host);
+    // isoの現行APIはlocation.searchから品質を読む。同期生成中だけmobileを
+    // 指定し、直後にURLを復元する（履歴追加なし・3Dソースと操作系は共通のまま）。
+    const originalURL = location.href;
+    const mobileURL = new URL(originalURL);
+    mobileURL.searchParams.set("quality", "mobile");
+    try {
+      history.replaceState(history.state, "", mobileURL.href);
+      scene = new IsoScene(host, { quality: "mobile" });
+    } finally {
+      history.replaceState(history.state, "", originalURL);
+    }
   } catch (err) {
     document.dispatchEvent(new CustomEvent("scene3d-failed", {
       detail: { reason: String((err && err.message) || err) },
