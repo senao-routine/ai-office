@@ -435,11 +435,15 @@ def _sanitize_work_for_relay(work):
     return result
 
 
-def _scrub_feed_line(ln):
-    """S3: feed行のパスを末尾名へ縮め、長い本文（コマンド/パターン/URL/指示文）を切り詰める。
-    先頭の動詞ラベル（実行中/編集中…＝describe_tool由来）は保つ＝「何をしているか」は伝わる。"""
-    if not isinstance(ln, str):
-        return ln
+def _scrub_text_for_relay(text, limit):
+    """パスは末尾名へ、URL はホスト名へ縮めてから `limit` 字で切る。
+
+    **縮約と長さ制限を分ける**のが要点（2026-09-08）。以前は `_scrub_feed_line` が
+    末尾で 60 字に切っていたので、それを detail に流用すると「一行要約は 200 字」という
+    R90 の裁定が黙って 60 字へ縮んだ。用途ごとに長さを渡す。
+    """
+    if not isinstance(text, str):
+        return text
     def replace_path(match):
         token = match.group(0)
         trailing = ""
@@ -449,9 +453,14 @@ def _scrub_feed_line(ln):
         return (Path(token).name if token else "") + trailing
     # URLを先に処理する（パス正規表現が `https://…` の `//…` を先に食うと token/query が残る）。
     # scheme ごとホスト名だけへ縮める（クエリ/パスに機微が乗りうる）。
-    scrubbed = re.sub(r"https?://([^/\s?#]+)\S*", r"\1", ln)
-    scrubbed = _WORK_PATH_RE.sub(replace_path, scrubbed)
-    return scrubbed[:60]
+    scrubbed = re.sub(r"https?://([^/\s?#]+)\S*", r"\1", text)
+    return _WORK_PATH_RE.sub(replace_path, scrubbed)[:limit]
+
+
+def _scrub_feed_line(ln):
+    """S3: feed行のパスを末尾名へ縮め、長い本文（コマンド/パターン/URL/指示文）を切り詰める。
+    先頭の動詞ラベル（実行中/編集中…＝describe_tool由来）は保つ＝「何をしているか」は伝わる。"""
+    return _scrub_text_for_relay(ln, 60) if isinstance(ln, str) else ln
 
 
 def _answer_text(ask, text):
@@ -480,7 +489,12 @@ def _redact_entry_for_relay(e):
     if not RELAY_TITLES and "title" in e:
         e["title"] = ""                    # R85-1: opt-out時はリネーム名も根元遮断
     if "detail" in e:
-        e["detail"] = e["detail"][:200] if (RELAY_DETAIL and isinstance(e["detail"], str)) else ""
+        # 2026-09-08: **detail も feed と同じスクラブを通す**。R90 の裁定で「一行要約は中継に載せる」
+        # と決めたが、載せてよいのは「何をしているか」であって**パスや URL ではない**。
+        # detail は Haiku が生成する自由文で、実測で `/Users/<実名>/project/…/office_server.py を直した`
+        # のような絶対パスがそのまま入る＝Cloudflare とスマホへ実名パスが出ていた（feed は縮んでいた）。
+        e["detail"] = (_scrub_text_for_relay(e["detail"], 200)
+                       if (RELAY_DETAIL and isinstance(e["detail"], str)) else "")
     if isinstance(e.get("sessions"), list):
         e["sessions"] = [{k: v for k, v in s.items() if k in _ALLOW_SESSION}
                          for s in e["sessions"] if isinstance(s, dict)]

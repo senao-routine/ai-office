@@ -791,6 +791,37 @@ class RelayAgentTest(unittest.TestCase):
 class AllowlistRedactionTest(unittest.TestCase):
     """R90-D12: relay redaction は allowlist。office_json に足した新フィールドは既定で中継に載らない。"""
 
+    def test_detail_is_path_scrubbed_like_feed(self):
+        """R90 裁定で detail は中継に載せるが、載せてよいのは「何をしているか」だけ。
+
+        detail は Haiku が書く自由文で、実測で絶対パスや URL がそのまま入る。
+        feed は _scrub_feed_line を通っていたのに detail だけ素通りしていて、
+        Cloudflare とスマホへ実名パスが出ていた（2026-09-08 の監査で発覚）。
+        """
+        office = {"employees": [{"session": "s1",
+                                 "detail": "/Users/someone/work/proj/server/app.py を直した"},
+                                {"session": "s2",
+                                 "detail": "https://internal.example.com/x?token=abc を確認"}],
+                  "roster": [], "history": []}
+        out = ra._redact_office_for_relay(office)
+        first, second = out["employees"][0]["detail"], out["employees"][1]["detail"]
+        self.assertNotIn("/Users/", first)
+        self.assertIn("app.py", first)                 # 何をしているかは残る
+        self.assertNotIn("token=abc", second)
+        self.assertNotIn("https://", second)
+        self.assertIn("internal.example.com", second)  # ホストまでは残す（feed と同じ規則）
+
+        # ★長さ制限は用途ごとに違う（2026-09-08 に一度踏んだ）。縮約関数を feed から流用した結果、
+        # 「一行要約は200字」という R90 の裁定が黙って60字へ縮んでいた。両方を同時に固定する。
+        long_text = "verify を回して指摘を直し、golden を撮り直してから公開リポへ反映しています。" * 3
+        out2 = ra._redact_office_for_relay(
+            {"employees": [{"session": "s3", "detail": long_text, "feed": [long_text]}],
+             "roster": [], "history": []})
+        entry = out2["employees"][0]
+        self.assertGreater(len(entry["detail"]), 60)        # feed の 60 字で切られていない
+        self.assertLessEqual(len(entry["detail"]), 200)     # 裁定どおり 200 字
+        self.assertLessEqual(len(entry["feed"][0]), 60)     # feed は従来どおり 60 字
+
     def test_unknown_and_local_only_keys_are_dropped(self):
         snap = {"employees": [{"session": "s1", "state": "working", "bg": {"detail": "x", "fan": {}},
                                "pid": 123, "tokens": 999, "homeCwd": "/Users/x/p", "zzz": 1, "detail": "verify 中"}],

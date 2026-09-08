@@ -84,7 +84,7 @@ function sceneShell3D(){var room=document.getElementById("room");if(!room)return
 var dock=el("div",null);dock.id="dock";var cards=el("section",null);cards.id="attncards";cards.setAttribute("aria-live","polite");dock.appendChild(cards);room.appendChild(dock);
 var info=el("div",null);info.id="infodock";var tk=el("button",null);tk.id="ticker";tk.type="button";tk.addEventListener("click",function(){var e=TICKER_CUR&&officeAgents(LAST_OFFICE).filter(function(x){return x&&x.session===TICKER_CUR})[0];if(e)openSheet(e)});info.appendChild(tk);dock.appendChild(info);
 var wrap=el("div",null);wrap.id="scene3dwrap";var host=el("div",null);host.id="scene3d";var plates=el("div",null);plates.id="plates";wrap.appendChild(host);wrap.appendChild(plates);room.appendChild(wrap);
-var top=el("div",null);top.id="topdock";var rs=el("div",null);rs.id="roster";rs.setAttribute("aria-label",T("メンバー","Members"));top.appendChild(rs);room.appendChild(top);
+var top=el("div",null);top.id="topdock";var rs=el("div",null);rs.id="roster";rs.setAttribute("aria-label",T("セッション一覧","Sessions"));top.appendChild(rs);room.appendChild(top);
 var gb=el("button",null);gb.id="gaugebar";gb.type="button";gb.title=T("タップで詳細（AI利用枠・中継）","Tap for details (AI quota, relay)");gb.addEventListener("click",openRes);info.appendChild(gb);
 // ヘッダー・タブの実寸に追従（safe-area、オフライン帯、回転を含む）。
 var header=document.querySelector(".topbar"),tabs=document.getElementById("tabbar");

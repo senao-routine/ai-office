@@ -98,8 +98,15 @@ Updates and the Routine Labo community are on the [product page](https://routine
 
 ## Uninstalling
 
+Stop the daemons first — `uninstall.sh` deliberately does not run `launchctl` for you
+(unregistering a login item is your call), so it stops and tells you what to run if either
+label is still registered:
+
 ```bash
-bash macapp/uninstall.sh              # remove the daemon and code; keep data/config
+launchctl bootout gui/$(id -u)/com.senao.aioffice
+launchctl bootout gui/$(id -u)/com.senao.aioffice.relay   # if you enabled phone delivery
+
+bash macapp/uninstall.sh              # remove the plists and code; keep data/config
 bash macapp/uninstall.sh --purge-data # also remove app data/config
 ```
 

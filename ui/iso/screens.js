@@ -8,17 +8,28 @@ const count = (value) => Number.isFinite(Number(value)) ? Math.max(0, Math.floor
 // office-json's work.counts uses these three keys; done/total is derived from them.
 const countsOf = (agent) => ["completed", "in_progress", "pending"].map((key) => count(agent?.work?.counts?.[key]));
 
-export function screenTexture(height = H) {
+function canvasTexture(width, height) {
   const canvas = document.createElement("canvas");
-  canvas.width = W; canvas.height = height;
+  canvas.width = width; canvas.height = height;
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   return texture;
 }
 
-function clear(texture, color = "#f1ede7", y = 0) {
+export function screenTexture(seats = DESK_SLOTS) {
+  const cols = Math.ceil(Math.sqrt(seats)), rows = Math.ceil(seats / cols);
+  const texture = canvasTexture(W * cols, H * rows);
+  texture.userData = { seats, cols, rows };
+  // Mip levels would blend adjacent seats when monitors shrink in the office view.
+  texture.generateMipmaps = false;
+  texture.minFilter = texture.magFilter = THREE.LinearFilter;
+  return texture;
+}
+
+function clear(texture, color = "#f1ede7", y = 0, x = 0) {
   const ctx = texture.image.getContext("2d");
-  ctx.save(); ctx.translate(0, y);
+  ctx.save(); ctx.translate(x, y);
+  ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.clip();
   ctx.fillStyle = color; ctx.fillRect(0, 0, W, H);
   return ctx;
 }
@@ -34,8 +45,18 @@ export function reportGeometry(width, height, daily = false) {
   return geometry;
 }
 
-function paintMonitor(texture, agent, activity, state, counts) {
-  const ctx = clear(texture);
+export function monitorGeometry(width, height, texture, slot) {
+  const { cols, rows } = texture.userData;
+  // Canvas rows run downwards; CanvasTexture's flipped UV rows run upwards.
+  const col = slot % cols, row = rows - 1 - Math.floor(slot / cols);
+  const geometry = new THREE.PlaneGeometry(width, height), uv = geometry.getAttribute("uv");
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) / cols + col / cols, uv.getY(i) / rows + row / rows);
+  return geometry;
+}
+
+function paintMonitor(texture, slot, agent, activity, state, counts) {
+  const { cols } = texture.userData;
+  const ctx = clear(texture, "#f1ede7", Math.floor(slot / cols) * H, (slot % cols) * W);
   // 状態帯は 512x320 の 32px = 10% では俯瞰（モニタが約70px幅）で色が読めない。
   // 実測で 64px（20%）にすると office のズームでも状態が分かる（R90-V6・Claude 実測）。
   ctx.fillStyle = COLORS[state]; ctx.fillRect(0, 0, W, 64);
@@ -81,7 +102,7 @@ function paintBoard(texture, counts) {
 }
 
 export function boardTexture() {
-  const texture = screenTexture(H * 2);
+  const texture = canvasTexture(W, H * 2);
   paintBoard(texture, [0, 0, 0]);
   return texture;
 }
@@ -100,53 +121,42 @@ function paintDaily(texture, sent, history) {
   finish(texture, ctx);
 }
 
-/** Persistent seat canvases/maps and one shared MeshBasicMaterial across all tiers.
- * The daily screen shares that material too; boards retain their existing material.
- */
+/** One seat atlas/material per tier; the report canvas remains separately owned. */
 export class ActivityScreens {
   constructor(board, seats = DESK_SLOTS) {
-    this.maps = Array.from({ length: seats }, () => screenTexture());
+    this.texture = screenTexture(seats);
     this.daily = board;
     this.board = board;
-    this.material = new THREE.MeshBasicMaterial({ map: this.maps[0], toneMapped: false, side: THREE.DoubleSide });
+    this.material = new THREE.MeshBasicMaterial({ map: this.texture, toneMapped: false, side: THREE.DoubleSide });
+    this.dailyMaterial = new THREE.MeshBasicMaterial({ map: this.daily, toneMapped: false, side: THREE.DoubleSide });
     this.keys = [];
     this.update({ agents: [], seats: new Map() });
   }
 
-  bind(mesh, texture) {
-    mesh.material = this.material;
-    mesh.onBeforeRender = () => {
-      if (this.material.map === texture) return;
-      this.material.map = texture;
-      // WebGLRenderer caches uniforms by material id. Invalidate the material version
-      // so consecutive meshes upload their own map; the shader program is reused.
-      this.material.needsUpdate = true;
-    };
-    return mesh;
-  }
-
   resize(seats) {
-    while (this.maps.length < seats) this.maps.push(screenTexture());
-    while (this.maps.length > seats) this.maps.pop().dispose();
-    this.keys.length = Math.min(this.keys.length, seats);
+    if (seats === this.texture.userData.seats) return;
+    this.texture.dispose();
+    this.texture = screenTexture(seats);
+    this.material.map = this.texture;
+    this.keys = [];
   }
 
   update(world) {
     const agents = world.agents || [], seated = new Map();
     for (const agent of agents) {
       const slot = world.seats?.get(agent.id);
-      if (Number.isInteger(slot) && slot >= 0 && slot < this.maps.length) seated.set(slot, agent);
+      if (Number.isInteger(slot) && slot >= 0 && slot < this.texture.userData.seats) seated.set(slot, agent);
     }
-    this.maps.forEach((texture, slot) => {
+    for (let slot = 0; slot < this.texture.userData.seats; slot++) {
       const agent = seated.get(slot), activity = agent?.activity || agent?.verb || "";
       const state = agent?.attention || agent?.state === "attention" ? "attention"
         : agent?.state === "working" ? "working" : agent?.state === "waiting" ? "waiting" : "resting";
       const counts = countsOf(agent);
       const key = JSON.stringify([agent?.id ?? null, activity, state, ...counts]);
-      if (key === this.keys[slot]) return;
-      paintMonitor(texture, agent, activity, state, counts);
+      if (key === this.keys[slot]) continue;
+      paintMonitor(this.texture, slot, agent, activity, state, counts);
       this.keys[slot] = key;
-    });
+    }
     // Shared office totals, just like the HUD's work-count aggregation.
     const totals = agents.reduce((sum, agent) => countsOf(agent).map((n, i) => sum[i] + n), [0, 0, 0]);
     const boardKey = totals.join(":");
@@ -162,7 +172,8 @@ export class ActivityScreens {
 
   dispose() {
     // The shared report canvas is owned by the existing board material.
-    for (const texture of this.maps) texture.dispose();
+    this.texture.dispose();
     this.material.dispose();
+    this.dailyMaterial.dispose();
   }
 }

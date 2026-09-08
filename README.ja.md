@@ -102,8 +102,15 @@ Cloudflare のログイン、トークンと通知鍵の生成、デプロイ、
 
 ## アンインストール
 
+先に常駐を止めてください。`uninstall.sh` は **意図的に `launchctl` を実行しません**
+（ログイン項目の解除はあなたの操作にしています）。登録が残っていると、何を実行すればよいかを
+表示して止まります。
+
 ```bash
-bash macapp/uninstall.sh              # 常駐とコードを削除（設定・データは残す）
+launchctl bootout gui/$(id -u)/com.senao.aioffice
+launchctl bootout gui/$(id -u)/com.senao.aioffice.relay   # スマホ配達を有効にしていた場合
+
+bash macapp/uninstall.sh              # plist とコードを削除（設定・データは残す）
 bash macapp/uninstall.sh --purge-data # アプリの設定・データも削除
 ```
 

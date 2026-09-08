@@ -82,7 +82,7 @@ const population = (n, level) => buildWorld({ roster: Array.from({ length: n }, 
   ({ session: `worker-${i}`, state: "working" })),
   ...(level == null ? {} : { growth: { office: { level } } }) });
 
-test("static replacement retains actors, camera, selection, materials and screen maps; 22→10 stays XL", () => {
+test("static replacement retains actors, camera, selection and materials; atlas grows once; 22→10 stays XL", () => {
   resetRand();
   const scene = Object.create(IsoScene.prototype);
   scene.scene = new THREE.Scene(); scene.materials = makeMaterials();
@@ -98,10 +98,12 @@ test("static replacement retains actors, camera, selection, materials and screen
   scene._focusId = "worker-0"; scene._userPan = { x: 2, y: -1 }; scene.viewScale = 1.14;
   scene.contentBox = new THREE.Box3(); scene._fitShadowCamera = () => {};
   scene.resize = () => assert.fail("live growth reset camera framing");
-  const maps = [...scene.displays.maps], materials = Object.values(scene.materials);
+  const atlas = scene.displays.texture, screenMaterial = scene.displays.material;
+  const dailyMaterial = scene.displays.dailyMaterial, materials = Object.values(scene.materials);
   const original = scene.staticMeshes;
   const poses = actor.nodes, path = actor.path, yaw = actor.trYaw;
-  let disposed = 0, lightDisposed = 0;
+  let disposed = 0, lightDisposed = 0, atlasDisposed = 0;
+  atlas.addEventListener("dispose", () => atlasDisposed++);
   for (const mesh of original) mesh.geometry.addEventListener("dispose", () => disposed++);
   scene.materials.floor.lightMap.addEventListener("dispose", () => lightDisposed++);
   const beforeRand = randState();
@@ -113,20 +115,74 @@ test("static replacement retains actors, camera, selection, materials and screen
   assert.equal(scene.camera.zoom, 1.7); assert.equal(scene._focusId, "worker-0");
   assert.deepEqual(scene._userPan, { x: 2, y: -1 }); assert.equal(scene.viewScale, 1.14);
   assert.deepEqual(Object.values(scene.materials), materials);
-  assert.deepEqual(scene.displays.maps.slice(0, 12), maps);
-  assert.equal(scene.displays.maps.length, 24); assert.equal(randState(), beforeRand);
+  assert.equal(atlasDisposed, 1); assert.notEqual(scene.displays.texture, atlas);
+  assert.equal(scene.displays.material, screenMaterial);
+  assert.equal(scene.displays.material.map, scene.displays.texture);
+  assert.equal(scene.displays.dailyMaterial, dailyMaterial);
+  assert.equal(dailyMaterial.map, scene.materials.board.map);
+  assert.deepEqual(scene.displays.texture.userData, { seats: 24, cols: 5, rows: 5 });
+  assert.equal(randState(), beforeRand);
   assert.equal(scene.projectSignAnchors().length, 12);
-  const xl = scene.staticMeshes;
+  const xl = scene.staticMeshes, xlAtlas = scene.displays.texture;
   scene.prepareWorld(population(10)); assert.equal(scene.staticMeshes, xl);
   scene.prepareWorld(population(10, 8)); assert.notEqual(scene.staticMeshes, xl);
   assert.ok(!scene.model.anchors.meeting.byRoom.meet4);
   const lv8 = scene.staticMeshes;
   scene.prepareWorld(population(10, 9)); assert.equal(scene.staticMeshes, lv8, "no rebuild between unlocks");
   scene.prepareWorld(population(10, 20));
+  assert.equal(scene.displays.texture, xlAtlas, "same seat count retains its atlas across rebuilds");
   assert.equal(scene.spec.decor.cafe, true);
   assert.equal(scene.spec.id, "XL", "server level changes cannot shrink population capacity");
   assert.equal(scene.actors.get("worker-0"), actor);
   scene._disposeStatic(); scene.displays.dispose();
+});
+
+test("all tier monitor UVs sample their own upright canvas tile; reports stay separate; shrink disposes", () => {
+  const materials = makeMaterials(), displays = new ActivityScreens(materials.board.map);
+  const material = displays.material, report = displays.dailyMaterial;
+  for (const spec of [LAYOUT_SPECS.XL, LAYOUT_SPECS.L, M, LAYOUT_SPECS.S]) {
+    const model = buildLayout(spec), n = model.anchors.desk.length;
+    const previous = displays.texture;
+    let disposed = 0;
+    previous.addEventListener("dispose", () => disposed++);
+    displays.resize(n);
+    assert.equal(disposed, 1);
+    displays.update(population(n));
+    assert.equal(displays.keys.length, n, "every tile is repainted after resizing");
+    const version = displays.texture.version;
+    displays.update(population(n));
+    assert.equal(displays.texture.version, version, "identical state avoids a texture upload");
+    const monitors = buildMonitors(displays, materials, model);
+    const seats = monitors.children.filter(mesh => mesh.name.startsWith("monitor:seat:"));
+    assert.equal(seats.length, n);
+    const canvas = displays.texture.image;
+    assert.equal(canvas.width, Math.ceil(Math.sqrt(n)) * 512);
+    assert.equal(displays.texture.generateMipmaps, false);
+    for (const [slot, mesh] of seats.entries()) {
+      assert.equal(mesh.material, material);
+      assert.equal(mesh.material.map, displays.texture);
+      assert.equal(Object.hasOwn(mesh, "onBeforeRender"), false);
+      const uv = mesh.geometry.getAttribute("uv");
+      // Three's real texture transform includes flipY. Sample both top and bottom
+      // of each plane to catch upside-down rows as well as the wrong tile index.
+      for (const v of [.1, .9]) {
+        const point = new THREE.Vector2((uv.getX(0) + uv.getX(1)) / 2,
+          uv.getY(2) * (1 - v) + uv.getY(0) * v);
+        displays.texture.transformUv(point);
+        const x = point.x * canvas.width, y = point.y * canvas.height;
+        assert.equal(Math.floor(y / 320) * (canvas.width / 512) + Math.floor(x / 512), slot);
+        assert.ok(Math.abs((y % 320) - (1 - v) * 320) < .001, "tile stays upright");
+      }
+    }
+    assert.equal(monitors.getObjectByName("screen:daily").material, report);
+    assert.notEqual(report, material); assert.equal(report.map, materials.board.map);
+    for (const mesh of monitors.children) mesh.geometry?.dispose();
+  }
+  let disposed = 0, reportDisposed = 0;
+  displays.texture.addEventListener("dispose", () => disposed++);
+  report.addEventListener("dispose", () => reportDisposed++);
+  displays.dispose();
+  assert.equal(disposed, 1); assert.equal(reportDisposed, 1);
 });
 
 test("every tier builds deterministic static batches with one mesh per material key", () => {

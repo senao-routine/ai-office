@@ -30,6 +30,8 @@ fast_lane() {
     && ok "層lint（core が DOM/通信/乱数に触っていない）" || { ng "層lint"; echo "$out"; }
   out=$(python3 tools/css_var_lint.py 2>&1) \
     && ok "CSS変数lint（未定義の var() は黙って無視される）" || { ng "CSS変数lint"; echo "$out"; }
+  out=$(python3 tools/mjs_wire_lint.py 2>&1) \
+    && ok "配線lint（tests/*.mjs が全部ゲートから走る）" || { ng "配線lint"; echo "$out"; }
   local jsng=0
   for f in $(find ui -name '*.js' -not -path 'ui/vendor/*' 2>/dev/null); do
     node --check "$f" 2>/dev/null || { echo "    構文エラー: $f"; jsng=1; }

@@ -7,7 +7,7 @@ import { addPlant } from "./plants.js";
 import { rand } from "/ui/platform/clock.js";
 import { slab, flat, at } from "./kit.js";
 import * as kit from "./kit.js";
-import { reportGeometry } from "./screens.js";
+import { monitorGeometry, reportGeometry } from "./screens.js";
 import { DEFAULT_SPEC, FURNITURE as F } from "/ui/core/layout_specs.js";
 import { buildLayout } from "/ui/core/layout.js";
 
@@ -390,7 +390,7 @@ export function buildMonitors(displays, materials, model = defaultModel) {
         matrix: at(mx, LAYOUT.deskZone.lift + F.desk.h + .18, z) });
       parts.push({ geometry: slab(0.44, 0.03, 0.26, 0.05), material: "dark",
         matrix: at(mx, LAYOUT.deskZone.lift + F.desk.h + .015, z) });
-      const scr = displays.bind(new THREE.Mesh(new THREE.PlaneGeometry(1.32, 0.76), displays.material), displays.maps[i]);
+      const scr = new THREE.Mesh(monitorGeometry(1.32, 0.76, displays.texture, i), displays.material);
       scr.name = `monitor:seat:${i}`;
       scr.position.set(mx, y, z + (front > 0 ? 0.05 : -0.05));
       scr.rotation.y = yaw;
@@ -423,7 +423,7 @@ export function buildMonitors(displays, materials, model = defaultModel) {
   const dx = reception.x - .43, dy = reception.h + .55;
   parts.push({ geometry: slab(2.12, .04, .96, .04), material: "dark",
     matrix: upright(dx, dy, rz + .05) });
-  const daily = displays.bind(new THREE.Mesh(reportGeometry(2.02, .86, true), displays.material), displays.daily);
+  const daily = new THREE.Mesh(reportGeometry(2.02, .86, true), displays.dailyMaterial);
   daily.name = "screen:daily"; daily.position.set(dx, dy, rz + .08); screens.push(daily);
 
   const clock = new THREE.Group();

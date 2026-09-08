@@ -18,13 +18,19 @@ if [ ! -e "$DEST/app/server/office_server.py" ] && [ ! -e "$DEST/com.senao.aioff
 fi
 
 if [ "$TESTMODE" = "0" ]; then
+  # launchctl はこのスクリプトが実行しない（ログイン永続の系統変更はユーザーの操作）。
+  # ただし**登録されているラベルは全部まとめて出す**（2026-09-08）。以前は最初の1つで exit していたので
+  # 「実行→boutout→実行→bootout→実行」と3往復させていた。何をすればいいかは1回で全部伝える。
+  STUCK=""
   for lbl in "$AIOFFICE_LABEL" "$AIOFFICE_RELAY_LABEL"; do
-    if launchctl print "gui/$(id -u)/$lbl" >/dev/null 2>&1; then
-      echo "⚠ 常駐($lbl)がまだ登録されています。先にあなたの操作で外してください:"
-      echo "   launchctl bootout gui/\$(id -u)/$lbl"
-      exit 1
-    fi
+    launchctl print "gui/$(id -u)/$lbl" >/dev/null 2>&1 && STUCK="$STUCK $lbl"
   done
+  if [ -n "$STUCK" ]; then
+    echo "⚠ 常駐がまだ登録されています。先に次を実行してから、もう一度このスクリプトを実行してください:"
+    for lbl in $STUCK; do echo "   launchctl bootout gui/\$(id -u)/$lbl"; done
+    echo "   （このスクリプトは launchctl を実行しません＝ログイン永続の変更はあなたの操作にします）"
+    exit 1
+  fi
   rm -f "$AIOFFICE_PLIST" "$AIOFFICE_RELAY_PLIST" && echo "✓ plist 削除: office + relay"
   rm -f "$HOME/Library/Application Support/SwiftBar/Plugins/aioffice.5s.sh" 2>/dev/null
 else

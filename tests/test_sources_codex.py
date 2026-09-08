@@ -101,6 +101,22 @@ class ParseTest(unittest.TestCase):
                 self.threads[0].update(updated_at=NOW - age, archived=archived)
                 self.assertEqual(len(self.parse()[0]), count)
 
+    def test_finished_exec_is_resting_not_waiting(self):
+        """`exec` はターンが終わるとプロセスごと消える＝指示は届かない。
+
+        `waiting` にすると listening=True になり、オフィスが「ここに送れます」と言うが
+        `codex queue` は失敗する。実測: 監査ワークフロー1本で終わった exec が52体
+        「指示待ち」で並び、対話セッションが埋もれた（2026-09-08）。
+        対話（cli/vscode）は人が座っているので waiting のままでよい。
+        """
+        self.turns[PARENT_A] = {"status": "completed", "completed_at": NOW - 10}
+        for value, expected in (("exec", "resting"), ("cli", "waiting"), ("vscode", "waiting")):
+            with self.subTest(source=value):
+                self.threads[0].update(source=value, updated_at=NOW - 5)
+                employee = self.parse()[0][0]
+                self.assertEqual(employee["state"], expected)
+                self.assertIs(employee["listening"], expected != "resting")
+
     def test_exec_threads_use_the_short_window(self):
         """`codex exec` は一発仕事＝終わったらオフィスに居ない。対話セッションは 3 時間のまま。
 
@@ -219,7 +235,9 @@ class DatabaseTest(unittest.TestCase):
         employees, meta = self.employees()
         self.assertEqual(meta, {"connected": True, "n": 2, "children": 1})
         self.assertEqual([e["session"] for e in employees], ["cx-" + PARENT_A, "cx-" + PARENT_B])
-        self.assertEqual([e["state"] for e in employees], ["working", "waiting"])
+        # PARENT_B は fixture で source="exec"＝終わった exec はプロセスが消えている。
+        # 2026-09-08 以降 waiting（指示待ち）にはしない（届かない相手を待たせない）。
+        self.assertEqual([e["state"] for e in employees], ["working", "resting"])
         self.assertEqual([e["minions"] for e in employees], [1, 0])
         self.assertEqual(employees[0]["verb"], "実行中")
         self.assertEqual(self.employees("en")[0][0]["verb"], "running")

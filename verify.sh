@@ -47,8 +47,16 @@ python3 tools/js_layer_lint.py || ng "R50 層lint 違反（core の逆流）"
 # R90: 未定義の CSS 変数は CSS がエラーにせず黙って無視する＝カードの背景だけ透明、のような
 # 「目で見るまで分からない壊れ方」になる（2026-09-08 にダイジェストのカードで実発生）。
 python3 tools/css_var_lint.py || ng "R90 CSS変数lint 違反（未定義の var()）"
+python3 tools/mjs_wire_lint.py || ng "R90 配線lint（tests/*.mjs が走っていない）"
 if command -v node >/dev/null 2>&1; then
-  node --test tests/sound.test.mjs || ng "R90 通知音・frozen境界"
+  # R90: presentation 側（ui/iso・ui/hud・ui/platform）の node テスト。
+  # ★ここに**全部**列挙する。R90 で6本作ったのに、sound だけ配線して残り5本（33件）が
+  #   どのゲートからも呼ばれていなかった（2026-09-08 の監査で発覚）。
+  #   `tests/*.test.mjs` を glob で拾わないのは、relay 側（wrangler 前提）の .mjs を
+  #   巻き込まないため。足したらこの行に足す。
+  node --test tests/sound.test.mjs tests/hire_onboarding.test.mjs tests/hud_growth_frozen.test.mjs \
+    tests/iso_acts.mjs tests/iso_floor_ao.mjs tests/iso_growth.test.mjs tests/stream.test.mjs \
+    || ng "R90 presentation の node テスト（音・雇う・成長・所作・床AO・ティア・配信）"
   UIJS_NG=0
   for F in $(find ui -name '*.js' -not -path 'ui/vendor/*' 2>/dev/null); do
     node --check "$F" >/dev/null 2>&1 || { echo "    構文エラー: $F"; UIJS_NG=1; }
@@ -507,6 +515,8 @@ elif [ -x "$VENV_PY" ] && "$VENV_PY" -c 'import playwright' >/dev/null 2>&1 \
     "http://127.0.0.1:$TPORT" tests/artifacts/ui_webgl_fallback.png
   # R50提案2c: 新UIの日本語文字カナリア（lang=en で日本語0・旧i18n_smokeの新UI版）
   run_ui "R50 新UI i18nカナリア" "$VENV_PY" tests/i18n_iso_smoke.py
+  # A shared material must sample each seat's atlas tile in the actual framebuffer.
+  run_ui "R90 席モニタ12色・日報分離スモーク" "$VENV_PY" tests/iso_screens_smoke.py
   # R50: 新UIのビジュアル回帰。自前でサーバーを立て /api/office を fixture で差し替えるので
   # 実セッションの状態に左右されない。バックエンドは SwiftShader 固定（実測でビット一致）。
   # R90-S1: 製品の見た目は iso（方向C）1本。

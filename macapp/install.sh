@@ -111,20 +111,6 @@ PLIST
 if [ "${1:-}" = "--print-plist" ]; then gen_plist -; exit 0; fi
 if [ "${1:-}" = "--print-relay-plist" ]; then gen_relay_plist -; exit 0; fi
 
-# R42.5: --edition claude|openclaw|hybrid ＝ data/ config の "edition" キーを設定
-# （config正本の単一集約点は変えない・他キー温存のRMW。不正値は副作用前に拒否）
-EDITION=""
-_argv=("$@")
-for ((_i=0; _i<${#_argv[@]}; _i++)); do
-  if [ "${_argv[$_i]}" = "--edition" ]; then
-    EDITION="${_argv[$((_i+1))]:-}"
-    case "$EDITION" in
-      claude|openclaw|hybrid) ;;
-      *) echo "✗ --edition は claude|openclaw|hybrid のいずれか（指定=${EDITION}）"; exit 1;;
-    esac
-  fi
-done
-
 echo "▶ AI Office 常駐インストール → $DEST"
 
 # --- 1) コード配置（rsync --delete・除外=キャッシュ/秘密） ---
@@ -150,25 +136,6 @@ if [ ! -f "$DATA/office_config.json" ] || [ "${1:-}" = "--seed-config" ]; then
   echo "  ✓ config をシード（$(basename "$_CFG_SRC")）"
 else
   echo "  - config は既存を温存（強制再シード= --seed-config）"
-fi
-if [ -n "$EDITION" ]; then
-  "$PYBIN" - "$DATA/office_config.json" "$EDITION" <<'PYEOF'
-import json
-import sys
-from pathlib import Path
-p = Path(sys.argv[1])
-try:
-    d = json.loads(p.read_text(encoding="utf-8"))
-except (OSError, json.JSONDecodeError):
-    d = {"projects": {}}
-if not isinstance(d, dict):
-    d = {"projects": {}}
-d["edition"] = sys.argv[2]
-tmp = p.with_name(p.name + ".tmp")
-tmp.write_text(json.dumps(d, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
-tmp.replace(p)
-print(f"  ✓ edition = {sys.argv[2]} を data config へ設定")
-PYEOF
 fi
 echo "  ✓ データ → data/（config追記は非破壊）"
 

@@ -149,7 +149,14 @@ def parse_codex(threads, edges, turns, last_item_type, now, lang="ja"):
         state = "resting"
         if turn.get("status") == "inProgress" and started > 0 and now - started < TURN_ALIVE:
             state = "working"
-        elif turn.get("status") == "completed" and completed > 0 and now - completed < TURN_ALIVE:
+        elif (turn.get("status") == "completed" and completed > 0
+              and now - completed < TURN_ALIVE and source != "exec"):
+            # 2026-09-08: **`exec` はターンが終わったらプロセスごと消えている**。
+            # `waiting`（指示待ち）にすると `listening=True` になり、オフィスが
+            # 「ここに指示を送れます」と言うが `codex queue` は届かない＝嘘になる。
+            # 実測: 監査ワークフローを1本回しただけで、終わった exec が 52 体
+            # 「指示待ち」で並び、対話セッションが埋もれた。
+            # 対話（cli/vscode）は人が座っているので waiting のままでよい。
             state = "waiting"
         verb = VERB.get(last_item_type.get(thread_id), ("作業中", "working"))[lang == "en"]
         name = _text(thread.get("name"))

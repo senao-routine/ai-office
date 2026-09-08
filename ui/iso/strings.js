@@ -268,7 +268,12 @@ const DICT = {
     np_name_ph: "プロジェクト名（例: ブログ編集）",
     np_launch: " Terminal で claude を起動",
     np_go: "入社させる",
-    np_joined: (n) => `🎉 ${n} が入社しました`,
+    np_joined: (n) => `🎉 ${n} が出勤しました`,
+    // 2026-09-08: 起動をチェックしても Terminal が上がらないことがある（Automation の
+    // TCC 同意待ち・claude 未インストール等）。**登録できただけ**のときに「出勤しました」と
+    // 言うと、空のオフィスを見て行き止まりになる。何が起きたかを分けて伝える。
+    np_registered: (n) => `${n} を登録しました（まだ出勤していません）`,
+    np_launch_failed: "Terminal を起動できませんでした。そのフォルダで claude を開くと出勤します",
     // 📱スマホ連携
     pair_issuing: "デバイスを発行しています…",
     pair_device_label: "スマホ",
@@ -606,6 +611,8 @@ const DICT = {
     np_launch: " Launch claude in Terminal",
     np_go: "Hire",
     np_joined: (n) => `🎉 ${n} joined the office`,
+    np_registered: (n) => `${n} is registered (not on duty yet)`,
+    np_launch_failed: "Could not launch Terminal. Open claude in that folder to bring it on duty",
     pair_issuing: "Issuing a device…",
     pair_device_label: "Phone",
     pair_qr_alt: "Pairing QR",

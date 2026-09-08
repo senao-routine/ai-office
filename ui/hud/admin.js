@@ -103,9 +103,18 @@ export function init({ root, shell, T, lang, setLang, getWorld, applyStaticStrin
     go.addEventListener("click", async () => {
       go.disabled = true;
       try {
-        await newProject(picked.path, nameIn.value.trim(),
+        // 2026-09-08: サーバは `launched` を返すのに、UI が結果を見ずに常に
+        // 「出勤しました」と言っていた。起動をチェックしても Terminal が上がらないことがある
+        // （Automation の TCC 同意待ち・claude 未インストール）ので、**登録できただけ**のときに
+        // 出勤したと言うと、空のオフィスを見て行き止まりになる。何が起きたかを分けて伝える。
+        const res = await newProject(picked.path, nameIn.value.trim(),
           { launch: cbLaunch.checked });
-        showToast(T("np_joined", nameIn.value.trim() || picked.suggest));
+        const label = nameIn.value.trim() || picked.suggest;
+        if (cbLaunch.checked && res && res.launched === false) {
+          showToast(`${T("np_registered", label)} — ${T("np_launch_failed")}`, false);
+        } else {
+          showToast(T(cbLaunch.checked ? "np_joined" : "np_registered", label));
+        }
         closeModal();
       } catch (err) {
         go.disabled = false;

@@ -8,8 +8,8 @@ import { runInNewContext } from "node:vm";
 import { APP_HTML } from "../relay/src/app_html.js";
 import { MODULES, ASSETS } from "../relay/src/modules_data.js";
 
-const EXPECT_SHA256 = "a12d3bc40b70579882c0758fa32d65d24341c94533b80941689ac5659828c9e3";
-const EXPECT_BYTES = 106072;   // R90-P2: ▶実行タブの id 属性修正（tb_run hidden_lb → tb_run_lb）
+const EXPECT_SHA256 = "1a22b8467b94b3a1b01e1149dc3c47dc3ff857cf235895d8c3191e75a76f8a8d";
+const EXPECT_BYTES = 106082;   // 2026-09-08: ロスターの aria-label を用語ポリシーへ（メンバー→セッション一覧）
 const actual = createHash("sha256").update(APP_HTML, "utf8").digest("hex");
 assert.equal(actual, EXPECT_SHA256, "APP_HTML が方向Cの配信バイト列と不一致");
 assert.equal(Buffer.byteLength(APP_HTML, "utf8"), EXPECT_BYTES);

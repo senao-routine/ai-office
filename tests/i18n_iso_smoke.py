@@ -101,7 +101,11 @@ def main():
             # 画面の呼称は「プロジェクト/セッション/サブエージェント」の3語に統一したので、
             # 廃止した語がUI文字列（strings.js と PWA）へ戻ってきたらここで落とす。
             banned = ["社員", "メンバー", "キャラクター", "部署", "部下"]
-            sources = [pathlib.Path("ui/iso/strings.js"), pathlib.Path("relay/src/worker.js")]
+            # R90: PWA の**原本**（ui/pwa/*）も見る。relay/src/worker.js と app_html.js は
+            # 生成物なので、原本を直さないと次の生成で戻る。実際に app.js の aria-label へ
+            # 「メンバー」が入り、本番のスマホまで出ていた（2026-09-08 の監査で発覚）。
+            sources = [pathlib.Path("ui/iso/strings.js"), pathlib.Path("relay/src/worker.js"),
+                       pathlib.Path("ui/pwa/app.js"), pathlib.Path("ui/pwa/app.html")]
             leaks = []
             for src in sources:
                 body = src.read_text(encoding="utf-8")
