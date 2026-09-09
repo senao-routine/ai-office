@@ -79,6 +79,9 @@ export async function projectIdForPath(path) {
 }
 export const setProjectArch = (projectId, arch) =>
   api("/api/project/arch", { method: "POST", body: { projectId, arch } });
+/** R91: アバター1体の見た目。scope="session"=この個体だけ／"project"=このフォルダ全員。 */
+export const setAvatarStyle = (avatarId, scope, style) =>
+  api("/api/avatar/style", { method: "POST", body: { avatarId, scope, ...style } });
 export const hireSession = (projectId, prompt, worktree = false) =>
   api("/api/hire", { method: "POST", body: { projectId, prompt, worktree } });
 export const newProject = (path, name, { launch = true } = {}) =>

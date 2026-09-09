@@ -24,7 +24,9 @@ import {
 } from "./office.js";
 import {
   LOBSTER_TINT, GRAPHITE_TINT, RobotBatch, applyPose, makeChibiSkeleton, makeCleanerBot, makeSkeleton,
+  shellTintFor,
 } from "./robot.js";
+import { SHELL_COLORS } from "/ui/core/archetype.js";
 import { assignMeetingRooms, assignRestSpots, assignSeats, assignOverflow, stableIndex } from "/ui/core/world.js";
 
 import { ActivityScreens, boardTexture } from "./screens.js";
@@ -1000,6 +1002,7 @@ export class IsoScene {
       // R80.7: タップ挨拶＝腕を上げて振る＋ぴょこ＋首かしげ（0.9秒・タップ起点のみ
       // ＝goldenは不変）。ポーズ適用の直後・root配置の前に上書きする。
       actor.agentArch = agent.arch || null;
+      actor.shellColor = agent.arch?.color || null;
       actor.expression = !attention && !frozen && (levelUp || (approved && t - approved.at < .9))
         ? "happy" : act.expr;
       if (this._greet && this._greet.has(agent.id)) {
@@ -1099,7 +1102,8 @@ export class IsoScene {
     for (const [aid, actor] of this.actors) {
       if (n++ >= CAPACITY) break;
       this.robots.push(actor.nodes, actor.accent || null,
-        actor.lobster ? LOBSTER_TINT : actor.graphite ? GRAPHITE_TINT : null,
+        this._shellTint(actor.shellColor, actor.vendor)
+          || (actor.lobster ? LOBSTER_TINT : actor.graphite ? GRAPHITE_TINT : null),
         this._archFor(actor.agentArch, aid), actor.vendor, actor.expression, actor.prop);
     }
     // Reuse this.model.bossWalk's north lane for patrol and an out-and-back welcome trip.
@@ -1346,6 +1350,19 @@ export class IsoScene {
   }
 
   /** core/archetype.js の {kind,tint,acc} を THREE.Color 化してキャッシュ（毎フレーム確保しない）。 */
+  /** 殻の色は「名前→THREE.Color」を1度だけ作って使い回す（毎フレーム生成しない）。 */
+  _shellTint(name, vendor) {
+    if (typeof name !== "string" || !Object.hasOwn(SHELL_COLORS, name)) return null;
+    this._shellCache = this._shellCache || new Map();
+    const key = `${vendor}:${name}`;
+    let hit = this._shellCache.get(key);
+    if (!hit) {
+      hit = shellTintFor(vendor, SHELL_COLORS[name].tint);
+      this._shellCache.set(key, hit);
+    }
+    return hit;
+  }
+
   _archFor(arch, cacheKey) {
     if (!arch) return null;
     this._archCache = this._archCache || new Map();

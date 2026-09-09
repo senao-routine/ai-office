@@ -1,5 +1,5 @@
-import { ACCESSORIES } from "/ui/core/archetype.js";
-import { setProjectArch } from "/ui/platform/api.js";
+import { ACCESSORIES, SHELL_COLORS } from "/ui/core/archetype.js";
+import { setAvatarStyle } from "/ui/platform/api.js";
 import { frozen } from "/ui/platform/clock.js";
 import { createSoundNotifications, setSound, soundOn } from "/ui/platform/sound.js";
 
@@ -7,7 +7,7 @@ const VIEW_KEY = "aioffice.iso.camera";
 const VIEWS = Object.freeze({ compact: { az: 45, el: 50, zoom: 1.05 },
   standard: { az: 45, el: 40, zoom: 1 }, stream: { az: 38, el: 36, zoom: .94 } });
 
-export function init({ shell, T, scene, DEMO, stream, refresh, showToast, openCompose,
+export function init({ shell, T, scene, DEMO, stream, refresh, showToast,
   modals: { modal, mEl, openModal, closeModal } }) {
   let view = "standard", consent = null;
   if (!frozen) {
@@ -30,28 +30,71 @@ export function init({ shell, T, scene, DEMO, stream, refresh, showToast, openCo
     }
     consent.append(message); shell.querySelector("#stage").append(consent);
   } });
+  // R91: 本人指摘「統一で全部変わるぐらいだったら中途半端」への回答。
+  // ①入口はシートの🎨（名札クリックは会話へ）②既定は「この1体だけ」③帽子に加えて殻の色。
+  let scope = "session";
   const openAccessories = (agent) => {
-    modal.replaceChildren(mEl("b", "mtitle", `${agent.name} · ${T("arch_title")}`));
     const editable = !DEMO && !stream.enabled && !agent.external && /^[0-9a-f]{12}$/.test(agent.id);
-    const choices = mEl("div", "accessory-choices");
-    for (const value of [null, ...Object.keys(ACCESSORIES)]) {
-      const selected = value === null ? agent.arch?.kind === "generic" : ACCESSORIES[value] === agent.arch?.kind
-        || value === "phones" && agent.arch?.kind === "audio";
-      const b = mEl("button", `mkeybtn${selected ? " on" : ""}`, T(`arch_${value || "none"}`));
-      b.type = "button"; b.disabled = !editable;
-      b.setAttribute("aria-pressed", String(selected));
-      b.addEventListener("click", async () => {
-        for (const button of choices.children) button.disabled = true;
-        try { await setProjectArch(agent.id, value); closeModal(); refresh(); }
-        catch (err) { showToast(err.message, false); for (const button of choices.children) button.disabled = false; }
-      });
-      choices.append(b);
-    }
-    modal.append(choices);
-    if (!editable) modal.append(mEl("p", "mnote", T("arch_readonly")));
-    const chat = mEl("button", "mgo", T("arch_chat")); chat.type = "button";
-    chat.addEventListener("click", () => { closeModal(); openCompose(agent); });
-    modal.append(chat); openModal();
+    // 見出し＋操作の1行。設定モーダルの seg と同じ .mledform を使い、新しいCSSを増やさない。
+    const row = (title, node) => {
+      const box = mEl("div", "mledform");
+      box.append(mEl("span", "mledname", title), node);
+      return box;
+    };
+    const paint = () => {
+      modal.replaceChildren(mEl("b", "mtitle", `${agent.name} · ${T("avatar_title")}`));
+
+      const scopes = mEl("div", "accessory-choices tight");
+      for (const [value, label] of [["session", T("avatar_scope_session")],
+        ["project", T("avatar_scope_project")]]) {
+        const b = mEl("button", `mkeybtn${scope === value ? " on" : ""}`, label);
+        b.type = "button"; b.disabled = !editable;
+        b.setAttribute("aria-pressed", String(scope === value));
+        b.addEventListener("click", () => { scope = value; paint(); });
+        scopes.append(b);
+      }
+      modal.append(row(T("avatar_scope"), scopes));
+      modal.append(mEl("p", "mnote", T("avatar_scope_note")));
+
+      const save = async (style, buttons) => {
+        for (const b of buttons) b.disabled = true;
+        try { await setAvatarStyle(agent.id, scope, style); closeModal(); refresh(); }
+        catch (err) { showToast(err.message, false); for (const b of buttons) b.disabled = false; }
+      };
+
+      const choices = mEl("div", "accessory-choices");
+      for (const value of [null, ...Object.keys(ACCESSORIES)]) {
+        const selected = value === null ? agent.arch?.kind === "generic"
+          : ACCESSORIES[value] === agent.arch?.kind || value === "phones" && agent.arch?.kind === "audio";
+        const b = mEl("button", `mkeybtn${selected ? " on" : ""}`, T(`arch_${value || "none"}`));
+        b.type = "button"; b.disabled = !editable;
+        b.setAttribute("aria-pressed", String(selected));
+        b.addEventListener("click", () => save({ arch: value }, choices.children));
+        choices.append(b);
+      }
+      modal.append(row(T("arch_title"), choices));
+
+      const swatches = mEl("div", "color-choices");
+      for (const value of [null, ...Object.keys(SHELL_COLORS)]) {
+        const selected = value === null ? !agent.arch?.color : agent.arch?.color === value;
+        const b = mEl("button", `swatch${selected ? " on" : ""}`);
+        b.type = "button"; b.disabled = !editable;
+        b.title = T(`color_${value || "default"}`);
+        b.setAttribute("aria-label", b.title);
+        b.setAttribute("aria-pressed", String(selected));
+        if (value) b.style.setProperty("--sw", SHELL_COLORS[value].swatch);
+        else b.classList.add("swatch-none");
+        b.addEventListener("click", () => save({ color: value }, swatches.children));
+        swatches.append(b);
+      }
+      modal.append(row(T("avatar_color"), swatches));
+
+      if (!editable) modal.append(mEl("p", "mnote", T("arch_readonly")));
+      // 会話へ戻る導線は置かない＝この画面はシートの🎨から来るので、閉じれば会話が残っている
+    };
+    scope = "session";
+    paint();
+    openModal();
   };
   const renderSettings = (seg, repaint) => {
     seg(T("snd_title"), [["off", T("sound_off")], ["on", T("sound_on")]], soundOn() ? "on" : "off", (value) => {

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { archetypeFor } from "./archetype.js";
+import { archetypeFor, SHELL_COLORS } from "./archetype.js";
 
 test("キーワードで職業が決まる（名前/role/deptのどれでも）", () => {
   assert.equal(archetypeFor({ name: "動画編集ライン" }).kind, "video");
@@ -32,5 +32,28 @@ test("tint/acc は 0..1 のRGB", () => {
     const r = archetypeFor({ name });
     for (const v of r.tint) assert.ok(v >= 0 && v <= 1);
     if (r.acc) for (const v of r.acc) assert.ok(v >= 0 && v <= 1);
+  }
+});
+
+test("R91: 殻の色は職業判定と直交する（帽子は帽子のまま・未知の色は無視）", () => {
+  const dev = archetypeFor({ id: "a", name: "開発ツール" });
+  const tinted = archetypeFor({ id: "a", name: "開発ツール", color: "sage" });
+  assert.equal(tinted.kind, dev.kind);
+  assert.deepEqual(tinted.acc, dev.acc);
+  assert.deepEqual(tinted.tint, SHELL_COLORS.sage.tint);
+  assert.equal(tinted.color, "sage");
+  // 明示アクセサリと併用しても両方効く
+  const both = archetypeFor({ id: "a", name: "開発ツール", arch: "beret", color: "clay" });
+  assert.equal(both.kind, "design");
+  assert.deepEqual(both.tint, SHELL_COLORS.clay.tint);
+  // 未知の色は既定へ戻る（サーバーが弾いた後の最後の砦）。
+  // 継承プロパティ名（toString/constructor 等）でも崩れない＝own-prop 索引
+  for (const bad of ["neon", "toString", "constructor", "__proto__", 3, null]) {
+    assert.deepEqual(archetypeFor({ id: "a", name: "開発ツール", color: bad }), dev, String(bad));
+  }
+  // スウォッチは全色そろっている（カスタマイズ画面が空チップを出さない）
+  for (const [name, v] of Object.entries(SHELL_COLORS)) {
+    assert.match(v.swatch, /^#[0-9a-f]{6}$/, name);
+    assert.equal(v.tint.length, 3, name);
   }
 });

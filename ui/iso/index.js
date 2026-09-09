@@ -102,6 +102,8 @@ export async function mount(root) {
           <header class="sheethead">
             <b id="sheetname"></b>
             <span class="sheettools">
+              <button class="sheetterm" id="sheetarch" type="button">🎨</button>
+              <button class="sheetterm sheetwide" id="sheetwide" type="button">⤢</button>
               <button class="sheetterm" id="sheetterm" type="button">🖥</button>
               <button class="sheetsnd" id="sheetsnd" type="button">🔇</button>
               <button class="sheetclose" id="sheetclose" type="button">✕</button>
@@ -163,28 +165,38 @@ export async function mount(root) {
   shell.addEventListener("click", (e) => {
     if (!usage.contains(e.target)) setUsageOpen(false);
   });
-  const summarizeGauges = () => {
-    const parts = [...gaugesEl.querySelectorAll(".gprov")].map((box) => {
-      const name = box.querySelector(".gname")?.textContent || "";
-      const pct = box.querySelector(".gpct")?.textContent || "";
-      const plan = box.querySelector(".gplan")?.textContent || "";
-      const sub = box.querySelector(".gsub")?.textContent || "";
-      const windowLabel = sub.split(" · ")[0];
-      const qualifier = plan === T("g_pace_chip") ? plan
-        : windowLabel === T("g_win_5h") ? T("board_window_5h")
-        : windowLabel === T("g_win_week") ? T("g_win_week") : "";
-      return [name, qualifier, pct || sub].filter(Boolean).join(" ");
-    });
-    const summary = shell.querySelector("#usage-summary");
-    summary.textContent = parts.length && !gaugesEl.hidden
-      ? parts.join(" · ") : T("gauge_credits");
-    summary.title = summary.textContent;
+  // R91: ヘッダーは「テキストの要約」から「実際のゲージ」へ。ドロワーを開かなくても
+  // 残枠の減り方が常に見える（本人要望）。値は gauges.js が描いたのと同じ実測 pin＝
+  // DOMを読み直して要約する旧実装（表示が変わると壊れる）をやめる。
+  const summaryEl = shell.querySelector("#usage-summary");
+  const paintPins = (pins) => {
+    summaryEl.replaceChildren();
+    if (!pins.length) {
+      summaryEl.textContent = T("gauge_credits");
+      summaryEl.title = T("gauge_credits");
+      usage.hidden = gaugesEl.hidden;
+      return;
+    }
+    const words = [];
+    let prevWho = null;
+    for (const p of pins) {
+      // 同じプロバイダが続くときは名前を繰り返さない（"Claude Code 5時間枠 / 週間枠"）
+      const short = p.who && p.who === prevWho && p.window ? p.window : (p.label || p.who || "");
+      prevWho = p.who || null;
+      const chip = el("span", "gpin");
+      const bar = el("span", "gpbar");
+      const fill = el("i", p.warn ? "gpfill warn" : "gpfill");
+      fill.style.width = `${Math.max(2, Math.round(p.pct))}%`;
+      bar.append(fill);
+      chip.append(el("span", "gplab", short), bar,
+        el("b", p.warn ? "gppct warn" : "gppct", `${Math.round(p.pct)}%`));
+      summaryEl.append(chip);
+      words.push(`${p.label || p.who} ${Math.round(p.pct)}%`);
+    }
+    summaryEl.title = words.join(" · ");
     usage.hidden = gaugesEl.hidden;
   };
-  const gaugeObserver = new MutationObserver(summarizeGauges);
-  gaugeObserver.observe(gaugesEl, { childList: true, subtree: true, characterData: true,
-    attributes: true, attributeFilter: ["hidden"] });
-  summarizeGauges();
+  paintPins([]);
   gaugesEl.addEventListener("click", () => setUsageOpen(false));
   shell.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && usage.classList.contains("open")) {
@@ -293,6 +305,8 @@ export async function mount(root) {
     getTemplates: () => admin.getTemplates(),
     openTemplateEditor: (text) => admin.openTemplateEditor(text),
     paintGrowth: growth.paintSheet,
+    // customize は下で作る（クリック時にしか呼ばれないので束縛は間に合う）
+    openCustomize: (a) => customize.openAccessories(a),
   });
   const { openCompose, jumpTerminal } = sheet;
   const tray = initTray({ ...common, el, attnKeyFor, delivery, sheet, modals });
@@ -318,12 +332,15 @@ export async function mount(root) {
       e.target.click();
     }
   });
+  // R91: 名札クリックは会話（＝この人の様子）へ。見た目の変更はシートの🎨に移した
+  //（本人指摘「名前をクリックしたらセッションのやり取りの項目が表示されて、
+  //   このアバターをカスタマイズ、という感じの方がいい」）。
   shell.querySelector("#labels").addEventListener("click", (e) => {
     if (stream.enabled) return;
     const chip = e.target.closest(".lbl");
     if (!chip) return;
     const a = (built?.agents || []).find((x) => x.id === chip.dataset.project);
-    if (a) customize.openAccessories(a);
+    if (a) openCompose(a);
   });
   shell.querySelector("#labels").addEventListener("keydown", (e) => {
     if ((e.key === "Enter" || e.key === " ") && e.target.matches(".lbl")) {
@@ -419,7 +436,7 @@ export async function mount(root) {
     // （実測）。描画状態 hoverId に記録し、paintLabels が毎フレーム反映する（wakeと同じ型）
     shell._fx.hoverId = id || null;
   });
-  const customize = initCustomize({ shell, T, scene, DEMO, stream, modals, openCompose,
+  const customize = initCustomize({ shell, T, scene, DEMO, stream, modals,
     refresh: () => stop.refresh?.(), showToast: delivery.showToast });
   const admin = initAdmin({
     ...common, root, lang, setLang, modals, billingOf, fmtTok,
@@ -458,7 +475,7 @@ export async function mount(root) {
     },
   );
 
-  const gauges = initGauges({ ...common, lang });
+  const gauges = initGauges({ ...common, lang, onPins: paintPins });
 
   if (DEMO) {
     // 🎬デモ: 同梱worldを1回だけ読む（ポーリングしない・実セッション不要）。
@@ -496,7 +513,6 @@ export async function mount(root) {
   return () => {
     stopEvents(); stop(); stopLoop(); uninstall();
     window.removeEventListener("resize", onResize);
-    gaugeObserver.disconnect();
     broadcast.dispose();
     hire.dispose(); onboarding.dispose(); customize.dispose();
     digest.dispose(); tray.dispose(); sheet.dispose(); delivery.dispose(); gauges.dispose();
@@ -697,6 +713,13 @@ function applyStaticStrings(shell) {
   shell.querySelector("#sub").textContent = T("loading");
   shell.querySelector("#sheetsnd").title = T("snd_title");
   shell.querySelector("#sheetterm").title = T("term_title");
+  // R91: 追加した2つも同じ経路で貼り直す（init で1度だけ付けると言語切替で置き去りになる）
+  for (const [id, key] of [["#sheetarch", "avatar_customize"], ["#sheetwide", "sheet_wide"]]) {
+    const b = shell.querySelector(id);
+    if (!b) continue;
+    b.title = T(key);
+    b.setAttribute("aria-label", T(key));
+  }
   shell.querySelector("#composeinput").placeholder = T("compose_ph");
   // R80-B6: 3D不可の案内は mount 時（＝office_json の lang 到着前）に作られるので、
   // 言語が確定したここで必ず貼り直す（旧: 日本語UIに英語の案内が出ていた）

@@ -13,7 +13,7 @@ export const fmtTok = (v) => v >= 1e9 ? `${(v / 1e9).toFixed(1)}B` :
   v >= 1e6 ? `${(v / 1e6).toFixed(1)}M` : v >= 1e3 ? `${(v / 1e3).toFixed(1)}K` : String(v);
 
 /** ctx: shell, T, lang, getWorld() */
-export function init({ shell, T, lang, getWorld }) {
+export function init({ shell, T, lang, getWorld, onPins = () => {} }) {
   let kicked = false;
   // ── 経費ゲージ（左サイドバー常設・status_board 60秒ポーリング） ──────
   const gaugesEl = shell.querySelector("#gauges");
@@ -89,6 +89,7 @@ export function init({ shell, T, lang, getWorld }) {
       sb = await getStatusBoard();
     } catch {
       gaugesEl.hidden = true;                  // エラーは黙って畳む
+      onPins([]);
       return;
     }
     const jpy = sb.fx?.jpyPerUsd || 155;
@@ -100,11 +101,22 @@ export function init({ shell, T, lang, getWorld }) {
     const nowEpoch = Number(sb.generatedAt) || getWorld()?.generatedAt || 0;
     creditsBody.replaceChildren();
     moneyBody.replaceChildren();
+    // R91: ヘッダーへ出す常設ピン。ドロワーを開かなくても残枠が見える（本人要望
+    // 「どれぐらいゲージが減ってきたかが随時表示された方が、動かすときの目安になる」）。
+    // rank が小さいほど左＝実測のサブスク枠を先頭に、推定と従量課金は後ろ。
+    const pins = [];
+    const pin = (rank, who, window, pct) => {
+      if (pct == null || !Number.isFinite(Number(pct))) return;
+      const v = Math.max(0, Math.min(100, Number(pct)));
+      pins.push({ rank, who, window, label: [who, window].filter(Boolean).join(" "),
+                  pct: v, warn: v >= 80 });
+    };
     const renderProv = (pr) => {
       if (pr.kind === "gauge" && pr.status === "ok") {
         const pct = pr.usedPercent ?? 0;
         const box = provBlock(pr.label || pr.id, pr.plan || "", pct);
         acctChip(box, pr.account?.email);
+        pin(1, pr.label || pr.id, winLabel(pr.windowMinutes), pct);
         box.append(provBar(pct, pct >= 80));
         const sub = [winLabel(pr.windowMinutes), fmtRemain(pr.resetsAt, nowEpoch)]
           .filter(Boolean).join(" · ");
@@ -133,6 +145,7 @@ export function init({ shell, T, lang, getWorld }) {
       } else if (pr.kind === "external" && pr.connected && pr.cap) {
         const pct = pr.pct ?? 0;
         const box = provBlock(pr.label || pr.id, "", pct);
+        pin(3, pr.label || pr.id, "", pct);
         box.append(provBar(pct, pct >= 80));
         box.append(gEl("span", "gsub",
           `${fmtTok(pr.used || 0)} / ${fmtTok(pr.cap)}`));
@@ -167,12 +180,14 @@ export function init({ shell, T, lang, getWorld }) {
           for (const [w, lab] of [[live.fiveHour, T("g_win_5h")],
             [live.sevenDay, T("g_win_week")]]) {
             if (!w) continue;
+            pin(0, pr.label || pr.id, lab, w.pct);
             box.append(provBar(w.pct, w.pct >= 80));
             box.append(gEl("span", "gsub",
               [lab, fmtRemain(w.resetsAt, nowEpoch), `${Math.round(w.pct)}%`]
                 .filter(Boolean).join(" · ")));
           }
         } else if (pace) {
+          pin(2, pr.label || pr.id, T("g_pace_chip"), pace.pct);
           box.append(provBar(pace.pct, pace.pct >= 90));
           box.append(gEl("span", "gsub", T("g_pace_sub", fmtTok(pace.peak5h || 0))));
         }
@@ -213,6 +228,7 @@ export function init({ shell, T, lang, getWorld }) {
           pr.limitSource === "manual" ? T("api_budget_chip") : "",
           pr.pct != null ? pr.pct : null);
         if (pr.pct != null) {
+          pin(3, pr.label || pr.id, "", pr.pct);
           box.append(provBar(pr.pct, pr.pct >= 80));
           box.append(gEl("span", "gsub",
             `${money(pr.spentMonth || 0)} / ${money(pr.limit)}`));
@@ -251,10 +267,13 @@ export function init({ shell, T, lang, getWorld }) {
         (lvl >= 2 ? T("relay_throttled") : lvl >= 1 ? T("relay_slowed") : "");
       creditsBody.append(gEl("div", "gbillhead", T("relay_head")),
         gaugeRow(T("relay_today"), (Number(rl.pct) || 0) / 100, sub, rl.pct >= 70));
+      pin(4, T("relay_head"), "", rl.pct);
     }
     creditsCard.hidden = creditsBody.children.length === 0;
     moneyCard.hidden = moneyBody.children.length === 0;
     gaugesEl.hidden = creditsCard.hidden && moneyCard.hidden;
+    pins.sort((a, b) => a.rank - b.rank);
+    onPins(pins.slice(0, 4));
   };
   const gaugeTimer = frozen ? 0 : setInterval(refreshGauges, 60000);
 

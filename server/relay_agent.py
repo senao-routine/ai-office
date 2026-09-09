@@ -29,7 +29,8 @@ NET_ERRORS = (urllib.error.URLError, OSError, ValueError, http.client.HTTPExcept
 HERE = Path(__file__).resolve().parent
 if str(HERE) not in sys.path:          # exec_module 反復でも sys.path に重複挿入しない
     sys.path.insert(0, str(HERE))
-import office_server as office  # 同じ server/・標準ライブラリのみ（post_instruction / office_json）
+import office_server as office
+import office_actions  # 同じ server/・標準ライブラリのみ（post_instruction / office_json）
 import ws_client as wsc         # R79-8: RFC6455クライアント（同じ server/・stdlibのみ・KATはtest_ws_client）
 
 
@@ -381,7 +382,7 @@ _ALLOW_ENTRY = frozenset({
     "session", "state", "kind", "verb", "age", "mtime", "minions", "pending", "listening", "attention",
     "approvalMin", "question", "questionOptions", "stuckTool", "ask", "feed", "work", "skills",
     "dept", "role", "disp", "title", "name", "external", "site", "crew", "projectId", "sessions",
-    "vendor", "detail", "arch",
+    "vendor", "detail", "arch", "color",
     "lastSaid", "target", "lastOrder", "cwd", "branch",      # 互換（空文字化）
 })
 _ALLOW_SESSION = frozenset({"session", "state", "age", "attention", "minions", "pending", "vendor"})
@@ -435,6 +436,20 @@ def _sanitize_work_for_relay(work):
     return result
 
 
+# 2026-09-09（本人指摘）: works の `.env` は **API キーを取得してくるリスト**。
+# bg の一行要約 `detail` は Haiku が自由に書くので、パスだけでなく**キーの値そのもの**を
+# 書きうる（実測: `AWS_SECRET_ACCESS_KEY=AKIA…` はパス縮約を素通りした）。
+# `office_actions.scrub_output` が既に持っている秘密の伏字を**同じ定義で共有**する
+# （二重管理しない・向こうを強くすればこちらも強くなる）。
+_SECRET_RES = office_actions._SECRET_RES
+
+
+def _mask_secrets(text):
+    for rx in _SECRET_RES:
+        text = rx.sub("[secret]", text)
+    return text
+
+
 def _scrub_text_for_relay(text, limit):
     """パスは末尾名へ、URL はホスト名へ縮めてから `limit` 字で切る。
 
@@ -454,7 +469,7 @@ def _scrub_text_for_relay(text, limit):
     # URLを先に処理する（パス正規表現が `https://…` の `//…` を先に食うと token/query が残る）。
     # scheme ごとホスト名だけへ縮める（クエリ/パスに機微が乗りうる）。
     scrubbed = re.sub(r"https?://([^/\s?#]+)\S*", r"\1", text)
-    return _WORK_PATH_RE.sub(replace_path, scrubbed)[:limit]
+    return _mask_secrets(_WORK_PATH_RE.sub(replace_path, scrubbed))[:limit]
 
 
 def _scrub_feed_line(ln):

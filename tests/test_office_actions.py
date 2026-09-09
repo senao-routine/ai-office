@@ -180,6 +180,8 @@ class TestStartAction(unittest.TestCase):
     def setUp(self):
         oa._ACTIONS.clear()
         oa._ORDER.clear()
+        oa.RESULTS_FILE.unlink(missing_ok=True)   # R92: 前のテストの結果を持ち越さない
+        oa._FILE_CACHE.update(key=None, rows=[])
         os.environ["OFFICE_FAKE_CONFIRM"] = "ok"
 
     def tearDown(self):
@@ -270,6 +272,108 @@ class TestStartAction(unittest.TestCase):
         pub = oa.recipes_public([_valid(id="r_pub", cwd="/Users/me/secret")])
         self.assertEqual(set(pub[0]), {"id", "label", "dangerous", "returnOutput"})
         self.assertNotIn("secret", json.dumps(pub, ensure_ascii=False))
+
+
+class SharedResultsTest(unittest.TestCase):
+    """R92: 実行結果が**別プロセス**へ渡るか。
+
+    実行者は daemon、スマホへ配達する relay_agent は別プロセスで自分の office_json() を
+    組み立てる。メモリのレジストリしか見ていなかったので、スマホの ▶実行は ⏳ のまま
+    永久に結果が来なかった。ここでは「メモリを空にする＝別プロセス」で再現する。
+    """
+
+    def setUp(self):
+        oa._ACTIONS.clear()
+        oa._ORDER.clear()
+        oa.RESULTS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        oa.RESULTS_FILE.unlink(missing_ok=True)
+        oa._FILE_CACHE.update(key=None, rows=[])
+
+    def tearDown(self):
+        oa.RESULTS_FILE.unlink(missing_ok=True)
+        oa._FILE_CACHE.update(key=None, rows=[])
+
+    def _forget_memory(self):
+        """relay_agent 側のプロセスを模す（レジストリは空・ファイルだけが手掛かり）。"""
+        oa._ACTIONS.clear()
+        oa._ORDER.clear()
+        oa._FILE_CACHE.update(key=None, rows=[])
+
+    def test_a_result_reaches_a_process_that_did_not_run_it(self):
+        oa.register_result("req-cross01", "launch", "works", "done", exitCode=0)
+        self.assertEqual(oa.RESULTS_FILE.stat().st_mode & 0o777, 0o600)
+        self._forget_memory()
+        pub = oa.results_public()
+        self.assertEqual([r["reqId"] for r in pub], ["req-cross01"])
+        self.assertEqual(pub[0]["state"], "done")
+
+    def test_the_pending_spinner_also_crosses(self):
+        """予約した時点で ⏳ が見えないと、スマホはタップの手応えを失う。"""
+        oa.reserve_result("req-cross02", "run", "verify", recipe="r_x")
+        self._forget_memory()
+        self.assertEqual([r["state"] for r in oa.results_public()], ["running"])
+
+    def test_the_process_that_ran_it_wins_over_a_stale_file_copy(self):
+        record, _ = oa.reserve_result("req-cross03", "run", "verify", recipe="r_x")
+        oa._FILE_CACHE.update(key=None, rows=[])
+        stale = json.loads(oa.RESULTS_FILE.read_text())      # running のまま保存された版
+        oa.finish_result(record, "done", exitCode=0)
+        oa.RESULTS_FILE.write_text(json.dumps(stale), encoding="utf-8")
+        oa._FILE_CACHE.update(key=None, rows=[])
+        self.assertEqual([r["state"] for r in oa.results_public()], ["done"])
+
+    def test_a_running_row_nobody_is_watching_is_dropped_not_invented(self):
+        oa.reserve_result("req-cross04", "run", "verify", recipe="r_x")
+        oa._FILE_CACHE.update(key=None, rows=[])
+        rows = json.loads(oa.RESULTS_FILE.read_text())
+        self._forget_memory()
+        # timeoutSec の上限内ならまだ走っている可能性がある＝出す
+        rows["results"][0]["startedAt"] = time.time() - 60
+        oa.RESULTS_FILE.write_text(json.dumps(rows), encoding="utf-8")
+        oa._FILE_CACHE.update(key=None, rows=[])
+        self.assertEqual(len(oa.results_public()), 1)
+        # 上限を超えたら「結果不明」＝done/failed をでっち上げずに落とす
+        rows["results"][0]["startedAt"] = time.time() - oa.STALE_RUNNING_SEC - 1
+        oa.RESULTS_FILE.write_text(json.dumps(rows), encoding="utf-8")
+        oa._FILE_CACHE.update(key=None, rows=[])
+        self.assertEqual(oa.results_public(), [])
+
+    def test_a_hand_broken_file_cannot_take_down_the_office(self):
+        for junk in ['{"results": "nope"}', '{"results": [1, 2, {"reqId": 3}]}',
+                     '{"results": [{"reqId": "../../etc", "state": "done"}]}',
+                     'not json at all', '[]', '{}']:
+            oa.RESULTS_FILE.write_text(junk, encoding="utf-8")
+            oa._FILE_CACHE.update(key=None, rows=[])
+            self.assertEqual(oa.results_public(), [], junk)
+
+    def test_infinity_and_nan_in_the_file_do_not_kill_the_api(self):
+        """Astra レビュー指摘: JSON は Infinity/NaN/巨大整数を通し、int() で落ちる。"""
+        for bad in ("1e309", "-1e309", "NaN", "1" + "0" * 400):
+            oa.RESULTS_FILE.write_text(
+                '{"results": [{"reqId": "req-inf00001", "state": "done",'
+                f' "durationMs": {bad}, "bytes": {bad}, "startedAt": {bad}}}]}}',
+                encoding="utf-8")
+            oa._FILE_CACHE.update(key=None, rows=[])
+            pub = oa.results_public()          # 例外を出さないこと自体が検査
+            self.assertEqual([r["reqId"] for r in pub], ["req-inf00001"], bad)
+            self.assertEqual((pub[0]["durationMs"], pub[0]["bytes"], pub[0]["startedAt"]),
+                             (0, 0, 0), bad)
+
+    def test_the_file_never_leaks_argv_cwd_or_env(self):
+        oa.register_result("req-cross05", "run", "backup", "done",
+                           recipe="r_x", argv=["/bin/rm", "-rf", "/Users/me/secret"],
+                           cwd="/Users/me/secret")
+        saved = json.loads(oa.RESULTS_FILE.read_text())
+        self.assertNotIn("secret", json.dumps(saved, ensure_ascii=False))
+        self.assertEqual(set(saved["results"][0]) - set(oa._PUBLIC_KEYS), set())
+
+    def test_the_file_is_capped_like_the_registry(self):
+        for i in range(oa.RESULT_KEEP + 6):
+            oa.register_result(f"req-cap{i:04d}", "launch", "x", "done")
+        saved = json.loads(oa.RESULTS_FILE.read_text())
+        self.assertLessEqual(len(saved["results"]), oa.RESULT_KEEP)
+        self._forget_memory()
+        self.assertEqual(len(oa.results_public(limit=50)), oa.RESULT_KEEP)
 
 
 if __name__ == "__main__":

@@ -454,6 +454,37 @@ for _ in range(40):
 else:
     raise AssertionError("結果が現れない")
 EOF
+# ---- R92: 実行結果が「スマホが見る側」まで届くか ---------------------------------
+# ここが本丸。daemon の /api/office に出るのは前から動いていたが、relay_agent は
+# **別プロセスで自分の office_json() を組み立てる**ので、プロセスのメモリにしか無い
+# レジストリは relay 側から永久に空＝スマホの ▶実行は ⏳ のまま結果が来なかった。
+OFFICE_HOME="$ACT_HOME" RELAY_URL="$B" RELAY_TOKEN="$TOKEN" OFFICE_PORT=$ACT_PORT \
+  python3 server/relay_agent.py --once >> /tmp/act_relay.log 2>&1
+curl -s "$B/status" -H "Authorization: Bearer $TOKEN" > /tmp/act_status.json
+python3 - <<'EOF' && ok "R92 実行結果が中継の /status まで届く（スマホが受け取る側）" || ng "R92 実行結果が中継に載らない: $(head -c 200 /tmp/act_status.json)"
+import json
+d = json.load(open("/tmp/act_status.json"))
+# /status は本体を "json" に文字列で包む（外側は ok/ts/agentOnline/agentSeenAgo）
+office = json.loads(d["json"]) if isinstance(d.get("json"), str) else d
+rs = [r for r in (office.get("actions") or {}).get("results", [])
+      if r.get("reqId") == "req-e2e00001"]
+assert rs, f"結果が中継に無い: {json.dumps(office.get('actions'), ensure_ascii=False)[:400]}"
+assert rs[0]["state"] == "done", rs[0]
+assert "report.md" in rs[0].get("output", ""), rs[0]
+assert "/Users/" not in json.dumps(rs[0], ensure_ascii=False), rs[0]   # パスは出さない
+EOF
+# 保存ファイルにも構成情報（argv/cwd）を残さない
+python3 - "$ACT_HOME" <<'EOF' && ok "R92 結果の保存ファイルは0600・argv/cwdを持たない" || ng "R92 結果ファイルが不正"
+import json, os, sys
+p = os.path.join(sys.argv[1], ".claude", "office_action_results.json")
+assert os.path.exists(p), "結果ファイルが作られていない"
+assert oct(os.stat(p).st_mode & 0o777) == "0o600", oct(os.stat(p).st_mode)
+raw = open(p, encoding="utf-8").read()
+assert "argv" not in raw and "/tmp" not in raw, raw[:300]
+rows = json.loads(raw)["results"]
+assert any(r["reqId"] == "req-e2e00001" for r in rows), rows
+EOF
+
 # 未登録レシピは denied（許可リストの外は実行されない＝この機能の安全性の本体）
 ACTN2=$(python3 -c 'import secrets;print(secrets.token_hex(16))')
 ENV_ACT2=$(sign_env "act-00112233445566ee" '{"aioffice":1,"kind":"run","recipe":"r_notregistered","args":[],"reqId":"req-e2e00002"}' "$(date +%s)" "$ACTN2")

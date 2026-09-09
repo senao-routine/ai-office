@@ -70,6 +70,7 @@ bash setup.sh --no-daemon   # 常駐登録せず、その場で起動
 - `hooks/office-event.sh` — 記録フックのリポジトリ正本。`~/.claude/hooks/office-event.sh` に配布します。種別・識別子・件数・ファイルの basename など限られたメタデータだけを `~/.claude/office_events/<YYYY-MM-DD>.jsonl` に記録し、**プロンプト・コマンド・返答の本文は書きません**。
 - `~/.claude/office_timeline.sqlite` — ダイジェスト・リプレイ・XPのためのローカルDB。イベントや状態・返答待ちの区間を持ち、会話本文の列はありません。`~/.claude/office_seen.json` にダイジェストの確認時刻を保存します。
 - `~/.claude/office_inbox/` と `~/.claude/office_approvals/` — 指示や保留中の許可要求・回答の受け渡し。回答に必要なテキストを含む場合があり、本文を持たない記録ログとは別です。
+- `~/.claude/office_recipes.json`・`~/.claude/office_action_results.json`・`~/.claude/office_actions_audit.jsonl`（いずれも 0600）— スマホから実行できる操作の許可リスト、直近の実行結果、監査記録。結果をファイルで共有するのは、オフィス本体とスマホ中継が**別プロセス**で動くためです。保存するのは表示名・状態・伏字済みの出力だけで、コマンド・作業ディレクトリ・環境変数は保存しません。
 - `~/.claude/projects/` — Claude のトランスクリプトは読み取り専用。Codex のセッション用アダプタも `~/.codex/state_5.sqlite` と `~/.codex/thread_history_1.sqlite` を読み取り専用で参照し、DBを変更しません。
 - `~/Library/Application Support/AIOffice/` — 常駐アプリ本体とデータ。
 - `~/Library/LaunchAgents/com.senao.aioffice.plist` — ログイン時の自動起動。

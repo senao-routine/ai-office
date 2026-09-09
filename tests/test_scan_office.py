@@ -267,6 +267,57 @@ class OverlayScanTest(unittest.TestCase):
                 agents.assert_not_called()
                 self.assertIs(data["sources"]["claude"]["agentsCli"], False)
 
+    def test_avatar_style_beats_the_folder_wide_setting_for_one_robot(self):
+        """R91: 個体の見た目はフォルダ設定より強い（隣の席を巻き込まない）。"""
+        self.session(sid="sess-overlay001")
+        self.session(sid="sess-overlay002")
+        self.config["projects"] = {"demo": {"name": "開発", "arch": "cap", "color": "oak"}}
+        base = {p["projectId"]: p for p in office.scan_office()["roster"]}
+        self.assertEqual({(p["arch"], p["color"]) for p in base.values()}, {("cap", "oak")})
+        target = sorted(base)[0]
+        self.config["avatars"] = {target: {"arch": "beret", "color": "sage", "at": self.NOW}}
+        office._cache["t"] = 0.0
+        after = {p["projectId"]: p for p in office.scan_office()["roster"]}
+        self.assertEqual((after[target]["arch"], after[target]["color"]), ("beret", "sage"))
+        for pid, proj in after.items():
+            if pid != target:
+                self.assertEqual((proj["arch"], proj["color"]), ("cap", "oak"))
+
+    def test_unknown_avatar_style_values_are_ignored_rather_than_served(self):
+        self.session()
+        self.config["projects"] = {"demo": {"name": "開発", "arch": "cap", "color": "sand"}}
+        pid = office.scan_office()["roster"][0]["projectId"]
+        self.config["avatars"] = {pid: {"arch": "sombrero", "color": "neon"}}
+        office._cache["t"] = 0.0
+        proj = office.scan_office()["roster"][0]
+        self.assertEqual((proj["arch"], proj["color"]), ("cap", "sand"))
+
+    def test_choosing_default_on_one_robot_clears_the_folder_wide_color(self):
+        """Astra レビュー指摘: 「既定」を押してもフォルダの色が残り、押しても何も起きない。"""
+        self.session()
+        self.config["projects"] = {"demo": {"name": "開発", "arch": "cap", "color": "oak"}}
+        pid = office.scan_office()["roster"][0]["projectId"]
+        self.config["avatars"] = {pid: {"color": None, "arch": None}}
+        office._cache["t"] = 0.0
+        proj = office.scan_office()["roster"][0]
+        self.assertNotIn("color", proj)
+        self.assertIsNone(proj["arch"])
+
+    def test_a_hand_broken_avatars_table_cannot_take_down_the_whole_api(self):
+        """Astra レビュー指摘: [] を集合に照合すると TypeError で scan_office ごと落ちる。"""
+        self.session()
+        self.config["projects"] = {"demo": {"name": "開発", "arch": "cap"}}
+        pid = office.scan_office()["roster"][0]["projectId"]
+        for broken in ([], {}, 3, ["cap"]):
+            self.config["avatars"] = {pid: {"arch": broken, "color": broken}}
+            office._cache["t"] = 0.0
+            proj = office.scan_office()["roster"][0]      # 例外を出さないこと自体が検査
+            self.assertEqual(proj["arch"], "cap")
+            self.assertNotIn("color", proj)
+        self.config["avatars"] = {pid: "not-a-dict"}
+        office._cache["t"] = 0.0
+        self.assertEqual(office.scan_office()["roster"][0]["arch"], "cap")
+
     def test_worktree_uses_background_home_project_label_as_fallback(self):
         path = self.session()
         path.write_text(path.read_text(encoding="utf-8").replace(

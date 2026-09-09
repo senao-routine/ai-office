@@ -38,6 +38,12 @@ const VENDORS = {
   codex: { head: "headCodex", antenna: "antCodex", width: 1.37, tint: GRAPHITE_TINT },
   openclaw: { head: "headOpenclaw", antenna: "antOpenclaw", width: 1.5, tint: LOBSTER_TINT },
 };
+/** R91: 個体の殻の色。ベンダー既定色に乗算する（Codex は暗いまま色味だけ乗る）。 */
+export function shellTintFor(vendor, rgb) {
+  const base = (VENDORS[vendor] || VENDORS.claude).tint;
+  return new THREE.Color(base.r * rgb[0], base.g * rgb[1], base.b * rgb[2]);
+}
+
 const faceDepth = (x, y) => .32 - .035 * (x / (FACE_W / 2)) ** 2
   - .020 * (y / (FACE_H / 2)) ** 2;
 

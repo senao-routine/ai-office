@@ -37,6 +37,7 @@ export function buildWorld(office) {
     name: p.title || p.disp || p.name || p.dept || "",
     role: p.role || "",
     ...(Object.hasOwn(p, "arch") ? { arch: p.arch } : {}),
+    ...(p.color ? { color: p.color } : {}),
     dept: p.dept || "",
     crew: Number(p.crew) || 1,
     state: p.state || "idle",

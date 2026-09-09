@@ -26,6 +26,23 @@ export const ACCESSORIES = Object.freeze({
   mortar: "research", headset: "support", hardhat: "infra", eyeshade: "finance",
 });
 
+// R91: 殻の色（アクセサリと直交する個体差）。tint=instanceColor の乗算値・
+// swatch=カスタマイズ画面のチップ色（材質のクリームを掛けた見え方の近似）。
+// サーバー（office_server.PROJECT_COLORS）はキー名しか知らない＝配色の正本はここ。
+// 本人が選んだ色は「選んだと分かる」濃さにする（淡すぎると R91 以前の
+// 職業パステルと見分けが付かず、カスタマイズした手応えが無い＝実レンダで測って調整）。
+// 彩度は陶器の範囲に留める（禁止色の青紫シアンに入らない・style_score の neon_cool 圏外）。
+export const SHELL_COLORS = Object.freeze({
+  cream: { tint: [1.00, 0.98, 0.94], swatch: "#e9dcc8" },
+  oak: { tint: [1.00, 0.84, 0.62], swatch: "#e9bc84" },
+  sage: { tint: [0.78, 0.94, 0.76], swatch: "#b6d3a2" },
+  clay: { tint: [1.00, 0.74, 0.64], swatch: "#e9a688" },
+  slate: { tint: [0.74, 0.82, 0.95], swatch: "#acb8ca" },
+  sand: { tint: [1.00, 0.92, 0.68], swatch: "#e9ce91" },
+  moss: { tint: [0.80, 0.90, 0.62], swatch: "#baca84" },
+  rose: { tint: [1.00, 0.78, 0.85], swatch: "#e9afb5" },
+});
+
 const STYLE = {
   video: { tint: [0.87, 0.92, 1.0], acc: [0.22, 0.24, 0.32] },     // 🎧=ダークグレー
   audio: { tint: [0.88, 0.97, 0.97], acc: [0.16, 0.45, 0.48] },    // 🎧=ティール（部品共有）
@@ -57,6 +74,16 @@ function hashStr(s) {
 
 /** agent（buildWorldの1件）→ {kind, tint, acc}。kind="generic" はアクセサリなし。 */
 export function archetypeFor(agent) {
+  const base = baseArchetype(agent);
+  // 殻の色を明示していれば、職業判定より色だけを上書きする（帽子は帽子のまま）。
+  // 索引は own-prop 限定（"toString" 等が来ると継承プロパティが真になって崩れる）
+  const name = agent?.color;
+  const shell = typeof name === "string" && Object.hasOwn(SHELL_COLORS, name)
+    ? SHELL_COLORS[name] : null;
+  return shell ? { ...base, tint: shell.tint, color: name } : base;
+}
+
+function baseArchetype(agent) {
   if (agent && Object.hasOwn(agent, "arch")) {
     const kind = typeof agent.arch === "string" && Object.hasOwn(ACCESSORIES, agent.arch)
       ? ACCESSORIES[agent.arch] : null;

@@ -115,6 +115,7 @@ Codex は `~/.codex/state_5.sqlite` と `~/.codex/thread_history_1.sqlite` の�
 | `work` | sanitize | now/next/done 計8件、パス縮約、60字、counts |
 | `skills` `dept` `role` `disp` `name` | ○ | 表示用の名前・分類 |
 | `arch` | ○ | アクセサリ上書き（9種の識別子または null） |
+| `color` | ○ | 殻の色（`PROJECT_COLORS` の8種のいずれか・未設定ならキーごと無し） |
 | `title` | 既定で通す | `/rename` の表示名。`OFFICE_RELAY_TITLES=0` で空文字 |
 | `detail` | 既定で通す、200字 | Claude bg の一行要約。`OFFICE_RELAY_DETAIL=0` で空文字 |
 | `lastSaid` `target` `lastOrder` `cwd` `branch` | キーだけ残し空文字 | 本文・パス等 |

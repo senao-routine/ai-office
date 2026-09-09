@@ -558,7 +558,10 @@
 
 /* ── エージェント詳細シート（行/チップのタップが操作の基点・永続DOM） ── */
 .ui-iso .sheet {
-  position: absolute; top: 16px; right: 16px; bottom: 188px; width: 380px;
+  /* R91: 380px は会話を読むには狭かった（本人指摘）。ステージ幅に追随させ、
+     ⤢ で「もっと広く」も選べる。3D を完全に覆わない上限を持たせる。 */
+  position: absolute; top: 16px; right: 16px; bottom: 188px;
+  width: clamp(380px, 52%, 720px);
   max-width: calc(100% - 32px); overflow-y: auto; z-index: 7;
   opacity: 0; transform: translateX(100%);
   transition: opacity 120ms ease-out, transform 120ms ease-out;   /* R67: 開きのみ（閉じは即時=hidden） */
@@ -570,6 +573,8 @@
   box-shadow: var(--iso-shadow);
 }
 .ui-iso .sheet.show { opacity: 1; transform: none; }
+.ui-iso .sheet.wide { width: min(calc(100% - 32px), 1040px); }
+.ui-iso .sheetwide.on { color: var(--iso-accent); }
 .ui-iso .sheet[hidden] { display: none; }
 .ui-iso .sheethead { display: flex; align-items: center; justify-content: space-between; }
 .ui-iso .sheethead b { font-size: 14px; font-weight: 800; }
@@ -996,10 +1001,26 @@
 .ui-iso .usage[hidden] { display: none; }
 .ui-iso .usage { min-width: 100px; flex: 1; }
 .ui-iso #usage-summary {
-  display: block; width: 100%; padding: 0; border: 0; background: transparent; text-align: left; font: inherit; cursor: pointer; color: var(--iso-ink-soft); font-size: 12.5px;
+  display: flex; align-items: center; gap: 16px; width: 100%; padding: 0; border: 0;
+  background: transparent; text-align: left; font: inherit; cursor: pointer;
+  color: var(--iso-ink-soft); font-size: 12.5px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.ui-iso #usage-summary::before { content: "|"; margin-right: 8px; color: var(--iso-ink-muted); }
+.ui-iso #usage-summary::before { content: "|"; margin-right: 0; color: var(--iso-ink-muted); flex: none; }
+/* R91: ヘッダー常設の実ゲージ。開かなくても「どれだけ減ったか」が見える。 */
+.ui-iso .gpin { display: flex; align-items: center; gap: 8px; min-width: 0; flex: none; }
+.ui-iso .gplab {
+  max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--iso-ink-soft);
+}
+.ui-iso .gpbar {
+  width: 64px; height: 4px; flex: none; border-radius: 10px; overflow: hidden;
+  background: var(--iso-accent-chip);
+}
+.ui-iso .gpfill { display: block; height: 100%; background: var(--iso-accent); }
+.ui-iso .gpfill.warn { background: var(--iso-warn); }
+.ui-iso .gppct { flex: none; font-size: 12.5px; font-weight: 800; color: var(--iso-ink); }
+.ui-iso .gppct.warn { color: var(--iso-warn); }
 .ui-iso #usage-summary:focus-visible { outline: 1px solid var(--iso-accent); border-radius: 10px; }
 .ui-iso .usage .gauges {
   position: absolute; top: 64px; right: 16px; z-index: 10;
@@ -1173,6 +1194,21 @@ html.iso-stream, html.iso-stream body { background: transparent; }
 
 /* On-demand customization uses the existing direction C chrome. */
 .ui-iso .accessory-choices { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0; }
+.ui-iso .accessory-choices.tight { margin: 0; }
+/* R91: 殻の色。チップ自身が色見本＝ラベルを読まずに選べる。 */
+.ui-iso .color-choices { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; }
+.ui-iso .swatch {
+  width: 28px; height: 28px; padding: 0; border-radius: 10px; cursor: pointer;
+  background: var(--sw, var(--iso-glass-solid));
+  border: 1px solid var(--iso-hairline);
+}
+.ui-iso .swatch.swatch-none {
+  background: var(--iso-glass-solid);
+  background-image: linear-gradient(135deg, transparent 46%, var(--iso-ink-muted) 46%,
+    var(--iso-ink-muted) 54%, transparent 54%);
+}
+.ui-iso .swatch.on { border-color: var(--iso-accent); box-shadow: 0 0 0 2px var(--iso-accent-chip); }
+.ui-iso .swatch:disabled { opacity: .5; cursor: default; }
 .ui-iso .sound-consent { pointer-events: auto; z-index: 30; }
 .ui-iso .sound-consent .tmsg { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 

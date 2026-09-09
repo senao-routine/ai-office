@@ -822,6 +822,29 @@ class AllowlistRedactionTest(unittest.TestCase):
         self.assertLessEqual(len(entry["detail"]), 200)     # 裁定どおり 200 字
         self.assertLessEqual(len(entry["feed"][0]), 60)     # feed は従来どおり 60 字
 
+    def test_secrets_are_masked_in_detail_and_feed(self):
+        """本人指摘(2026-09-09): works の `.env` は API キーを取得してくるリスト。
+
+        detail は Haiku が自由に書くので、パスだけでなく**キーの値そのもの**を書きうる。
+        実測でパス縮約だけでは `AWS_SECRET_ACCESS_KEY=AKIA…` が素通りしていた。
+        office_actions.scrub_output と同じ伏字定義を共有する（二重管理しない）。
+        """
+        leaks = ["AWS_SECRET_ACCESS_KEY=AKIAIOSFODNN7EXAMPLE を読んだ",
+                 "sk-proj-abcdefghijklmnop で認証した",
+                 "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJhIjoxfQ.sig",
+                 "token " + "0123456789abcdef" * 4]
+        for text in leaks:
+            with self.subTest(text=text[:24]):
+                out = ra._redact_office_for_relay(
+                    {"employees": [{"session": "s", "detail": text, "feed": [text]}],
+                     "roster": [], "history": []})
+                entry = out["employees"][0]
+                for value in (entry["detail"], entry["feed"][0]):
+                    self.assertIn("[secret]", value)
+                    for secret in ("AKIAIOSFODNN7EXAMPLE", "sk-proj-abcdefghijklmnop",
+                                   "eyJhbGciOiJIUzI1NiJ9", "0123456789abcdef" * 4):
+                        self.assertNotIn(secret, value)
+
     def test_unknown_and_local_only_keys_are_dropped(self):
         snap = {"employees": [{"session": "s1", "state": "working", "bg": {"detail": "x", "fan": {}},
                                "pid": 123, "tokens": 999, "homeCwd": "/Users/x/p", "zzz": 1, "detail": "verify 中"}],

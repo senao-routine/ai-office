@@ -7,7 +7,8 @@ import { setSound, soundOn } from "/ui/platform/sound.js";
  *  focusOn(id), focusOff(), delivery, dialog, getTemplates(), openTemplateEditor() */
 export function init({ shell, T, lang, DEMO, attnKeyFor, getWorld, render,
   focusOn, focusOff, delivery: { send, allow, showToast },
-  dialog: { loadDialog }, getTemplates, openTemplateEditor, paintGrowth = () => {} }) {
+  dialog: { loadDialog }, getTemplates, openTemplateEditor, paintGrowth = () => {},
+  openCustomize = () => {} }) {
   let composeTarget = null;          // {session, name, id}
   const sheetEl = shell.querySelector("#sheet");
   const composeInput = shell.querySelector("#composeinput");
@@ -273,6 +274,29 @@ export function init({ shell, T, lang, DEMO, attnKeyFor, getWorld, render,
     if (composeTarget) jumpTerminal(composeTarget.session, composeTarget.name);
   });
   shell.querySelector("#sheetclose").addEventListener("click", closeCompose);
+  // R91: 🎨 このアバターをカスタマイズ（名札クリックはここ＝会話へ来る。本人指摘の再構成）
+  // ラベル（title/aria-label）は applyStaticStrings が言語切替のたびに貼り直す
+  const archBtn = shell.querySelector("#sheetarch");
+  archBtn.addEventListener("click", () => {
+    const agent = getWorld()?.agents.find((a) => a.id === composeTarget?.id) || composeTarget;
+    if (agent) openCustomize(agent);
+  });
+  // R91: ⤢ 会話を読むときだけ広げる（既定幅は3Dを潰さない範囲・選択は端末に残す）
+  const WIDE_KEY = "aioffice.iso.sheetwide";
+  const wideBtn = shell.querySelector("#sheetwide");
+  const applyWide = (on) => {
+    sheetEl.classList.toggle("wide", on);
+    wideBtn.classList.toggle("on", on);
+    wideBtn.setAttribute("aria-pressed", String(on));
+  };
+  let wide = false;
+  try { wide = localStorage.getItem(WIDE_KEY) === "1"; } catch { /* Optional storage. */ }
+  applyWide(wide);
+  wideBtn.addEventListener("click", () => {
+    wide = !wide;
+    applyWide(wide);
+    try { localStorage.setItem(WIDE_KEY, wide ? "1" : "0"); } catch { /* Optional storage. */ }
+  });
   composeInput.addEventListener("keydown", async (e) => {
     if (e.key === "Enter" && composeInput.value.trim() && composeTarget) {
       // R67: 送信成功時のみクローズ＝失敗しても本文が残る（従来は入力全喪失の実バグ）

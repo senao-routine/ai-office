@@ -517,6 +517,8 @@ elif [ -x "$VENV_PY" ] && "$VENV_PY" -c 'import playwright' >/dev/null 2>&1 \
   run_ui "R50 新UI i18nカナリア" "$VENV_PY" tests/i18n_iso_smoke.py
   # A shared material must sample each seat's atlas tile in the actual framebuffer.
   run_ui "R90 席モニタ12色・日報分離スモーク" "$VENV_PY" tests/iso_screens_smoke.py
+  # R91: 名札クリック=会話 / 🎨=1体だけ着せ替え（実 config と /api/office まで突き合わせる）
+  run_ui "R91 アバター操作スモーク" "$VENV_PY" tests/ui_avatar_smoke.py
   # R50: 新UIのビジュアル回帰。自前でサーバーを立て /api/office を fixture で差し替えるので
   # 実セッションの状態に左右されない。バックエンドは SwiftShader 固定（実測でビット一致）。
   # R90-S1: 製品の見た目は iso（方向C）1本。

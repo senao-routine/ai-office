@@ -1381,6 +1381,7 @@ def group_by_project(employees, lang="ja", mode="project"):
         proj = {
             "projectId": pid,
             **({"arch": lead["arch"]} if "arch" in lead else {}),
+            **({"color": lead["color"]} if "color" in lead else {}),
             "session": lead.get("session", ""),          # 代表＝指示の宛先
             "vendor": lead.get("vendor", "claude"),
             "name": lead.get("dept", ""),
@@ -1628,7 +1629,30 @@ def scan_office():
         if "arch" in meta and (meta["arch"] is None or
                                isinstance(meta["arch"], str) and meta["arch"] in PROJECT_ARCHES):
             e["arch"] = meta["arch"]
+        if isinstance(meta.get("color"), str) and meta["color"] in PROJECT_COLORS:
+            e["color"] = meta["color"]
     roster = group_by_project(employees, _LANG, mode=mode)
+    # R91: 個体（セッション）単位の見た目はフォルダ設定より強い。本人指摘
+    # 「統一で全部変わるぐらいだったらそこまでいらない」＝1体ずつ変えられるのが要件。
+    avatars = config.get("avatars")
+    if isinstance(avatars, dict):
+        for proj in roster:
+            style = avatars.get(proj.get("projectId"))
+            if not isinstance(style, dict):
+                continue
+            # 型を確かめてから集合に照合する（手編集で [] が入ると
+            # unhashable の TypeError で /api/office ごと落ち、UIから直せなくなる）
+            if "arch" in style and (style["arch"] is None
+                                    or (isinstance(style["arch"], str)
+                                        and style["arch"] in PROJECT_ARCHES)):
+                proj["arch"] = style["arch"]
+            # arch と同じく None は「既定へ戻す」＝フォルダ設定も解除する
+            #（さもないと「既定」を押しても色が残り、押しても何も起きないUIになる）
+            if "color" in style:
+                if style["color"] is None:
+                    proj.pop("color", None)
+                elif isinstance(style["color"], str) and style["color"] in PROJECT_COLORS:
+                    proj["color"] = style["color"]
 
     # R79-10 遠隔実行: 許可リスト（表示用の最小ビュー＝argv/cwd/envは載せない）と実行結果。
     # caps はUIの機能ゲート（旧Macでは▶実行ボタンを出さない＝版ズレ耐性）。
@@ -2318,42 +2342,115 @@ def set_lang(value):
 
 PROJECT_ARCHES = frozenset(("phones", "cap", "beret", "pencil", "bowtie",
                            "mortar", "headset", "hardhat", "eyeshade"))
+# R91: 殻の色（アクセサリと直交する「もう一段細かい」個体差）。
+# 名前だけを持ち、実際の色は ui/core/archetype.js の SHELL_COLORS が正本
+#（サーバーは配色を知らない＝見た目の正本は docs/art-direction.md 側に残す）。
+PROJECT_COLORS = frozenset(("cream", "oak", "sage", "clay", "slate", "sand", "moss", "rose"))
+# 個体（セッション）単位の見た目を持つ office_config.json の枠。上限を超えたら古い順に捨てる
+#（設定ファイルが無限に太らない＝セッションIDは使い捨てなので放置すると溜まる一方）。
+AVATAR_STYLE_MAX = 200
 
 
-def set_project_arch(project_id, arch):
-    """Resolve an observed local project, then use the shared config RMW lock."""
-    if not isinstance(project_id, str) or not re.fullmatch(r"[0-9a-f]{12}", project_id):
-        return False, "invalid projectId"
-    if arch is not None and (not isinstance(arch, str) or arch not in PROJECT_ARCHES):
-        return False, "invalid accessory"
-    cwd = next((p.get("cwd") for p in office_json().get("roster", [])
-                if p.get("projectId") == project_id and not p.get("external")), "")
-    if not cwd:
-        cwd = next((p.get("cwd") for p in projects_index.projects_json().get("projects", [])
-                    if p.get("cwd") and project_id_for(p["cwd"]) == project_id), "")
-    if not cwd:
-        return False, "unknown project"
+def _validated_style(fields):
+    """{"arch":…, "color":…} のうち、送られてきたキーだけを検証して返す。"""
+    out = {}
+    if "arch" in fields:
+        arch = fields["arch"]
+        if arch is not None and (not isinstance(arch, str) or arch not in PROJECT_ARCHES):
+            return None, "invalid accessory"
+        out["arch"] = arch
+    if "color" in fields:
+        color = fields["color"]
+        if color is not None and (not isinstance(color, str) or color not in PROJECT_COLORS):
+            return None, "invalid color"
+        out["color"] = color
+    if not out:
+        return None, "nothing to save"
+    return out, ""
+
+
+def set_avatar_style(avatar_id, scope, fields):
+    """アバターの見た目を保存する。
+
+    R91: 従来は cwd（プロジェクト）にしか保存できず、avatarMode=session（実既定）では
+    「1体に付けたら同じフォルダの全員が同じ帽子になる」＝本人指摘の「統一で全部変わる」。
+    scope="session" は roster の projectId（= sha1(cwd + "\n" + session)）で個体に保存する。
+    """
+    if not isinstance(avatar_id, str) or not re.fullmatch(r"[0-9a-f]{12}", avatar_id):
+        return False, "invalid avatarId"
+    if scope not in ("session", "project"):
+        return False, "invalid scope"
+    style, err = _validated_style(fields if isinstance(fields, dict) else {})
+    if style is None:
+        return False, err
+    roster = office_json().get("roster", [])       # ★_lock の外で1回（office_json は同じ Lock を取る）
+    entry = next((p for p in roster
+                  if p.get("projectId") == avatar_id and not p.get("external")), None)
+    if scope == "project":
+        cwd = (entry or {}).get("cwd", "")
+        if not cwd:
+            cwd = next((p.get("cwd") for p in projects_index.projects_json().get("projects", [])
+                        if p.get("cwd") and project_id_for(p["cwd"]) == avatar_id), "")
+        if not cwd:
+            return False, "unknown project"
+    elif entry is None:
+        # 出勤していない個体には保存しない（消えたセッションのゴミが config に溜まる）
+        return False, "unknown avatar"
     with _lock, _file_flock(config_file()):
         cf = config_file()
         try:
             cfg = json.loads(cf.read_text(encoding="utf-8")) if cf.exists() else {"projects": {}}
             if not isinstance(cfg, dict) or not isinstance(cfg.get("projects", {}), dict):
                 return False, "invalid office_config.json"
-            projects = cfg.setdefault("projects", {})
-            key = project_config_key(cwd, cfg) or project_pattern(cwd)
-            meta = projects.get(key, {})
-            if not isinstance(meta, dict):
-                return False, "invalid project config"
-            if key in projects:
-                projects[key] = {**meta, "arch": arch}
+            if scope == "project":
+                projects = cfg.setdefault("projects", {})
+                key = project_config_key(cwd, cfg) or project_pattern(cwd)
+                meta = projects.get(key, {})
+                if not isinstance(meta, dict):
+                    return False, "invalid project config"
+                if key in projects:
+                    projects[key] = {**meta, **style}
+                else:
+                    cfg["projects"] = {key: dict(style), **projects}
+                # 個体側の上書きが残っていると「フォルダ全員」を選んでも変わらなく見える。
+                # ★roster（いま出勤している人）で消すと足りない＝鮮度の窓から外れて
+                # 一時的に非表示の個体が、再稼働したときに古い帽子を蘇らせる。
+                # だから保存時に控えた key（フォルダ）で消す。
+                avatars = cfg.get("avatars")
+                if isinstance(avatars, dict):
+                    for pid, meta in list(avatars.items()):
+                        if isinstance(meta, dict) and meta.get("cwd") == cwd:
+                            avatars.pop(pid, None)
             else:
-                cfg["projects"] = {key: {"arch": arch}, **projects}
+                avatars = cfg.setdefault("avatars", {})
+                if not isinstance(avatars, dict):
+                    return False, "invalid avatars config"
+                prev = avatars.get(avatar_id)
+                # cwd=どのフォルダの個体か（「フォルダ全員」で確実に上書きを解除するため）。
+                # ★設定パターン（project_config_key）ではなく実フォルダを控える＝
+                # 後から add_project でそのフォルダを個別登録するとパターンが変わり、
+                # パターンで突き合わせると解除できなくなる（Astra レビュー指摘）。
+                avatars[avatar_id] = {**(prev if isinstance(prev, dict) else {}),
+                                      **style, "cwd": entry.get("cwd", ""),
+                                      "at": int(time.time())}
+                if len(avatars) > AVATAR_STYLE_MAX:
+                    def saved_at(item):
+                        """手編集で at が null/文字列でも剪定が落ちないようにする。"""
+                        v = item[1].get("at") if isinstance(item[1], dict) else 0
+                        return v if isinstance(v, (int, float)) and not isinstance(v, bool) else 0
+                    stale = sorted(avatars.items(), key=saved_at)
+                    for old_id, _ in stale[:len(avatars) - AVATAR_STYLE_MAX]:
+                        avatars.pop(old_id, None)
             _write_config(cfg)
             _cache["t"] = 0.0
         except (OSError, UnicodeError, json.JSONDecodeError):
             return False, "could not save office_config.json"
     return True, "saved"
 
+
+def set_project_arch(project_id, arch):
+    """Back-compat wrapper: the folder-wide accessory (pre-R91 API)."""
+    return set_avatar_style(project_id, "project", {"arch": arch})
 
 def add_project(path, name, role, launch=False):
     """office_config.json へ登録し、必要なら Terminal で claude を起動する"""
@@ -2912,6 +3009,12 @@ class Handler(BaseHTTPRequestHandler):
             if "arch" not in data:
                 return self._deny(400, "accessory required")
             ok, msg = set_project_arch(data.get("projectId"), data["arch"])
+        elif route == "/api/avatar/style":
+            # R91: アバター1体の見た目（アクセサリ・殻の色）。scope で個体/フォルダを選ぶ。
+            if self.client_address[0] not in ("127.0.0.1", "::1"):
+                return self._deny(403, "loopback required")
+            fields = {k: data[k] for k in ("arch", "color") if k in data}
+            ok, msg = set_avatar_style(data.get("avatarId"), data.get("scope"), fields)
         elif self.path.startswith("/api/instruct"):
             try:
                 ok, msg = post_instruction(data.get("session", ""), data.get("text", ""))

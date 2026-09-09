@@ -31,6 +31,12 @@ from pathlib import Path
 _HOME = Path(os.environ.get("OFFICE_HOME", str(Path.home())))
 RECIPES_FILE = _HOME / ".claude" / "office_recipes.json"
 AUDIT_FILE = _HOME / ".claude" / "office_actions_audit.jsonl"
+# R92: 実行結果の共有置き場（0600）。**別プロセスが読む唯一の経路**。
+# relay_agent は自分のプロセスで office_json() を組み立てるので（relay_agent.py の
+# push_status 等）、実行者＝daemon のメモリ上のレジストリは relay 側から永久に空に見え、
+# スマホには ⏳ のまま結果が1件も届かなかった（実バグ）。レシピが RECIPES_FILE 経由で
+# 両プロセスに見えているのと同じ流儀で、結果もファイルに落とす。
+RESULTS_FILE = _HOME / ".claude" / "office_action_results.json"
 
 ID_RE = re.compile(r"^[a-z0-9_]{1,32}$")
 REQID_RE = re.compile(r"^[A-Za-z0-9-]{8,40}$")
@@ -42,6 +48,10 @@ OUTPUT_LIMIT = 8000          # 中継に載る出力の上限（バイト・scru
 CAPTURE_LIMIT = 256 * 1024   # 実行中に保持する生出力の上限（末尾を保持）
 MAX_CONCURRENT = 2
 RESULT_KEEP = 20             # レジストリに残す完了結果の数（新しい順）
+# 書いたプロセスが死ぬと running が残り続ける。watcher は必ず終状態を書くので、
+# timeoutSec の上限（3600）を超えて running のままの記録は「書いた者が居ない」＝結果不明。
+# 嘘の完了（done/failed）を作らずに落とす。
+STALE_RUNNING_SEC = 4200
 
 # office_server が注入するフック（未注入でも動く＝単体テストはフック無しで回す）
 NOTIFY = None                # callable(title, body)
@@ -222,6 +232,102 @@ def _audit(record):
         pass                     # 監査はベストエフォート（実行の本流を殺さない）
 
 
+_NUM_MAX = 1e15              # 秒・ミリ秒・バイト数として現実的な上限（範囲外は既定値へ）
+_PUBLIC_KEYS = ("reqId", "kind", "recipe", "label", "state",
+                "startedAt", "durationMs", "exitCode", "bytes", "output", "bgId")
+
+
+def _public_record(r):
+    """office_json と保存ファイルの共通ビュー1件（argv/cwd/env/_proc は絶対に載せない）。"""
+    return {
+        "reqId": r["reqId"], "kind": r["kind"], "recipe": r.get("recipe", ""),
+        "label": r["label"], "state": r["state"],
+        "startedAt": r["startedAt"], "durationMs": r.get("durationMs", 0),
+        "exitCode": r.get("exitCode"), "bytes": r.get("bytes", 0),
+        "output": r.get("output", ""),
+        **({"bgId": r["bgId"]} if r.get("bgId") else {}),
+    }
+
+
+def _normalize_public(r):
+    """ファイル側の1件を検算して公開ビューへ。手編集で壊れていても office_json を落とさない
+    （壊れた設定1つで /api/office ごと死ぬと、UI から直す手段が無くなる）。"""
+    if not isinstance(r, dict) or not isinstance(r.get("reqId"), str):
+        return None
+    if not REQID_RE.match(r["reqId"]) or not isinstance(r.get("state"), str):
+        return None
+
+    def num(v, d=0):
+        """JSON は Infinity / NaN / 巨大整数を通す。**範囲で落とす**（int() 直前で
+        OverflowError / ValueError になると、壊れた1件で /api/office ごと死ぬ）。"""
+        if isinstance(v, bool) or not isinstance(v, (int, float)):
+            return d
+        if v != v:                                   # NaN
+            return d
+        return v if -_NUM_MAX <= v <= _NUM_MAX else d    # inf も 10**400 もここで落ちる
+
+    out = {
+        "reqId": r["reqId"], "kind": str(r.get("kind", ""))[:20],
+        "recipe": str(r.get("recipe", ""))[:32], "label": str(r.get("label", ""))[:60],
+        "state": r["state"][:16], "startedAt": num(r.get("startedAt")),
+        "durationMs": int(num(r.get("durationMs"))), "bytes": int(num(r.get("bytes"))),
+        "exitCode": r["exitCode"] if isinstance(r.get("exitCode"), int) else None,
+        "output": r["output"][:OUTPUT_LIMIT] if isinstance(r.get("output"), str) else "",
+    }
+    if isinstance(r.get("bgId"), str):
+        out["bgId"] = r["bgId"][:16]
+    return out
+
+
+def _persist_locked():
+    """レジストリを RESULTS_FILE へ写す（_LOCK を持ったまま呼ぶ）。
+
+    実行者は1プロセス（daemon）だけなので、丸ごと書き直す os.replace で足りる
+    （プロセス間の read-modify-write をしない＝flock を持ち込まない）。
+    ★書き込みを _LOCK の中でやるのは意図的。外に出すと watcher スレッドの
+    「done を書く」と本スレッドの「running を書く」が入れ替わり、**古い running が
+    新しい done を上書きして ⏳ のまま固まる**（数KBの原子置換なので保持は一瞬）。
+    保存は監査と同じくベストエフォート＝失敗しても実行の本流は止めない。
+    """
+    try:
+        rows = [_public_record(_ACTIONS[r]) for r in reversed(_ORDER)][:RESULT_KEEP]
+        RESULTS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        tmp = RESULTS_FILE.with_name(RESULTS_FILE.name + ".tmp")
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump({"v": 1, "results": rows}, f, ensure_ascii=False)
+        os.replace(tmp, RESULTS_FILE)
+    except (OSError, UnicodeError, TypeError, ValueError):
+        pass
+
+
+_FILE_CACHE = {"key": None, "rows": []}
+
+
+def _read_results_file():
+    """他プロセスが書いた結果（mtime+size が同じ間は読み直さない）。"""
+    try:
+        st = RESULTS_FILE.stat()
+    except OSError:
+        return []
+    key = (st.st_mtime_ns, st.st_size)
+    if _FILE_CACHE["key"] == key:
+        return _FILE_CACHE["rows"]
+    rows = []
+    try:
+        obj = json.loads(RESULTS_FILE.read_text(encoding="utf-8"))
+        raw = obj.get("results") if isinstance(obj, dict) else None
+        for item in (raw if isinstance(raw, list) else [])[:RESULT_KEEP]:
+            rec = _normalize_public(item)
+            if rec:
+                rows.append(rec)
+    except (OSError, UnicodeError, ValueError, TypeError, OverflowError):
+        rows = []                # 壊れたファイル1つで office_json を落とさない
+    _FILE_CACHE["key"] = key
+    _FILE_CACHE["rows"] = rows
+    return rows
+
+
 def _notify(title, body):
     if callable(NOTIFY):
         try:
@@ -266,6 +372,7 @@ def _register(record):
         for rid in done[:-RESULT_KEEP]:
             _ORDER.remove(rid)
             del _ACTIONS[rid]
+        _persist_locked()
 
 
 def reserve_result(req_id, kind, label, **extra):
@@ -281,6 +388,7 @@ def reserve_result(req_id, kind, label, **extra):
                   "durationMs": 0, "bytes": 0, "output": "", **extra}
         _ACTIONS[req_id] = record
         _ORDER.append(req_id)
+        _persist_locked()
         return record, True
 
 
@@ -291,6 +399,7 @@ def finish_result(record, state, **extra):
         record["endedAt"] = time.time()
         record["durationMs"] = int((record["endedAt"] - record["startedAt"]) * 1000)
         record.update(extra)
+        _persist_locked()
     _audit(record)
     return record
 
@@ -318,6 +427,8 @@ def _finish(record, state, exit_code, buf, return_output):
         raw = buf[-OUTPUT_LIMIT:] if return_output == "tail" else buf[:OUTPUT_LIMIT]
         record["output"] = scrub_output(raw.decode("utf-8", "replace"))
     record.pop("_proc", None)
+    with _LOCK:
+        _persist_locked()
     _audit({k: v for k, v in record.items() if k not in ("output", "_proc")} | {
         "outputBytes": record["bytes"]})
     _notify("📲 遠隔実行 完了", f"{record['label']}: {state}"
@@ -467,20 +578,30 @@ def kill_running(reason="shutdown"):
 
 
 def results_public(limit=8):
-    """office_json に載せる公開ビュー（新しい順）。output はここでも scrub（二重適用の掟）。"""
+    """office_json に載せる公開ビュー（新しい順）。output はここでも scrub（二重適用の掟）。
+
+    R92: **メモリだけでなく RESULTS_FILE も合流する**。実行者（daemon）と中継配達員
+    （relay_agent）は別プロセスなので、メモリだけを見ると relay 側は常に空＝スマホに
+    結果が届かなかった。自分が実行した分（メモリ）が正・他プロセス分はファイルから。
+    """
     with _LOCK:
-        recs = [_ACTIONS[r] for r in reversed(_ORDER)][:limit]
-        out = []
-        for r in recs:
-            out.append({
-                "reqId": r["reqId"], "kind": r["kind"], "recipe": r.get("recipe", ""),
-                "label": r["label"], "state": r["state"],
-                "startedAt": r["startedAt"], "durationMs": r.get("durationMs", 0),
-                "exitCode": r.get("exitCode"), "bytes": r.get("bytes", 0),
-                "output": scrub_output(r.get("output", "")),
-                **({"bgId": r["bgId"]} if r.get("bgId") else {}),
-            })
-        return out
+        mine = {rid: _public_record(_ACTIONS[rid]) for rid in _ORDER}
+    now = time.time()
+    merged = {}
+    for r in _read_results_file():
+        if (r["state"] == "running"
+                and now - (r.get("startedAt") or 0) > STALE_RUNNING_SEC):
+            continue          # 書いた者が居ない＝結果不明。嘘の完了を作らずに落とす
+        merged[r["reqId"]] = r
+    merged.update(mine)
+    rows = sorted(merged.values(), key=lambda r: r.get("startedAt") or 0,
+                  reverse=True)[:limit]
+    out = []
+    for r in rows:
+        rec = dict(r)                       # ファイル側はキャッシュ済み＝その場で書き換えない
+        rec["output"] = scrub_output(rec.get("output", ""))
+        out.append(rec)
+    return out
 
 
 def recipes_public(recipes):
