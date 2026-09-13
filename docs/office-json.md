@@ -96,7 +96,7 @@ Codex は `~/.codex/state_5.sqlite` と `~/.codex/thread_history_1.sqlite` の�
 |---|---|---|
 | `recipes[]` | `{id, label, dangerous, returnOutput}`。`office_actions.recipes_public()` で生成 | ○。argv/cwd/env は含めない |
 | `results[]` | `{reqId, kind, recipe, label, state, startedAt, durationMs, exitCode, bytes, output}`。あれば `bgId` も含む | ○。output は生産時と `results_public()` の両方で scrub |
-| `caps` | `{actions: 1, ws: 1}`。実行・WS経路の能力を示す | ○ |
+| `caps` | `{actions: 1, ws: 1, dialog: 0/1}`。実行・WS経路・**会話ビューア（R87 封書）**の能力。`dialog` は「封じられる Mac（CommonCrypto の AES-256-GCM が使える）」かつ「本人が `dialogRelay` を ON」のときだけ 1 | ○ |
 
 `recipes_public` / `results_public` は Python 関数名であり、JSONキーではありません。
 レシピが無ければ実行UIは非表示です。`POST /api/hire` の起動結果もこの結果台帳で扱います。
@@ -127,3 +127,25 @@ Codex は `~/.codex/state_5.sqlite` と `~/.codex/thread_history_1.sqlite` の�
 2. 中継に載せるなら `relay_agent._ALLOW_ENTRY` / `_ALLOW_TOP` / `_ALLOW_SESSION` と必要な刈り込みを更新する。トップレベルが許可済みでも、新しいネスト値が安全とは限らない。
 3. `tests/test_relay_agent.py` に載る/載らないのピンを追加する。
 4. `AllowlistRedactionTest.test_allowlist_covers_ui_and_pwa_field_reads` で消費側の参照集合を検査する。ただし現行の静的検査は `ui/core/world.js` と `relay/src/worker.js` を読み、移設済みのPWA本文（`ui/pwa/app.js` / `relay/src/app_html.js`）は直接読まない。green だけでPWA全フィールドを網羅したと判断せず、実際の消費側と照合する。
+
+## `dlg`（R87 封書）は office_json ではない
+
+スマホの会話ビューアは、会話を **office_json に載せない**。別のレーンで運ぶ:
+
+- 上り: スマホが `session="dlg-<32hex>"` の署名封筒（`text` は `{"aioffice":1,"kind":"dialog","reqId","session","depth":0}`）を `/instruct` へ。
+  Worker は 0 行の変更（`act-` と同じ流儀）。relay_agent は `verify_envelope` を通してから daemon の `POST /api/dialog/sealed` へ回す。
+  **office_inbox には書かない**（孤児 inbox を作らない）。
+- 封緘: daemon（transcript を読める唯一のプロセス）が `dialog_page` の depth0 を AES-256-GCM で**この端末専用の鍵**（既存のペアリング秘密から HKDF）で封じ、
+  `~/.claude/office_dialog_bundles.json`（0600・単一書き手・TTL 90秒）へ置く。relay_agent は別プロセスなので**ファイル経由**（R92 と同じ掟）。
+- 下り: relay_agent が `/sync` の body に `dlg`（`{"v":1,"items":[bundle…]}` の JSON 文字列）を**指紋が変わった周だけ**載せる。
+  Worker は kv 1 行 `dlg` に置き、status フレーム・`{"t":"status"}` 応答・フル Bearer の `GET /status` に同乗する（限定トークンには載せない）。
+  Worker は**行の ts で 120 秒**経てば空として扱う（Mac がスリープ・停止して「空で上書きする sync」が来なくても暗号文が残らない）。
+  `dlg` の上限は 180,000 字（Mac 側 MAX_LIVE 4 通 × 4 フレーム）。relay_agent は超える分を**新しい順に残して古い封書から落とし**標準出力に残す（黙って全部捨てない）。
+  端末（PWA）も `e` を今の時刻で検算してから開く（`openBlob` の第 5 引数・core は時計を持たないので呼び手が渡す）。
+  期限切れは空バンドルを 1 回送って行を消す。
+- bundle の形（`_assert_opaque` が送信前に検算する allowlist）: `{v:1, id, s, i, e, n, c:"zl", b}` か `{v:1, id, e, err}`。`err` は
+  `unavailable / denied / notfound / toolarge / expired` の固定 enum だけ。`b` は base64url・`n×8223` バイト・`AO1` 始まり。
+  **平文・自由文字列・余分なキーは構造的に通らない**（`_ALLOW_TOP` は触っていない）。
+- 守られること／守られないこと（README と同じ文言）: 中継（Cloudflare）と輸送 Bearer だけを持つ第三者は中身を読めない。
+  ただしメタデータ（いつ・どの端末が・どのセッションを要求したか・8KB 単位の長さ）は見える。前方秘匿性は無い。
+  暗号文は TTL まで中継に残る。Mac は当然読める。端末を失うと会話も読まれる（Mac から失効させた瞬間に封は作られなくなる）。

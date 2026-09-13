@@ -7,7 +7,6 @@
 import { loop } from "/ui/platform/clock.js";
 import { buildWorld } from "/ui/core/world.js";
 import { IsoScene } from "/ui/iso/scene3d.js";
-
 const host = document.getElementById("scene3d");
 // R79: WebGL不可・GPUドライバ拒否などで IsoScene の生成が投げると、以前は
 // window.__scene3d の代入にも通知にも到達せず「空のdivが残るだけで退避もしない」＝

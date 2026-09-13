@@ -163,15 +163,15 @@ const large = {
   ...medium, id: "L",
   layout: {
     ...medium.layout,
-    floor: { w: 28.8, d: 24.4, z: 2.1 },
-    deskZone: { ...medium.layout.deskZone, z: 3.05, d: 16.8 },
-    loungeZone: { ...medium.layout.loungeZone, z: 11.65 },
-    meet3Zone: { ...medium.layout.meet3Zone, z: 12.1 },
-    queueZone: { ...medium.layout.queueZone, z: 11.4 },
+    floor: { w: 28.8, d: 22.0, z: 0.9 },
+    deskZone: { ...medium.layout.deskZone, z: 1.85, d: 14.4 },
+    loungeZone: { ...medium.layout.loungeZone, z: 9.25 },
+    meet3Zone: { ...medium.layout.meet3Zone, z: 9.7 },
+    queueZone: { ...medium.layout.queueZone, z: 9.0 },
   },
-  desks: { ...medium.desks, rows: [-2.35, 3.05, 8.45] },
-  idle: medium.idle.map((spot) => spot.why === "lounge" ? { ...spot, dz: 11.3 } : spot),
-  cleaner: medium.cleaner.map(([x, z]) => [x, z >= 5.3 ? z + 5.4 : z]),
+  desks: { ...medium.desks, rows: [-2.35, 1.85, 6.05] },
+  idle: medium.idle.map((spot) => spot.why === "lounge" ? { ...spot, dz: 8.9 } : spot),
+  cleaner: medium.cleaner.map(([x, z]) => [x, z >= 5.3 ? z + 3.0 : z]),
 };
 
 const extraLarge = {
@@ -179,13 +179,15 @@ const extraLarge = {
   layout: {
     ...large.layout,
     // Keep the east wall and every meeting/reception anchor in place.
-    floor: { ...large.layout.floor, x: -2.725, w: 34.25 },
-    deskZone: { ...large.layout.deskZone, x: -3.325, w: 21.25 },
-    stageZone: { ...large.layout.stageZone, x: -18.0 },
+    floor: { ...large.layout.floor, x: -1.1, w: 31.0 },
+    deskZone: { ...large.layout.deskZone, x: -1.9, w: 18.4 },
+    stageZone: { ...large.layout.stageZone, x: -14.75 },
   },
-  desks: { ...large.desks, columns: [-11.5, -6.05, -0.6, 4.85] },
+  desks: { ...large.desks, columns: [-8.65, -4.15, 0.35, 4.85] },
   idle: large.idle.map((spot) => ["plant", "window"].includes(spot.why)
-    ? { ...spot, dx: spot.dx - 5.45 } : spot),
+    ? { ...spot, dx: spot.dx - 2.2 } : spot),
+  // Keep the patrol in the narrowed aisles beside the shifted desk columns.
+  cleaner: large.cleaner.map(([x, z]) => [x === -8.8 ? -11.0 : x === -3.3 ? -1.75 : x === 2.1 ? 2.75 : x, z]),
 };
 
 function freeze(value) {

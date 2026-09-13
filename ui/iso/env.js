@@ -16,13 +16,13 @@ export function roomEnvironment(renderer) {
     materials.push(m);
     return m;
   };
-  const wall = basic(0xefebe4, THREE.BackSide);
-  const ceiling = basic(0xf6f2ec, THREE.BackSide);
-  const floor = basic(0xd9c5a5, THREE.BackSide);
+  const wall = basic(0xeef0fa, THREE.BackSide);
+  const ceiling = basic(0xf6f6fd, THREE.BackSide);
+  const floor = basic(0xd6dbf2, THREE.BackSide);
   envScene.add(new THREE.Mesh(new THREE.BoxGeometry(6, 3, 6),
     [wall, wall, ceiling, floor, wall, wall]));
-  const windowX = basic(new THREE.Color().setRGB(6, 6, 6));
-  const windowZ = basic(new THREE.Color().setRGB(4.0, 4.4, 4.8));
+  const windowX = basic(new THREE.Color().setRGB(5.5, 6.0, 7.0));
+  const windowZ = basic(new THREE.Color().setRGB(4.0, 4.6, 5.6));
   const paneX = new THREE.Mesh(new THREE.PlaneGeometry(3, 2), windowX);
   paneX.position.set(-2.99, 0.1, 0);
   paneX.rotation.y = Math.PI / 2;
@@ -30,7 +30,7 @@ export function roomEnvironment(renderer) {
   const paneZ = new THREE.Mesh(new THREE.PlaneGeometry(2, 1.6), windowZ);
   paneZ.position.set(0, 0.15, -2.99);
   envScene.add(paneZ);
-  const lamp = basic(new THREE.Color().setRGB(3.0, 2.3, 1.5));
+  const lamp = basic(new THREE.Color().setRGB(2.0, 1.6, 1.2));
   const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.25, 16, 12), lamp);
   bulb.position.set(2.2, 1.1, 0);
   envScene.add(bulb);
@@ -46,9 +46,9 @@ export function roomEnvironment(renderer) {
     pmrem = new THREE.PMREMGenerator(renderer);
     for (const hour of ["day", "evening"]) {
       if (hour === "evening") {
-        windowX.color.setRGB(3.5, 2.6, 2.0);
-        windowZ.color.setRGB(3.5, 2.6, 2.0);
-        lamp.color.setRGB(18.0, 13.8, 9.0);
+        windowX.color.setRGB(3.2, 3.6, 4.8);
+        windowZ.color.setRGB(3.2, 3.6, 4.8);
+        lamp.color.setRGB(8.0, 6.4, 4.8);
       }
       const target = pmrem.fromScene(envScene, 0.04, 0.1, 100);
       targets.push(target);

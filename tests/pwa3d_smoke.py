@@ -20,6 +20,61 @@ except ImportError as exc:  # pragma: no cover
     sys.exit(1)
 
 
+
+def _r87_dialog_pins(page):
+    """R87-S5: 「💬 会話を見る」の 3 ピン（caps 無しで非表示／固定封書を注入すると本文が描かれる／
+    err:denied は理由文言・開いた会話は残す）。暗号は本番の ui/pwa/dlg.js → ui/core/dialog_open.js を
+    実ブラウザで踏む（両側 KAT と同じ固定ベクタ。期限 e だけ今へ寄せる＝AAD 外）。"""
+    ng = 0
+    K = json.loads((Path(__file__).parent / "fixtures" / "dialog_seal_kat.json").read_text(encoding="utf-8"))
+    absent = page.evaluate("() => !document.getElementById('sh_dlg') && !(actionsView().caps || {}).dialog")
+    if absent:
+        print("  ✓ R87: caps.dialog 無し → 「💬 会話を見る」は出ない")
+    else:
+        print("  ✗ R87: caps.dialog が無いのにボタンが出ている")
+        ng += 1
+    got = page.evaluate("""async (K) => {
+        // 固定ベクタの iat は過去なので、端末の時計を iat+5 秒に固定する（openBlob の iat+90 秒検査は本番のまま踏む）
+        const saved = { canDlg: window.canDlg, getCred: window.getCred, SEL: window.SEL, now: Date.now };
+        Date.now = () => (K.bundle.i + 5) * 1000;
+        const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+        try {
+          window.canDlg = () => true;
+          window.getCred = () => ({ d: K.deviceId, s: K.secretHex, t: "smoke" });
+          window.SEL = Object.assign({}, window.SEL || {}, { session: K.targetSession });
+          dlgButton(document.getElementById('quickbtns'), window.SEL);
+          const button = !!document.getElementById('sh_dlg');
+          const now = Date.now(), id2 = "deadbeef" + K.bundle.id.slice(8);
+          const pend = {}; pend[K.bundle.id] = { session: K.targetSession, at: now }; pend[id2] = { session: K.targetSession, at: now };
+          sessionStorage.setItem(DLG_KEY, JSON.stringify(pend));
+          onDlg(JSON.stringify({ v: 1, items: [K.bundle] }));   // e も固定ベクタのまま（時計を合わせたので生きている）
+          for (let i = 0; i < 150 && !document.querySelector('#shdlg .dlgm'); i++) await wait(100);
+          const rows = [...document.querySelectorAll('#shdlg .dlgm')].map((n) => n.textContent);
+          onDlg(JSON.stringify({ v: 1, items: [{ v: 1, id: id2, e: K.bundle.e, err: "denied" }] }));
+          await wait(80);
+          const errText = (document.querySelector('#shdlg .dlgerr') || {}).textContent || "";
+          return { button, rows, errText, stillRows: document.querySelectorAll('#shdlg .dlgm').length,
+                   pending: Object.keys(dlgPending()).length };
+        } finally {
+          window.canDlg = saved.canDlg; window.getCred = saved.getCred; window.SEL = saved.SEL; Date.now = saved.now;
+          sessionStorage.removeItem(DLG_KEY); Object.keys(DLG_PAGES).forEach((k) => delete DLG_PAGES[k]);
+          const box = document.getElementById('shdlg'); if (box) { box.hidden = true; box.innerHTML = ""; }
+          const b = document.getElementById('sh_dlg'); if (b) b.remove();
+        }
+      }""", K)
+    msgs = K["page"]["messages"]
+    if got["button"] and len(got["rows"]) == len(msgs) and msgs[0]["text"] in got["rows"][0]:
+        print(f"  ✓ R87: 固定封書を端末秘密で開いて {len(msgs)} 件を描画（本番 openBlob・実ブラウザ）")
+    else:
+        print(f"  ✗ R87: 封書の描画が違う: button={got['button']} rows={got['rows'][:2]}")
+        ng += 1
+    if "OFF" in got["errText"] and got["stillRows"] == len(msgs) and got["pending"] == 0:
+        print("  ✓ R87: err:denied は理由文言＋開いた会話は残す＋要求は消える")
+    else:
+        print(f"  ✗ R87: denied の扱いが違う: err={got['errText'][:40]!r} rows={got['stillRows']} pending={got['pending']}")
+        ng += 1
+    return ng
+
 def main(argv):
     if len(argv) != 6:
         print("使い方: pwa3d_smoke.py <base_url> <device_id> <secret> <token> <out.png>")
@@ -559,6 +614,7 @@ def main(argv):
                                 ng += 1
                             else:
                                 print("  ✓ 定型文チップ（Mac保存→スマホ同期）")
+                                ng += _r87_dialog_pins(page)
                         else:
                             diag2 = page.evaluate(
                                 """(pt) => { const hit = document.elementFromPoint(pt.x, pt.y);

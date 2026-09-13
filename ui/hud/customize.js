@@ -4,16 +4,19 @@ import { frozen } from "/ui/platform/clock.js";
 import { createSoundNotifications, setSound, soundOn } from "/ui/platform/sound.js";
 
 const VIEW_KEY = "aioffice.iso.camera";
+const SCALE_KEY = "aioffice.iso.scale";
 const VIEWS = Object.freeze({ compact: { az: 45, el: 50, zoom: 1.05 },
   standard: { az: 45, el: 40, zoom: 1 }, stream: { az: 38, el: 36, zoom: .94 } });
 
 export function init({ shell, T, scene, DEMO, stream, refresh, showToast,
   modals: { modal, mEl, openModal, closeModal } }) {
-  let view = "standard", consent = null;
+  let view = "standard", scale = "auto", consent = null;
   if (!frozen) {
     try { const saved = localStorage.getItem(VIEW_KEY); if (Object.hasOwn(VIEWS, saved)) view = saved; } catch { /* Optional storage. */ }
+    try { if (localStorage.getItem(SCALE_KEY) === "compact") scale = "compact"; } catch { /* Optional storage. */ }
     const q = new URLSearchParams(location.search);
     if (view !== "standard" && !q.has("az") && !q.has("el")) scene.setCameraView?.(VIEWS[view]);
+    if (scale === "compact") scene.setTierCap?.("M");
   }
   const sounds = createSoundNotifications({ isolated: DEMO || stream.enabled, ask: () => {
     consent = mEl("div", "toast sound-consent");
@@ -108,6 +111,13 @@ export function init({ shell, T, scene, DEMO, stream, refresh, showToast,
         try { localStorage.setItem(VIEW_KEY, value); } catch { /* Session selection still works. */ }
       }
       scene.setCameraView?.(VIEWS[value]); repaint();
+    });
+    seg(T("scale_title"), [["auto", T("scale_auto")], ["compact", T("scale_compact")]], scale, (value) => {
+      scale = value;
+      if (!frozen) {
+        try { localStorage.setItem(SCALE_KEY, value); } catch { /* Session selection still works. */ }
+      }
+      scene.setTierCap?.(value === "compact" ? "M" : null); repaint();
     });
   };
   return { openAccessories, renderSettings, update: sounds.update,

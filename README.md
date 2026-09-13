@@ -14,7 +14,7 @@ The office is a daylight Scandinavian interior: oak floors, white walls, large w
 
 - **Answer across vendors.** See Claude Code (interactive and background), Codex CLI and connected OpenClaw sessions together. Use the ❗ tray's number keys, click a robot for its sheet, or reply from your phone. Delivery follows each vendor's supported route; Claude permission decisions use the local PermissionRequest hook.
 - **Measure the human side, with a timeline.** See what waited for your answer and what finished while you were away. An away digest, a 20-second replay, and XP/levels turn recorded activity into a history you can inspect. XP excludes token volume; the Mac view exposes its breakdown.
-- **A 3D screen worth leaving open.** A bright, furnished office with subtle bloom, vignette and static grain, a PMREM room environment and daylight lighting. It grows from S through M and L to XL (24 seats) with peak concurrent activity; levels unlock decorations. Stream mode makes it useful beside your editor or in OBS.
+- **A 3D screen worth leaving open.** A white × pale-lavender glass loft in cool daylight, ceramic robots, and black monitors that glow blue-white (real bloom on emissive screens, plus vignette and static grain, a PMREM room environment). It grows from S through M and L to XL (24 seats) with peak concurrent activity; levels unlock decorations. Stream mode makes it useful beside your editor or in OBS.
 
 ## Working with sessions
 
@@ -23,7 +23,7 @@ The office is a daylight Scandinavian interior: oak floors, white walls, large w
 - **Hire** — choose a registered project, enter a task and toggle separate-branch isolation. `POST /api/hire` starts `claude --bg`, with worktree isolation when selected. The Codex choice copies `open -a Terminal`; you run it and start Codex yourself.
 - **Away digest and replay** — review sessions waiting for you, finished work and ongoing work, then replay the recorded timeline in 20 seconds. This is a reconstruction from events, not a recording of terminal contents.
 - **XP and levels** — completed tasks, commits, answers, timely-answer bonuses, active minutes, hires and Codex turns contribute. Token usage does not. The Mac view shows every contribution; the relay carries totals and levels without the detailed breakdown.
-- **Phone PWA and Web Push** — the same 3D renderer at `quality:"mobile"`, QR pairing and signed replies. Push notifications bring questions to your attention.
+- **Phone PWA and Web Push** — the same 3D renderer at `quality:"mobile"` (no bloom pass: screens glow by emissive brightness only), QR pairing and signed replies. Push notifications bring questions to your attention.
 - **Cost gauges, notifications and reports** — quota/spend views remain available alongside desktop notifications and daily summaries.
 - **MCP** — `office_status`, `office_instruct` and `office_digest` let agents inspect the office, send instructions and read a digest.
 
@@ -90,6 +90,8 @@ bash relay/setup.sh
 The setup script handles Cloudflare login, token/push-key generation, deployment, local relay configuration and connectivity checks. Then open **Phone pairing** in the office, issue a device and open the link on your phone. On iPhone, add it to the Home Screen and enable push. Node.js is needed for the relay setup; see [the relay guide](relay/README.md).
 
 The relay uses an allowlist. It carries status, questions/options, chosen session titles, background summaries, templates and scrubbed action results; transcript bodies and local path fields are removed on the Mac. Titles and background summaries can be disabled separately. See [the exact data contract](docs/office-json.md). Instructions are signed per device and verified on the Mac; the relay's transport token cannot forge them.
+
+**Reading a conversation on the phone (optional, off by default).** When you turn on *Show conversations on the phone* in the Phone pairing sheet, tapping **💬 Show conversation** asks the Mac for that session's recent messages. The Mac seals them with **AES-256-GCM using a key derived for that one device** and hands the ciphertext to the relay; only that phone can open it. What this protects: the relay (Cloudflare) and anyone holding only the transport token cannot read the conversation. What it does not protect: the relay still sees *when* a device asked for *which* session and roughly how large the reply was; there is no forward secrecy (the pairing secret is fixed for 30 days); the ciphertext stays on the relay until it expires (90 seconds); the Mac itself can of course read everything; and **if you lose the phone, whoever has it can read conversations as well as send instructions** — revoke the device from the Mac and no new envelopes are sealed for it. This is not "zero-knowledge". Macs where the system crypto library is unavailable simply do not offer the button.
 
 ## Pricing
 

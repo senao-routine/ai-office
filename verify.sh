@@ -1,6 +1,9 @@
 #!/bin/bash
 # AI Office 検証ハーネス一括実行（コミット前に必ず green にする）
 # 使い方: bash "AI Office/verify.sh"   （SKIP_UI=1 でUIスモーク省略）
+# R93/R87 で踏んだ: node の色付き出力（`\x1b[34mℹ fail 0`）は `grep -qE "^ℹ fail 0$"` に一致せず
+# 「core ユニット失敗」と嘘をつく（背景実行＝擬似端末で node が色を付ける）。ここで一律に消す。
+export NO_COLOR=1 FORCE_COLOR=0
 set -u
 cd "$(dirname "$0")"
 # 呼び出しシェルの注入envを除染（P4デバッグ中のシェルから実行しても検証対象がすり替わらない）
@@ -56,7 +59,8 @@ if command -v node >/dev/null 2>&1; then
   #   巻き込まないため。足したらこの行に足す。
   node --test tests/sound.test.mjs tests/hire_onboarding.test.mjs tests/hud_growth_frozen.test.mjs \
     tests/iso_acts.mjs tests/iso_floor_ao.mjs tests/iso_growth.test.mjs tests/stream.test.mjs \
-    || ng "R90 presentation の node テスト（音・雇う・成長・所作・床AO・ティア・配信）"
+    tests/dialog_seal_kat.mjs tests/iso_no_fake_glow.test.mjs \
+    || ng "R90 presentation の node テスト（音・雇う・成長・所作・床AO・ティア・配信・封書KAT・fake glow 非復活）"
   UIJS_NG=0
   for F in $(find ui -name '*.js' -not -path 'ui/vendor/*' 2>/dev/null); do
     node --check "$F" >/dev/null 2>&1 || { echo "    構文エラー: $F"; UIJS_NG=1; }
@@ -108,6 +112,15 @@ git ls-files --error-unmatch relay/src/app_html.js >/dev/null 2>&1 \
   && ok "app_html.js git追跡済み" \
   || ng "app_html.js が未追跡 → git add relay/src/app_html.js"
 # R79: 撤去の恒久ピン＝スプライト同梱が「復活していない」ことを機械で守る
+# R93: 光は post.js の bloom（emissive な画面材質）だけ。旧 fake glow 板（neonRing/HOLO/glowP…）の
+#   復活を止める。`stage` はレイアウトのゾーン id なので語では禁止しない（材質キーとしてだけ禁止）。
+if grep -nE '^\s*(neon|neonC|holo|glowP|glowC|reflP|reflC|screenGlow)\s*:' ui/iso/scene3d.js ui/iso/kit.js ui/iso/office.js \
+   || grep -nE 'neonRing\(|HOLO_PANELS' ui/iso/*.js \
+   || [ "$(cat ui/iso/*.js | grep -c AdditiveBlending)" -gt 1 ]; then
+  ng "R93 フェイク発光の復活（旧キー/neonRing/HOLO/Additive>1）"
+else
+  ok "R93 発光は post.js bloom のみ（フェイク発光板なし）"
+fi
 if [ -f relay/src/sprites_data.js ] || [ -f tools/gen_pwa_sprites.py ]; then
   ng "スプライト同梱が復活している（R79で全廃＝アバターはモノグラム）"
 else
@@ -533,7 +546,8 @@ elif [ -x "$VENV_PY" ] && "$VENV_PY" -c 'import playwright' >/dev/null 2>&1 \
   "$VENV_PY" tools/ui_shot.py --style iso --world xl22 --name xl22 --check | sed 's/^/  /'
   [ "${PIPESTATUS[0]}" = "0" ] || ng "R90 XLティア(22体)ビジュアル回帰失敗 (exit ${PIPESTATUS[0]})"
   # R90: 方向Cの参照画像で較正した3D品質ゲート（docs/art-direction.md）。
-  "$VENV_PY" tools/style_score.py --profile c tests/artifacts/ui_iso_scene.png | sed 's/^/  /'
+  # R93-M1'（2026-09-14）: 常設ゲートを glass（G1 ラベンダー・グラスロフト）へ。c は retired（tools/style_score.py）。
+  "$VENV_PY" tools/style_score.py --profile glass tests/artifacts/ui_iso_scene.png | sed 's/^/  /'
   [ "${PIPESTATUS[0]}" = "0" ] || ng "R90 3D品質ゲート未達 (iso/方向C) (exit ${PIPESTATUS[0]})"
 else
   echo "  - Playwright/Chromium venvなしまたは起動不可 → 省略（検収側で要実行）"
@@ -789,6 +803,32 @@ MCP_REG="$(pwd)/server/mcp_office.py"
 [ -f "$HOME/Library/Application Support/AIOffice/app/server/mcp_office.py" ] \
   && MCP_REG="$HOME/Library/Application Support/AIOffice/app/server/mcp_office.py"
 echo "  ℹ 実Claude Code登録: claude mcp add --scope user aioffice -- \$(python3 -c 'import sys;print(sys.executable)') \"$MCP_REG\""
+
+echo "▶ 12 封書(dialog_seal)の土台 — CommonCrypto AES-256-GCM"
+# R87-H0: server/ は標準ライブラリのみという不変条件を守るため、暗号は ctypes で
+# macOS の CommonCrypto を叩く。check_stdlib.py は import 名しか見ないので
+# **この OS 依存を見張れない**（vendored segno と同じ位置づけ）。ここで機械が確かめる。
+python3 tools/check_cc_gcm.py > /tmp/ccgcm.txt 2>&1
+CCRC=$?
+# ★終了コードで分ける。全部を警告にすると **KAT 不一致でも verify が合格する**
+#   （Astra レビューが実際にメモリ内でKATを1文字変えて再現した）。
+#   2 = この Mac に無い（機能を出さないのが正しい）／1 = 検算に失敗＝止める
+if [ "$CCRC" = "1" ]; then
+  ng "封書の検算に失敗: $(tail -3 /tmp/ccgcm.txt | head -1)"
+elif [ "$CCRC" = "0" ]; then
+  ok "$(tail -1 /tmp/ccgcm.txt | sed 's/^✓ //')"
+  # 素の Mac（/usr/bin/python3 3.9.6）でも封緘が通ることを確かめる＝配布先で死なない
+  if [ -x /usr/bin/python3 ]; then
+    /usr/bin/python3 -m unittest tests.test_dialog_seal > /dev/null 2>&1 \
+      && ok "封書: 素のMacのpython3（$(/usr/bin/python3 -V 2>&1 | cut -d' ' -f2)）でも通る" \
+      || ng "封書: /usr/bin/python3 で落ちる（配布先で機能が死ぬ）"
+  fi
+else
+  # 使えない Mac は「会話ビューアを出さない」が正しい姿＝ここだけ警告に留める
+  echo "  ℹ 封緘バックエンドが無い環境: $(tail -2 /tmp/ccgcm.txt | head -1)"
+  echo "  ℹ この Mac では会話ビューア(caps.dialog)を出さない。平文フォールバックは実装しない"
+fi
+rm -f /tmp/ccgcm.txt
 
 echo
 if [ $NG -eq 0 ]; then echo "✅ verify: 全チェック合格"; else echo "❌ verify: ${NG}件失敗"; exit 1; fi

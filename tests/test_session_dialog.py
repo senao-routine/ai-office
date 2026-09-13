@@ -146,5 +146,118 @@ class SessionTranscriptTest(unittest.TestCase):
         self.assertIsNotNone(office._SESSION_ID_RE.fullmatch("e5769d42-66b4-4936-a42e-7a57d75c0c6a"))
 
 
+class SealedDialogTest(unittest.TestCase):
+    """R87-S2: `POST /api/dialog/sealed` の中身 `_dialog_sealed`。
+
+    封じる前の門（許可・失効・存在）を1つずつ固定し、封じた中身が PC の `dialog_page` と
+    同じであることを **unseal で確かめる**（生の page を返す枝は存在しないので、復号でしか見えない）。
+    """
+
+    def setUp(self):
+        from unittest.mock import patch
+        self.home = Path(tempfile.mkdtemp(prefix="office_dialog_seal_"))
+        self.orig_projects = office.PROJECTS
+        office.PROJECTS = self.home / ".claude" / "projects"
+        d = office.PROJECTS / "-Users-test-demo-project"
+        d.mkdir(parents=True)
+        (d / "sess-dlg00001.jsonl").write_text("\n".join(FIXTURE_LINES), encoding="utf-8")
+        self.secret = "5e" * 32
+        self.device = "dev-seal-0001"
+        self.devices = {"version": 1, "devices": {
+            self.device: {"secret": self.secret, "label": "phone", "expires": 4102444799},
+            "dev-gone-0002": {"secret": "aa" * 32, "revoked": True},
+            "dev-old-0003": {"secret": "bb" * 32, "expires": 1},
+        }}
+        self.config = {"projects": {}, "dialogRelay": True}
+        ds = office.dialog_seal
+        self.saved = (ds.BUNDLES_FILE,)
+        ds.BUNDLES_FILE = self.home / ".claude" / "office_dialog_bundles.json"
+        ds._RESERVED.clear(); ds._FILE_CACHE.update(key=None, rows=[])
+        for target, value in (("load_config", lambda: self.config),
+                              ("load_devices", lambda: self.devices)):
+            pt = patch.object(office, target, value); pt.start(); self.addCleanup(pt.stop)
+        pt = patch.object(office.office_actions, "_audit", lambda rec: self.audit.append(rec))
+        pt.start(); self.addCleanup(pt.stop)
+        self.audit = []
+
+    def tearDown(self):
+        office.PROJECTS = self.orig_projects
+        office.dialog_seal.BUNDLES_FILE = self.saved[0]
+        office.dialog_seal._RESERVED.clear(); office.dialog_seal._FILE_CACHE.update(key=None, rows=[])
+        shutil.rmtree(self.home, ignore_errors=True)
+
+    def _ask(self, req_id="a" * 32, session="sess-dlg00001", device=None, **extra):
+        data = {"action": {"aioffice": 1, "kind": "dialog", "reqId": req_id,
+                           "session": session, "depth": 0, **extra},
+                "device_id": self.device if device is None else device}
+        return office._dialog_sealed(data)
+
+    @unittest.skipUnless(office.dialog_seal.AVAILABLE, "封緘バックエンドが無い Mac")
+    def test_sealed_page_equals_the_local_dialog_page_and_never_leaves_plaintext(self):
+        ok, msg, extra = self._ask()
+        self.assertEqual((ok, msg), (True, "sealed"))
+        b = extra["bundle"]
+        self.assertEqual(set(b), {"v", "id", "s", "i", "e", "n", "c", "b"})
+        self.assertNotIn("messages", json.dumps(extra, ensure_ascii=False))   # 生の page は返らない
+        page = office.dialog_seal.unseal(self.secret, self.device, "sess-dlg00001", b)
+        local = office.dialog_page(FIXTURE_LINES, 0, truncated=False)
+        self.assertEqual(page["messages"], local["messages"])
+        self.assertEqual(page["session"], "sess-dlg00001")
+        self.assertFalse(page["clipped"])
+        self.assertEqual(self.audit[-1]["state"], "sealed")
+        self.assertNotIn("text", json.dumps(self.audit[-1]))              # 監査にも本文は無い
+
+    @unittest.skipUnless(office.dialog_seal.AVAILABLE, "封緘バックエンドが無い Mac（unavailable が先に返る）")
+    def test_off_means_denied_and_the_capability_says_so(self):
+        self.config["dialogRelay"] = False
+        ok, msg, extra = self._ask()
+        self.assertEqual((ok, msg, extra["bundle"]["err"]), (True, "denied", "denied"))
+        self.assertNotIn("b", extra["bundle"])
+        # caps.dialog は「封じられる Mac」かつ「本人が ON」のときだけ 1
+        self.assertEqual(1 if (office.dialog_seal.AVAILABLE and self.config.get("dialogRelay") is True) else 0, 0)
+
+    @unittest.skipUnless(office.dialog_seal.AVAILABLE, "封緘バックエンドが無い Mac（unavailable が先に返る）")
+    def test_revoked_or_expired_devices_get_denied_at_the_second_gate(self):
+        for dev in ("dev-gone-0002", "dev-old-0003", "dev-unknown-9"):
+            ok, msg, extra = self._ask(req_id=f"{hash(dev) & 0xffffffff:032x}", device=dev)
+            self.assertEqual((ok, extra["bundle"]["err"]), (True, "denied"), dev)
+
+    @unittest.skipUnless(office.dialog_seal.AVAILABLE, "封緘バックエンドが無い Mac（unavailable が先に返る）")
+    def test_unknown_session_is_notfound_and_malformed_is_refused_outright(self):
+        ok, msg, extra = self._ask(session="sess-nothere")
+        self.assertEqual(extra["bundle"]["err"], "notfound")
+        for bad in ({"action": {"aioffice": 1, "kind": "run", "reqId": "a" * 32, "session": "s"}},
+                    {"action": {"aioffice": 1, "kind": "dialog", "reqId": "zz", "session": "s"}},
+                    {"action": {"aioffice": 1, "kind": "dialog", "reqId": "b" * 32, "session": "../x"}}):
+            ok, msg, extra = office._dialog_sealed({**bad, "device_id": self.device})
+            self.assertFalse(ok, bad)
+
+    def test_errors_are_only_the_fixed_enum(self):
+        for err in ("unavailable", "denied", "notfound", "toolarge", "expired"):
+            self.assertIn(err, office.dialog_seal.ERRORS)
+        self.config["dialogRelay"] = False
+        _, _, extra = self._ask()
+        self.assertIn(extra["bundle"]["err"], office.dialog_seal.ERRORS)
+
+    @unittest.skipUnless(office.dialog_seal.AVAILABLE, "封緘バックエンドが無い Mac")
+    def test_redelivery_returns_the_same_bundle_without_rereading_the_transcript(self):
+        from unittest.mock import patch
+        calls = []
+        real = office.tail_lines
+        with patch.object(office, "tail_lines", lambda *a, **k: (calls.append(1), real(*a, **k))[1]):
+            _, m1, e1 = self._ask(req_id="c" * 32)
+            _, m2, e2 = self._ask(req_id="c" * 32)
+        self.assertEqual((m1, m2), ("sealed", "cached"))
+        self.assertEqual(e1["bundle"], e2["bundle"])
+        self.assertEqual(len(calls), 1)                                     # 二重に読まない
+
+    @unittest.skipUnless(office.dialog_seal.AVAILABLE, "封緘バックエンドが無い Mac")
+    def test_depth_above_one_is_clamped_to_the_configured_remote_depth(self):
+        self.config["dialogRelayDepth"] = 5                                 # 不正 → 0
+        _, _, extra = self._ask(req_id="d" * 32, depth=2)
+        page = office.dialog_seal.unseal(self.secret, self.device, "sess-dlg00001", extra["bundle"])
+        self.assertEqual(page["depth"], 0)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -236,7 +236,8 @@ export function glassBox(spec = {}) {
     const count = Math.max(1, Math.ceil(wall.w / s.pitch));
     for (let i = 0; i <= count; i++) add(box(t, s.h, t), "dark", -wall.w / 2 + t / 2 + i * (wall.w - t) / count, s.h / 2);
   }
-  // buildStaticBatches owns the shared .10 glass material and renderOrder=10.
+  // Keep the glass batch separate from windows; buildOffice binds it to glassPane (.10).
+  // buildStaticBatches retains renderOrder=10 without changing geometry or draw count.
   return pieces;
 }
 

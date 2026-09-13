@@ -30,7 +30,8 @@ HERE = Path(__file__).resolve().parent
 if str(HERE) not in sys.path:          # exec_module 反復でも sys.path に重複挿入しない
     sys.path.insert(0, str(HERE))
 import office_server as office
-import office_actions  # 同じ server/・標準ライブラリのみ（post_instruction / office_json）
+import office_actions  # 同じ server/・標準ライブラリのみ
+import dialog_seal     # R87: 封書の**形**だけ（live_bundles/FRAME_LEN/MAX_FRAMES/REQID_RE/ERRORS/unb64u）。復号や transcript 読みは持ち込まない（post_instruction / office_json）
 import ws_client as wsc         # R79-8: RFC6455クライアント（同じ server/・stdlibのみ・KATはtest_ws_client）
 
 
@@ -200,6 +201,149 @@ def _post_action(payload):
         return json.loads(resp.read().decode("utf-8"))
 
 
+# ── R87 封書: dlg-<32hex> は「会話を封じて返す要求」＝ office_inbox へは書かない ──────────
+# 封じるのは daemon（transcript を読める唯一のプロセス）。ここは act- と同じ配達員で、
+# 返ってきた**暗号文だけ**を次の sync に載せる。平文は relay_agent のメモリにも載せない
+# （transcript を読む関数・ページ定数・復号関数を一切 import しない＝test_relay_agent が grep でピン）。
+DLG_SESSION_RE = re.compile(r"^dlg-[0-9a-f]{32}$")
+DLG_URL = os.environ.get("OFFICE_SEAL_URL", f"http://127.0.0.1:{ACT_PORT}/api/dialog/sealed")
+DLG_KEYS = frozenset({"v", "id", "s", "i", "e", "n", "c", "b", "err"})
+DLG_B_MAX = dialog_seal.MAX_FRAMES * dialog_seal.FRAME_LEN * 4 // 3 + 4     # base64url の上限
+_DLG_B64 = re.compile(r"^[A-Za-z0-9_-]+$")
+
+
+def _post_dialog(payload):
+    """daemon の /api/dialog/sealed へ（loopback+CSRFヘッダ）。応答dictを返す。"""
+    req = urllib.request.Request(
+        DLG_URL, data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        method="POST",
+        headers={"Content-Type": "application/json",
+                 "X-Office-Local": "1",
+                 "User-Agent": "aioffice-relay/1.0"})
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+
+def _deliver_dialog(session, g):
+    """dlg-宛の各封筒を daemon へ回す。ack 規則は _deliver_actions と**同型**:
+    形式不正・session と reqId の不一致＝恒久＝ack して捨てる／HTTPError（受け取って拒否）＝ack＋nonce／
+    NET_ERRORS（不達）＝ack せず nonce も焼かず残置→次周（300秒の鮮度窓で自然消滅）。"""
+    ok_ids, ok_keys = [], []
+    for i, text in enumerate(g["texts"]):
+        iid = g["ids"][i]
+        key = g["keys"][i]
+        try:
+            act = json.loads(text)
+        except (ValueError, TypeError):
+            act = None
+        req_id = str((act or {}).get("reqId") or "") if isinstance(act, dict) else ""
+        if (not isinstance(act, dict) or act.get("aioffice") != 1 or act.get("kind") != "dialog"
+                or session != f"dlg-{req_id}"):
+            if iid is not None:
+                ok_ids.append(iid)
+            print(f"⛔拒否(dlg-format) id={iid}", flush=True)
+            continue
+        _devs = g.get("devices") or []
+        dev = _devs[i] if i < len(_devs) else ""
+        try:
+            r = _post_dialog({"action": act, "device_id": dev})
+        except urllib.error.HTTPError as e:
+            print(f"⛔封書拒否 id={iid} http={e.code}", flush=True)
+            if iid is not None:
+                ok_ids.append(iid)
+            ok_keys.append(key)
+            continue
+        except NET_ERRORS as e:
+            print(f"⚠ 封書不達（daemon未起動?・残置して次周）: {e}", flush=True)
+            continue                 # ★ackしない・nonceも焼かない
+        print(f"✉️ 封書 id={iid} {str((r or {}).get('msg') or (r or {}).get('state') or '?')}", flush=True)
+        if iid is not None:
+            ok_ids.append(iid)
+        ok_keys.append(key)
+    return ok_ids, ok_keys
+
+
+def _assert_opaque(bundle):
+    """送信直前の門。封書は**不透明なバイト列と数字と固定 enum**だけで出来ていること。
+    それ以外（平文・余分なキー・長さ違い）が混じったら例外＝その周は送らない。"""
+    if not isinstance(bundle, dict):
+        raise ValueError("bundle is not a dict")
+    extra = set(bundle) - DLG_KEYS
+    if extra:
+        raise ValueError(f"unexpected keys: {sorted(extra)}")
+    out = {}
+    if bundle.get("v") != 1:
+        raise ValueError("bad v")
+    out["v"] = 1
+    rid = bundle.get("id")
+    if not isinstance(rid, str) or not dialog_seal.REQID_RE.match(rid):
+        raise ValueError("bad id")
+    out["id"] = rid
+    e = bundle.get("e")
+    if not isinstance(e, int) or isinstance(e, bool) or not (0 < e < 4102444800):
+        raise ValueError("bad e")
+    out["e"] = e
+    if "err" in bundle:
+        if bundle["err"] not in dialog_seal.ERRORS:
+            raise ValueError("bad err")
+        for k in ("s", "i", "n", "c", "b"):
+            if k in bundle:
+                raise ValueError("err bundle carries payload")
+        out["err"] = bundle["err"]
+        return out
+    for k in ("s", "b"):
+        v = bundle.get(k)
+        if not isinstance(v, str) or not _DLG_B64.match(v):
+            raise ValueError(f"bad {k}")
+    if len(bundle["s"]) > 64 or len(bundle["b"]) > DLG_B_MAX:
+        raise ValueError("too long")
+    n = bundle.get("n")
+    if not isinstance(n, int) or isinstance(n, bool) or not (1 <= n <= dialog_seal.MAX_FRAMES):
+        raise ValueError("bad n")
+    i = bundle.get("i")
+    if not isinstance(i, int) or isinstance(i, bool) or not (0 < i < 4102444800):
+        raise ValueError("bad i")
+    if bundle.get("c") != dialog_seal.COMPRESSION:
+        raise ValueError("bad c")
+    raw = dialog_seal.unb64u(bundle["b"])
+    if len(raw) != n * dialog_seal.FRAME_LEN or not raw.startswith(dialog_seal.MAGIC):
+        raise ValueError("frame length/magic mismatch")
+    out.update({"s": bundle["s"], "i": i, "n": n, "c": bundle["c"], "b": bundle["b"]})
+    return out
+
+
+# 中継（worker.js sync の dlgJson 上限）と同じ値。超える分は**古い順に落とす**＝黙って全部捨てない。
+DLG_MAX_CHARS = 180000
+
+
+def _dialog_payload(state):
+    """次の sync に載せる封書のレーン。(payload_json or None, fingerprint)。
+    None/"" = 送るものが無い（ファイル未使用）。期限切れだけなら**空を1回**送って中継の行を消す。
+    usage.level>=1（R80 の自動減速）では非空の payload を保留する（空は送る）。"""
+    rows = dialog_seal.live_bundles()
+    if rows is None:
+        return None, ""
+    items = []
+    for b in rows:
+        try:
+            items.append(_assert_opaque(b))
+        except ValueError as e:
+            print(f"⛔封書を送らない（不透明でない）: {e}", flush=True)
+    # 新しい順に並べ、中継の上限を超える分は古い封書から落とす（別モデルレビュー 2026-09-14:
+    # 有効な封書 2 通で 65,536 字を超え、中継が黙って捨てたうえ指紋は確定＝再送も無かった）。
+    items.sort(key=lambda b: int(b.get("i") or 0), reverse=True)
+    text = json.dumps({"v": 1, "items": items}, separators=(",", ":"))
+    while len(text) > DLG_MAX_CHARS and len(items) > 1:
+        dropped = items.pop()
+        print(f"⚠封書を落とす（中継の上限 {DLG_MAX_CHARS} 字超・古い順）: id={str(dropped.get('id', '?'))[:8]}", flush=True)
+        text = json.dumps({"v": 1, "items": items}, separators=(",", ":"))
+    fp = hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+    lvl = int((state.get("usage") or {}).get("level") or 0)
+    if items and lvl >= 1:
+        return None, state.get("dlg_fp", "")   # 減速中は保留（指紋も動かさない＝後で送る）
+    return text, fp
+
+
 def _deliver_actions(session, g):
     """act-宛の各封筒を daemon へ受理させる。(ack対象ids, コミットするnonce鍵) を返す。
     受理できなかった分は**ackしない・nonceも焼かない**＝次周で再送（300秒の鮮度窓を超えたら
@@ -317,6 +461,17 @@ def _process_items(items):
         # R79-10: act-<16hex> は「遠隔実行アクション」＝office_inbox へは書かない。
         # 実行者は daemon（office_server・Automation TCC同意済み）＝ここは配達員のまま。
         # 掟: daemon に届いた（受理された）ときだけ ack＋nonceコミット。不達なら残置して次周へ。
+        if DLG_SESSION_RE.match(session):
+            # R87: 封書の要求。daemon に封じさせ、結果は次の sync の dlg レーンに載る。
+            done_ids, done_keys = _deliver_dialog(session, g)
+            if done_ids:
+                delivered += 1
+                committed = True
+                for k in done_keys:
+                    if k is not None:
+                        _NONCES[k[0]] = k[1]
+                ack_ids.extend(done_ids)
+            continue
         if ACT_SESSION_RE.match(session):
             done_ids, done_keys = _deliver_actions(session, g)
             if done_ids:
@@ -780,6 +935,11 @@ def _sync_request(state):
     body = {"office": snapshot if send_office else None,
             "ackIds": list(state.get("acks") or []),
             "wantOpenclaw": _want_openclaw(state, now)}
+    # R87: 封書のレーン。office_json とは別の指紋＝会話の変化で office を再送しない・その逆も無い。
+    dlg_text, dlg_fp = _dialog_payload(state)
+    if dlg_text is not None and dlg_fp != state.get("dlg_fp", ""):
+        body["dlg"] = dlg_text
+        state["_dlg_fp_pending"] = dlg_fp
     return body, snapshot, fp, send_office, now
 
 
@@ -790,6 +950,8 @@ def _sync_apply(d, state, snapshot, fp, send_office, now, url, token):
     if send_office:
         state["fp"] = fp
         state["pushed_at"] = now
+    if "_dlg_fp_pending" in state:
+        state["dlg_fp"] = state.pop("_dlg_fp_pending")     # 中継が受けたので確定
     # R79: ❗は「存在」ではなく「新規遷移（エッジ）」で burst を張る。
     # 前周から増えたキーがあるときだけ True＝放置された承認まちで張り付かない。
     attn_keys = _attention_keys(snapshot)
@@ -946,7 +1108,8 @@ def ws_loop(url, token, state):
             # 使用量が高いほど heartbeat も伸ばす（無変化時の定期pushを減らす）
             hb = PUSH_HEARTBEAT * USAGE_SLOWDOWN.get(lvl, 1.0)
             if (_status_fingerprint(snapshot) != state.get("fp")
-                    or now - state.get("pushed_at", 0.0) >= hb):
+                    or now - state.get("pushed_at", 0.0) >= hb
+                    or _dialog_payload(state)[1] != state.get("dlg_fp", "")):   # R87: 封書の変化
                 need_sync = True
                 continue
             if now - last_ka >= WS_KEEPALIVE:

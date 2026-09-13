@@ -2,13 +2,16 @@
 import { LAYOUT_SPECS, M } from "./layout_specs.js";
 
 const count = (n) => Number.isSafeInteger(n) && n >= 0 ? n : 0;
+const TIERS = ["S", "M", "L", "XL"];
 export const maxSeenFor = ({ agents = 0, maxSeen = 0 } = {}) =>
   Math.max(count(maxSeen), count(Array.isArray(agents) ? agents.length : agents));
 
 /** Caller carries maxSeen forward, including across reloads. officeLevel cannot buy seats. */
-export function tierFor({ agents = 0, maxSeen = 0, officeLevel } = {}) {
+export function tierFor({ agents = 0, maxSeen = 0, officeLevel, cap = null } = {}) {
   const peak = maxSeenFor({ agents, maxSeen });
-  return peak <= 8 ? "S" : peak <= 12 ? "M" : peak <= 18 ? "L" : "XL";
+  const tier = peak <= 8 ? "S" : peak <= 12 ? "M" : peak <= 18 ? "L" : "XL";
+  const limit = TIERS.indexOf(cap);
+  return limit >= 0 && limit < TIERS.indexOf(tier) ? cap : tier;
 }
 
 export function decorationsFor(officeLevel) {

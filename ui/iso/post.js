@@ -36,7 +36,7 @@ export function targetComplete(renderer, target) {
 }
 
 export class PostProcess {
-  constructor(renderer, { quality = "high", tilt = false } = {}) {
+  constructor(renderer, { quality = "high", tilt = false, bloom = 0.22 } = {}) {
     this.renderer = renderer;
     this.quality = ["high", "mobile", "off"].includes(quality) ? quality : "high";
     this.tilt = tilt;
@@ -76,6 +76,7 @@ export class PostProcess {
       uniform sampler2D source;
       uniform sampler2D bloom;
       uniform sampler2D sharp;
+      uniform float bloomStrength;
       varying vec2 vUv;
       uint hashPixel(uvec2 p) {
         uint h = p.x * 374761393u + p.y * 668265263u;
@@ -84,7 +85,7 @@ export class PostProcess {
       }
       void main() {
         float alpha = texture2D(sharp, vUv).a;
-        gl_FragColor = vec4(texture2D(source, vUv).rgb + texture2D(bloom, vUv).rgb * 0.10, alpha);
+        gl_FragColor = vec4(texture2D(source, vUv).rgb + texture2D(bloom, vUv).rgb * bloomStrength, alpha);
         #include <tonemapping_fragment>
         gl_FragColor.rgb *= 1.0 - 0.08 * smoothstep(0.5, 1.0, length(vUv - 0.5) * 1.25);
         float grain = float(hashPixel(uvec2(gl_FragCoord.xy)) & 65535u) / 65535.0;
@@ -93,7 +94,8 @@ export class PostProcess {
         gl_FragColor.a = alpha;
         if (alpha == 0.0) gl_FragColor.rgb = vec3(0.0);
       }
-    `, { source: { value: null }, bloom: { value: null }, sharp: { value: null } }, true);
+    `, { source: { value: null }, bloom: { value: null }, sharp: { value: null },
+      bloomStrength: { value: bloom } }, true);
     this.materials.push(this.threshold, this.blur, this.composite);
     if (tilt) {
       this.tiltMaterial = material(`

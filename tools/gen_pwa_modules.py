@@ -28,7 +28,8 @@ HUD_BEGIN = "/* HUD_TOKENS_BEGIN (generated: ui/hud-tokens.css) */"
 HUD_END = "/* HUD_TOKENS_END */"
 
 # 入口＝3Dシーンとワールド構築。ここから import を辿って閉包を作る
-ENTRIES = ["/ui/pwa/boot3d.js"]   # boot3dから方向Cのui/isoだけを辿る。
+# R87: 封書の入口は 3D と独立（リスト表示のままでも会話を読めるようにする）。
+ENTRIES = ["/ui/pwa/boot3d.js", "/ui/pwa/dlg.js"]   # boot3dから方向Cのui/isoだけを辿る。
 # JSからURLで読む静的アセット（importでは辿れない）。3Dシーンのテクスチャ一式。
 ASSET_DIRS = ["ui/iso/tex"]
 ASSET_MIME = {".webp": "image/webp", ".png": "image/png", ".jpg": "image/jpeg"}

@@ -1,7 +1,7 @@
 // 新プロジェクト・起動・ペアリング・レシピ・設定・リソースの管理画面。
 import {
   budgetApply, fxApply, getKeysStatus, getRecipes, getStatusBoard, getTemplates,
-  launchProject, newProject, pairList, pairNew, pairRevoke, pickProjectFolder,
+  launchProject, newProject, pairList, pairNew, pairRevoke, pickProjectFolder, setDialogRelay,
   setOfficeKey, setRecipes, setServerLang, setTemplates, spendApply,
 } from "/ui/platform/api.js";
 
@@ -162,7 +162,29 @@ export function init({ root, shell, T, lang, setLang, getWorld, applyStaticStrin
       modal.append(mEl("p", "mnote", T("pair_norelay")));
     }
     try {
-      const { devices } = await pairList();
+      const { devices, dialogRelay, dialogAvailable } = await pairList();
+      // R87: 会話共有のトグル。既定 OFF・この画面が唯一の入口（遠隔から変える経路は無い）。
+      // 別モデルレビュー（2026-09-14）: API だけあって UI が無く、設定を手編集しない限り届かなかった。
+      const dlgRow = mEl("label", "mdev");
+      const dlgOn = mEl("input");
+      dlgOn.type = "checkbox";
+      dlgOn.id = "pair-dialog";
+      dlgOn.checked = dialogRelay === true;
+      dlgOn.disabled = dialogAvailable === false;
+      dlgRow.append(dlgOn, mEl("span", "", T("pair_dialog_toggle")));
+      dlgOn.addEventListener("change", async () => {
+        dlgOn.disabled = true;
+        try {
+          await setDialogRelay(dlgOn.checked);
+          showToast(T(dlgOn.checked ? "pair_dialog_on" : "pair_dialog_off"));
+        } catch (err) {
+          dlgOn.checked = !dlgOn.checked;
+          showToast(err.message, false);
+        }
+        dlgOn.disabled = false;
+      });
+      modal.append(dlgRow, mEl("p", "mnote",
+        dialogAvailable === false ? T("pair_dialog_unavailable") : T("pair_dialog_note")));
       if (devices?.length) {
         const list = mEl("div", "mdevices");
         list.append(mEl("b", "msub", T("pair_devices", devices.length)));

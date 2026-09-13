@@ -485,6 +485,114 @@ rows = json.loads(raw)["results"]
 assert any(r["reqId"] == "req-e2e00001" for r in rows), rows
 EOF
 
+# ---- R87 封書: スマホの会話ビューア（E2EE）E2E -------------------------------------
+# スマホ役が署名した dlg- 要求 → 中継 → relay_agent → daemon が封じる → 次の sync で dlg レーン →
+# GET /status から取った封書を**端末秘密で本当に開ける**（PWA 本番と同じ openBlob）／
+# フル Bearer だけの第三者には base64url しか見えない／別端末では開けない／限定トークンは書けない／
+# 期限で空になる／dlg- の孤児 inbox は生えない。R79-10 の daemon は OFFICE_CONFIG を持たないので、
+# 専用の HOME・config・daemon(:4795) を立てる。
+DLG_HOME=$(python3 tests/make_home.py)
+DLG_PORT=4795
+printf '{"projects": {}, "dialogRelay": true}\n' > "$DLG_HOME/office_config.json"
+# 端末を1台発行（正本の new_device＝実際のペアリングと同じ台帳形式）
+DLG_DEV=$(OFFICE_HOME="$DLG_HOME" python3 - <<'EOF'
+import importlib.util, json
+from pathlib import Path
+spec = importlib.util.spec_from_file_location("o", "server/office_server.py")
+o = importlib.util.module_from_spec(spec); spec.loader.exec_module(o)
+d = o.new_device("e2e-phone")
+print(json.dumps({"d": d["device_id"], "s": d["secret"]}))
+EOF
+)
+DLG_DID=$(echo "$DLG_DEV" | python3 -c 'import sys,json;print(json.load(sys.stdin)["d"])')
+DLG_SEC=$(echo "$DLG_DEV" | python3 -c 'import sys,json;print(json.load(sys.stdin)["s"])')
+OFFICE_HOME="$DLG_HOME" OFFICE_CONFIG="$DLG_HOME/office_config.json" OFFICE_DIALOG_TTL=8 \
+  python3 server/office_server.py --port $DLG_PORT > /tmp/dlg_daemon.log 2>&1 &
+DLG_PID=$!
+DLG_UP=0
+for i in $(seq 1 30); do
+  curl -s -o /dev/null -H "X-Office-Local: 1" "http://127.0.0.1:$DLG_PORT/api/office" && { DLG_UP=1; break; }
+  sleep 0.5
+done
+[ "$DLG_UP" = "1" ] && ok "R87 daemon起動（封じる側・dialogRelay=ON）" || ng "R87 daemonが起動しない: $(tail -3 /tmp/dlg_daemon.log)"
+# caps.dialog が「封じられる Mac かつ ON」で 1
+python3 - "$DLG_PORT" <<'EOF' && ok "R87 caps.dialog=1（封緘バックエンド有・ON）" || ng "R87 caps.dialog が立たない"
+import json, sys, urllib.request
+d = json.loads(urllib.request.urlopen(urllib.request.Request(f"http://127.0.0.1:{sys.argv[1]}/api/office", headers={"X-Office-Local":"1"})).read())
+assert d["actions"]["caps"].get("dialog") == 1, d["actions"]["caps"]
+EOF
+# スマホ役: dlg-<reqId> の封筒（署名は正本 sign_envelope・この端末の秘密で）
+DLG_REQ=$(python3 -c 'import secrets;print(secrets.token_hex(16))')
+DLG_TEXT="{\"aioffice\":1,\"kind\":\"dialog\",\"reqId\":\"$DLG_REQ\",\"session\":\"sess-verify0001\",\"depth\":0}"
+ENV_DLG=$(python3 - "$DLG_DID" "$DLG_SEC" "dlg-$DLG_REQ" "$DLG_TEXT" "$(date +%s)" "$(python3 -c 'import secrets;print(secrets.token_hex(16))')" <<'EOF'
+import importlib.util, json, sys
+spec = importlib.util.spec_from_file_location("o", "server/office_server.py")
+o = importlib.util.module_from_spec(spec); spec.loader.exec_module(o)
+did, sec, sess, text, ts, nonce = sys.argv[1:7]
+print(json.dumps(o.sign_envelope(sec, did, sess, text, int(ts), nonce)))
+EOF
+)
+curl -s -X POST "$B/instruct" -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" -d "$ENV_DLG" >/dev/null
+# --once #1: 要求を daemon へ回す（封じる）→ --once #2: 封書を dlg レーンで中継へ載せる
+OFFICE_HOME="$DLG_HOME" RELAY_URL="$B" RELAY_TOKEN="$TOKEN" OFFICE_PORT=$DLG_PORT \
+  python3 server/relay_agent.py --once > /tmp/dlg_relay.log 2>&1
+[ -f "$DLG_HOME/.claude/office_dialog_bundles.json" ] \
+  && [ "$(stat -f '%Lp' "$DLG_HOME/.claude/office_dialog_bundles.json")" = "600" ] \
+  && ok "R87 封書ファイルが 0600 で作られた（daemon→relay_agent はファイル経由）" \
+  || ng "R87 封書ファイルが無い/権限が違う: $(ls -la "$DLG_HOME/.claude/" | grep dialog)"
+ls "$DLG_HOME/.claude/office_inbox/" 2>/dev/null | grep -q '^dlg-' \
+  && ng "R87 dlg- の孤児 inbox が生えた" || ok "R87 dlg- は office_inbox に書かない（孤児根絶）"
+OFFICE_HOME="$DLG_HOME" RELAY_URL="$B" RELAY_TOKEN="$TOKEN" OFFICE_PORT=$DLG_PORT \
+  python3 server/relay_agent.py --once >> /tmp/dlg_relay.log 2>&1
+curl -s "$B/status" -H "Authorization: Bearer $TOKEN" > /tmp/dlg_status.json
+# 端末役: 中継から取った封書を端末秘密で開き、ローカル API の会話と一致することを確かめる
+python3 - "$DLG_PORT" "$DLG_DID" "$DLG_SEC" "$DLG_REQ" <<'EOF' && ok "R87 実往復: 封書を端末秘密で開くとローカルの会話と一致（中継は暗号文しか持たない）" || ng "R87 実往復に失敗（/tmp/dlg_relay.log を確認）"
+import json, subprocess, sys, urllib.request
+port, did, sec, req = sys.argv[1:5]
+d = json.load(open("/tmp/dlg_status.json"))
+assert isinstance(d.get("dlg"), str) and d["dlg"], f"/status に dlg が無い: {list(d)}"
+lane = json.loads(d["dlg"])
+item = next(i for i in lane["items"] if i["id"] == req)
+assert "err" not in item, item
+raw = d["dlg"]
+assert all(c.isalnum() or c in "-_" for c in item["b"]), "b が base64url でない"
+local = json.loads(urllib.request.urlopen(urllib.request.Request(
+    f"http://127.0.0.1:{port}/api/session/dialog?session=sess-verify0001", headers={"X-Office-Local":"1"})).read())
+assert local["messages"], "ローカルの会話が空"
+for m in local["messages"]:
+    assert m["text"] not in raw, "平文が中継に載っている"
+r = subprocess.run(["node", "tests/dialog_open_cli.mjs"], input=json.dumps(
+    {"bundle": item, "secretHex": sec, "deviceId": did, "targetSession": "sess-verify0001"}),
+    capture_output=True, text=True, env={"NO_COLOR": "1", "FORCE_COLOR": "0", "PATH": "/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin"})
+assert r.returncode == 0, r.stderr
+page = json.loads(r.stdout)
+assert page["messages"] == local["messages"], "封書の会話がローカルと違う"
+# 別端末の秘密では開けない
+r2 = subprocess.run(["node", "tests/dialog_open_cli.mjs"], input=json.dumps(
+    {"bundle": item, "secretHex": "ab" * 32, "deviceId": did, "targetSession": "sess-verify0001"}),
+    capture_output=True, text=True, env={"NO_COLOR": "1", "FORCE_COLOR": "0", "PATH": "/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin"})
+assert r2.returncode == 2, "別の秘密で開けてしまった"
+EOF
+# 限定トークンでは dlg を書けない（/sync は 403）・読めない（GET /status に無い）
+for TK in "$POST_TOKEN" "$MACMINI_TOKEN"; do
+  CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$B/sync" -H "Authorization: Bearer $TK" \
+    -H "Content-Type: application/json" -d '{"dlg":"x"}')
+  [ "$CODE" = "403" ] || ng "R87 限定トークンで /sync に dlg を書けた ($CODE)"
+done
+curl -s "$B/status" -H "Authorization: Bearer $POST_TOKEN" | grep -q '"dlg"' \
+  && ng "R87 限定トークンの GET /status に dlg が載る" || ok "R87 限定トークンは封書を書けない・読めない（403／非搭載）"
+# 期限（OFFICE_DIALOG_TTL=8）を過ぎると次の --once で空を1回送り、中継の行が空になる
+sleep 9
+OFFICE_HOME="$DLG_HOME" RELAY_URL="$B" RELAY_TOKEN="$TOKEN" OFFICE_PORT=$DLG_PORT \
+  python3 server/relay_agent.py --once >> /tmp/dlg_relay.log 2>&1
+curl -s "$B/status" -H "Authorization: Bearer $TOKEN" | python3 -c '
+import sys, json
+d = json.load(sys.stdin); lane = json.loads(d["dlg"]) if d.get("dlg") else None
+assert lane == {"v": 1, "items": []}, lane' && ok "R87 期限後は空バンドル＝暗号文が中継から消える" || ng "R87 期限後も封書が中継に残る"
+kill $DLG_PID 2>/dev/null; wait $DLG_PID 2>/dev/null
+rm -rf "$DLG_HOME"
+
 # 未登録レシピは denied（許可リストの外は実行されない＝この機能の安全性の本体）
 ACTN2=$(python3 -c 'import secrets;print(secrets.token_hex(16))')
 ENV_ACT2=$(sign_env "act-00112233445566ee" '{"aioffice":1,"kind":"run","recipe":"r_notregistered","args":[],"reqId":"req-e2e00002"}' "$(date +%s)" "$ACTN2")

@@ -114,12 +114,12 @@ test("S/M/L/XL: 島は2×2 / 3×2 / 3×3 / 4×3、会議室は2 / 4 / 4 / 4", ()
   assert.deepEqual(Object.values(layouts).map((l) => Object.keys(l.anchors.meeting.byRoom).length), [2, 4, 4, 4]);
 });
 
-test("XL: 24席・等間隔5.45m・東壁と会議室/受付はLの位置を維持", () => {
+test("XL: 24席・等間隔4.5m・東壁と会議室/受付はLの位置を維持", () => {
   assert.equal(layouts.XL.anchors.desk.length, 24);
   const columns = LAYOUT_SPECS.XL.desks.columns;
-  for (let i = 1; i < columns.length; i++) assert.ok(Math.abs(columns[i] - columns[i - 1] - 5.45) < 1e-9);
+  for (let i = 1; i < columns.length; i++) assert.ok(Math.abs(columns[i] - columns[i - 1] - 4.5) < 1e-9);
   assert.equal(layouts.XL.WALL.right, layouts.L.WALL.right);
-  assert.ok(Math.abs(layouts.L.WALL.left - layouts.XL.WALL.left - 5.45) < 1e-9);
+  assert.ok(Math.abs(layouts.L.WALL.left - layouts.XL.WALL.left - 2.2) < 1e-9);
   for (const name of ["meeting", "queue"]) assert.deepEqual(layouts.XL.anchors[name], layouts.L.anchors[name]);
 });
 

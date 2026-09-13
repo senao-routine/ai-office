@@ -103,6 +103,9 @@ export const pairNew = (label) =>
 export const pairList = () => api("/api/pair/list");
 export const pairRevoke = (deviceId) =>
   api("/api/pair/revoke", { method: "POST", body: { device_id: deviceId } });
+/** R87: スマホに会話（封書）を見せる許可。loopback+CSRF 配下だけ＝遠隔からは変えられない。 */
+export const setDialogRelay = (on) =>
+  api("/api/config/dialog_relay", { method: "POST", body: { on } });
 
 /** R82 クイック定型文（作成はローカルUIのみ・スマホへは office_json.templates で同期）。 */
 export const getTemplates = () => api("/api/templates");

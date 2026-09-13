@@ -55,6 +55,40 @@ test("iso has matching ja/en keys and no Japanese fallback text in English", () 
   assert.deepEqual(Object.values(dictStrings().en).filter((value) => /[぀-ヿ一-鿿]/.test(value)), []);
 });
 
+test("scale settings restore compact, persist auto, and isolate frozen storage", async () => {
+  const original = globalThis.localStorage;
+  try {
+    for (const fixed of [true, false]) {
+      const module = await hud("customize", fixed);
+      const reads = [], writes = [], caps = [], segments = new Map();
+      globalThis.localStorage = {
+        getItem(key) { reads.push(key); return key === "aioffice.iso.scale" ? "compact" : null; },
+        setItem(key, value) { writes.push([key, value]); },
+      };
+      const controller = module.init({ T, scene: { setTierCap: (cap) => caps.push(cap) },
+        DEMO: true, stream: { enabled: false }, modals: {} });
+      const paint = () => controller.renderSettings((title, choices, selected, change) => {
+        segments.set(title, { choices, selected, change });
+      }, paint);
+      paint();
+      assert.deepEqual([...segments.keys()], [T("snd_title"), T("camera_title"), T("scale_title")]);
+      assert.equal(segments.get(T("scale_title")).selected, fixed ? "auto" : "compact");
+      assert.deepEqual(caps, fixed ? [] : ["M"]);
+      assert.deepEqual(reads, fixed ? [] : ["aioffice.iso.camera", "aioffice.iso.scale"]);
+      for (const value of ["compact", "auto"]) {
+        segments.get(T("scale_title")).change(value);
+        assert.equal(segments.get(T("scale_title")).selected, value);
+      }
+      assert.deepEqual(caps.slice(-2), ["M", null]);
+      assert.deepEqual(writes, fixed ? [] : [["aioffice.iso.scale", "compact"], ["aioffice.iso.scale", "auto"]]);
+      controller.dispose();
+    }
+  } finally {
+    if (original === undefined) delete globalThis.localStorage;
+    else globalThis.localStorage = original;
+  }
+});
+
 test("absence day selection includes both sides of midnight and bounds old history", () => {
   const since = new Date(2026, 8, 7, 23, 50).getTime() / 1000;
   const until = new Date(2026, 8, 8, 0, 15).getTime() / 1000;

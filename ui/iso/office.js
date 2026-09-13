@@ -213,7 +213,7 @@ export function buildOffice(materials, spec = DEFAULT_SPEC, model = buildLayout(
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(L.floor.w, L.floor.d), materials.floor);
   floor.name = "floor"; floor.rotation.x = -Math.PI / 2;
   floor.position.set(L.floor.x ?? 0, .035, L.floor.z); floor.receiveShadow = true;
-  materials.floor.map.repeat.set(L.floor.w / 1.6, L.floor.d / 1.6);
+  materials.floor.map.repeat.set(L.floor.w / 1.2, L.floor.d / 1.2);
   materials.floor.normalMap.repeat.copy(materials.floor.map.repeat);
   materials.floor.lightMap = floorLightMap(aoModel);
   materials.floor.lightMapIntensity = materials.floor.lightMap.userData.intensity;
@@ -362,7 +362,8 @@ export function buildOffice(materials, spec = DEFAULT_SPEC, model = buildLayout(
     [L.meet4Zone, 1.5, -1.45, .85, "monstera"],
   ]) if (zone && enabled("plants")) addPlant(P, { x: zone.x + dx, y: zone.lift + .012, z: zone.z + dz, scale, species });
   ground(2.6, 1.2, ENTRANCE.x, .05, W.front - 1.2, "rugArt");
-  return [floor, ...buildStaticBatches(P, materials)];
+  // Preserve the partition batch identity while using the same glassPane finish as windows.
+  return [floor, ...buildStaticBatches(P, { ...materials, glass: materials.glassPane })];
 }
 
 /**

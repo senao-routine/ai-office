@@ -56,23 +56,25 @@ export function monitorGeometry(width, height, texture, slot) {
 
 function paintMonitor(texture, slot, agent, activity, state, counts) {
   const { cols } = texture.userData;
-  const ctx = clear(texture, "#f1ede7", Math.floor(slot / cols) * H, (slot % cols) * W);
+  const ctx = clear(texture, "#101a3a", Math.floor(slot / cols) * H, (slot % cols) * W);
   // 状態帯は 512x320 の 32px = 10% では俯瞰（モニタが約70px幅）で色が読めない。
   // 実測で 64px（20%）にすると office のズームでも状態が分かる（R90-V6・Claude 実測）。
-  ctx.fillStyle = COLORS[state]; ctx.fillRect(0, 0, W, 64);
+  ctx.fillStyle = { working: "#7c5cff", waiting: "#f5a524", attention: "#e0538a", resting: "#aab2d8" }[state];
+  ctx.fillRect(0, 0, W, 64);
   if (agent) {
     // The first row encodes the same activity string as the list, without baking text.
     // Hashing the whole string also distinguishes equally long Japanese activities.
     if (activity) {
       let x = 28;
-      ctx.fillStyle = "#2e2d2c";
+      // Blue-white highlights cross the HDR luma threshold; purple/blue bars stay below it.
+      ctx.fillStyle = "#dfe9ff";
       for (let i = 0; i < 4; i++) {
         const width = 38 + stableIndex(`${activity}:${i}`, 57);
         ctx.fillRect(x, 54, width, 13); x += width + 12;
       }
       for (let row = 0; row < 8; row++) {
         let x = 28 + stableIndex(`${activity}:indent:${row}`, 3) * 24;
-        ctx.fillStyle = row % 3 ? "#5e5a55" : "#2e2d2c";
+        ctx.fillStyle = row % 3 ? "#4f8dff" : "#7c5cff";
         for (let col = 0; col < 3; col++) {
           const width = 24 + stableIndex(`${activity}:${row}:${col}`, 73);
           ctx.fillRect(x, 91 + row * 22, width, 8); x += width + 12;
@@ -81,8 +83,8 @@ function paintMonitor(texture, slot, agent, activity, state, counts) {
     }
     const total = counts.reduce((a, b) => a + b, 0);
     if (total) {
-      ctx.fillStyle = "#e4dcd2"; ctx.fillRect(28, 290, 456, 10);
-      ctx.fillStyle = COLORS.working; ctx.fillRect(28, 290, Math.round(456 * counts[0] / total), 10);
+      ctx.fillStyle = "#23213a"; ctx.fillRect(28, 290, 456, 10);
+      ctx.fillStyle = "#4f8dff"; ctx.fillRect(28, 290, Math.round(456 * counts[0] / total), 10);
     }
   }
   finish(texture, ctx);
@@ -123,12 +125,19 @@ function paintDaily(texture, sent, history) {
 
 /** One seat atlas/material per tier; the report canvas remains separately owned. */
 export class ActivityScreens {
-  constructor(board, seats = DESK_SLOTS) {
+  constructor(board, seats = DESK_SLOTS, quality = "high") {
     this.texture = screenTexture(seats);
     this.daily = board;
     this.board = board;
-    this.material = new THREE.MeshBasicMaterial({ map: this.texture, toneMapped: false, side: THREE.DoubleSide });
-    this.dailyMaterial = new THREE.MeshBasicMaterial({ map: this.daily, toneMapped: false, side: THREE.DoubleSide });
+    // Keep map for atlas consumers; the black base leaves emission as the only color source.
+    // Lambert（鏡面反射なし）: Standard だと黒い面に key/env の鏡面ハイライトが乗り、席によって画面の色が
+    // 白へ寄る（iso_screens_smoke で席 4 の色が消えた・R93-V4 検収で実測）。画面は発光だけで色を出す。
+    this.material = new THREE.MeshLambertMaterial({ color: 0x000000, map: this.texture,
+      emissive: 0xffffff, emissiveMap: this.texture, emissiveIntensity: quality === "high" ? 1.5 : 1.0,
+      toneMapped: false, side: THREE.DoubleSide });
+    this.dailyMaterial = new THREE.MeshLambertMaterial({ color: 0x000000, map: this.daily,
+      emissive: 0xffffff, emissiveMap: this.daily, emissiveIntensity: 1.0,
+      toneMapped: false, side: THREE.DoubleSide });
     this.keys = [];
     this.update({ agents: [], seats: new Map() });
   }
@@ -138,6 +147,7 @@ export class ActivityScreens {
     this.texture.dispose();
     this.texture = screenTexture(seats);
     this.material.map = this.texture;
+    this.material.emissiveMap = this.texture;
     this.keys = [];
   }
 

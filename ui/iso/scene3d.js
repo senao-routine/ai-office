@@ -63,26 +63,26 @@ const std = (o) => new THREE.MeshStandardMaterial(o);
 // Outside that range hold the nearest daylight preset (no night scene).
 const DAY_KEY = new THREE.Vector3(-15, 17, -19);
 const HOUR_PRESETS = [
-  { hour: 7, color: new THREE.Color(0xffe6c8), intensity: 1.3,
-    position: new THREE.Vector3(-15, Math.hypot(15, 19) * Math.tan(28 * Math.PI / 180), -19), lamp: 2.8 },
-  { hour: 11, color: new THREE.Color(0xfff3e0), intensity: 1.6, position: DAY_KEY, lamp: 2.8 },
-  { hour: 18, color: new THREE.Color(0xffd2a6), intensity: 1.2, position: DAY_KEY, lamp: 4.2 },
+  { hour: 7, color: new THREE.Color(0xf4ecff), intensity: 1.35,
+    position: new THREE.Vector3(-15, Math.hypot(15, 19) * Math.tan(28 * Math.PI / 180), -19), lamp: 2.2 },
+  { hour: 11, color: new THREE.Color(0xffffff), intensity: 1.70, position: DAY_KEY, lamp: 2.2 },
+  { hour: 18, color: new THREE.Color(0xd9d2ff), intensity: 1.20, position: DAY_KEY, lamp: 3.4 },
 ];
 
-/** Guide §3: four Physical instances (white/shell/visor/linen); glass stays Standard. */
+/** Guide §3: clearcoat/sheen use Physical materials; glass stays Standard. */
 export function makeMaterials(quality = "high") {
   const tile = (file, texture = rugTexture()) => { texture.userData.file = file; return texture; };
   const oak = tile("oak_floor.webp", floorTexture());
-  const wood = tile("oak_floor.webp", woodTexture());
   const crossOak = tile("oak_floor.webp", floorTexture()); crossOak.rotation = Math.PI / 2;
+  for (const texture of [oak, crossOak]) texture.repeat.set(1 / 1.2, 1 / 1.2);
   const linenMap = tile("linen.webp"), feltMap = tile("felt.webp"), juteMap = tile("jute.webp");
   const rattanMap = tile("rattan.webp");
   const sky = tile("window_day.webp", skyTexture());
   const rugArt = rugTexture(); rugArt.repeat.set(1, 1);
   rugArt.wrapS = rugArt.wrapT = THREE.ClampToEdgeWrapping; tile("rugart.webp", rugArt);
-  const cloth = { color: 0xffffff, roughness: .95, map: linenMap, vertexColors: true };
+  const cloth = { color: 0xb6bcff, roughness: .95, map: linenMap, vertexColors: true };
   const linen = quality === "mobile" ? std(cloth) : new THREE.MeshPhysicalMaterial({ ...cloth,
-    sheen: .5, sheenColor: 0xfff6e8, sheenRoughness: .85 });
+    sheen: .4, sheenColor: 0xf0f2ff, sheenRoughness: .85 });
   const leafCard = std({ color: 0xffffff, roughness: .65, map: leafAtlasTexture(),
     alphaTest: .5, side: THREE.DoubleSide, vertexColors: true });
   const artCanvas = document.createElement("canvas"); artCanvas.width = 512; artCanvas.height = 320;
@@ -98,69 +98,71 @@ export function makeMaterials(quality = "high") {
   }
   const artMap = new THREE.CanvasTexture(artCanvas); artMap.colorSpace = THREE.SRGBColorSpace;
   return {
-    base: std({ color: 0xe6ded2, roughness: .85 }),
-    floor: std({ color: 0xf0e6d8, roughness: .55, map: oak,
-      normalMap: floorNormalTexture(), normalScale: new THREE.Vector2(.35, .35) }),
-    floor2: std({ color: 0xf0eae1, roughness: .80 }),
-    woodFloor: std({ color: 0xffffff, roughness: .60, map: crossOak }),
-    darkFloor: std({ color: 0x8e8880, roughness: .85 }),
-    white: new THREE.MeshPhysicalMaterial({ color: 0xf7f4ef, roughness: .80 }),
+    base: std({ color: 0xe8e8f4, roughness: .85 }),
+    floor: std({ color: 0xffffff, roughness: .35, map: oak,
+      normalMap: floorNormalTexture(), normalScale: new THREE.Vector2(.25, .25) }),
+    floor2: std({ color: 0xf6f8ff, roughness: .40, map: oak }),
+    woodFloor: std({ color: 0xeef0fa, roughness: .45, map: crossOak }),
+    darkFloor: std({ color: 0x3a3f66, roughness: .85 }),
+    white: new THREE.MeshPhysicalMaterial({ color: 0xf6f7fd, roughness: .70 }),
     // Neutral material color: the palette is supplied once by instanceColor.
     shell: new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: .32, clearcoat: .70,
       clearcoatRoughness: .18, envMapIntensity: 1.0, vertexColors: true }),
-    dark: std({ color: 0x2e2d2c, roughness: .55, metalness: .10 }),
-    darker: std({ color: 0x232120, roughness: .60, metalness: .10 }),
-    steel: std({ color: 0xb3b0aa, roughness: .35, metalness: .85 }),
-    wood: std({ color: 0xffffff, roughness: .45, map: wood }),
-    wood2: std({ color: 0xffffff, roughness: .48, map: wood }),
-    seat: std({ color: 0xb2da9c, roughness: .90, map: feltMap }),
-    seatB: std({ color: 0xa2d393, roughness: .90, map: feltMap }),
-    seatC: std({ color: 0xc0e6ab, roughness: .90, map: feltMap }),
+    dark: std({ color: 0x23213a, roughness: .55, metalness: .10 }),
+    darker: std({ color: 0x1d1b30, roughness: .60, metalness: .10 }),
+    steel: std({ color: 0x9a9ab4, roughness: .35, metalness: .85 }),
+    wood: new THREE.MeshPhysicalMaterial({ color: 0xf6f7fd, roughness: .30,
+      clearcoat: .15, clearcoatRoughness: .4 }),
+    wood2: new THREE.MeshPhysicalMaterial({ color: 0xf2f3fb, roughness: .32,
+      clearcoat: .15, clearcoatRoughness: .4 }),
+    seat: std({ color: 0xd0c3ff, roughness: .90, map: feltMap }),
+    seatB: std({ color: 0xb3e0ff, roughness: .90, map: feltMap }),
+    seatC: std({ color: 0xf0e3ff, roughness: .90, map: feltMap }),
     sofa: linen, sofaB: linen, linen,
-    sofaC: std({ color: 0xece4d8, roughness: .92, map: linenMap }),
-    cushionA: std({ color: 0xb2da9c, roughness: .95, map: linenMap }),
-    cushionB: std({ color: 0xeee6da, roughness: .95, map: linenMap }),
-    cushionC: std({ color: 0xc0e6ab, roughness: .95, map: linenMap }),
+    sofaC: std({ color: 0x93ccff, roughness: .92, map: linenMap }),
+    cushionA: std({ color: 0xd0c3ff, roughness: .95, map: linenMap }),
+    cushionB: std({ color: 0xf0f0f8, roughness: .95, map: linenMap }),
+    cushionC: std({ color: 0xb3e0ff, roughness: .95, map: linenMap }),
     rug: std({ color: 0xffffff, roughness: 1, map: juteMap }),
-    rugB: std({ color: 0xf0e2cc, roughness: 1, map: juteMap }),
+    rugB: std({ color: 0xf0f4ff, roughness: 1, map: juteMap }),
     rugArt: std({ color: 0xffffff, roughness: .95, map: rugArt }),
-    panelA: std({ color: 0xb2da9c, roughness: .95, map: feltMap }),
-    panelB: std({ color: 0xa2d393, roughness: .95, map: feltMap }),
-    felt: std({ color: 0xb2da9c, roughness: .95, map: feltMap }),
-    paper: std({ color: 0xf7f4ea, roughness: .92 }),
-    mugA: std({ color: 0xd8cfc2, roughness: .40 }),
-    mugB: std({ color: 0x7a9469, roughness: .40 }),
-    mugC: std({ color: 0xc28a3a, roughness: .40 }),
-    bookA: std({ color: 0xa8574a, roughness: .85 }),
-    bookB: std({ color: 0x5f7d59, roughness: .85 }),
-    bookC: std({ color: 0xc9a86a, roughness: .85 }),
-    bookD: std({ color: 0x7d766c, roughness: .85 }),
-    bookE: std({ color: 0x8a6a45, roughness: .85 }),
+    panelA: std({ color: 0xf2ebff, roughness: .95, map: feltMap }),
+    panelB: std({ color: 0xdcf0ff, roughness: .95, map: feltMap }),
+    felt: std({ color: 0xffffff, roughness: .95, map: feltMap }),
+    paper: std({ color: 0xf7f7fc, roughness: .92 }),
+    mugA: new THREE.MeshPhysicalMaterial({ color: 0xe0538a, roughness: .40, clearcoat: .5 }),
+    mugB: new THREE.MeshPhysicalMaterial({ color: 0x4fc9ff, roughness: .40, clearcoat: .5 }),
+    mugC: new THREE.MeshPhysicalMaterial({ color: 0x7c5cff, roughness: .40, clearcoat: .5 }),
+    bookA: std({ color: 0x7c5cff, roughness: .85 }),
+    bookB: std({ color: 0x4f8dff, roughness: .85 }),
+    bookC: std({ color: 0xe0538a, roughness: .85 }),
+    bookD: std({ color: 0x5c5a7a, roughness: .85 }),
+    bookE: std({ color: 0xf5a524, roughness: .85 }),
     leaf: leafCard, leaf2: leafCard, leafCard,
-    pot: std({ color: 0xe0d6c6, roughness: .35 }),
-    potTerra: std({ color: 0x8a6a45, roughness: .80 }),
-    kbd: std({ color: 0xe8e3db, roughness: .60, map: keyboardTexture() }),
+    pot: new THREE.MeshPhysicalMaterial({ color: 0xf0f0f8, roughness: .35, clearcoat: .25 }),
+    potTerra: std({ color: 0xe8e8f4, roughness: .80 }),
+    kbd: std({ color: 0xeef0fa, roughness: .60, map: keyboardTexture() }),
     sky: std({ color: 0xffffff, roughness: .20, map: sky, emissiveMap: sky,
-      emissive: 0xffffff, emissiveIntensity: 1.15 }),
+      emissive: 0xffffff, emissiveIntensity: 1.10 }),
     accent: new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false }),
     visor: new THREE.MeshPhysicalMaterial({ color: 0x262626, roughness: .12,
       clearcoat: 1, clearcoatRoughness: .08 }),
-    glass: std({ color: 0xffffff, roughness: .04, transparent: true, opacity: .10,
+    glass: std({ color: 0xa9c8ff, roughness: .04, transparent: true, opacity: .16,
       envMapIntensity: 1.4, depthWrite: false, side: THREE.DoubleSide }),
-    glassPane: std({ color: 0xffffff, roughness: .04, transparent: true, opacity: .08,
+    glassPane: std({ color: 0xdfe9ff, roughness: .04, transparent: true, opacity: .10,
       envMapIntensity: 1.4, depthWrite: false, side: THREE.DoubleSide }),
     joint: std({ color: 0x5e5a55, roughness: .70, vertexColors: true }),
-    shadow: new THREE.MeshBasicMaterial({ map: softShadowTexture(), color: 0x3a2e20,
-      transparent: true, depthWrite: false, opacity: .55 }),
-    islandShadow: new THREE.MeshBasicMaterial({ map: softShadowTexture(), color: 0x4a3d2c,
-      transparent: true, depthWrite: false, opacity: .22 }),
+    shadow: new THREE.MeshBasicMaterial({ map: softShadowTexture(), color: 0x2c2647,
+      transparent: true, depthWrite: false, opacity: .50 }),
+    islandShadow: new THREE.MeshBasicMaterial({ map: softShadowTexture(), color: 0x4a4386,
+      transparent: true, depthWrite: false, opacity: .20 }),
     glowW: glowMaterial(0xffd9a0),
     crown: std({ color: 0xd8b45c, metalness: .70, roughness: .30 }),
     lampWarm: std({ color: 0xffe3b0, emissive: 0xffc87a, emissiveIntensity: 1.3,
       roughness: .40, toneMapped: false }),
-    rattan: std({ color: 0xffffff, roughness: .75, map: rattanMap }),
+    rattan: std({ color: 0xc9c9d8, roughness: .75, map: rattanMap }),
     wallart: new THREE.MeshBasicMaterial({ color: 0xffffff, map: artMap }),
-    signWood: std({ color: 0xc9a86a, roughness: .70 }),
+    signWood: std({ color: 0xc9c9d8, roughness: .70 }),
     board: new THREE.MeshBasicMaterial({ map: boardTexture() }),
   };
 }
@@ -189,12 +191,13 @@ function glowMaterial(color) {
   if (!_glowTex) _glowTex = radialTexture(0.85, 0.28);
   return new THREE.MeshBasicMaterial({
     map: _glowTex, color, transparent: true, blending: THREE.AdditiveBlending,
-    depthWrite: false, toneMapped: false, opacity: .18, side: THREE.DoubleSide });
+    depthWrite: false, toneMapped: false, opacity: .12, side: THREE.DoubleSide });
 }
 
 export class IsoScene {
-  constructor(container) {
+  constructor(container, options = {}) {
     this.container = container;
+    this.tierCap = options.tierCap ?? null;
     this.actors = new Map();          // id → {nodes, from, to, startedAt, seed}
     this.disposed = false;
     this.growth = createGrowth();
@@ -222,12 +225,12 @@ export class IsoScene {
     container.append(this.renderer.domElement);
 
     this.scene = new THREE.Scene();
-    this.scene.fog = new THREE.Fog(0xf4efe7, 70, 150);
+    this.scene.fog = new THREE.Fog(0xdfe8ff, 70, 150);
     this.environments = roomEnvironment(this.renderer);
     this.scene.environment = this.environments.day;
     // Environment windows already face the office's -X and -Z window walls.
     this.scene.environmentRotation.y = 0;
-    this.scene.environmentIntensity = 0.60;
+    this.scene.environmentIntensity = 0.55;
     resetRand(); // All procedural textures and plants consume clock.rand in construction order.
     this.materials = makeMaterials(this.post.quality);
     // GPT-Image生成デカール（ui/iso/tex/*.webp・コミット済みアセット）。
@@ -298,9 +301,9 @@ export class IsoScene {
       new THREE.Vector3(this.model.WALL.right + 0.15, 2.8, this.model.LAYOUT.floor.z + this.model.LAYOUT.floor.d / 2 + 0.20),
     );
 
-    this.hemi = new THREE.HemisphereLight(0xf0f4fa, 0xd9c9b0, 0.60);
+    this.hemi = new THREE.HemisphereLight(0xe8f2ff, 0xb9bfe0, 0.60);
     this.scene.add(this.hemi);
-    this.key = new THREE.DirectionalLight(0xfff3e0, 1.60);
+    this.key = new THREE.DirectionalLight(0xffffff, 1.70);
     this.key.position.set(-15, 17, -19);
     this.key.castShadow = true;
     this.key.shadow.mapSize.set(2048, 2048);
@@ -308,16 +311,20 @@ export class IsoScene {
     this.key.shadow.bias = -0.0004;
     this.key.shadow.normalBias = 0.02;
     this.scene.add(this.key, this.key.target);
-    this.fill = new THREE.DirectionalLight(0xe9efe6, 0.45);
+    this.fill = new THREE.DirectionalLight(0xcfe0ff, 0.45);
     this.fill.position.set(14, 10, 15);
     this.scene.add(this.fill);
-    this.rim = new THREE.DirectionalLight(0xffe9cf, 0.35);
+    this.rim = new THREE.DirectionalLight(0x7c5cff, 0.55);
     this.rim.position.set(-8, 5, -13);
     this.scene.add(this.rim);
     this._manualHour = null;
     this._applyHour(localHour());
 
-    this.displays = new ActivityScreens(this.materials.board.map);
+    this.displays = new ActivityScreens(this.materials.board.map, undefined, this.post.quality);
+    // Post can fall back to direct rendering after RT allocation or shader compilation.
+    this.displays.material.onBeforeRender = () => {
+      this.displays.material.emissiveIntensity = this.post.quality === "high" ? 1.5 : 1.0;
+    };
     this._staticSeed = randState();
     this.staticMeshes = buildOffice(this.materials, this.spec, this.model);
     // シーン調査用の窓口（隠れた退行はレイキャストで特定できる。埋没バグの発見実績あり）
@@ -421,7 +428,7 @@ export class IsoScene {
     if (world === this._preparedWorld || world === this._sourceWorld) return this._preparedWorld;
     this.maxSeen = this.growth.observe(world.agents);
     const level = world.growth?.office?.level;
-    const tier = tierFor({ agents: world.agents, maxSeen: this.maxSeen, officeLevel: level });
+    const tier = tierFor({ agents: world.agents, maxSeen: this.maxSeen, officeLevel: level, cap: this.tierCap });
     const key = `${tier}:${level == null ? "legacy" : JSON.stringify(decorationsFor(level))}`;
     if (key !== this.layoutKey) {
       this._disposeStatic();
@@ -506,6 +513,14 @@ export class IsoScene {
     const texel = Math.max((camera.right - camera.left) / 2048, (camera.top - camera.bottom) / 2048);
     this.key.shadow.radius = 0.12 / texel;
     this.key.shadow.updateMatrices(this.key);
+  }
+
+  /** Invalidate cached assignments so even the same world can change scale on its next update. */
+  setTierCap(cap) {
+    if (cap !== null && !["S", "M", "L", "XL"].includes(cap)) return;
+    if (cap === this.tierCap) return;
+    this.tierCap = cap;
+    this._sourceWorld = this._preparedWorld = null;
   }
 
   /**
@@ -1516,6 +1531,7 @@ export class IsoScene {
     });
     return {
       tier: this.spec.id,
+      tierCap: this.tierCap,
       deskSeats: this.anchors.desk.length,
       maxSeen: this.maxSeen ?? 0,
       drawCalls: info.render.calls,

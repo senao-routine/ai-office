@@ -41,6 +41,9 @@ def start_server(port, tmp):
     raise RuntimeError("fixture server did not start")
 
 
+# R93-V4': 席モニタは emissive 1.5 + bloom（high）で HDR になり、Neutral トーンマップが飽和色を白へ寄せる
+# （検出の sat>=.55 を割る）。このスモークが固定するのは「各席が自分のアトラス領域を映す」= UV の配線なので、
+# 色が正確に出る quality=mobile（emissive 1.0・直描き）で撮る。high の見た目は golden が担う。
 def open_scene(browser, base, world, query=""):
     context = browser.new_context(viewport=VIEWPORT, device_scale_factor=1)
     page = context.new_page()
@@ -149,7 +152,7 @@ def main():
                     try:
                         hashes = []
                         for attempt in range(2):
-                            context, page = open_scene(browser, f"http://127.0.0.1:{port}", world)
+                            context, page = open_scene(browser, f"http://127.0.0.1:{port}", world, "&quality=mobile")
                             hashes.append(hashlib.sha256(page.screenshot()).hexdigest())
                             if attempt == 1:
                                 check_screens(page)

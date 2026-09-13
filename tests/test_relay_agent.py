@@ -7,6 +7,9 @@ P3の核となる回帰: (1)nonceは配達成功後にのみコミット→一�
 (2)鮮度は署名済みtsで判定(DO列tsではない) (3)レート超過は延期でロスしない。"""
 import importlib.util
 import json
+import contextlib
+import io
+import base64
 import os
 import secrets
 import tempfile
@@ -415,12 +418,18 @@ class RelayAgentTest(unittest.TestCase):
         self.assertEqual(p["work"]["counts"], {"pending": 1, "in_progress": 2, "completed": 3})
         self.assertEqual(p["sessions"][0]["session"], "s1")
 
-    def test_relay_agent_has_no_dialog_route(self):
-        """R86-B: 会話本文API(/api/session/dialog)は中継が構造的に呼ばない＝
-        本文が Cloudflare へ流れる経路が存在しないことをソースで固定する。"""
+    def test_relay_agent_never_reads_dialog_plaintext(self):
+        """R86-B → R87: 会話本文API(/api/session/dialog)は中継が構造的に呼ばない＝
+        本文が Cloudflare へ流れる経路が存在しないことをソースで固定する。
+        R87 で封書（暗号文）のレーンを足したので、**平文を読む関数・ページ定数・復号関数を
+        relay_agent が一切持たない**ことと、allowlist に会話系のキーが混ざらないことも足す。"""
         src = Path(ra.__file__).read_text(encoding="utf-8")
         self.assertNotIn("session/dialog", src)
         self.assertNotIn("dialog_from_lines", src)
+        for token in ("tail_lines", "DIALOG_", "unseal", "_session_transcript", "dialog_page"):
+            self.assertNotIn(token, src, f"relay_agent が平文経路 {token} を持っている")
+        for key in ra._ALLOW_TOP | ra._ALLOW_ENTRY:
+            self.assertNotRegex(key, r"dialog|dlg|messages", f"allowlist に会話系のキー {key}")
 
     def test_redact_title_default_pass_and_optout_strip(self):
         """R85-1: title（/renameのセッション名）は既定で中継へ通す（ユーザー裁定2026-08-26・
@@ -579,6 +588,176 @@ class RelayAgentTest(unittest.TestCase):
                   "text": json.dumps(env)}]
         delivered, ack_ids = ra._process_items(items)
         self.assertEqual((delivered, ack_ids), (1, [11]))
+
+    # ── R87 封書: dlg-封筒は office_inbox に書かず daemon に封じさせ、暗号文だけを載せる ──
+    def _dlg_env(self, req_id="a" * 32, session=None, kind="dialog"):
+        act = {"aioffice": 1, "kind": kind, "reqId": req_id, "session": "sess-target-1", "depth": 0}
+        return self._sign(session=session or f"dlg-{req_id}", text=json.dumps(act))
+
+    def _kat(self):
+        kat = json.loads((Path(__file__).parent / "fixtures/dialog_seal_kat.json")
+                         .read_text(encoding="utf-8"))
+        kat["bundle"]["e"] = int(time.time()) + 60     # 固定ベクタは過去日付＝期限だけ今へ（e は AAD 外）
+        return kat
+
+    def test_r87_dlg_goes_to_daemon_not_inbox(self):
+        self._seed_device()
+        calls = []
+        ra._post_dialog = lambda payload: (calls.append(payload) or {"ok": True, "msg": "sealed"})
+        posted = []
+        real_post = ra.office.post_instruction
+        ra.office.post_instruction = lambda s, t: (posted.append((s, t)) or (True, "ok"))
+        try:
+            env = self._dlg_env()
+            items = [{"id": 21, "session": env["session"], "ts": int(time.time()),
+                      "text": json.dumps(env)}]
+            delivered, ack_ids = ra._process_items(items)
+        finally:
+            ra.office.post_instruction = real_post
+        self.assertEqual(posted, [], "dlg- が office_inbox へ書かれた（孤児inbox）")
+        self.assertEqual((delivered, ack_ids), (1, [21]))
+        self.assertEqual(calls[0]["action"]["kind"], "dialog")
+        self.assertEqual(calls[0]["device_id"], DID)            # 検証済みの端末IDを daemon へ渡す
+        self.assertFalse(self._inbox(env["session"]).exists())
+
+    def test_r87_dlg_not_acked_when_daemon_down(self):
+        self._seed_device()
+
+        def boom(_payload):
+            raise OSError("daemon down")
+        ra._post_dialog = boom
+        env = self._dlg_env(req_id="b" * 32)
+        items = [{"id": 22, "session": env["session"], "ts": int(time.time()),
+                  "text": json.dumps(env)}]
+        self.assertEqual(ra._process_items(items), (0, []))
+        self.assertNotIn(f'{env["device_id"]}:{env["nonce"]}', ra._NONCES)
+
+    def test_r87_dlg_rejected_by_daemon_is_acked(self):
+        import urllib.error
+        self._seed_device()
+
+        def refuse(_payload):
+            raise urllib.error.HTTPError("http://x", 400, "bad", {}, None)
+        ra._post_dialog = refuse
+        env = self._dlg_env(req_id="c" * 32)
+        items = [{"id": 23, "session": env["session"], "ts": int(time.time()),
+                  "text": json.dumps(env)}]
+        self.assertEqual(ra._process_items(items), (1, [23]))
+
+    def test_r87_session_and_reqid_must_agree(self):
+        """封筒の session（署名対象）と本文の reqId が食い違う＝転用。ack して捨てる・daemon へ回さない。"""
+        self._seed_device()
+        calls = []
+        ra._post_dialog = lambda payload: (calls.append(payload) or {"ok": True})
+        env = self._dlg_env(req_id="d" * 32, session="dlg-" + "e" * 32)
+        items = [{"id": 24, "session": env["session"], "ts": int(time.time()),
+                  "text": json.dumps(env)}]
+        self.assertEqual(ra._process_items(items), (1, [24]))
+        self.assertEqual(calls, [])
+
+    def test_r87_assert_opaque_accepts_kat_and_refuses_plaintext(self):
+        kat = self._kat()
+        ok = ra._assert_opaque(kat["bundle"])
+        self.assertEqual(set(ok), {"v", "id", "s", "i", "e", "n", "c", "b"})
+        for label, bad in (
+                ("平文の混入", {**kat["bundle"], "b": "こんにちは"}),
+                ("余分なキー", {**kat["bundle"], "messages": [{"text": "x"}]}),
+                ("不正な err", {"v": 1, "id": "f" * 32, "e": int(time.time()) + 60, "err": "oops"}),
+                ("err と本文の同居", {**kat["bundle"], "err": "denied"}),
+                ("長さ違い", {**kat["bundle"], "b": kat["bundle"]["b"][:-8]}),
+                ("フレーム数詐称", {**kat["bundle"], "n": 2}),
+                ("圧縮方式", {**kat["bundle"], "c": "gz"}),
+                ("期限が無限", {**kat["bundle"], "e": 10 ** 12})):
+            with self.assertRaises(ValueError, msg=label):
+                ra._assert_opaque(bad)
+        good_err = ra._assert_opaque({"v": 1, "id": "f" * 32, "e": int(time.time()) + 60, "err": "denied"})
+        self.assertEqual(set(good_err), {"v", "id", "e", "err"})
+
+    def test_r87_dialog_payload_drops_oldest_bundles_beyond_relay_limit(self):
+        """別モデルレビュー（2026-09-14）: 有効な封書が複数あると中継の上限を超え、Worker が黙って捨てたうえ
+        指紋は確定＝再送も無かった。relay_agent 側で**新しい順に上限内へ切り詰め**、落とした分は標準出力に残す。"""
+        kat = self._kat()
+        ds = ra.dialog_seal
+        frames = ds.MAX_FRAMES
+        raw = ds.MAGIC + b"\0" * (frames * ds.FRAME_LEN - len(ds.MAGIC))
+        blob = base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
+        rows = []
+        for k in range(5):
+            rows.append({"v": 1, "id": f"{k:032x}", "s": kat["bundle"]["s"], "i": 1000 + k,
+                         "e": int(time.time()) + 60, "n": frames, "c": kat["bundle"]["c"], "b": blob})
+        saved = ds.live_bundles
+        ds.live_bundles = lambda: list(rows)
+        try:
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                text, fp = ra._dialog_payload({})
+        finally:
+            ds.live_bundles = saved
+        self.assertIsNotNone(text)
+        self.assertLessEqual(len(text), ra.DLG_MAX_CHARS)
+        ids = [i["id"] for i in json.loads(text)["items"]]
+        self.assertEqual(ids, [f"{k:032x}" for k in (4, 3, 2, 1)])       # 新しい順・MAX_LIVE(4) は全部入り最古だけ落ちる
+        self.assertEqual(buf.getvalue().count("封書を落とす"), 1)
+        self.assertEqual(len(fp), 16)
+
+    def test_r87_sync_carries_dlg_once_then_empty_once_and_never_plaintext(self):
+        """封書は指紋が変わった周だけ載る。期限切れになったら**空を1回**送って中継の行を消す。
+        送信 body の全文に fixture の平文トークンが1つも無いこと（不透明の証明）。"""
+        kat = self._kat()
+        ds = ra.dialog_seal
+        saved = (ds.BUNDLES_FILE,)
+        ds.BUNDLES_FILE = self.tmp / "office_dialog_bundles.json"
+        ds._FILE_CACHE.update(key=None, rows=[]); ds._RESERVED.clear()
+        ra.office.office_json = lambda: {"employees": [], "roster": []}
+        try:
+            state = {"acks": [], "fp": None, "pushed_at": 0.0, "attn": False}
+            b1, *_ = ra._sync_request(state)
+            self.assertNotIn("dlg", b1)                            # 一度も使っていない＝載せない
+            ds.store_bundle(kat["bundle"]["id"], kat["bundle"])
+            ds._FILE_CACHE.update(key=None, rows=[])
+            b2, snap, fp, send, now = ra._sync_request(state)
+            self.assertIn("dlg", b2)
+            payload = json.loads(b2["dlg"])
+            self.assertEqual([i["id"] for i in payload["items"]], [kat["bundle"]["id"]])
+            wire = json.dumps(b2, ensure_ascii=False)
+            for leak in (kat["page"]["messages"][0]["text"], kat["targetSession"], "messages", "text"):
+                self.assertNotIn(leak, wire, leak)
+            ra._sync_apply({"ok": True, "items": []}, state, snap, fp, send, now, "http://x", "t")
+            b3, *_ = ra._sync_request(state)
+            self.assertNotIn("dlg", b3)                            # 変化なし＝再送しない
+            # 期限切れ → 空を1回
+            rows = json.loads(ds.BUNDLES_FILE.read_text())
+            rows["bundles"][0]["e"] = int(time.time()) - 1
+            ds.BUNDLES_FILE.write_text(json.dumps(rows))
+            ds._FILE_CACHE.update(key=None, rows=[])
+            b4, snap, fp, send, now = ra._sync_request(state)
+            self.assertEqual(json.loads(b4["dlg"]), {"v": 1, "items": []})
+            ra._sync_apply({"ok": True, "items": []}, state, snap, fp, send, now, "http://x", "t")
+            b5, *_ = ra._sync_request(state)
+            self.assertNotIn("dlg", b5)                            # 空も1回だけ
+        finally:
+            ds.BUNDLES_FILE = saved[0]
+            ds._FILE_CACHE.update(key=None, rows=[]); ds._RESERVED.clear()
+
+    def test_r87_lane_holds_non_empty_payload_while_slowed_down(self):
+        kat = self._kat()
+        ds = ra.dialog_seal
+        saved = (ds.BUNDLES_FILE,)
+        ds.BUNDLES_FILE = self.tmp / "office_dialog_bundles.json"
+        ds._FILE_CACHE.update(key=None, rows=[]); ds._RESERVED.clear()
+        ra.office.office_json = lambda: {"employees": [], "roster": []}
+        try:
+            ds.store_bundle(kat["bundle"]["id"], kat["bundle"])
+            ds._FILE_CACHE.update(key=None, rows=[])
+            state = {"acks": [], "fp": None, "pushed_at": 0.0, "attn": False, "usage": {"level": 1}}
+            body, *_ = ra._sync_request(state)
+            self.assertNotIn("dlg", body)                          # R80 の減速に従って保留
+            state["usage"] = {"level": 0}
+            body, *_ = ra._sync_request(state)
+            self.assertIn("dlg", body)
+        finally:
+            ds.BUNDLES_FILE = saved[0]
+            ds._FILE_CACHE.update(key=None, rows=[]); ds._RESERVED.clear()
 
     def test_r7910_redaction_keeps_actions_but_drops_paths(self):
         """office_json に増えた actions は中継へ通るが、cwd等のパスは従来どおり落ちる。"""

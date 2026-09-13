@@ -65,6 +65,7 @@ try:
     import status_board
     import openclaw_source
     import office_actions
+    import dialog_seal      # R87: 封書（stdlib のみ）
     import source_claude_bg
     import source_codex
     import office_timeline
@@ -77,6 +78,7 @@ except ModuleNotFoundError:  # importlibでファイルを直接読む既存テ�
         import status_board
         import openclaw_source
         import office_actions
+        import dialog_seal      # R87: 封書（stdlib のみ）
         import source_claude_bg
         import source_codex
         import office_timeline
@@ -1660,7 +1662,10 @@ def scan_office():
     actions_view = {
         "recipes": office_actions.recipes_public(recipes),
         "results": office_actions.results_public(),
-        "caps": {"actions": 1, "ws": 1},
+        # R87: 会話ビューアは「封じられる Mac」かつ「本人が ON にした」ときだけ出す。
+        # 使えない環境では機能ごと消す＝平文で送るフォールバックは存在しない。
+        "caps": {"actions": 1, "ws": 1,
+                 "dialog": 1 if (dialog_seal.AVAILABLE and config.get("dialogRelay") is True) else 0},
     }
     # R80: 中継の今日の使用量（未設定/古い＝None＝UIは何も出さない）
     relay_view = relay_usage()
@@ -2340,6 +2345,97 @@ def set_lang(value):
     return True, value
 
 
+def set_dialog_relay(on):
+    """R87: スマホの会話ビューアを許可するか（既定 OFF）。loopback+CSRF 配下からしか変えられない
+    ＝遠隔から設定を変える経路は無い（許可リストと同じ思想）。"""
+    if not isinstance(on, bool):
+        return False, "dialogRelay must be true/false"
+    with _lock, _file_flock(config_file()):
+        cf = config_file()
+        try:
+            cfg = json.loads(cf.read_text(encoding="utf-8")) if cf.exists() else {"projects": {}}
+        except (OSError, json.JSONDecodeError):
+            return False, "office_config.json が読めません（壊れている可能性・手動確認を）"
+        if not isinstance(cfg, dict):
+            return False, "office_config.json が読めません（壊れている可能性・手動確認を）"
+        cfg["dialogRelay"] = on
+        _write_config(cfg)
+        _cache["t"] = 0.0
+    return True, on
+
+
+def _dialog_sealed(data):
+    """R87: dlg-封筒（署名検証は relay_agent 側で完了済み）に応えて、会話を**封じて**返す。
+    (ok, msg, extra)。err は固定 enum（dialog_seal.ERRORS）だけ＝自由文字列を中継へ出さない。
+
+    順序（1つでも外れたら封じない）:
+      形式 → session 形式 → 封緘バックエンド → 本人の許可（dialogRelay）→ 端末の失効を**再検査**
+      → 同じ reqId は保存済みを返す（再配達で二重に読まない）→ transcript → page → seal → 保存 → 監査。
+    **生の page を返す枝は作らない**（relay_agent に平文を載せない）。
+    """
+    act = data.get("action") if isinstance(data.get("action"), dict) else data
+    req_id = str(act.get("reqId") or "")
+    session = str(act.get("session") or "")
+    device = str(data.get("device_id") or "")[:32]
+    if (act.get("aioffice") != 1 or act.get("kind") != "dialog"
+            or not dialog_seal.REQID_RE.match(req_id)):
+        return False, "dialog request malformed", {"state": "denied"}
+    if not _SESSION_ID_RE.fullmatch(session):
+        return False, "bad session", {"state": "denied"}
+    iat = int(time.time())
+
+    def refuse(err):
+        bundle = {"v": 1, "id": req_id, "e": iat + dialog_seal.BUNDLE_TTL, "err": err}
+        dialog_seal.store_bundle(req_id, bundle)      # 端末に「理由」が届くように保存する
+        office_actions._audit({"kind": "dialog", "reqId": req_id, "device": device,
+                               "session": session, "ts": iat, "state": err})
+        return True, err, {"bundle": bundle}
+
+    if not dialog_seal.AVAILABLE:
+        return refuse("unavailable")
+    config = load_config()
+    if config.get("dialogRelay") is not True:
+        return refuse("denied")
+    dev = load_devices().get("devices", {}).get(device) if device else None
+    if (not isinstance(dev, dict) or dev.get("revoked")
+            or not isinstance(dev.get("secret"), str)
+            or (isinstance(dev.get("expires"), (int, float)) and dev["expires"] < iat)):
+        return refuse("denied")                       # 失効した端末には封を作らない（二度目の門）
+    known, created = dialog_seal.reserve_dialog(req_id)
+    if known is not None:
+        return True, "cached", {"bundle": known}
+    if not created:
+        return True, "pending", {"bundle": None}      # 封緘中（次の周で出る）
+    p = _session_transcript(session)
+    if not p:
+        return refuse("notfound")
+    depth = config.get("dialogRelayDepth", 0)
+    depth = depth if isinstance(depth, int) and 0 <= depth <= 1 else 0
+    nbytes = DIALOG_DEPTHS[depth][0]
+    try:
+        size = p.stat().st_size
+    except OSError:
+        size = 0
+    page = dialog_page(tail_lines(p, nbytes), depth, truncated=size > nbytes)
+    page.update({"session": session, "reqId": req_id, "iat": iat, "clipped": False})
+    for _ in range(6):                                # 収まらなければ古い方から半分落とす
+        try:
+            bundle = dialog_seal.seal(dev["secret"], device, req_id, session, page, iat=iat)
+            break
+        except ValueError as e:
+            if str(e) != "toolarge" or len(page.get("messages") or []) < 2:
+                return refuse("toolarge")
+            page["messages"] = page["messages"][len(page["messages"]) // 2:]
+            page["clipped"] = True
+    else:
+        return refuse("toolarge")
+    dialog_seal.store_bundle(req_id, bundle)
+    office_actions._audit({"kind": "dialog", "reqId": req_id, "device": device,
+                           "session": session, "ts": iat, "state": "sealed",
+                           "frames": bundle["n"], "clipped": page["clipped"]})
+    return True, "sealed", {"bundle": bundle}
+
+
 PROJECT_ARCHES = frozenset(("phones", "cap", "beret", "pencil", "bowtie",
                            "mortar", "headset", "hardhat", "eyeshade"))
 # R91: 殻の色（アクセサリと直交する「もう一段細かい」個体差）。
@@ -2889,7 +2985,12 @@ class Handler(BaseHTTPRequestHandler):
             # UIの api() は GET にも X-Office-Local を付与するので同一オリジンは通る。
             if not self._csrf_ok():
                 return self._deny(403, "cross-site request blocked")
-            self._send(200, json.dumps({"devices": list_devices()}, ensure_ascii=False).encode("utf-8"),
+            # R87: 会話共有（dialogRelay）の状態も同じ画面で見せる＝📱スマホ連携が唯一の切替 UI
+            cfg = load_config()
+            self._send(200, json.dumps({"devices": list_devices(),
+                                        "dialogRelay": cfg.get("dialogRelay") is True,
+                                        "dialogAvailable": bool(dialog_seal.AVAILABLE)},
+                                       ensure_ascii=False).encode("utf-8"),
                        "application/json; charset=utf-8")
         elif self.path.startswith("/api/keys/status"):
             # 接続情報とmaskedキーもローカルUI専用。pair/list と同じCSRF境界で守る。
@@ -3118,6 +3219,18 @@ class Handler(BaseHTTPRequestHandler):
             # R90-D11: ローカル（loopback+CSRF）からの雇用。パスは受け取らず projectId で引き当てる
             ok, msg, extra = hire_session(data.get("projectId"), data.get("prompt"), data.get("name") or "",
                                           worktree=bool(data.get("worktree")))
+        elif self.path.startswith("/api/dialog/sealed"):
+            # R87: 封緘するのは daemon（transcript を読める唯一のプロセス）。relay_agent は
+            # dlg-封筒を検証してここへ 127.0.0.1 で回し、返る暗号文だけを中継へ載せる。
+            if self.client_address[0] not in ("127.0.0.1", "::1"):
+                return self._deny(403, "loopback required")
+            ok, msg, extra = _dialog_sealed(data)
+        elif self.path.startswith("/api/config/dialog_relay"):
+            if self.client_address[0] not in ("127.0.0.1", "::1"):
+                return self._deny(403, "loopback required")
+            ok, msg = set_dialog_relay(data.get("on"))
+            if ok:
+                extra = {"dialogRelay": msg}
         elif self.path.startswith("/api/action/exec"):
             # R79-10: 実行者は office_server（Automation TCC同意済み＝osascript経路を持つ）。
             # relay_agent は act-封筒を検証してここへ 127.0.0.1 で回すだけの配達員でいる。

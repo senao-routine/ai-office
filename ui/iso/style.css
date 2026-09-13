@@ -1,44 +1,46 @@
-/* R90-U2: 方向Cの紙・ヘアライン・セージ1色。2カラムのHUD。
-   CSS keyframeは禁止。余白4px単位・5段の型・影は1段だけ。 */
+/* R93-V1': ラベンダー・グラスロフト。2カラムのHUD。
+   CSS keyframeは禁止。余白4px単位・5段の型・影は2段。 */
 /* HUD_TOKENS_BEGIN (generated: ui/hud-tokens.css) */
 /* HUDの共通正本。docs/art-direction.md §7。両画面への展開はgen_pwa_modules.py。 */
 :root {
-  --paper: #f7f4ef;
-  --paper-2: #efe9e1;
-  --paper-3: #e6dfd5;
-  --line: rgba(46,45,44,.14);
-  --ink: #2e2d2c;
-  --ink-2: #5e5a55;
-  --ink-3: #8a8279;
-  --accent: #5f7d59;
-  --accent-chip: #e3ebdd;
-  --accent-3d: #7a9469;
-  --warn: #c28a3a;
-  --warn-chip: #f3e9d9;
-  --alert: #c0483a;
-  --alert-chip: #f4e4df;
-  --rest: #b4aca0;
+  --paper: #f4f4fb;
+  --paper-2: #ececf7;
+  --paper-3: #e3e3f2;
+  --glass: rgba(255,255,255,.72);
+  --glass-solid: #ffffff;
+  --line: rgba(96,82,170,.14);
+  --ink: #23213a;
+  --ink-2: #6c6890;
+  --ink-3: #9793b8;
+  --accent: #7c5cff;
+  --accent-2: #4f8dff;
+  --accent-chip: #eee9ff;
+  --accent-3d: #8f86e0;
+  --warn: #f5a524;
+  --warn-chip: #fff1dc;
+  --alert: #e0538a;
+  --alert-chip: #fde4ee;
+  --rest: #aab2d8;
   --on-accent: #ffffff;
-  --radius-sm: 10px;
-  --radius: 14px;
-  --shadow: 0 1px 2px rgba(46,45,44,.06);
+  --radius-sm: 12px;
+  --radius: 18px;
+  --shadow: 0 12px 34px rgba(64,52,140,.12), 0 2px 6px rgba(64,52,140,.06);
+  --stage-bg: radial-gradient(90% 70% at 18% 6%, rgba(124,92,255,.14) 0%, rgba(124,92,255,0) 55%), radial-gradient(80% 60% at 88% 90%, rgba(79,141,255,.12) 0%, rgba(79,141,255,0) 58%), linear-gradient(180deg, #f6f5fc 0%, #eeeefb 100%);
 }
 /* HUD_TOKENS_END */
 :root {
-  --iso-bg: var(--paper-2);
-  --iso-stage-bg: var(--paper-2);
-  --iso-glass: var(--paper);
-  /* R90-P2: 旧名のエイリアス。**--iso-glass-solid だけは #ffffff のまま**にする。
-     入力欄・ボタン・シートの「面より一段白い層」で、--paper に寄せると 38 箇所が
-     一斉に紙色になり階層が消える（実測でデスクトップ golden が 4.61% 変化した）。 */
-  --iso-glass-solid: #ffffff;
+  --iso-bg: var(--paper);
+  --iso-stage-bg: var(--stage-bg);
+  --iso-glass: var(--glass);
+  /* 入力欄・ボタン・シートは不透明の白を保ち、ガラス面と階層を分ける。 */
+  --iso-glass-solid: var(--glass-solid);
   --iso-line: var(--line);
   --iso-hairline: var(--line);
   --iso-ink: var(--ink);
   --iso-ink-soft: var(--ink-2);
   --iso-ink-muted: var(--ink-3);
   --iso-accent: var(--accent);
-  --iso-accent-2: var(--accent);
+  --iso-accent-2: var(--accent-2);
   --iso-accent-chip: var(--accent-chip);
   --iso-on-accent: var(--on-accent);
   --iso-ok: var(--accent);
@@ -54,7 +56,7 @@
   width: 100%;
   height: 100dvh;
   font-size: 14px; line-height: 1.45;
-  background: var(--iso-bg);
+  background: var(--iso-stage-bg);
   color: var(--iso-ink);
   font-family: "Hiragino Kaku Gothic ProN", "Noto Sans JP", system-ui, sans-serif;
 }
@@ -71,7 +73,7 @@
 /* オフラインバナー: 凍結データを「今」と誤読させない（グレースケールだけでは弱い） */
 .ui-iso .offbar {
   position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 30;
-  background: var(--iso-alert); color: #f7f4ef;
+  background: var(--iso-alert); color: var(--iso-on-accent);
   font-size: 12.5px; font-weight: 700; letter-spacing: .02em;
   padding: 8px 16px; border-radius: 10px;
   box-shadow: var(--iso-shadow);
@@ -94,11 +96,12 @@
   text-decoration: underline; text-underline-offset: 3px;
 }
 
-/* ── 紙色カードの共通則 ─────────────────────────────────────── */
+/* ── ガラスカードの共通則 ───────────────────────────────────── */
 .ui-iso .card, .ui-iso .side {
   background: var(--iso-glass);
   border: 1px solid var(--iso-line);
-
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+  backdrop-filter: blur(14px) saturate(150%);
   border-radius: var(--iso-radius);
   box-shadow: var(--iso-shadow);
 }
@@ -902,25 +905,26 @@
   .ui-iso .dlglist { max-height: 26vh; }                       /* R86-C: 低い画面では会話を控えめに */
 }
 
-/* 暗色クロームは暖色の「夜の紙」。3Dステージの色は共通のまま。
+/* 暗色クロームは寒色の「夜の紙」。3Dステージの色は共通のまま。
    :rootで解決済みの別名トークンも、上書き先の面・アクセントへ結び直す。 */
 .ui-iso.th-dark {
   color-scheme: dark;
-  --iso-bg: #26241f;
-  --iso-glass: #26241f;
-  --iso-glass-solid: #2f2c26;
-  --iso-hairline: rgba(241,237,231,.16);
+  --iso-bg: #12111e;
+  --iso-glass: rgba(28,26,46,.78);
+  --iso-glass-solid: #1c1a2e;
+  --iso-stage-bg: linear-gradient(180deg,#14132200,#14132200), #12111e;
+  --iso-hairline: rgba(232,230,246,.14);
   --iso-line: var(--iso-hairline);
-  --iso-ink: #f1ede7;
-  --iso-ink-soft: #b8b1a6;
-  --iso-ink-muted: #b8b1a6;
-  --iso-accent: #8fae83;
-  --iso-accent-2: var(--iso-accent);
-  --iso-accent-chip: #374331;
-  --iso-on-accent: #26241f;
-  --iso-ok: #8fae83;
-  --iso-warn-chip: #453823;
-  --iso-alert-chip: #492e27;
+  --iso-ink: #e8e6f6;
+  --iso-ink-soft: #aaa6c8;
+  --iso-ink-muted: #8a86a8;
+  --iso-accent: #9b82ff;
+  --iso-accent-2: #6ea4ff;
+  --iso-accent-chip: #2a2650;
+  --iso-on-accent: #12111e;
+  --iso-ok: #9b82ff;
+  --iso-warn-chip: #3d3320;
+  --iso-alert-chip: #46233a;
 }
 /* ⚙設定のセグメント選択状態（ライト/ダーク共通） */
 .ui-iso .mkeybtn.on {

@@ -111,6 +111,46 @@ if (!app.ok) {
   fanOk ? ok("putStatus 扇形配信（/sync→WS push・agentSeenAgo=0）")
         : bad(`扇形配信フレームが不正: ${String(fan).slice(0, 120)}`);
 
+  // R87 封書: /sync の dlg は kv 1行に置かれ、status フレーム・{"t":"status"} 応答・GET /status に同乗する。
+  // Worker は中身を読まない（不透明な文字列を運ぶだけ）。限定トークンの GET /status には載せない。
+  const dlgText = JSON.stringify({ v: 1, items: [{ v: 1, id: "a".repeat(32), e: 4102444799, err: "denied" }] });
+  const syncD = await http("POST", "/sync", { office: { employees: [] }, dlg: dlgText });
+  if (syncD.status !== 200) bad(`/sync(dlg) が ${syncD.status}`);
+  const fanD = await nextFrame(app);
+  let fanDOk = false;
+  try { const d = JSON.parse(fanD); fanDOk = d.t === "status" && d.dlg === dlgText; } catch { /* fallthrough */ }
+  fanDOk ? ok("R87 /sync の dlg が status フレームに同乗する") : bad(`dlg がフレームに無い: ${String(fanD).slice(0, 160)}`);
+  // 封書だけが変わった周（office 無し）でも扇形は飛び、status 行は書き直さない
+  const dlgText2 = JSON.stringify({ v: 1, items: [] });
+  const syncE = await http("POST", "/sync", { dlg: dlgText2 });
+  const fanE = await nextFrame(app);
+  let fanEOk = false;
+  try { const d = JSON.parse(fanE); fanEOk = d.t === "status" && d.dlg === dlgText2; } catch { /* fallthrough */ }
+  fanEOk ? ok("R87 封書だけの周でも扇形配信（空バンドル＝中継の行が空になる）") : bad(`空バンドルが届かない: ${String(fanE).slice(0, 160)}`);
+  // 封書だけの周のコスト＝「office 無しの空 sync」＋ちょうど 1 行（dlg）。office 行を書き直していない証明を
+  // 絶対値でなく**差分**で見る（agentseen・usage 自身の行数は実装の都合で変わり得る）。
+  const base0 = await http("POST", "/sync", {});
+  const base1 = await http("POST", "/sync", {});
+  const baseDelta = base1.body.usage.rows - base0.body.usage.rows;
+  const dlgD = await http("POST", "/sync", { dlg: JSON.stringify({ v: 1, items: [] }) });
+  await nextFrame(app);                                   // 扇形フレームを消費（次の検査を汚さない）
+  const dlgDelta = dlgD.body.usage.rows - base1.body.usage.rows;
+  if (dlgDelta === baseDelta + 1) {
+    ok(`R87 封書だけの周は空 sync＋1 行（${baseDelta}→${dlgDelta}）＝office 行を書き直さない`);
+  } else {
+    bad(`封書の周の書込行数が想定外: 空sync=${baseDelta} 行 / dlg付き=${dlgDelta} 行`);
+  }
+  app.ws.send('{"t":"status"}');
+  const stD = await nextFrame(app);
+  let stDOk = false;
+  try { const d = JSON.parse(stD); stDOk = d.t === "status" && d.dlg === dlgText2; } catch { /* fallthrough */ }
+  stDOk ? ok("R87 {\"t\":\"status\"} 応答にも dlg（再接続直後の端末が取り直せる）") : bad(`status 要求応答に dlg が無い`);
+  const getFull = await http("GET", "/status");
+  const getPost = await http("GET", "/status", undefined, POST_TOKEN);
+  (getFull.body.dlg === dlgText2 && !("dlg" in (getPost.body || {})))
+    ? ok("R87 GET /status: フル Bearer には dlg・限定トークンには載せない")
+    : bad(`GET /status の dlg 露出が想定外: full=${JSON.stringify(getFull.body.dlg).slice(0, 60)} post=${JSON.stringify(getPost.body.dlg)}`);
+
   // R80: 使用量カウンタ（無料枠に対する今日の書込行数）が sync 応答に載り、増えていく。
   // これが Mac 側の自動減速（scan間隔を伸ばす）の入力になる。
   const u1 = await http("POST", "/sync", { office: { employees: [] } });

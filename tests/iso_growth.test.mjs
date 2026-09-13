@@ -134,6 +134,31 @@ test("static replacement retains actors, camera, selection and materials; atlas 
   assert.equal(scene.spec.decor.cafe, true);
   assert.equal(scene.spec.id, "XL", "server level changes cannot shrink population capacity");
   assert.equal(scene.actors.get("worker-0"), actor);
+
+  const fullWorld = population(22, 20);
+  const prepared = scene.prepareWorld(fullWorld);
+  const expanded = scene.staticMeshes;
+  scene.setTierCap("M");
+  assert.equal(scene.staticMeshes, expanded, "scale changes wait for the next world update");
+  const compact = scene.prepareWorld(prepared);
+  assert.equal(scene.spec.id, "M"); assert.equal(scene.tierCap, "M");
+  assert.equal(scene.maxSeen, 22, "display caps never erase the population peak");
+  assert.equal(compact.seats.size, 12); assert.equal(compact.overflow.size, 10);
+  for (const [id, slot] of compact.overflow) {
+    assert.ok(!compact.seats.has(id));
+    assert.ok(scene.anchors.queue[slot], "overflow uses an existing reception slot");
+  }
+  const compactMeshes = scene.staticMeshes;
+  scene.setTierCap("M");
+  assert.equal(scene.prepareWorld(prepared), compact, "unchanged caps retain the cached world");
+  assert.equal(scene.staticMeshes, compactMeshes);
+  scene.setTierCap("invalid");
+  assert.equal(scene.tierCap, "M");
+  scene.setTierCap(null);
+  const restored = scene.prepareWorld(compact);
+  assert.equal(scene.spec.id, "XL"); assert.equal(scene.tierCap, null);
+  assert.equal(restored.seats.size, 22); assert.equal(restored.overflow.size, 0);
+  assert.equal(scene.maxSeen, 22);
   scene._disposeStatic(); scene.displays.dispose();
 });
 

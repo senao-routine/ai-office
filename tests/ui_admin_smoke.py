@@ -132,6 +132,29 @@ def main():
             else:
                 print(f"  ✗ 📱パネル内容が想定外: {note[:80]}")
                 ng += 1
+            # R87-S6: 会話共有のトグル（別モデルレビュー: API だけあって UI が無かった）。
+            # モーダルが開いているうち（失効→再描画→Escape の前）に、実ファイルまで往復する。
+            try:
+                page.wait_for_selector("#pair-dialog", state="attached", timeout=8000)
+            except Exception:
+                html = page.eval_on_selector(".modal", "el => el.innerHTML.slice(0, 500)")
+                print(f"  ✗ #pair-dialog が出ない。modal={html!r} errors={errors[-4:]}")
+                raise
+            if page.eval_on_selector("#pair-dialog", "el => el.disabled"):
+                # 封緘バックエンド（CommonCrypto）が無い環境では意図的に disabled＝verify ▶12 と同じく警告扱い
+                print("  · 📱会話共有トグルは disabled（封緘バックエンド無し）＝往復は省略")
+            else:
+                page.click("#pair-dialog")
+                page.wait_for_timeout(600)
+                on = json.loads(config.read_text(encoding="utf-8")).get("dialogRelay")
+                page.click("#pair-dialog")
+                page.wait_for_timeout(600)
+                off = json.loads(config.read_text(encoding="utf-8")).get("dialogRelay")
+                if on is True and off is False:
+                    print("  ✓ 📱「スマホに会話を見せる」トグル → office_config.json の dialogRelay が true/false で往復")
+                else:
+                    print(f"  ✗ 📱会話共有トグルが設定に届かない: on={on!r} off={off!r}")
+                    ng += 1
             page.click(".modal .mrevoke")
             page.wait_for_timeout(800)
             after = (home / ".claude" / "office_devices.json").read_text(encoding="utf-8")

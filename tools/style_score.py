@@ -71,6 +71,8 @@ PROFILES = {
         "gates": GATES,
     },
     "c": {
+        # ★retired 2026-09-14 (R93): 本人裁定で雰囲気を旧（寒色×ラベンダー×ガラス）へ戻したため
+        #   verify の配線は glass へ。dict は歴史と `--calibrate --profile c` の再測のために残す。
         # docs/art/board_C_overview.jpg の実測（--calibrate --profile c）
         "reference": {
             "empty_floor": 0.191, "color_count": 92, "neon_cool": 0.000,
@@ -95,6 +97,45 @@ PROFILES = {
         "accent_hue": 105.0,      # セージ緑
         "accent_sat": 26,         # 低彩度のセージを拾う床（既定55だと 0 画素）
     },
+    # R93（2026-09-14 本人裁定）: 「旧の雰囲気 × 今の描画力」。採点対象は 3D キャンバスだけなので
+    # HUD のラベンダーは入らない＝3D の中で次の3つを証明する:
+    #   ・寒色（青〜青紫）のアクセントが**本当に在る**（下限）・でもネオン漬けではない（上限）
+    #   ・画面（モニタ）が**光っている**（screen_glow の下限）・でも旧 fake glow の 0.164 には戻れない（上限）
+    #   ・明るい昼光のまま（luma_mean の下限＝暗背景の番人）
+    # ★数値は「形」。M0' で採用したボードの --calibrate と、V の初回実レンダの2点で人間が写す。
+    #   外れたら理由を書いて広げる（黙って広げない）。
+    "glass": {
+        # 2026-09-14 M0' 採用= G1「ラベンダー・グラスロフト」（docs/art/board_G_overview.jpg）。
+        # ★ボードの実測は**室内だけ切って**測った値（白い周囲を含む全景は empty_floor 0.454 / luma 0.831 と
+        #   全部がずれる＝R90 のときと同じ罠）。室内: luma_mean 0.806・luma_std 0.166・色数 46。
+        # ★ラベンダーの床壁は「明るくて少し青い」ので、彩度の床が低いと壁ごと拾う（sat≥16 で
+        #   accent 0.70 / glow 0.31＝部屋全体）。実測: sat≥32 で glow 0.028 / accent 0.34、sat≥48 で
+        #   glow 0.000 / accent 0.15、sat≥64 で accent 0.047＝椅子・ラグ・ソファだけになる。
+        #   → accent は sat≥64、glow は sat≥40（壁は落ち、bloom の青白いハローは残る）。
+        # ★ボードの黒モニタは GPT が光らせていない（glow 0.000）＝**screen_glow の下限はボードでは
+        #   決められない**。V4'（発光モニタ＋bloom）の初回実レンダで人間が写す（それまでは仮の 0.001）。
+        "reference": {
+            "empty_floor": None, "color_count": 46, "neon_cool": 0.078,
+            "accent_area": 0.047, "screen_glow": None, "luma_std": 0.166, "luma_mean": 0.806,
+        },
+        "gates": {
+            "empty_floor": ("明るい一様面の割合", 0.0, 0.22, "少ないほど良い（ボードは周囲込みで測れず）"),
+            # ラベンダー単色系は色数が少ない（ボード室内 46）。旧 legacy の下限 42 と同じ線
+            "color_count": ("色の種類数", 40, 400, "多いほど良い・ボード46"),
+            # 彩度の高い寒色は「無い」ではなく「上限だけ」。ボードのソファ・椅子で 0.078
+            "neon_cool": ("高彩度の寒色の面積", 0.0, 0.12, "上限だけ・ネオン漬けを弾く・ボード0.078"),
+            # 青〜青紫（205〜265°・sat≥64）＝椅子・ラグ・ソファ。壁は入らない。ボード 0.047
+            "accent_area": ("アクセント(青紫)の面積", 0.01, 0.12, "在るが小さい・ボード0.047"),
+            # 青白い bloom ハロー（sat≥40）＝モニタが光っている証拠。下限は V4' の実レンダで確定
+            "screen_glow": ("画面の発光面積", 0.001, 0.03, "光っている・でも板グローには戻れない・仮"),
+            "luma_std": ("明度の標準偏差", 0.15, 0.40, "高いほど立体的・ボード0.166"),
+            # 白基調なので上限を 0.84 へ（ボード室内 0.806・C は 0.665→実レンダ 0.675 だった）
+            "luma_mean": ("平均輝度", 0.58, 0.84, "白飛び/暗すぎを弾く＝暗背景の番人・ボード0.806"),
+        },
+        "accent_hue": 235.0,      # 青〜青紫の中心（幅 ±30 → 205〜265°）
+        "accent_sat": 64,         # ラベンダーの壁を拾わず、椅子・ラグの紫青だけを拾う床（実測）
+        "glow_sat": 40,           # screen_glow の彩度の床（壁 sat≈20〜30 を落とす）
+    },
 }
 
 
@@ -113,7 +154,7 @@ def _hue(r, g, b):
     return (h * 60.0) % 360.0
 
 
-def analyze(path, accent_hue=None, hue_width=30.0, accent_sat=55):
+def analyze(path, accent_hue=None, hue_width=30.0, accent_sat=55, glow_sat=16):
     from PIL import Image
     src = Image.open(path)
     # 透過PNG（3Dキャンバスのみ）なら、中身のある画素だけを測る。
@@ -167,11 +208,16 @@ def analyze(path, accent_hue=None, hue_width=30.0, accent_sat=55):
     glow = 0            # 従来の指標（accent_hue 未指定なら紫青）
     cool = 0            # 禁止色（シアン〜青〜紫）の面積。accent_hue に関係なく常に測る
     accent = 0          # アクセント色の面積（accent_hue 指定時のみ意味を持つ）
+    screen = 0          # R93: 画面の発光＝明るく（luma≥.85）少し青い（sat≥16・色相190〜265°）画素
     for (r, g, b), m in zip(px, mask):
         if not m:
             continue
         mx, mn = max(r, g, b), min(r, g, b)
         sat = mx - mn
+        # ランプ（暖色 h≈35）と真っ白な窓（sat<16）は拾わない＝モニタの bloom だけを数える
+        if sat >= glow_sat and (0.2126 * r + 0.7152 * g + 0.0722 * b) >= 0.85 * 255 \
+                and 190.0 <= _hue(r, g, b) <= 265.0:
+            screen += 1
         # 禁止色は「青が最強」だけでは足りない。旧UIのシアン #53e0c4 は緑が最強（色相168°）で
         # すり抜ける（Astra レビュー指摘・R90-AD2）。色相の帯 160〜300° で切る。
         if mx >= 110 and sat >= 55 and 160.0 <= _hue(r, g, b) <= 300.0:
@@ -216,18 +262,19 @@ def analyze(path, accent_hue=None, hue_width=30.0, accent_sat=55):
         "glow_area": glow / total,
         "neon_cool": cool / total,
         "accent_area": accent / total,
+        "screen_glow": screen / total,
         "luma_std": std,
         "luma_mean": mean,
     }
 
 
-def calibrate(path, accent_hue, hue_width, profile="legacy", accent_sat=55):
+def calibrate(path, accent_hue, hue_width, profile="legacy", accent_sat=55, glow_sat=16):
     """R90-H: 採用したコンセプトボード（参考画像）を実測し、ゲート案を出す。
     「参考画像自身が落ちるゲートは較正が間違っている」の原則を機械に置き換える:
     参考の実測値が全項目通る範囲を、現行ゲートの幅を保ったまま提案する。
     書き換えは人間が REFERENCE/GATES に写す（自動で書かない＝意図の無い緩和を防ぐ）。"""
     gates = PROFILES[profile]["gates"]
-    got = analyze(path, accent_hue, hue_width, accent_sat)
+    got = analyze(path, accent_hue, hue_width, accent_sat, glow_sat)
     print(f"較正: {path.name}（profile={profile}・"
           f"accent_hue={accent_hue if accent_hue is not None else '紫青(既定)'}）")
     print("  REFERENCE = {")
@@ -260,7 +307,7 @@ def main():
                     help="発光判定のアクセント色相（度）。未指定=従来の紫青。例: 緑 150")
     ap.add_argument("--hue-width", type=float, default=30.0, help="色相の許容幅（±度・既定30）")
     ap.add_argument("--profile", default="legacy", choices=sorted(PROFILES),
-                    help="ゲートの組（legacy=旧iso / c=方向C 写実寄り北欧・docs/art-direction.md）")
+                    help="ゲートの組（legacy=旧iso / c=方向C[retired] / glass=R93 旧の雰囲気×今の描画力）")
     ap.add_argument("--accent-sat", type=int, default=None,
                     help="アクセント判定の彩度の床（既定はプロファイル値・legacy は55）")
     ap.add_argument("--calibrate", action="store_true",
@@ -284,10 +331,11 @@ def main():
     accent_hue = args.accent_hue if args.accent_hue is not None else prof.get("accent_hue")
     accent_sat = args.accent_sat if args.accent_sat is not None else prof.get("accent_sat", 55)
 
+    glow_sat = prof.get("glow_sat", 16)
     if args.calibrate:
-        return calibrate(path, accent_hue, args.hue_width, args.profile, accent_sat)
+        return calibrate(path, accent_hue, args.hue_width, args.profile, accent_sat, glow_sat)
 
-    got = analyze(path, accent_hue, args.hue_width, accent_sat)
+    got = analyze(path, accent_hue, args.hue_width, accent_sat, glow_sat)
     ng = 0
     print(f"採点: {path.name}" + (f"（profile={args.profile}）" if args.profile != "legacy" else ""))
     for key, (label, lo, hi, note) in gates.items():
@@ -298,7 +346,7 @@ def main():
             ng += 1
         ref = reference.get(key)
         fmt = f"{v:6.0f}" if v >= 10 else f"{v:6.3f}"
-        refs = ("" if ref is None else
+        refs = ("  参考=未較正" if ref is None and args.profile == "glass" else "" if ref is None else
                 (f"  参考{ref:.0f}" if ref >= 10 else f"  参考{ref:.3f}"))
         rng = (f"{lo:g}〜{hi:g}" if lo > 0 else f"≤ {hi:g}")
         print(f"  {mark} {label:<16} {fmt}{refs}  （{rng}・{note}）")

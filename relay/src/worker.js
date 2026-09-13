@@ -57,6 +57,11 @@ function spriteBytes(b64) {
 const PEEK_LIMIT = 100;   // 1回の pull で返す最大件数（DOストレージ肥大の読み側ガード）
 const ACK_LIMIT = 500;
 
+// R87: 封書レーンの定数。DLG_MAX_CHARS は Mac 側 MAX_LIVE(4) × 4 フレームの base64url（≈176K）が入る上限
+// （relay_agent._dialog_payload が同じ値で古い順に落とす＝黙って全部捨てない）。
+const DLG_MAX_CHARS = 180000;
+const DLG_TTL_MS = 120000;
+
 export class Room extends DurableObject {
   constructor(ctx, env) {
     super(ctx, env);
@@ -116,6 +121,7 @@ export class Room extends DurableObject {
     // R79-8.1: WS化でsyncは「変化時+240s heartbeat」だけ＝agentSeenAgoが180s閾値を跨ぎ
     // 偽stale（Mac生存中に「指示は届きません」）が出る。正直な生存信号は接続の有無。
     return JSON.stringify({ t: "status", json: s.json, ts: s.ts,
+      dlg: this._dlgLive(),
       agentOnline: this.ctx.getWebSockets("agent").length > 0,
       agentSeenAgo: agent == null ? null : Math.max(0, Math.floor((now - agent) / 1000)) });
   }
@@ -136,6 +142,15 @@ export class Room extends DurableObject {
   _kvGet(k) {
     const r = this.ctx.storage.sql.exec("SELECT v FROM kv WHERE k=?", k).toArray();
     return r.length ? r[0].v : "";
+  }
+
+  // R87: 封書は Mac 側の TTL（90秒）で消えるが、送った直後に Mac がスリープ・停止すると
+  // 「空で上書きする次の sync」が来ない。行の ts で自前に失効させる＝Mac の後続 sync に依存しない
+  // （別モデルレビュー 2026-09-14）。120秒＝Mac 側 TTL 90秒＋sync 間隔の余裕。
+  _dlgLive() {
+    const r = this.ctx.storage.sql.exec("SELECT v, ts FROM kv WHERE k='dlg'").toArray();
+    if (!r.length || !r[0].v) return "";
+    return (Date.now() - Number(r[0].ts || 0)) <= DLG_TTL_MS ? r[0].v : "";
   }
 
   // ── R80: 使用量の自己防衛 ────────────────────────────────────────────
@@ -202,6 +217,7 @@ export class Room extends DurableObject {
       const r = this.sync({
         ackIds: Array.isArray(d.ackIds) ? d.ackIds : [],
         officeJson: office ? JSON.stringify(office) : null,
+        dlgJson: typeof d.dlg === "string" ? d.dlg : null,     // R87: 封書（不透明な文字列）
         attnNow,
       });
       let openclaw = null;
@@ -262,12 +278,18 @@ export class Room extends DurableObject {
   }
 
   putStatus(json, ts) {
-    this.ctx.storage.sql.exec(
-      "INSERT INTO kv(k,v,ts) VALUES ('status',?,?) " +
-      "ON CONFLICT(k) DO UPDATE SET v=excluded.v, ts=excluded.ts", json, ts);
+    // R87: json===null は「status 行は書かず、扇形配信だけ」（封書 dlg だけが変わった周）。
+    if (json !== null) {
+      this.ctx.storage.sql.exec(
+        "INSERT INTO kv(k,v,ts) VALUES ('status',?,?) " +
+        "ON CONFLICT(k) DO UPDATE SET v=excluded.v, ts=excluded.ts", json, ts);
+    }
+    const cur = json !== null ? { json, ts } : this.getStatus();
     // R79-7 扇形配信フックその2: statusが変わった瞬間にスマホ(app)へpush（送信は無料）。
     // ここはMac側経路(/sync・POST /status)からしか呼ばれない＝直前にMacが生きている＝agentSeenAgo:0
-    this._fan("app", JSON.stringify({ t: "status", json, ts, agentSeenAgo: 0,
+    // R87: 封書 dlg（暗号文の JSON 文字列・無ければ ""）を同乗＝Worker は中身を読まない・開けない
+    this._fan("app", JSON.stringify({ t: "status", json: cur.json, ts: cur.ts, agentSeenAgo: 0,
+      dlg: this._dlgLive(),
       agentOnline: this.ctx.getWebSockets("agent").length > 0 }));
   }
 
@@ -333,6 +355,13 @@ export class Room extends DurableObject {
     const acked = this.ack(p.ackIds);
     const items = this.peek();
     let newly = [], subs = [];
+    // R87: 封書のレーン。office_json とは別の kv 1行（"dlg"）＝会話の変化で office を書き直さない。
+    // Worker は文字列を置くだけ（鍵材料をどの経路でも受け取らない＝読めない）。上限で肥大を止める。
+    let dlgWrote = 0;
+    if (typeof p.dlgJson === "string" && p.dlgJson.length <= DLG_MAX_CHARS) {
+      this._kvPut("dlg", p.dlgJson);
+      dlgWrote = 1;
+    }
     if (typeof p.officeJson === "string") {
       this.putStatus(p.officeJson, now);
       if (p.attnNow && typeof p.attnNow === "object") {
@@ -341,6 +370,8 @@ export class Room extends DurableObject {
         newly = Object.keys(p.attnNow).filter((k) => !(k in prev));
         if (newly.length) subs = this.listSubs();
       }
+    } else if (dlgWrote) {
+      this.putStatus(null, now);            // 封書だけ変わった＝行は書かず扇形だけ
     }
     this._touchSeen("agentseen", now);   // office=null（変化なし）でも「Mac側は生きている」を刻む
     // R79-7: WS接続中のスマホは「いま在席」＝リクエスト0円のメモリ判定（20秒毎のappseen書込を置換）。
@@ -352,7 +383,7 @@ export class Room extends DurableObject {
     // R80: この周で書いた行数（status + attnstate + agentseen）を計上して返す。
     // Mac側は usage.level を見て自分のscan間隔を伸ばす＝**枠を割る前に自動で減速する**。
     const wrote = 1 + (typeof p.officeJson === "string" ? 1 : 0)
-      + (p.attnNow && typeof p.attnNow === "object" ? 1 : 0);
+      + (p.attnNow && typeof p.attnNow === "object" ? 1 : 0) + dlgWrote;   // R87: 封書の行も計上
     this._bump(wrote);
     return { acked, items, newly, subs, appSeenAgo, appOnline, usage: this.usage() };
   }
@@ -365,6 +396,7 @@ export class Room extends DurableObject {
     const s = this.getStatus();
     const agent = this._seenTs("agentseen");
     return { json: s.json, ts: s.ts,
+      dlg: this._dlgLive(),
       agentOnline: this.ctx.getWebSockets("agent").length > 0,
       agentSeenAgo: agent == null ? null : Math.max(0, Math.floor((now - agent) / 1000)) };
   }
@@ -718,6 +750,7 @@ export default {
       const r = await room.sync({
         ackIds,
         officeJson: office ? JSON.stringify(office) : null,
+        dlgJson: typeof b.dlg === "string" ? b.dlg : null,     // R87: 封書（不透明な文字列）
         attnNow,
       });
       if (attnNow && r.newly && r.newly.length && r.subs && r.subs.length) {

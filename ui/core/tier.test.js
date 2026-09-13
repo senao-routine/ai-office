@@ -30,6 +30,38 @@ test("tierFor: invalid persisted counts cannot shrink or inflate a valid populat
   }
 });
 
+test("tierFor: omitted and null caps retain every population threshold", () => {
+  assert.equal(tierFor(), "S");
+  for (const [agents, expected] of [[0, "S"], [8, "S"], [9, "M"], [12, "M"],
+    [13, "L"], [18, "L"], [19, "XL"], [22, "XL"]]) {
+    assert.equal(tierFor({ agents }), expected);
+    assert.equal(tierFor({ agents, cap: null }), expected);
+  }
+});
+
+test("tierFor: compact caps XL at M without changing the remembered peak", () => {
+  const input = Object.freeze({ agents: 22, maxSeen: 24, cap: "M" });
+  assert.equal(tierFor(input), "M");
+  assert.equal(maxSeenFor(input), 24);
+  assert.equal(tierFor({ ...input, agents: 0, cap: null }), "XL");
+});
+
+test("tierFor: higher caps never increase the observed tier", () => {
+  for (const [agents, cap, expected] of [[8, "M", "S"], [8, "XL", "S"],
+    [12, "L", "M"], [12, "XL", "M"], [18, "XL", "L"]]) {
+    assert.equal(tierFor({ agents, cap }), expected);
+  }
+});
+
+test("tierFor: all tier and cap combinations follow S < M < L < XL", () => {
+  const caps = ["S", "M", "L", "XL"];
+  for (const [agents, expected] of [[8, ["S", "S", "S", "S"]],
+    [12, ["S", "M", "M", "M"]], [18, ["S", "M", "L", "L"]],
+    [22, ["S", "M", "L", "XL"]]]) {
+    assert.deepEqual(caps.map((cap) => tierFor({ agents, cap })), expected);
+  }
+});
+
 test("decorationsFor: each unlock is absent below its level and present from that level", () => {
   for (const [key, level] of [["plants", 3], ["coffee", 5], ["meet3", 8], ["lounge", 12], ["meet4", 15], ["cafe", 20]]) {
     assert.equal(decorationsFor(level - 1)[key], false);

@@ -1,22 +1,26 @@
 /* HUDの共通正本。docs/art-direction.md §7。両画面への展開はgen_pwa_modules.py。 */
 :root {
-  --paper: #f7f4ef;
-  --paper-2: #efe9e1;
-  --paper-3: #e6dfd5;
-  --line: rgba(46,45,44,.14);
-  --ink: #2e2d2c;
-  --ink-2: #5e5a55;
-  --ink-3: #8a8279;
-  --accent: #5f7d59;
-  --accent-chip: #e3ebdd;
-  --accent-3d: #7a9469;
-  --warn: #c28a3a;
-  --warn-chip: #f3e9d9;
-  --alert: #c0483a;
-  --alert-chip: #f4e4df;
-  --rest: #b4aca0;
+  --paper: #f4f4fb;
+  --paper-2: #ececf7;
+  --paper-3: #e3e3f2;
+  --glass: rgba(255,255,255,.72);
+  --glass-solid: #ffffff;
+  --line: rgba(96,82,170,.14);
+  --ink: #23213a;
+  --ink-2: #6c6890;
+  --ink-3: #9793b8;
+  --accent: #7c5cff;
+  --accent-2: #4f8dff;
+  --accent-chip: #eee9ff;
+  --accent-3d: #8f86e0;
+  --warn: #f5a524;
+  --warn-chip: #fff1dc;
+  --alert: #e0538a;
+  --alert-chip: #fde4ee;
+  --rest: #aab2d8;
   --on-accent: #ffffff;
-  --radius-sm: 10px;
-  --radius: 14px;
-  --shadow: 0 1px 2px rgba(46,45,44,.06);
+  --radius-sm: 12px;
+  --radius: 18px;
+  --shadow: 0 12px 34px rgba(64,52,140,.12), 0 2px 6px rgba(64,52,140,.06);
+  --stage-bg: radial-gradient(90% 70% at 18% 6%, rgba(124,92,255,.14) 0%, rgba(124,92,255,0) 55%), radial-gradient(80% 60% at 88% 90%, rgba(79,141,255,.12) 0%, rgba(79,141,255,0) 58%), linear-gradient(180deg, #f6f5fc 0%, #eeeefb 100%);
 }
