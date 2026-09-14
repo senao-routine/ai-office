@@ -159,6 +159,7 @@ v2 のまま（PCF・2048²・`shadow.intensity .55`・contentBox フィット�
 ## 5. カメラと後処理
 
 - **OrthographicCamera を継続**（az 45° / el 40° / DIST 52 / MARGIN 0.86・v2 と同じ理由）。壁は厚み 0.25m の切断模型・高さ 2.5m・天井構造物なし。
+- BOT_PAD: desktop 0.04 / PWA 0.17 / 配信 0（R95・HUD の下段カードはステージ外の行）
 - ポスト処理（`ui/iso/post.js`）: `scene → RT(MSAA4・HalfFloat) → 輝度しきい値 1.0 → 1/4 解像度ガウス → 合成`。
   **合成係数 0.10 を uniform `bloomStrength` にし、既定 0.22**（constructor option `bloom`）。しきい値 1.0 据置。ビネット −8%・静止グレイン ±1% は v2 のまま。
   `quality:"mobile"/"off"` は bloom 無し＝**PWA と配信では発光は emissive の明るさだけ**（README に正直に書く）。
@@ -222,6 +223,8 @@ v2 のまま（PCF・2048²・`shadow.intensity .55`・contentBox フィット�
 | ステージ／ページ背景 | `--stage-bg`＝§2 stage-bg（radial 紫・radial 青・linear）。**装飾面だけ**＝ボタン・文字にグラデは使わない |
 | ダーク | `.th-dark`＝寒色の「夜の紙」: bg `#12111e`・glass `rgba(28,26,46,.78)`・ink `#e8e6f6`・accent `#9b82ff`／`#6ea4ff`（旧 R85 の値） |
 | 動き | transition 120ms ease-out。keyframe アニメは禁止（golden がフレークする） |
+
+デスクトップの `--iso-stage-bg` は意図して `--stage-bg` より濃い（R95）。
 
 ## 8. 禁止事項
 

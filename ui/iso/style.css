@@ -30,7 +30,7 @@
 /* HUD_TOKENS_END */
 :root {
   --iso-bg: var(--paper);
-  --iso-stage-bg: var(--stage-bg);
+  --iso-stage-bg: radial-gradient(90% 70% at 18% 6%, rgba(124,92,255,.22) 0%, rgba(124,92,255,0) 55%), radial-gradient(80% 60% at 88% 90%, rgba(79,141,255,.18) 0%, rgba(79,141,255,0) 58%), linear-gradient(180deg, #f6f5fc 0%, #e6e6f6 100%);
   --iso-glass: var(--glass);
   /* 入力欄・ボタン・シートは不透明の白を保ち、ガラス面と階層を分ける。 */
   --iso-glass-solid: var(--glass-solid);
@@ -62,7 +62,7 @@
 }
 .ui-iso .shell {
   display: grid;
-  grid-template-columns: 300px minmax(0, 1fr);
+  grid-template-columns: 232px minmax(0, 1fr) 296px;
   gap: 16px;
   width: 100%; height: 100%;
   padding: 16px;
@@ -97,7 +97,7 @@
 }
 
 /* ── ガラスカードの共通則 ───────────────────────────────────── */
-.ui-iso .card, .ui-iso .side {
+.ui-iso .card, .ui-iso .side, .ui-iso .rail {
   background: var(--iso-glass);
   border: 1px solid var(--iso-line);
   -webkit-backdrop-filter: blur(14px) saturate(150%);
@@ -149,7 +149,7 @@
   min-width: 24px; text-align: center; padding: 4px 8px;
 }
 
-.ui-iso .spacer { flex: 0; }
+.ui-iso .spacer { flex: 1; }
 /* ── 経費ゲージ（枠線つき2カード＝「クレジット%」と「¥」を混ぜない） ──
    R55.1: 中身が増えても下の管理ボタンを画面外へ押し出さない＝ゲージ側が内部スクロール
    （実際にR55で⚡等が見切れた。回帰ピン= ui_ops_smoke のサイドバー収まり検査） */
@@ -212,7 +212,7 @@
 .ui-iso .gacctrow.on .gadot { background: var(--iso-ok); }
 .ui-iso .gacctrow .galab { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ui-iso .gacctrow b { font-weight: 700; color: var(--iso-ink); }
-.ui-iso .admin { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; flex: none; }
+.ui-iso .admin { display: flex; flex-direction: column; gap: 8px; flex: none; }
 .ui-iso .abtn {
   font: inherit; font-size: 12.5px; font-weight: 700; text-align: left;
   color: var(--iso-ink); background: var(--iso-glass-solid);
@@ -337,7 +337,7 @@
   display: flex; flex-direction: column; gap: 16px;
 }
 .ui-iso .head {
-  display: flex; align-items: center; gap: 8px; min-width: 0; height: 40px;
+  display: flex; align-items: center; gap: 8px; min-width: 0; height: auto; min-height: 40px;
   flex: none; padding: 4px 0; white-space: nowrap;
 }
 .ui-iso .head h1 { font-size: 18px; font-weight: 800; letter-spacing: .01em; margin: 0; }
@@ -363,18 +363,12 @@
   pointer-events: none;
 }
 
-/* 下段2カード: タスクドーナツ＋指示履歴。
-   「シーンの上に浮く紙色のカード」＝ステージの中に absolute で置く。
-   下に別の行として積むとシーンの高さがその分痩せる（「狭い」FBの一因だった）。 */
+/* 下段=「最近の指示」1枚の行（R95: ステージの外へ戻す）。3列では stage は幅律速（848px）なので、この行が高さを取っても diorama は1pxも痩せない（848×716 と 848×812 で同じ 984×667px・実測は R95）。旧「狭い」FB は 2列・1092px 幅で高さ律速だったときの話。 */
 .ui-iso .bottom {
-  position: absolute; left: 16px; right: 16px; bottom: 16px; z-index: 6;
-  display: grid;
-  grid-template-columns: 300px minmax(0, 1fr);
-  gap: 16px; height: 156px;
-  pointer-events: none;
+  flex: none; display: grid; grid-template-columns: 1fr;
 }
 .ui-iso .bottom .card {
-  padding: 12px 16px; min-width: 0; overflow: hidden; pointer-events: auto;
+  padding: 12px 16px; min-width: 0; max-height: 156px; overflow: hidden;
 }
 
 .ui-iso .donutcard { display: grid; grid-template-columns: auto 1fr; column-gap: 16px; }
@@ -390,6 +384,16 @@
 .ui-iso .lrow .ldot { width: 9px; height: 9px; border-radius: 10px; flex: none; }
 .ui-iso .lrow span { flex: 1; color: var(--iso-ink-soft); }
 .ui-iso .lrow b { font-weight: 800; }
+
+.ui-iso .side .donutcard {
+  flex: none; padding: 12px; column-gap: 12px;
+  background: var(--iso-glass-solid); border: 1px solid var(--iso-hairline);
+  border-radius: var(--radius-sm); box-shadow: none;
+  -webkit-backdrop-filter: none; backdrop-filter: none;
+}
+.ui-iso .side .donutwrap, .ui-iso .side .donutwrap svg { width: 80px; height: 80px; }
+.ui-iso .side .donutmid { font-size: 20px; }
+.ui-iso .donutwrap[hidden], .ui-iso .legend[hidden], .ui-iso .todaycard[hidden] { display: none; }
 
 .ui-iso .hist { display: flex; flex-direction: column; gap: 8px; }
 .ui-iso .hrow {
@@ -427,11 +431,11 @@
 .ui-iso .afill { display: block; height: 100%; border-radius: 10px; background: var(--iso-accent); }
 .ui-iso .apct { font-size: 11px; font-weight: 800; color: var(--iso-ink-soft); }
 
-/* ── 左の部署ボード ─────────────────────────────────────────────────── */
+/* ── 右の部署ボード ─────────────────────────────────────────────────── */
 .ui-iso .rail {
-  flex: 1; min-height: 120px; display: flex; flex-direction: column; gap: 16px;
+  min-height: 0; overflow: hidden; padding: 16px; display: flex; flex-direction: column; gap: 16px;
 }
-.ui-iso .rail .card { padding: 0; border: 0; box-shadow: none; background: transparent; }
+.ui-iso .rail .card { padding: 0; border: 0; border-radius: 0; box-shadow: none; background: transparent; -webkit-backdrop-filter: none; backdrop-filter: none; }
 .ui-iso .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .ui-iso .tile {
   background: var(--iso-glass-solid); border: 1px solid var(--iso-hairline);
@@ -563,7 +567,7 @@
 .ui-iso .sheet {
   /* R91: 380px は会話を読むには狭かった（本人指摘）。ステージ幅に追随させ、
      ⤢ で「もっと広く」も選べる。3D を完全に覆わない上限を持たせる。 */
-  position: absolute; top: 16px; right: 16px; bottom: 188px;
+  position: absolute; top: 16px; right: 16px; bottom: 16px;
   width: clamp(380px, 52%, 720px);
   max-width: calc(100% - 32px); overflow-y: auto; z-index: 7;
   opacity: 0; transform: translateX(100%);
@@ -1000,7 +1004,7 @@
 .ui-iso .todaycard .tval { font-size: 12.5px; font-weight: 800; color: var(--iso-ink); }
 .ui-iso .todaycard .tnote { margin-top: 4px; font-size: 11px; color: var(--iso-ink-soft); }
 
-/* ヘッダーは1行。コストの元DOMは380pxの詳細面で全項目を参照できる。 */
+/* ヘッダーはゲージを折り返せる。コストの元DOMは380pxの詳細面で全項目を参照できる。 */
 .ui-iso *, .ui-iso *::before, .ui-iso *::after { box-sizing: border-box; }
 .ui-iso .usage[hidden] { display: none; }
 .ui-iso .usage { min-width: 100px; flex: 1; }
@@ -1011,6 +1015,7 @@
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .ui-iso #usage-summary::before { content: "|"; margin-right: 0; color: var(--iso-ink-muted); flex: none; }
+.ui-iso #usage-summary { flex-wrap: wrap; row-gap: 4px; }
 /* R91: ヘッダー常設の実ゲージ。開かなくても「どれだけ減ったか」が見える。 */
 .ui-iso .gpin { display: flex; align-items: center; gap: 8px; min-width: 0; flex: none; }
 .ui-iso .gplab {
@@ -1036,10 +1041,6 @@
 }
 .ui-iso .usage.open .gauges { opacity: 1; transform: none; clip-path: none; pointer-events: auto; }
 .ui-iso .freshness { flex: none; }
-.ui-iso .zones { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; flex: none; }
-.ui-iso .zrow { gap: 4px; padding: 4px; font-size: 11px; }
-.ui-iso .zrow .zlabel { white-space: nowrap; }
-.ui-iso .zrow .zcount { min-width: 20px; padding: 0 4px; font-size: 11px; }
 .ui-iso .department { flex: none; min-width: 0; }
 .ui-iso .department + .department { border-top: 1px solid var(--iso-hairline); padding-top: 8px; }
 .ui-iso .department-head { display: flex; align-items: center; gap: 4px; padding: 4px 0; }
@@ -1077,7 +1078,7 @@
   font-family: ui-monospace, monospace; font-variant-numeric: tabular-nums;
 }
 .ui-iso .brand .txt { flex: 1; }
-.ui-iso .abtn { padding: 8px; min-width: 0; font-size: 11px; }
+.ui-iso .abtn { padding: 8px 12px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ui-iso .setupbar { margin-top: 0; }
 /* R90-U4: added only by the live HUD; frozen captures retain their existing DOM. */
 .ui-iso #btn-hire { color: var(--iso-accent); background: var(--iso-accent-chip); }
@@ -1107,15 +1108,18 @@
   border-width: 8px 8px 0; border-style: solid; border-color: var(--paper) transparent transparent;
 }
 .ui-iso .no3d-panel { flex-direction: column; gap: 12px; }
-.ui-iso.list-mode .shell { grid-template-columns: minmax(300px, 1fr) minmax(320px, 1fr); }
+.ui-iso.list-mode .shell { grid-template-columns: 232px minmax(0, 1fr) minmax(320px, 1fr); }
 .ui-iso.list-mode #viewport, .ui-iso.list-mode #labels, .ui-iso.list-mode #project-labels { visibility: hidden; }
 .ui-iso.list-mode .arow { min-height: 44px; }
 .ui-iso.list-mode #agents:focus { outline: 1px solid var(--iso-accent); outline-offset: 4px; }
 .ui-iso .trow .ticon:empty { width: 0; }
+@media (max-width: 1279px) {
+  .ui-iso .shell { grid-template-columns: 220px minmax(0, 1fr) 260px; gap: 12px; padding: 12px; }
+}
 @media (max-width: 1100px) {
+  .ui-iso .shell { grid-template-columns: 200px minmax(0, 1fr) 240px; }
   .ui-iso .head { overflow-x: auto; }
   .ui-iso .usage { flex: 0 0 240px; }
-  .ui-iso .bottom { grid-template-columns: 240px minmax(0, 1fr); }
   .ui-iso .bottom .card { padding: 12px; }
   .ui-iso .hrow { gap: 4px; }
 }

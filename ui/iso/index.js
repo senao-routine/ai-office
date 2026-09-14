@@ -1,5 +1,5 @@
-// ── スタイル2: 紙色のHUD・2カラム ───────────────────────────────
-// R90-U2: 左=部署ボード ／ 中央=1行の概況＋3Dステージ。
+// ── スタイル2: 紙色のHUD・3カラム ───────────────────────────────
+// R95: 左=ゾーン・タスク ／ 中央=概況＋3Dステージ＋指示履歴 ／ 右=部署ボード。
 // コストの子DOM・投函先IDは維持し、詳細は右から開く。
 // 全ての数値は world（実データ）から。参考画像にある FUNDS 等の
 // 実データが無い数値は出さない（嘘のメトリクス禁止＝プラン確定事項）。
@@ -58,12 +58,14 @@ export async function mount(root) {
         <span class="txt"><b id="greet">AI Office</b><i id="brandoffice">…</i></span>
       </div>
       <nav class="zones" id="zones"></nav>
-      <aside class="rail">
-        <div class="card agentscard">
-          <b class="cardtitle" id="title-agents"></b>
-          <div class="agents" id="agents"></div>
+      <div class="card donutcard">
+        <b class="cardtitle" id="title-tasks"></b>
+        <div class="donutwrap">
+          <svg id="donut" viewBox="0 0 100 100" aria-hidden="true"></svg>
+          <div class="donutmid" id="donutmid"></div>
         </div>
-      </aside>
+        <div class="legend" id="donutlegend"></div>
+      </div>
       <div class="spacer"></div>
       <div class="admin">
         <button class="abtn" id="btn-newproj" type="button"></button>
@@ -122,22 +124,20 @@ export async function mount(root) {
           <div class="modal" id="modal"></div>
           <button class="modalclose" id="modalclose" type="button" aria-label="閉じる">✕</button>
         </div>
-        <footer class="bottom">
-          <div class="card donutcard">
-            <b class="cardtitle" id="title-tasks"></b>
-            <div class="donutwrap">
-              <svg id="donut" viewBox="0 0 100 100" aria-hidden="true"></svg>
-              <div class="donutmid" id="donutmid"></div>
-            </div>
-            <div class="legend" id="donutlegend"></div>
-          </div>
-          <div class="card histcard">
-            <b class="cardtitle" id="title-hist"></b>
-            <div class="hist" id="hist"></div>
-          </div>
-        </footer>
       </section>
+      <footer class="bottom">
+        <div class="card histcard">
+          <b class="cardtitle" id="title-hist"></b>
+          <div class="hist" id="hist"></div>
+        </div>
+      </footer>
     </main>
+    <aside class="rail">
+      <div class="card agentscard">
+        <b class="cardtitle" id="title-agents"></b>
+        <div class="agents" id="agents"></div>
+      </div>
+    </aside>
   `;
   root.append(shell);
   const stream = streamOptions(location.search);
@@ -446,6 +446,8 @@ export async function mount(root) {
   });
   const hire = initHire({ ...common, lang, DEMO: DEMO || stream.enabled, modals, arrivals,
     refresh: () => stop.refresh?.(), showToast: delivery.showToast });
+  const hireButton = shell.querySelector("#btn-hire");
+  if (hireButton) hireButton.title = hireButton.textContent;
   // 描画側（paintLabels）が読む演出状態。純粋なworldに混ぜない。
   shell._fx = { wakeActive: delivery.wakeActive, hoverId: null };
 
@@ -540,14 +542,14 @@ function paintLabels(shell, scene, w) {
   // R86-C: 名札の**下限**。従来はクランプが横方向だけで、重なり回避ループが下へしか逃がさない
   // ため、シートを開くとカメラズーム(focusOn)で足元が下がり、名札が下段カード(.bottom・z:6)の
   // 下に潜る／ステージ外へ切れる（実測: 11枚中7枚・「クリックしたらレイアウトが崩れる」の本体）。
-  // .bottom の上端を実測して、そこより下へは置かない（閉じた状態では発火しない＝golden不変）。
   // R90 配備後の実測（22セッション）: 全員に名前を出すと中央で名札が団子になり、
   // 「誰がどれか」がむしろ読めない。13体以上では**名前を出すのは意味のある相手だけ**
   // （選択中・❗・📨・ホバー）にし、残りはバッジ1文字＋状態リングで足元に置く。
   // 12体以下（golden の 9 体を含む）では従来どおり全員に名前を出す＝golden 不変。
   const dense = w.agents.length > 12;
   const hostTop = host.getBoundingClientRect().top;
-  const bottomBar = shell.querySelector(stream?.enabled ? "#stream-subtitle" : ".bottom");
+  // R95: 下段カードはステージの外の行に戻した＝名札の床はステージ下端（配信は字幕帯のまま）
+  const bottomBar = stream?.enabled ? shell.querySelector("#stream-subtitle") : null;
   const limitB = bottomBar
     ? bottomBar.getBoundingClientRect().top - hostTop - 3
     : host.clientHeight - 2;
@@ -709,6 +711,7 @@ function applyStaticStrings(shell) {
   shell.querySelector("#btn-run").textContent = T("btn_run");
   shell.querySelector("#btn-res").textContent = T("btn_res");
   shell.querySelector("#btn-settings").textContent = T("btn_settings");
+  for (const b of shell.querySelectorAll(".admin .abtn")) b.title = b.textContent;
   shell.querySelector("#greet").textContent = T("office_fallback");
   shell.querySelector("#sub").textContent = T("loading");
   shell.querySelector("#sheetsnd").title = T("snd_title");

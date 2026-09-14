@@ -59,7 +59,7 @@ export function init({ shell, T, getWorld, tray, showToast, beforeOpen, restore,
     shell.classList.toggle("replay-active", on);
     controls.hidden = !on;
     if (on) {
-      for (const node of shell.querySelectorAll(".side, .head, #viewport, #labels, #attn, #sheet, .bottom")) {
+      for (const node of shell.querySelectorAll(".side, .rail, .head, #viewport, #labels, #attn, #sheet, .bottom")) {
         inertBefore.set(node, node.inert); node.inert = true;
       }
     } else {

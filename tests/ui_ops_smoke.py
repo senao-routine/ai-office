@@ -372,7 +372,7 @@ def main():
             live.wait_for_function("window.__office && window.__office.ready", timeout=60000)
             live.wait_for_timeout(600)
             probe_labels = (
-                "() => { const bot = document.querySelector('.bottom').getBoundingClientRect();"
+                "() => { const bot = document.querySelector('#stage').getBoundingClientRect();"
                 " const host = document.querySelector('#labels').getBoundingClientRect();"
                 " const ch = [...document.querySelectorAll('.lbl')].map(n => n.getBoundingClientRect());"
                 " let ov = 0;"
@@ -380,7 +380,7 @@ def main():
                 "   const a = ch[i], b = ch[j];"
                 "   if (a.left < b.right - 2 && a.right > b.left + 2 &&"
                 "       a.top < b.bottom - 2 && a.bottom > b.top + 2) ov++; }"
-                " return { n: ch.length, under: ch.filter(r => r.bottom > bot.top + 1).length,"
+                " return { n: ch.length, under: ch.filter(r => r.bottom > bot.bottom + 1).length,"
                 "   out: ch.filter(r => r.bottom > host.bottom + 1).length, overlaps: ov }; }")
             lb_before = live.evaluate(probe_labels)
             live.click(f'.arow[data-session="{target_session}"]')
