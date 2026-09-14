@@ -9,6 +9,7 @@ cd "$(dirname "$0")"
 # 呼び出しシェルの注入envを除染（P4デバッグ中のシェルから実行しても検証対象がすり替わらない）
 unset OFFICE_DATA OFFICE_CONFIG OFFICE_HOME OFFICE_PICK_DIR OFFICE_FAKE_LAUNCH OFFICE_FAKE_GEN 2>/dev/null || true
 NG=0
+UI_SKIPPED=0
 ng(){ echo "  ✗ $1"; NG=$((NG+1)); }
 ok(){ echo "  ✓ $1"; }
 # 中断・失敗時も一時サーバー/一時dirを必ず片付ける（孤児:4797が次回の嘘greenを生むのを防ぐ）
@@ -551,6 +552,7 @@ elif [ -x "$VENV_PY" ] && "$VENV_PY" -c 'import playwright' >/dev/null 2>&1 \
   [ "${PIPESTATUS[0]}" = "0" ] || ng "R90 3D品質ゲート未達 (iso/方向C) (exit ${PIPESTATUS[0]})"
 else
   echo "  - Playwright/Chromium venvなしまたは起動不可 → 省略（検収側で要実行）"
+  UI_SKIPPED=1   # R95: worktree には verify.local が無く黙って省略される＝最終行で ⚠ を出す（SKIP_UI=1 の明示とは区別）
 fi
 # R52: 旧UIのスクショ差分ゲート(scene_diff.py)は退役（新UIのビジュアル回帰は
 # ▶7 の ui_shot --check + style_score が常設で担う）
@@ -831,4 +833,6 @@ fi
 rm -f /tmp/ccgcm.txt
 
 echo
-if [ $NG -eq 0 ]; then echo "✅ verify: 全チェック合格"; else echo "❌ verify: ${NG}件失敗"; exit 1; fi
+if [ $NG -eq 0 ]; then
+  if [ "${UI_SKIPPED:-}" = "1" ]; then echo "⚠ verify: 合格（ただし UI スモークは Playwright なしで省略＝見た目の回帰は未検査。verify.local を置くか VENV_PY を渡す）"; else echo "✅ verify: 全チェック合格"; fi
+else echo "❌ verify: ${NG}件失敗"; exit 1; fi

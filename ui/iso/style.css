@@ -568,7 +568,8 @@
   /* R91: 380px は会話を読むには狭かった（本人指摘）。ステージ幅に追随させ、
      ⤢ で「もっと広く」も選べる。3D を完全に覆わない上限を持たせる。 */
   position: absolute; top: 16px; right: 16px; bottom: 16px;
-  width: clamp(380px, 52%, 720px);
+  /* R95 で stage が 848px に細くなり 52% だと 440px（R91 の下限 480 を割る）。下限を 480 に上げ 58% で 509px。 */
+  width: clamp(480px, 58%, 720px);
   max-width: calc(100% - 32px); overflow-y: auto; z-index: 7;
   opacity: 0; transform: translateX(100%);
   transition: opacity 120ms ease-out, transform 120ms ease-out;   /* R67: 開きのみ（閉じは即時=hidden） */
