@@ -81,6 +81,58 @@ export function desk(spec = {}) {
   return pieces;
 }
 
+export function meetingTable(spec = {}) {
+  const s = { w: 4.2, d: 1.6, h: .86, ...spec }, { put, pieces } = builder(s);
+  const top = .065, radius = Math.min(s.w, s.d) / 2;
+  put(slab(s.w, top, s.d, radius), "white", 0, s.h - top / 2);
+  put(slab(s.w - .08, .025, s.d - .08, radius - .04), "wood2", 0, s.h - top - .0125);
+  for (const side of [-1, 1]) {
+    put(slab(.50, .04, s.d * .60, .13), "steel", side * s.w * .27, .02);
+    put(slab(.26, s.h - top - .065, s.d * .48, .10), "white",
+      side * s.w * .27, (s.h - top - .025 + .04) / 2);
+  }
+  // A flush cable channel reads as a usable conference table without another screen.
+  put(slab(Math.min(.85, s.w * .28), .009, .115, .045), "darker", 0, s.h - .0045);
+  for (const side of [-1, 1]) put(box(.022, .002, .065), "steel", side * .09, s.h - .0005);
+  return pieces;
+}
+
+export function roundTable(spec = {}) {
+  const s = { w: 1.25, d: 1.25, h: .36, ...spec }, { put, pieces } = builder(s), top = .06;
+  put(new THREE.CylinderGeometry(1, 1, top, 48).scale(s.w / 2, 1, s.d / 2), "white",
+    0, s.h - top / 2);
+  put(new THREE.CylinderGeometry(1, 1, .035, 32).scale(s.w * .31, 1, s.d * .31), "wood2", 0, .0175);
+  put(cyl(Math.min(s.w, s.d) * .14, s.h - top - .035, Math.min(s.w, s.d) * .20), "wood2",
+    0, (s.h - top + .035) / 2);
+  return pieces;
+}
+
+export function floorLamp(spec = {}) {
+  const s = { w: .65, d: .65, h: 1.8, ...spec }, { put, pieces } = builder(s);
+  const radius = Math.min(s.w, s.d) * .46, shadeH = Math.min(.36, s.h * .24);
+  put(new THREE.CylinderGeometry(radius * .75, radius * .75, .035, 32), "steel", 0, .0175);
+  put(cyl(.016, s.h - shadeH * .50 - .035), "steel", 0, (s.h - shadeH * .50 + .035) / 2);
+  // The shade is an opaque ceramic form; room lighting supplies all of its light.
+  put(new THREE.CylinderGeometry(radius * .64, radius, shadeH, 32), "white", 0, s.h - shadeH / 2);
+  put(new THREE.TorusGeometry(radius - .008, .008, 6, 32).rotateX(Math.PI / 2), "wood2",
+    0, s.h - shadeH + .008);
+  return pieces;
+}
+
+export function stool(spec = {}) {
+  const s = { w: .50, d: .50, h: .73, ...spec }, { put, pieces } = builder(s), seatH = .105;
+  put(slab(s.w, seatH, s.d, Math.min(s.w, s.d) / 2), s.material || "seatB", 0, s.h - seatH / 2);
+  put(slab(s.w * .74, .028, s.d * .74, .10), "steel", 0, s.h - seatH - .014);
+  const legH = s.h - seatH - .028, x = s.w * .29, z = s.d * .29;
+  for (const sideX of [-1, 1]) for (const sideZ of [-1, 1])
+    put(cyl(.018, legH), "steel", sideX * x, legH / 2, sideZ * z);
+  for (const side of [-1, 1]) {
+    put(box(x * 2, .02, .02), "steel", 0, s.h * .31, side * z);
+    put(box(.02, .02, z * 2), "steel", side * x, s.h * .31);
+  }
+  return pieces;
+}
+
 export function chair(spec = {}) {
   const s = { ...F.chair, ...spec }, { put, pieces } = builder(s), mat = s.material || "seat";
   put(slab(s.w, s.seatH, s.d, s.radius), mat, 0, s.seat);
@@ -168,8 +220,8 @@ export function pendant(spec = {}) {
     const b = index.getX(i + 1); index.setX(i + 1, index.getX(i + 2)); index.setX(i + 2, b);
   }
   inner.computeVertexNormals();
-  put(outer, "rattan"); put(inner, "lampWarm");
-  put(cyl(s.cord, s.cordH), "dark", 0, s.h + s.cordH / 2);
+  put(outer, "rattan"); put(inner, s.nonEmissive ? "white" : "lampWarm");
+  if (s.cordH > 0) put(cyl(s.cord, s.cordH), "dark", 0, s.h + s.cordH / 2);
   return pieces;
 }
 
@@ -195,6 +247,50 @@ export function counter(spec = {}) {
   for (let i = 0; i <= count; i++) ribs.push(cyl(s.flute, s.h - s.top - .10)
     .translate((i - count / 2) * s.pitch, (s.h - s.top + .10) / 2, s.d / 2 - .055));
   put(tint(mergeGeometries(ribs), 0xac8356, 0xc9a86a), "signWood"); ribs.forEach((g) => g.dispose());
+  return pieces;
+}
+
+export function cafeCounter(spec = {}) {
+  const s = { w: 3.4, d: .90, h: 1.06, ...spec }, { put, pieces } = builder(s), top = .055;
+  put(slab(s.w - .14, .075, s.d - .12, .08), "steel", 0, .0375);
+  put(slab(s.w - .08, s.h - top - .075, s.d - .08, .085), "white", 0, (s.h - top + .075) / 2);
+  put(slab(s.w, top, s.d, .10), "white", 0, s.h - top / 2);
+  const ribs = [], count = Math.max(1, Math.floor((s.w - .22) / .065));
+  for (let i = 0; i <= count; i++) ribs.push(slab(.025, s.h - top - .15, .025, .01)
+    .translate((i - count / 2) * (s.w - .22) / count, (s.h - top + .15) / 2, s.d / 2 - .036));
+  put(tint(mergeGeometries(ribs), 0xe8e8f4, 0xf6f7fd), "white"); ribs.forEach((g) => g.dispose());
+  const machineX = -s.w * .27, machineD = Math.min(.35, s.d * .52), machineW = Math.min(.46, s.w * .23);
+  put(slab(machineW, .39, machineD, .04), "darker", machineX, s.h + .195, -.06);
+  put(box(machineW * .80, .17, .018), "steel", machineX, s.h + .285, -.06 + machineD / 2);
+  put(box(machineW * .28, .058, .006), "darker", machineX, s.h + .32, -.047 + machineD / 2);
+  put(slab(machineW * .78, .02, machineD * .76, .035), "steel", machineX, s.h + .012, .035);
+  put(box(.055, .045, .06), "steel", machineX, s.h + .18, .04 + machineD / 2);
+  const trayX = s.w * .23, trayW = Math.min(.76, s.w * .36), trayD = Math.min(.31, s.d * .47);
+  put(slab(trayW, .022, trayD, .055), "wood2", trayX, s.h + .011, .04);
+  for (let i = 0; i < 3; i++) {
+    const x = trayX + (i - 1) * trayW * .27, y = s.h + .022, mat = ["mugB", "white", "mugC"][i];
+    put(new THREE.CylinderGeometry(.045, .038, .11, 20), mat, x, y + .055, .04);
+    put(new THREE.TorusGeometry(.025, .007, 6, 12), mat, x + .046, y + .06, .04);
+    put(cyl(.034, .003), "darker", x, y + .105, .04);
+  }
+  return pieces;
+}
+
+export function mediaWall(spec = {}) {
+  const s = { w: 2.2, d: .12, h: 1.85, screen: true, ...spec }, { put, pieces } = builder(s);
+  const panelH = Math.min(s.h - .42, s.w * .62), panelY = s.h - panelH / 2, frame = .055;
+  put(vertical(s.w, panelH, s.d * .58, .035), "white", 0, panelY, -s.d * .12);
+  put(vertical(s.w - frame * 2, panelH - frame * 2, s.d * .12, .015), s.screen ? "darker" : "white",
+    0, panelY, s.d * .23);
+  for (const side of [-1, 1]) {
+    put(box(.035, s.h - panelH + .04, s.d * .48), "steel", side * s.w * .32, (s.h - panelH + .04) / 2);
+    put(slab(s.w * .25, .035, s.d, .025), "steel", side * s.w * .32, .0175);
+  }
+  if (!s.screen) {
+    put(box(s.w * .42, .025, s.d * .72), "steel", 0, panelY - panelH / 2 + .055, s.d * .14);
+    for (const side of [-1, 1]) put(box(.12, .016, .018), side < 0 ? "bookA" : "bookB",
+      side * .10, panelY - panelH / 2 + .076, s.d * .20);
+  }
   return pieces;
 }
 
@@ -238,6 +334,58 @@ export function glassBox(spec = {}) {
   }
   // Keep the glass batch separate from windows; buildOffice binds it to glassPane (.10).
   // buildStaticBatches retains renderOrder=10 without changing geometry or draw count.
+  return pieces;
+}
+
+/** Four glass walls with a clear opening, continuous head rail and a door pull. */
+export function roomShell(spec = {}) {
+  const s = { ...F.glassBox, ...spec }, { put, pieces } = builder(s), t = s.rail;
+  const door = s.door || { side: "south", offset: 0, w: 1.1 };
+  const walls = [];
+  for (const side of ["north", "south", "west", "east"]) {
+    const horizontal = side === "north" || side === "south";
+    const span = (horizontal ? s.w : s.d) - t;
+    const place = (w, along) => walls.push(horizontal
+      ? { w, x: along, z: (side === "north" ? -1 : 1) * (s.d - t) / 2 }
+      : { w, z: along, x: (side === "west" ? -1 : 1) * (s.w - t) / 2, yaw: Math.PI / 2 });
+    if (side !== door.side) { place(span, 0); continue; }
+    const left = door.offset - door.w / 2, right = door.offset + door.w / 2;
+    place(left + span / 2, (left - span / 2) / 2);
+    place(span / 2 - right, (right + span / 2) / 2);
+    const edge = (side === "north" || side === "west" ? -1 : 1)
+      * ((horizontal ? s.d : s.w) - t) / 2;
+    put(box(horizontal ? door.w : t, t, horizontal ? t : door.w), "steel",
+      horizontal ? door.offset : edge, s.h - t / 2, horizontal ? edge : door.offset);
+    put(box(.025, .30, .025), "steel", horizontal ? left - .08 : edge,
+      1.02, horizontal ? edge : left - .08);
+    const plaqueW = Math.min(.34, span / 2 - right - .04);
+    put(box(horizontal ? plaqueW : .025, .13, horizontal ? .025 : plaqueW), "wood2",
+      horizontal ? right + .02 + plaqueW / 2 : edge, 1.62,
+      horizontal ? edge : right + .02 + plaqueW / 2);
+  }
+  return [...pieces, ...glassBox({ ...s, walls })];
+}
+
+export function phoneBooth(spec = {}) {
+  const s = { w: 1.35, d: 1.65, h: 2.25, ...spec }, { put, pieces } = builder(s);
+  put(slab(s.w - .08, .035, s.d - .08, .06), "rugB", 0, .0175);
+  put(box(s.w - .12, s.h - .12, .04), "panelA", 0, s.h / 2, -s.d / 2 + .08);
+  put(slab(s.w - .25, .055, .42, .08), "white", 0, 1.02, -.38);
+  put(box(.08, 1.0, .08), "steel", 0, .5, -.45);
+  const parent = at(s.x, s.y, s.z, s.yaw);
+  for (const piece of stool({ w: .45, d: .45, h: .65, z: .18 })) {
+    piece.matrix.premultiply(parent); pieces.push(piece);
+  }
+  return [...pieces, ...roomShell({ ...s, door: { side: "south", offset: 0, w: .95 } })];
+}
+
+export function waterStation(spec = {}) {
+  const s = { w: .58, d: .52, h: 1.25, ...spec }, { put, pieces } = builder(s);
+  put(slab(s.w, s.h * .82, s.d, .05), "white", 0, s.h * .41);
+  put(slab(s.w * .72, .06, s.d * .65, .03), "darker", 0, s.h * .76, .04);
+  put(box(s.w * .65, .30, .04), "wood2", 0, s.h * .87, -s.d * .35);
+  for (const [i, x] of [-.09, .09].entries()) put(box(.07, .07, .05), i ? "bookB" : "bookA",
+    x, s.h * .92, -.06);
   return pieces;
 }
 

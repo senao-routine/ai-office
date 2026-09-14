@@ -88,7 +88,7 @@ function buildWalkGraph(wall, obstacles, navigation = {}) {
   // Route endpoints can be in the middle of contracted edges. Carry the solid
   // rectangles so their connections to the graph can be checked as well.
   return { nodes: keep.map((i) => nodes[i]), edges,
-    obstacles: obstacles.map((r) => ({ ...r })) };
+    obstacles: obstacles.map((r) => ({ ...r, ...(r.door ? { door: { ...r.door } } : {}) })) };
 }
 
 /**
@@ -143,7 +143,8 @@ export function buildLayout(spec) {
         z: LAYOUT.queueZone.z - row * spec.queue.pitch, yaw: 0, y: 0,
       }))).flat(),
     external: Array.from({ length: spec.external.count }, (_, i) => ({
-      x: WALL.right + spec.external.dx, z: spec.external.z + i * spec.external.pitch, yaw: Math.PI / 2, y: 0,
+      ...point({ ref: spec.external.ref || "right", dx: spec.external.dx, dz: spec.external.z + i * spec.external.pitch }),
+      yaw: spec.external.yaw ?? Math.PI / 2, y: 0,
     })),
     chibi: Object.fromEntries(spec.rooms.map((room) => [room.id,
       room.chibi.map((def) => seat({ ...def, ref: room.zone })),
@@ -154,9 +155,15 @@ export function buildLayout(spec) {
     id: `pod:${x},${z}`, x1: x - top.w / 2 - m, z1: z - top.d / 2 - m,
     x2: x + top.w / 2 + m, z2: z + top.d / 2 + m,
   }));
-  for (const { id, zone } of [...spec.rooms, ...spec.solidZones]) {
+  for (const { id, zone, door } of [...spec.rooms, ...spec.solidZones]) {
     const r = LAYOUT[zone];
-    obstacleRects.push({ id, x1: r.x - r.w / 2, z1: r.z - r.d / 2, x2: r.x + r.w / 2, z2: r.z + r.d / 2 });
+    const horizontal = door && ["north", "south"].includes(door.side);
+    const opening = door && { ...door,
+      x: r.x + (horizontal ? door.offset : (door.side === "west" ? -1 : 1) * r.w / 2),
+      z: r.z + (horizontal ? (door.side === "north" ? -1 : 1) * r.d / 2 : door.offset),
+    };
+    obstacleRects.push({ id, x1: r.x - r.w / 2, z1: r.z - r.d / 2, x2: r.x + r.w / 2, z2: r.z + r.d / 2,
+      ...(opening ? { door: opening } : {}) });
   }
   for (const fixture of spec.fixtures) {
     const a = point(fixture.from);
@@ -172,7 +179,7 @@ export function buildLayout(spec) {
   // Room furniture is already contained in the room's solid rectangle. Cover the
   // previously unmodelled wall furniture and entrance planting explicitly.
   for (const f of furnishings) {
-    if (["bookcase", "coffee", "bench", "benchTable", "extConsole"].includes(f.id) || f.kind === "planter") {
+    if (["bookcase", "coffee", "bench", "benchTable", "extConsole"].includes(f.id) || f.kind === "planter" || f.solid) {
       obstacleRects.push(footprint(f.id === "bench" ? "bench" : `furnishing:${f.id}`, f, f.w, f.d));
     }
   }

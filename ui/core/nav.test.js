@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { assignSeats } from "./world.js";
 import { buildLayout } from "./layout.js";
-import { LAYOUT_SPECS } from "./layout_specs.js";
+import { LAYOUT_SPECS, FURNITURE } from "./layout_specs.js";
 import {
   BOSS_WALK, CLEANER_ROUTE, IDLE_SPOTS, LAYOUT, PODS, REST_SPOTS, WALL,
   obstacleRects, routePath, segIntersectsRect, walkGraph,
@@ -48,7 +48,7 @@ function seatPoints() {
 test("代表経路の中間セグメントは机・部屋を横切らない（すり抜け根絶ピン）", () => {
   const rects = obstacleRects();
   const entrance = [-8.3, WALL.front - 0.85];
-  const coffee = [3.9, WALL.back + 1.85];
+  const coffee = [3.8, WALL.back + 2.8];
   const seats = seatPoints();
   const pairs = [];
   for (const s of seats) {
@@ -57,7 +57,7 @@ test("代表経路の中間セグメントは机・部屋を横切らない（�
     for (const spot of IDLE_SPOTS) pairs.push([s, [spot.x, spot.z]]);   // 待機ライフ
     for (const spot of REST_SPOTS) pairs.push([s, [spot.x, spot.z]]);   // R59 休憩スポット
   }
-  pairs.push([entrance, [WALL.right - 1.35, -4.4]]);   // 外部コンソール
+  pairs.push([entrance, [WALL.left + 5.3, 2.55]]);   // 外部コンソール
   pairs.push([entrance, [LAYOUT.queueZone.x, LAYOUT.queueZone.z]]);
   for (const [from, to] of pairs) {
     const path = routePath(from, to);
@@ -207,7 +207,7 @@ test("R70: queue 12席（2列×6）が障害物の外＋entranceからの経路�
   }
 });
 
-test("R70: 第3会議室=障害物登録・全席が部屋の内側・南口ノード経由の経路が交差0", () => {
+test("R70: 第3会議室=障害物登録・全席が部屋の内側・窓際個室への経路が交差0", () => {
   const k = LAYOUT.meet3Zone;
   const obstacles = obstacleRects();
   assert.ok(obstacles.some((r) => r.id === "meet3"), "meet3 が障害物に登録されている");
@@ -259,33 +259,71 @@ test("R73: 第4会議室=障害物登録・全席が部屋の内側・北通路�
       }
     }
   }
-  // R73.2: 移設後の成立条件（崩れると「棚裏の机」や「通路封鎖」が静かに再発する）
-  //   ①北通路 ZN=-5.0 より南＝通路を塞がない ②机の島の東端(x=7.3)に触れない
-  //   ③外部コンソールの立ち位置(x=13.05)との間に通路を残す ④第2会議室と重ならない
+  // R94: the server-front boardroom replaces the old east console. Pin actual
+  // circulation distances instead of the old x<12.6 / z>-5 placement coordinates.
   const room = obstacles.find((r) => r.id === "meet4");
   const meet2 = obstacles.find((r) => r.id === "meet2");
-  assert.ok(room.z1 > -5.0, "meet4 が北通路(z=-5.0)に掛かっている");
-  assert.ok(room.x1 > 7.3, "meet4 が机の島に食い込んでいる");
-  assert.ok(room.x2 < 12.6, "meet4 が外部コンソールの通路を潰している");
-  assert.ok(room.z2 < meet2.z1, "meet4 が第2会議室と重なっている");
+  const server = obstacles.find((r) => r.id === "server");
+  const eastDesk = Math.max(...obstacles.filter((r) => r.id.startsWith("pod:")).map((r) => r.x2));
+  assert.ok(room.z1 - server.z2 >= .9, "サーバー前の保守通路が0.9m未満");
+  assert.ok(room.x1 - eastDesk >= .9, "机と大会議室の通路が0.9m未満");
+  assert.ok(meet2.z1 - room.z2 >= .9, "大会議室と4人室の通路が0.9m未満");
+  assert.ok(room.x2 <= WALL.right - .25, "大会議室が外壁に食い込んでいる");
 });
 
-test("R74: 右手前の通路幅＝第2↔第3・ラウンジ↔第3が人ひとり分より広い", () => {
-  // ユーザーFB「幅間が狭い」。0.70m/0.45m はロボの幅とほぼ同じで通れない見た目だった。
-  // 通路として成立する下限を 0.9m と決めて機械固定する（部屋を足すたびに潰れるため）。
+test("R94: 会議室・窓際個室・ラウンジの通路幅が0.9m以上", () => {
+  // meet3 moved to the west window to free the southeast corner for the lounge.
+  // Retain the R74 width guarantee on all adjoining rooms in the new arrangement.
   const MIN = 0.9;
   const rect = (z) => ({ x1: z.x - z.w / 2, x2: z.x + z.w / 2,
     z1: z.z - z.d / 2, z2: z.z + z.d / 2 });
-  const m2 = rect(LAYOUT.meet2Zone);
-  const m3 = rect(LAYOUT.meet3Zone);
+  const m1 = rect(LAYOUT.meetZone), m2 = rect(LAYOUT.meet2Zone);
+  const m3 = rect(LAYOUT.meet3Zone), stage = rect(LAYOUT.stageZone);
   const lg = rect(LAYOUT.loungeZone);
-  assert.ok(m3.z1 - m2.z2 >= MIN,
-    `第2↔第3の通路が狭い: ${(m3.z1 - m2.z2).toFixed(2)}m`);
-  assert.ok(m3.x1 - lg.x2 >= MIN,
-    `ラウンジ↔第3の通路が狭い: ${(m3.x1 - lg.x2).toFixed(2)}m`);
-  // 南辺通路（z=8.45・R70で新設）を第3会議室が塞いでいない
-  assert.ok(m3.z2 < 8.45, "第3会議室が南辺通路に掛かっている");
+  assert.ok(m3.z1 - m1.z2 >= MIN, "大会議室と窓際個室の通路が狭い");
+  assert.ok(stage.z1 - m3.z2 >= MIN, "窓際個室とソファの通路が狭い");
+  assert.ok(lg.z1 - m2.z2 >= MIN, "4人室とラウンジの通路が狭い");
+  assert.ok(WALL.front - lg.z2 >= MIN, "ラウンジが南辺通路を塞いでいる");
+  assert.ok(lg.z2 < 8.45, "ラウンジが南辺通路に掛かっている");
 });
+
+// R94: glass rooms need real openings, and new lounge anchors must sit on cushions.
+for (const [id, spec] of Object.entries(LAYOUT_SPECS)) {
+  const layout = buildLayout(spec), entrance = [-8.3, layout.WALL.front - .85];
+  test(`${id}: 会議席とチビ席への往復はガラスのドア開口を通る`, () => {
+    for (const room of spec.rooms) {
+      const r = layout.obstacleRects.find((r) => r.id === room.id), door = r.door;
+      assert.ok(door.w >= .9);
+      const axis = ["north", "south"].includes(door.side) ? 1 : 0;
+      const boundary = axis ? door.z : door.x, center = axis ? door.x : door.z;
+      for (const a of [...layout.anchors.meeting.byRoom[room.id], ...layout.anchors.chibi[room.id]]) {
+        for (const [from, to] of [[entrance, [a.x, a.z]], [[a.x, a.z], entrance]]) {
+          const path = routePath(from, to, layout.walkGraph);
+          assert.deepEqual(path.at(-1), to, `${room.id}: ドア経由で到達しない`);
+          const segment = from === entrance ? path.slice(-2) : path.slice(0, 2);
+          const [p, q] = segment, t = (boundary - p[axis]) / (q[axis] - p[axis]);
+          assert.ok(t >= 0 && t <= 1, `${room.id}: 入口の壁を通っていない`);
+          const crossing = p[1 - axis] + t * (q[1 - axis] - p[1 - axis]);
+          assert.ok(Math.abs(crossing - center) <= door.w / 2 - .1 + 1e-8,
+            `${room.id}: ガラスを横切っている`);
+        }
+      }
+    }
+  });
+  test(`${id}: 全休憩席は実在するソファの座面上で高さも一致`, () => {
+    const sofas = layout.furnishings.filter((f) => f.kind === "sofa");
+    for (const a of layout.restSpots) {
+      assert.ok(sofas.some((f) => {
+        const s = { ...FURNITURE.sofa, ...f }, yaw = s.yaw || 0;
+        const dx = a.x - s.x, dz = a.z - s.z;
+        const x = Math.cos(yaw) * dx - Math.sin(yaw) * dz;
+        const z = Math.sin(yaw) * dx + Math.cos(yaw) * dz;
+        return Math.abs(x) < s.w / 2 - s.arm && z > s.back - s.d / 2 && z < s.d / 2
+          && Math.abs(a.y + .45 - (s.y + s.seat)) < .03;
+      }), `座面外: ${JSON.stringify(a)}`);
+    }
+  });
+}
 
 // R90-V7: every tier and unlock stage must satisfy the same navigation contract.
 import { specFor } from "./tier.js";

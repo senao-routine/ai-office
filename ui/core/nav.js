@@ -11,7 +11,9 @@ export const {
 
 /** 従来どおり呼び出し側が変更可能な新しい配列を返す。 */
 export function obstacleRects() {
-  return layout.obstacleRects.map((rect) => ({ ...rect }));
+  return layout.obstacleRects.map((rect) => ({ ...rect,
+    ...(rect.door ? { door: { ...rect.door } } : {}),
+  }));
 }
 
 export function walkGraph() {
@@ -56,10 +58,26 @@ export function segIntersectsRect(ax, az, bx, bz, r) {
 
 function connection(point, graph) {
   const [x, z] = point;
-  // Seats may be inside their own room; all other solids still block the
-  // approach. A point on a corridor gets no such exception.
-  const obstacles = (graph.obstacles || []).filter((r) =>
-    !(x >= r.x1 && x <= r.x2 && z >= r.z1 && z <= r.z2));
+  const contains = (r) => x >= r.x1 && x <= r.x2 && z >= r.z1 && z <= r.z2;
+  const obstacles = (graph.obstacles || []).filter((r) => !contains(r));
+  const rooms = (graph.obstacles || []).filter((r) => contains(r) && r.door);
+  // A room approach may cross its own solid only through the actual opening;
+  // otherwise the shortest connection would send seated actors through glass.
+  const throughDoor = (p, r) => {
+    const door = r.door;
+    const northSouth = door.side === "north" || door.side === "south";
+    const axis = northSouth ? 1 : 0;
+    const negative = door.side === "north" || door.side === "west";
+    const boundary = northSouth ? (negative ? r.z1 : r.z2) : (negative ? r.x1 : r.x2);
+    const delta = p[axis] - point[axis];
+    if (delta * (negative ? -1 : 1) <= 0) return false;
+    const t = (boundary - point[axis]) / delta;
+    if (t < -1e-9 || t > 1 + 1e-9) return false;
+    const lateral = point[1 - axis] + t * (p[1 - axis] - point[1 - axis]);
+    const center = northSouth ? door.x : door.z;
+    const half = door.w / 2 - Math.min(.1, door.w / 4);
+    return half > 0 && Math.abs(lateral - center) <= half + 1e-9;
+  };
   let best = null;
   let distance = Infinity;
   for (const [i, j] of graph.edges) {
@@ -68,11 +86,26 @@ function connection(point, graph) {
     const dx = b[0] - a[0];
     const dz = b[1] - a[1];
     const t = Math.max(0, Math.min(1, ((x - a[0]) * dx + (z - a[1]) * dz) / (dx * dx + dz * dz)));
-    const p = [a[0] + t * dx, a[1] + t * dz];
-    const d = (p[0] - x) ** 2 + (p[1] - z) ** 2;
-    if (d >= distance || obstacles.some((r) => segIntersectsRect(x, z, ...p, r))) continue;
-    best = { point: p, edge: [i, j] };
-    distance = d;
+    const candidates = [[a[0] + t * dx, a[1] + t * dz]];
+    // A perpendicular projection often hits glass beside a narrow door. Add
+    // the door-centre ray's intersection without changing the corridor graph.
+    for (const { door } of rooms) {
+      const rx = door.x - x, rz = door.z - z;
+      const denominator = rx * dz - rz * dx;
+      if (Math.abs(denominator) < 1e-9) continue;
+      const alongRay = ((a[0] - x) * dz - (a[1] - z) * dx) / denominator;
+      const alongEdge = ((a[0] - x) * rz - (a[1] - z) * rx) / denominator;
+      if (alongRay < 1 || alongEdge < -1e-9 || alongEdge > 1 + 1e-9) continue;
+      const s = Math.max(0, Math.min(1, alongEdge));
+      candidates.push([a[0] + s * dx, a[1] + s * dz]);
+    }
+    for (const p of candidates) {
+      const d = (p[0] - x) ** 2 + (p[1] - z) ** 2;
+      if (d >= distance || rooms.some((r) => !throughDoor(p, r))
+        || obstacles.some((r) => segIntersectsRect(x, z, ...p, r))) continue;
+      best = { point: p, edge: [i, j] };
+      distance = d;
+    }
   }
   return best;
 }

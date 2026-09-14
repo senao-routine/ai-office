@@ -14,10 +14,12 @@ export function tierFor({ agents = 0, maxSeen = 0, officeLevel, cap = null } = {
   return limit >= 0 && limit < TIERS.indexOf(tier) ? cap : tier;
 }
 
+/** R94（2026-09-14 本人裁定「本当に会社のようなオフィス」）: 会議室・ラウンジ・植物・コーヒーは**最初から在る**。
+ * R90 の「レベルで解錠」は本人の実オフィスが Lv0 で会議室 2 つ・ラウンジ無しの「劣化版」に見えた。
+ * レベルで増えるのは cafe（タッチダウン席）だけ残す。 */
 export function decorationsFor(officeLevel) {
   const level = count(officeLevel);
-  return { plants: level >= 3, coffee: level >= 5, meet3: level >= 8,
-    lounge: level >= 12, meet4: level >= 15, cafe: level >= 20 };
+  return { plants: true, coffee: true, meet3: true, lounge: true, meet4: true, cafe: level >= 20 };
 }
 
 /** No level in older snapshots (including golden): retain the original furnishing set.

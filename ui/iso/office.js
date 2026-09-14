@@ -25,7 +25,7 @@ export const chibiSeats = () => Object.fromEntries(Object.entries(defaultModel.a
 export const projectSignAnchors = (model = defaultModel) => model.signs.map((s) => ({ ...s, y: s.y + F.sign.boardY }));
 const coffeeBar = defaultModel.furnishings.find((f) => f.id === "coffee");
 const bossDesk = defaultModel.furnishings.find((f) => f.id === "bossDesk");
-export const COFFEE_STOP = Object.freeze({ x: coffeeBar.x, z: coffeeBar.z + 1.1 });
+export const COFFEE_STOP = Object.freeze({ x: coffeeBar.x, z: coffeeBar.z + (coffeeBar.approach ?? 1.1) });
 export const ENTRANCE = Object.freeze({ x: DEFAULT_SPEC.entrance.x, z: WALL.front - DEFAULT_SPEC.entrance.fromFront });
 export const BOSS_SEAT = Object.freeze({ x: bossDesk.x, z: bossDesk.z - .85, baseY: bossDesk.y });
 
@@ -33,7 +33,7 @@ export function officeStops(spec, model) {
   const coffee = model.furnishings.find((f) => f.id === "coffee");
   const boss = model.furnishings.find((f) => f.id === "bossDesk");
   return {
-    coffee: coffee ? { x: coffee.x, z: coffee.z + 1.1 } : null,
+    coffee: coffee ? { x: coffee.x, z: coffee.z + (coffee.approach ?? 1.1) } : null,
     boss: { x: boss.x, z: boss.z - .85, baseY: boss.y },
     entrance: { x: spec.entrance.x, z: model.WALL.front - spec.entrance.fromFront },
   };
@@ -265,21 +265,20 @@ export function buildOffice(materials, spec = DEFAULT_SPEC, model = buildLayout(
   for (const room of spec.rooms) {
     const zone = L[room.zone], { x, z, lift: y } = zone;
     ground(room.rug.w, room.rug.d, x, y + .012, z, "rugArt");
-    add(kit.desk, { ...room.table, x, y, z, table: true });
+    add(kit.meetingTable, { ...room.table, x, y, z });
     for (const [i, a] of model.anchors.meeting.byRoom[room.id].entries()) {
       if (a.role !== "present") add(kit.chair, { ...a, material: ["seat", "seatB", "seatC"][i % 3] });
     }
-    const inset = F.glassBox.rail / 2, hw = zone.w / 2 - inset, hd = zone.d / 2 - inset;
-    const walls = room.id === "meet" ? [
-      { w: zone.d - inset * 2, x: hw, yaw: Math.PI / 2 },
-      { w: zone.w / 2 - .65, x: -(zone.w / 4 + .325), z: hd },
-      { w: zone.w / 2 - .65, x: zone.w / 4 + .325, z: hd },
-    ] : [
-      { w: zone.d - inset * 2, x: -hw, yaw: Math.PI / 2 },
-      { w: zone.w - inset * 2, z: -hd },
-    ];
-    add(kit.glassBox, { x, y, z, walls });
-    add(kit.pendant, { x, y: F.pendant.y, z, radius: Math.min(F.pendant.radius, room.table.w * .25) });
+    add(kit.roomShell, { x, y, z, w: zone.w, d: zone.d, door: room.door });
+    const media = room.media;
+    add(kit.mediaWall, { x: x + media.dx, y, z: z + media.dz, w: media.w,
+      d: .12, h: 1.95, yaw: media.yaw || 0, screen: media.screen });
+    // The shade is a suspended form only; no ceiling beams or luminous surfaces.
+    for (const dx of room.table.w > 4 ? [-1.05, 1.05] : [0]) {
+      add(kit.pendant, { x: x + dx, y: y + 2.0, z, radius: .34, cordH: 0, nonEmissive: true });
+    }
+    if (enabled("plants")) addPlant(P, { x: x + room.plant.dx, y: y + .012,
+      z: z + room.plant.dz, scale: room.plant.scale, species: room.plant.species });
     const roomIndex = spec.rooms.indexOf(room);
     mug(x + room.table.w * .25, y + room.table.h, z - .16, ["mugA", "mugB", "mugC"][roomIndex % 3]);
     mug(x - room.table.w * .28, y + room.table.h, z + room.table.d * .27, ["mugC", "mugA", "mugB"][roomIndex % 3]);
@@ -306,7 +305,12 @@ export function buildOffice(materials, spec = DEFAULT_SPEC, model = buildLayout(
     mug(table.x + .22, top, table.z - .10, ["mugB", "mugA", "mugC"][i]);
   }
   const lounge = L.loungeZone;
-  ground(lounge.w - .20, lounge.d - .12, lounge.x, lounge.lift + .012, lounge.z, "rug");
+  ground(lounge.w - .26, lounge.d - .20, lounge.x, lounge.lift + .012, lounge.z, "rugArt");
+  // A layered carpet and two table heights make the lounge read as one furnished room.
+  ground(3.7, 2.65, lounge.x - .55, lounge.lift + .016, lounge.z, "rugB");
+  if (enabled("plants")) for (const [dx, dz, scale, species] of [
+    [-2.35, -1.54, .78, "strelitzia"], [2.15, -1.55, .78, "monstera"], [2.18, 1.57, .72, "snake"],
+  ]) addPlant(P, { x: lounge.x + dx, y: lounge.lift + .02, z: lounge.z + dz, scale, species });
   for (const [i, art] of model.art.entries()) add(kit.frame, { ...art, index: i });
   add(kit.chair, { x: BOSS_SEAT.x, y: BOSS_SEAT.baseY, z: BOSS_SEAT.z });
   put(slab(5.4, .26, 3.5, .18), "woodFloor", -.6, .13, W.back + 1.95);
@@ -314,11 +318,16 @@ export function buildOffice(materials, spec = DEFAULT_SPEC, model = buildLayout(
   if (enabled("cafe")) for (const dx of [-1.0, -.35, .35, 1.0]) {
     add(kit.sofa, { x: 4.2 + dx, y: .035, z: W.front - 1.15, w: .4, d: .4, h: .55, pouf: true, material: "sofaC" });
   }
-  // Small devices stay as simple solids: they do not need a furniture silhouette.
   const coffee = model.furnishings.find((f) => f.id === "coffee");
-  if (coffee) {
-    put(slab(.42, .34, .34, .035), "dark", coffee.x - .3, coffee.h + .17, coffee.z);
-    for (let i = 0; i < 3; i++) mug(coffee.x + .25 + i * .20, coffee.h, coffee.z + .1, ["mugA", "mugB", "mugC"][i]);
+  if (coffee) for (const dx of [-.75, .75]) add(kit.pendant, {
+    x: coffee.x + dx, y: 2.12, z: coffee.z, radius: .25, h: .24, cordH: 0, nonEmissive: true,
+  });
+  const console = model.furnishings.find((f) => f.id === "extConsole");
+  for (let i = 0; i < spec.external.count; i++) {
+    const z = spec.external.z + i * spec.external.pitch;
+    P.push({ geometry: slab(.50, .025, .34, .025), material: "darker",
+      matrix: upright(console.x + .10, console.h + .23, z, Math.PI / 2) });
+    put(slab(.30, .024, .20, .02), "kbd", console.x + .20, console.h + .013, z);
   }
   if (enabled("cafe")) for (const x of [3.5, 4.9]) {
     if (spec.decor) {
@@ -340,27 +349,19 @@ export function buildOffice(materials, spec = DEFAULT_SPEC, model = buildLayout(
   }
   add(kit.glassBox, { x: L.serverZone.x, z: W.back + 1.42, h: 2.3, walls: [{ w: 8.4 }] });
 
-  let plantIndex = 0;
-  for (const [x, z, scale] of [
-    [-5.4, W.back + .75, 1.3], [5.7, -7.0, 1.2], [W.right - .7, 2.1, 1.25],
-    [7.85, 4.8, 1.05], [W.left + .75, -4.2, 1.2], [W.right - .7, 7.7, 1.25],
-  ]) {
-    addPlant(P, { x, z, scale, species: ["monstera", "strelitzia", "pothos", "snake"][plantIndex % 4], terra: plantIndex++ % 2 === 1 });
-  }
-  // Six small desk pots, two shelf pots and three room-corner pots: 17 individual
-  // pots in total, plus the two existing hedge boxes. Floor pots stay inside existing room obstacles.
+  // Floor greenery belongs to the rooms/planter records so navigation sees its footprint.
   if (enabled("plants")) for (const [i, [x, z]] of PODS.entries()) addPlant(P, {
     x: x + 1.10, y: L.deskZone.lift + F.desk.h, z: z + .77,
     scale: .34, species: i % 2 ? "snake" : "pothos", terra: i % 3 === 1,
   });
   const bookcase = model.furnishings.find((f) => f.id === "bookcase");
   if (enabled("plants")) addPlant(P, { x: bookcase.x - .65, y: bookcase.y + bookcase.h, z: bookcase.z, scale: .45, species: "snake" });
-  if (coffee && enabled("plants")) addPlant(P, { x: coffee.x + .75, y: coffee.y + coffee.h, z: coffee.z, scale: .55, species: "pothos", terra: true });
-  for (const [zone, dx, dz, scale, species] of [
-    [L.meetZone, -2.85, -.9, 1.1, "strelitzia"],
-    [L.meet2Zone, 1.9, -1.1, .85, "snake"],
-    [L.meet4Zone, 1.5, -1.45, .85, "monstera"],
-  ]) if (zone && enabled("plants")) addPlant(P, { x: zone.x + dx, y: zone.lift + .012, z: zone.z + dz, scale, species });
+  if (coffee && enabled("plants")) addPlant(P, { x: coffee.x + 1.05,
+    y: coffee.y + coffee.h, z: coffee.z - .12, scale: .28, species: "pothos" });
+  const reception = model.furnishings.find((f) => f.id === "reception");
+  // A small freestanding directory and restrained bars supply a sign without new text textures.
+  for (let i = 0; i < 3; i++) put(slab(.34 - i * .04, .012, .035, .008),
+    i % 2 ? "bookB" : "bookA", reception.x - 2.15, 1.01 - i * .08, reception.z + .03);
   ground(2.6, 1.2, ENTRANCE.x, .05, W.front - 1.2, "rugArt");
   // Preserve the partition batch identity while using the same glassPane finish as windows.
   return [floor, ...buildStaticBatches(P, { ...materials, glass: materials.glassPane })];
@@ -405,16 +406,14 @@ export function buildMonitors(displays, materials, model = defaultModel) {
   board1.position.set(WALL.left + 0.15, 1.35, LAYOUT.stageZone.z);
   board1.rotation.y = Math.PI / 2;
   screens.push(board1);
-  // 会議白板（奥壁・中身つき）
-  const board2 = new THREE.Mesh(reportGeometry(2.7, 1.6), boardMat);
-  board2.position.set(LAYOUT.meetZone.x + 0.2, 1.72, WALL.back + 1.62);
-  screens.push(board2);
-  // 第2会議室の自立白板（東縁・西向き）
-  const n2 = LAYOUT.meet2Zone;
-  const board3 = new THREE.Mesh(reportGeometry(2.0, 1.25), boardMat);
-  board3.position.set(n2.x + 2.13, n2.lift + 1.05, n2.z);
-  board3.rotation.y = -Math.PI / 2;
-  screens.push(board3);
+  // Meeting whiteboard content follows its panel; large rooms use unlit black presentation screens.
+  for (const room of model.LAYOUT.meet2Zone ? ["meet2"] : []) {
+    const zone = LAYOUT[`${room}Zone`];
+    const board = new THREE.Mesh(reportGeometry(1.48, .90), boardMat);
+    board.position.set(zone.x + 2.38 - .075, zone.lift + 1.48, zone.z);
+    board.rotation.y = -Math.PI / 2;
+    screens.push(board);
+  }
 
   // Reception backboard sits on the rear edge of the counter, below the wall cap.
   const reception = model.furnishings.find((f) => f.id === "reception");

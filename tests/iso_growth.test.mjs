@@ -126,7 +126,8 @@ test("static replacement retains actors, camera, selection and materials; atlas 
   const xl = scene.staticMeshes, xlAtlas = scene.displays.texture;
   scene.prepareWorld(population(10)); assert.equal(scene.staticMeshes, xl);
   scene.prepareWorld(population(10, 8)); assert.notEqual(scene.staticMeshes, xl);
-  assert.ok(!scene.model.anchors.meeting.byRoom.meet4);
+  // R94-0 makes meeting rooms permanent even at Lv0; only the cafe still unlocks.
+  assert.ok(scene.model.anchors.meeting.byRoom.meet4);
   const lv8 = scene.staticMeshes;
   scene.prepareWorld(population(10, 9)); assert.equal(scene.staticMeshes, lv8, "no rebuild between unlocks");
   scene.prepareWorld(population(10, 20));
@@ -216,9 +217,9 @@ test("every tier builds deterministic static batches with one mesh per material 
   for (const [tier, spec] of Object.entries(LAYOUT_SPECS)) {
     const first = withRandState(seed, () => buildOffice(materials, spec));
     const digest = geometryDigest(first);
-    // Captured independently by executing the pre-V7 office.js from HEAD with seed=11.
+    // R94: recaptured at seed=11 after rebuilding four glass rooms, the lounge and cafe.
     // This covers geometry, placement and shadow flags; pixel golden is a separate gate.
-    if (tier === "M") assert.equal(digest, "7113265b0d475f51ada29388a7de2243ab67057aefc7cca2a6af40063aa1a59a");
+    if (tier === "M") assert.equal(digest, "2683e82af13f4a7fbdb2cfbbc811c2110c3b86cc003d2f3cd3ccb10b200eff49");
     counts.push({ tier, batches: first.length, shadowBatches: first.filter((m) => m.castShadow).length,
       monitorScreens: spec.desks.columns.length * spec.desks.rows.length * 2 });
     assert.equal(new Set(first.map((m) => m.name)).size, first.length);

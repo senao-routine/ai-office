@@ -62,14 +62,18 @@ test("tierFor: all tier and cap combinations follow S < M < L < XL", () => {
   }
 });
 
-test("decorationsFor: each unlock is absent below its level and present from that level", () => {
-  for (const [key, level] of [["plants", 3], ["coffee", 5], ["meet3", 8], ["lounge", 12], ["meet4", 15], ["cafe", 20]]) {
-    assert.equal(decorationsFor(level - 1)[key], false);
-    assert.equal(decorationsFor(level)[key], true);
-    assert.equal(decorationsFor(level + 1)[key], true);
+test("decorationsFor: rooms, lounge, plants and coffee are always present; only the cafe unlocks by level (R94)", () => {
+  for (const level of [0, 1, 3, 8, 12, 15, 19]) {
+    const decor = decorationsFor(level);
+    for (const key of ["plants", "coffee", "meet3", "lounge", "meet4"]) assert.equal(decor[key], true, `${key}@${level}`);
+    assert.equal(decor.cafe, false);
   }
+  assert.equal(decorationsFor(20).cafe, true);
+  assert.equal(decorationsFor(21).cafe, true);
   for (const bad of [undefined, null, -1, NaN, Infinity, "20"]) {
-    assert.ok(Object.values(decorationsFor(bad)).every((unlocked) => !unlocked));
+    const decor = decorationsFor(bad);
+    assert.equal(decor.cafe, false);                       // 不正なレベルで cafe は開かない
+    assert.equal(decor.lounge, true);                      // 部屋とラウンジは不正値でも消えない
   }
 });
 
@@ -87,7 +91,8 @@ for (const tier of Object.keys(LAYOUT_SPECS)) test(`${tier}: locked furniture, r
     assert.equal(model.furnishings.some((f) => f.id === "touchdown"), decor.cafe);
     assert.equal(model.obstacleRects.some((r) => r.id === "touchdown"), decor.cafe);
     assert.equal(model.anchors.lounge.length, decor.lounge ? 3 : 2);
-    assert.equal(model.LAYOUT.loungeZone.w, decor.lounge ? 4.8 : 3.6);
+    // R94 widens the permanent lounge for facing sofas and two armchairs.
+    assert.equal(model.LAYOUT.loungeZone.w, decor.lounge ? 6.0 : 3.6);
     assert.deepEqual(specFor(tier, level), spec);
   }
   assert.equal(JSON.stringify(LAYOUT_SPECS[tier]), before);
