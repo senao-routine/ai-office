@@ -159,7 +159,7 @@ v2 のまま（PCF・2048²・`shadow.intensity .55`・contentBox フィット�
 ## 5. カメラと後処理
 
 - **OrthographicCamera を継続**（az 45° / el 40° / DIST 52 / MARGIN 0.86・v2 と同じ理由）。壁は厚み 0.25m の切断模型・高さ 2.5m・天井構造物なし。
-- BOT_PAD: desktop 0.04 / PWA 0.17 / 配信 0（R95・HUD の下段カードはステージ外の行）
+- BOT_PAD: desktop **0.10** / PWA 0.17 / 配信 0（R95・HUD の下段カードはステージ外の行。0.04 と 0.10 の A/B で本人が 0.10 を選択・2026-09-14）
 - ポスト処理（`ui/iso/post.js`）: `scene → RT(MSAA4・HalfFloat) → 輝度しきい値 1.0 → 1/4 解像度ガウス → 合成`。
   **合成係数 0.10 を uniform `bloomStrength` にし、既定 0.22**（constructor option `bloom`）。しきい値 1.0 据置。ビネット −8%・静止グレイン ±1% は v2 のまま。
   `quality:"mobile"/"off"` は bloom 無し＝**PWA と配信では発光は emissive の明るさだけ**（README に正直に書く）。

@@ -283,8 +283,8 @@ export class IsoScene {
     };
     const AZIMUTH = num("az", 45) * Math.PI / 180;
     const ELEVATION = num("el", 40) * Math.PI / 180;   // 上から見下ろす（?el= で調整可）
-    // 下端の余分（?pad= で調整可）。0.17 は「右下ラウンジが見切れない」構図比較で本人が選んだ値（2026-07-30）＝HUD カードがステージに浮いていた頃の値で、PWA（下部ドックが重なる・viewShiftPx はこの上に乗る）では今も使う。R95: デスクトップは下段カードをステージ外の行へ戻したので 0.04（縦の潰れ 1/1.17→1/1.04）。
-    this.botPad = this.streaming ? 0 : num("pad", requestedQuality === "mobile" ? 0.17 : 0.04);
+    // 下端の余分（?pad= で調整可）。0.17 は「右下ラウンジが見切れない」構図比較で本人が選んだ値（2026-07-30）＝HUD カードがステージに浮いていた頃の値で、PWA（下部ドックが重なる・viewShiftPx はこの上に乗る）では今も使う。R95: デスクトップは下段カードをステージ外の行へ戻したので 0.10（縦の潰れ 1/1.17→1/1.10・本人が pad .04/.10 の A/B で .10 を選択 2026-09-14）。
+    this.botPad = this.streaming ? 0 : num("pad", requestedQuality === "mobile" ? 0.17 : 0.10);
     const DIST = 52;
     this.target = new THREE.Vector3(-0.2, 0.7, -0.6);
     this.camera = new THREE.OrthographicCamera(-10, 10, 6, -6, 0.1, 260);
@@ -598,7 +598,7 @@ export class IsoScene {
       : contain;
     const view = base * MARGIN * (this.viewScale || 1);
     this.view = view;
-    const BOT_PAD = this.botPad ?? 0.05; // 実体は constructor が必ず入れる（desktop .04 / mobile .17 / stream 0）
+    const BOT_PAD = this.botPad ?? 0.05; // 実体は constructor が必ず入れる（desktop .10 / mobile .17 / stream 0）
     // R68: フレームの基準を保存（update のカメラ呼吸ドリフトはこの基準に対する
     // 微オフセット＝frozen では常にゼロで golden 完全不変）
     this._frame = {
