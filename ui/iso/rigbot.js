@@ -51,7 +51,7 @@ function buildGeometry(mod) {
 /** ハイブリッド C で procedural 側から出す部品（頭・顔・耳・アンテナ・胸リング・職業アクセサリ）。胴体・腕・脚は生成体。 */
 export const HYBRID_PARTS = new Set(["head", "headCodex", "headOpenclaw", "visor", "ear", "antStem", "antCodex", "antOpenclaw", "antTip", "chest", "__acc"]);
 /** D（採用案）で生成体に重ねる部品: 表情アトラスのバイザー・胸の状態リング・職業アクセサリ。頭・耳・アンテナは生成体のもの。 */
-export const D_PARTS = new Set(["visor", "chest", "__acc"]);
+export const D_PARTS = new Set(["visorRig", "chest", "__acc"]);
 const HEAD_LIFT = 0.166;   // C: Head 骨（首・0.645）から procedural の neck 原点へ: 頭の底が切り口に載る高さ（1.035 − HEAD_Y 0.2244 − 0.645）
 const HEAD_LIFT_D = 0.18;  // D: 生成体の頭の中心に procedural の neck 原点（+HEAD_Y 0.2244）を合わせる（帽子が頭頂に触れる高さ・実レンダで 0.205→0.18）
 const HEAD_Y_P = 0.2244, FACE_Y_P = -0.054;   // robot.js の HEAD_Y / FACE_Y（visor 原点 = neck + HEAD_Y + FACE_Y）
@@ -106,6 +106,7 @@ export function createRigKit(materials, scene, mode = 1) {
   const geometry = buildGeometry(bodyMod);
   const sk = bodyMod.skeleton;
   const facePlate = mode === 2 ? null : facePlateFromBody(robotBody, HEAD_LIFT_D);
+  const pool = [];   // 退場した個体の BufferGeometry（色バッファ付き）を次の入場者へ回す
   const ibm = sk.ibm ? new Float32Array(bytes(sk.ibm).buffer) : null;
   const clips = decodeClips(robotClips);
   const material = materials.shell;
@@ -124,11 +125,17 @@ export function createRigKit(materials, scene, mode = 1) {
       const jointBones = sk.joints.map((ni) => bones[ni]);
       const inverses = ibm ? sk.joints.map((_, j) => new THREE.Matrix4().fromArray(ibm, j * 16)) : undefined;
       const skeleton = new THREE.Skeleton(jointBones, inverses);
-      const geo = new THREE.BufferGeometry();
-      for (const name of ["position", "normal", "skinIndex", "skinWeight"]) geo.setAttribute(name, geometry.getAttribute(name));
-      geo.setIndex(geometry.getIndex()); geo.boundingSphere = geometry.boundingSphere;
+      // 個体ジオメトリ: 位置/法線/skin/index は共有（GPU バッファ 1 組）・color だけ個体別。退場した個体の器はプールで再利用する
+      //（geo.dispose() は共有バッファまで消して在席中の個体を再アップロードさせる・別モデルレビュー）。
       const baseColor = geometry.getAttribute("color");
-      const color = new THREE.BufferAttribute(baseColor.array.slice(), 3); geo.setAttribute("color", color);
+      let geo = pool.pop();
+      if (!geo) {
+        geo = new THREE.BufferGeometry();
+        for (const name of ["position", "normal", "skinIndex", "skinWeight"]) geo.setAttribute(name, geometry.getAttribute(name));
+        geo.setIndex(geometry.getIndex()); geo.boundingSphere = geometry.boundingSphere;
+        geo.setAttribute("color", new THREE.BufferAttribute(baseColor.array.slice(), 3));
+      }
+      const color = geo.getAttribute("color");
       let tintKey = "";
       const setTint = (tint) => {
         const key = tint ? tint.getHexString() : "";
@@ -208,9 +215,9 @@ export function createRigKit(materials, scene, mode = 1) {
           nodes.root.updateMatrixWorld(true);
         },
         // 個体専用の資源（BufferGeometry の器と色バッファ）を解放する。共有属性（位置/法線/skin/index）は kit.dispose() が持つ
-        dispose() { scene.remove(group); geo.deleteAttribute("color"); geo.dispose(); },
+        dispose() { scene.remove(group); pool.push(geo); },
       };
     },
-    dispose() { geometry.dispose(); },
+    dispose() { for (const g of pool) g.dispose(); pool.length = 0; geometry.dispose(); },
   };
 }

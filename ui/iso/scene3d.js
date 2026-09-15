@@ -340,7 +340,7 @@ export class IsoScene {
     this.scene.add(this.monitors);
 
     // R96-D2: 生成ロボのときはバイザー形状を生成体の顔から切り出した物に差し替える（表情アトラスがぴったり載る）
-    this.robots = new RobotBatch(this.scene, this.materials, CAPACITY, this.rigKit?.facePlate ? { visor: this.rigKit.facePlate } : null);
+    this.robots = new RobotBatch(this.scene, this.materials, CAPACITY, this.rigKit?.facePlate ? { visorRig: this.rigKit.facePlate } : null);
     // ボスロボ（データ非連動の常駐デコ・王冠つき・クリックで「ボス指令」）
     this.boss = makeSkeleton();
     this.boss.root.scale.setScalar(1.85);

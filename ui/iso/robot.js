@@ -492,12 +492,18 @@ export class RobotBatch {
   constructor(scene, materials, capacity, overrides = null) {
     this.capacity = capacity;
     this.geoms = buildPartGeometries();
-    if (overrides) Object.assign(this.geoms, overrides);   // R96-D2: 生成体の顔に合わせたバイザー形状など
+    // R96-D2: 生成体（リグ付きロボ）専用のバイザー部品。形状は生成体の顔から切り出した物・表情アトラスは別バッチ・材質は clone（hook を二重に掛けない）。
+    // ボスとチビ（procedural の頭）は従来の visor のまま＝共有バッチで形状を差し替えると従来の頭の中に隠れて表情が消える（別モデルレビュー）。
+    this.rigVisor = !!overrides?.visorRig;
+    if (this.rigVisor) {
+      this.geoms.visorRig = overrides.visorRig;
+      materials = { ...materials, visorRig: materials.visor.clone() };
+    }
     this.materials = materials;
     this.meshes = {};
     this.counts = {};
     this.partMaterial = {
-      head: "shell", headCodex: "shell", headOpenclaw: "shell", visor: "visor", ear: "shell",
+      head: "shell", headCodex: "shell", headOpenclaw: "shell", visor: "visor", visorRig: "visorRig", ear: "shell",
       antStem: "shell", antCodex: "shell", antOpenclaw: "shell", antTip: "accent", collar: "joint", chest: "accent", shoulder: "joint",
       torso: "shell", pelvis: "shell", upper: "shell", fore: "shell",
       hand: "joint", thigh: "shell", shin: "shell", foot: "joint",
@@ -512,7 +518,8 @@ export class RobotBatch {
       claw: 2,
     };
     this.bodyColor = new THREE.Color();
-    for (const part of PARTS) {
+    this.parts = this.rigVisor ? [...PARTS, "visorRig"] : PARTS;
+    for (const part of this.parts) {
       const n = capacity * (this.perBody[part] || 1);
       // AO and instanceColor multiply; shared robot parts always carry a color attribute.
       const geometry = this.geoms[part];
@@ -532,11 +539,12 @@ export class RobotBatch {
       this.meshes[part] = mesh;
     }
     this.faces = new FaceAtlasBatch(scene, this.meshes.visor, capacity);
+    this.facesRig = this.rigVisor ? new FaceAtlasBatch(scene, this.meshes.visorRig, capacity) : null;
   }
 
   begin() {
     this.bodyCount = 0;
-    for (const part of PARTS) this.counts[part] = 0;
+    for (const part of this.parts) this.counts[part] = 0;
   }
 
   /** 1体ぶんの世界行列を各 InstancedMesh へ書き込む。
@@ -566,9 +574,10 @@ export class RobotBatch {
     put(profile.head, nodes.head);
     put(profile.antenna, nodes.antStem);
     for (let i = 0; i < (vendor === "claude" ? 1 : 2); i++) put("antTip", nodes.antTips[i]);
-    this.faces.setCell(this.counts.visor, expression);
-    for (const part of ["visor", "collar",
-      "chest", "torso", "pelvis"]) {
+    const visorPart = only && only.has("visorRig") && this.facesRig ? "visorRig" : "visor";
+    (visorPart === "visorRig" ? this.facesRig : this.faces).setCell(this.counts[visorPart], expression);
+    put(visorPart, nodes.visor);
+    for (const part of ["collar", "chest", "torso", "pelvis"]) {
       put(part, nodes[part]);
     }
     for (const ear of nodes.ears) put("ear", ear);
@@ -597,7 +606,7 @@ export class RobotBatch {
   }
 
   end() {
-    for (const part of PARTS) {
+    for (const part of this.parts) {
       const mesh = this.meshes[part];
       mesh.count = this.counts[part];
       mesh.instanceMatrix.needsUpdate = true;
@@ -605,11 +614,13 @@ export class RobotBatch {
       if (mesh.count) mesh.computeBoundingSphere();
     }
     this.faces.end(this.counts.visor);
+    this.facesRig?.end(this.counts.visorRig);
   }
 
   dispose() {
     this.faces.dispose();
-    for (const part of PARTS) {
+    this.facesRig?.dispose();
+    for (const part of this.parts) {
       this.meshes[part].dispose();
       this.geoms[part].dispose();
     }
