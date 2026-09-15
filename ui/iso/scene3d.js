@@ -1571,8 +1571,9 @@ export class IsoScene {
       // 向きの検算: procedural の visor（root→visor のワールド方向）と、生成体の顔（group ローカル +x のワールド方向）
       faceDir: (() => { const g = actor.rig.group; const o = new THREE.Vector3().setFromMatrixPosition(g.matrixWorld);
         const f = new THREE.Vector3(1, 0, 0).applyMatrix4(g.matrixWorld).sub(o).normalize(); return [+f.x.toFixed(2), +f.z.toFixed(2)]; })(),
-      visorDir: (() => { const r = new THREE.Vector3(), vv = new THREE.Vector3(); actor.nodes.root.getWorldPosition(r); actor.nodes.visor.getWorldPosition(vv);
-        const dir = vv.sub(r); dir.y = 0; dir.normalize(); return [+dir.x.toFixed(2), +dir.z.toFixed(2)]; })(),
+      // procedural の前方＝visor のローカル +Z をワールドへ（visor の原点は首の軸上なので位置差では向きにならない・別モデルレビュー）
+      visorDir: (() => { const o = new THREE.Vector3().setFromMatrixPosition(actor.nodes.visor.matrixWorld);
+        const f = new THREE.Vector3(0, 0, 1).applyMatrix4(actor.nodes.visor.matrixWorld).sub(o); f.y = 0; f.normalize(); return [+f.x.toFixed(2), +f.z.toFixed(2)]; })(),
       rootYaw: +actor.nodes.root.rotation.y.toFixed(2) };
   }
 
