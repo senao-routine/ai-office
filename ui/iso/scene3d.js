@@ -1055,10 +1055,10 @@ export class IsoScene {
       if (actor.rig) {
         // R96-D2: 骨は clip の純関数サンプル（同じ t → 同じ姿勢）。poseKind が変わったら 0.45s で前の clip から混ぜる。
         // 歩行の位相は距離駆動＝止まった後も到着時の距離（rigDist）を遷移元に渡して膝が跳ばないようにする。
-        if (actor.rigKind !== poseKind) { actor.rigPrev = actor.rigKind ?? null; actor.rigPrevDist = actor.rigDist ?? 0; actor.rigKind = poseKind; }
-        if (walking) actor.rigDist = m.dist;
-        actor.rig.apply(poseKind, t, walking ? m.dist : (actor.rigDist ?? 0), seated, actor.poseChangedAt ?? -Infinity,
-          actor.rigPrev, actor.seed, actor.rigPrevDist ?? 0);
+        if (actor.rigKind !== poseKind) { actor.rigPrev = actor.rigKind ?? null; actor.rigKind = poseKind; }
+        // 歩行の位相は「累積の歩行距離」で駆動する。経路の再計算（m.dist が 0 へ戻る）や停止でも位相が跳ばない。
+        const walked = this._rigWalked(actor, walking ? m.dist : null);
+        actor.rig.apply(poseKind, t, walked, seated, actor.poseChangedAt ?? -Infinity, actor.rigPrev, actor.seed, walked);
         actor.nodes.root.updateMatrixWorld(true);
       }
       if (!walking) {
@@ -1125,9 +1125,9 @@ export class IsoScene {
       actor.nodes.root.rotation.y = this._track(actor, "trYaw", m.yaw, t, .45, true);
       if (actor.rig) {
         // 退勤中も同じ経路で骨を置く（放置すると scene 直下のリグが最後の位置で固まる・別モデルレビュー）
-        if (actor.rigKind !== actor.poseKind) { actor.rigPrev = actor.rigKind ?? null; actor.rigPrevDist = actor.rigDist ?? 0; actor.rigKind = actor.poseKind; }
-        if (!preparing) actor.rigDist = m.dist;
-        actor.rig.apply(preparing ? "idle" : "exit", t, actor.rigDist ?? 0, false, actor.poseChangedAt ?? -Infinity, actor.rigPrev, actor.seed, actor.rigPrevDist ?? 0);
+        if (actor.rigKind !== actor.poseKind) { actor.rigPrev = actor.rigKind ?? null; actor.rigKind = actor.poseKind; }
+        const walked = this._rigWalked(actor, preparing ? null : m.dist);
+        actor.rig.apply(preparing ? "idle" : "exit", t, walked, false, actor.poseChangedAt ?? -Infinity, actor.rigPrev, actor.seed, walked);
         actor.nodes.root.updateMatrixWorld(true);
       }
     }
@@ -1543,6 +1543,15 @@ export class IsoScene {
     const ri = assignRestSpots(world.agents, this.model.restSpots).get(agent.id);
     const a = ri !== undefined ? this.model.restSpots[ri] : this.anchorFor(agent, world, index);
     return this.project(a.x, Math.max(0, (a.y || 0) - 0.02), a.z);
+  }
+
+  /** R96-D2: 累積の歩行距離。dist は経路ごとに 0 から数え直すので、減ったら新しい経路と見て足し込みを続ける。null＝止まっている（値は保持）。 */
+  _rigWalked(actor, dist) {
+    if (dist == null) { actor.rigLastDist = null; return actor.rigWalked ?? 0; }
+    if (actor.rigLastDist == null || dist < actor.rigLastDist) actor.rigLastDist = 0;
+    actor.rigWalked = (actor.rigWalked ?? 0) + (dist - actor.rigLastDist);
+    actor.rigLastDist = dist;
+    return actor.rigWalked;
   }
 
   /** R96-D2 試作の観測口: リグ付きロボの本体が実際にどこへ描かれているか（頂点のワールド座標）。 */

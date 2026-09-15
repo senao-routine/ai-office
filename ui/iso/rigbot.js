@@ -93,12 +93,10 @@ export function createRigKit(materials, scene) {
           let sample = sampleClip(clip, clips.fps, timeFor(name, t, dist, seed));
           const w = smoothstep(0, .45, t - changedAt);
           if (prevKind !== null && w < 1) {
-            const pname = clipFor(prevKind, seated);
-            // 同じ clip 同士（enter→walk 等）は位相が連続なので混ぜない。遷移元が歩行で今は止まっている場合だけ、到着時の距離で位相を止める。
-            if (pname !== name) {
-              const pclip = clips.clips[pname] || clips.clips.idle;
-              sample = blendPoses(sampleClip(pclip, clips.fps, timeFor(pname, t, prevDist, seed)), sample, w);
-            }
+            // 遷移元も同じ距離（累積の歩行距離＝経路再計算や停止で 0 に戻らない）でサンプルする。
+            // 同じ clip 同士なら位相が同じで混合は恒等、違う clip なら 0.45s で混ざる（別モデルレビュー 2 巡分の帰結）。
+            const pname = clipFor(prevKind, seated), pclip = clips.clips[pname] || clips.clips.idle;
+            sample = blendPoses(sampleClip(pclip, clips.fps, timeFor(pname, t, prevDist, seed)), sample, w);
           }
           setPose(sample);
           nodes.root.updateMatrix();
