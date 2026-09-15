@@ -92,8 +92,8 @@ def clips(a):
         names_here = [sk["nodes"][j]["name"] for j in sk["joints"]]
         if joints_ref is None: joints_ref = list(names_here); out["joints"] = list(names_here)
         elif names_here != out["joints"]: sys.exit(f"{name}: 骨の集合が body と違う")
-        # この GLB のノード索引 → 骨名 → body 側の骨番号（別 GLB では nodes[] の並びが違い得る＝索引で対応させない）
-        node_to_joint = {j: out["joints"].index(sk["nodes"][j]["name"]) for j in sk["joints"]}
+        # この GLB のノード索引 → 骨番号は joints[] の位置で（名前列が body と同じ並びであることは上で検査済み・同名の骨があっても壊れない）
+        node_to_joint = {j: pos for pos, j in enumerate(sk["joints"])}
         cl = G.read_clips(gltf, bin_chunk, fps=a.fps, joints=set(sk["joints"]), root_joint=sk["root"])
         # 1 本なら name、複数（≤5 まとめの retarget 出力）なら animation 名の末尾（preset:biped:walk → walk）
         for c in cl:

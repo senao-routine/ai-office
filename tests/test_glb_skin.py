@@ -51,6 +51,13 @@ class T(unittest.TestCase):
         self.assertNotIn("t", c["tracks"][1])   # root 以外の translation は落とす
 
 
+def _repack(gltf, bin_chunk):
+    import json, struct
+    js = json.dumps(gltf).encode(); js += b" " * (-len(js) % 4)
+    body = struct.pack("<I4s", len(js), b"JSON") + js + struct.pack("<I4s", len(bin_chunk), b"BIN\0") + bytes(bin_chunk)
+    return struct.pack("<4sII", b"glTF", 2, 12 + len(body)) + body
+
+
 class RigWriterTest(unittest.TestCase):
     """tools/glb_rig.py: 切った clip はループが閉じる・骨は名前で対応づける（別モデルレビューの 2 件）。"""
     def _run(self, args):
@@ -62,11 +69,14 @@ class RigWriterTest(unittest.TestCase):
             import json, struct
             swapped = json.loads(json.dumps(gltf))
             swapped["nodes"] = [gltf["nodes"][2], gltf["nodes"][0], gltf["nodes"][1]]     # Body, Root, Bone1
+            # 同名の骨があっても位置で対応する（glTF は名前の一意性を要求しない・別モデルレビュー）
+            for f in (gltf, swapped):
+                for n in f["nodes"]:
+                    if n.get("name") in ("Root", "Bone1"): n["name"] = "B"
+            glb.write_bytes(_repack(gltf, bin_chunk))
             swapped["nodes"][1]["children"] = [2]; swapped["scenes"][0]["nodes"] = [1, 0]; swapped["skins"][0]["joints"] = [1, 2]; swapped["skins"][0]["skeleton"] = 1
             for ch in swapped["animations"][0]["channels"]: ch["target"]["node"] = {1: 2, 0: 1}[ch["target"]["node"]]
-            js = json.dumps(swapped).encode(); js += b" " * (-len(js) % 4)
-            body = struct.pack("<I4s", len(js), b"JSON") + js + struct.pack("<I4s", len(bin_chunk), b"BIN\0") + bin_chunk
-            (pathlib.Path(d) / "b.glb").write_bytes(struct.pack("<4sII", b"glTF", 2, 12 + len(body)) + body)
+            (pathlib.Path(d) / "b.glb").write_bytes(_repack(swapped, bin_chunk))
             r = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "glb_rig.py"), "clips", f"wave={glb}", f"wave2={pathlib.Path(d) / 'b.glb'}",
                                 "--name", "c", "--out", d, "--fps", "10", *args], capture_output=True, text=True)
             self.assertEqual(r.returncode, 0, r.stderr)
@@ -75,7 +85,7 @@ class RigWriterTest(unittest.TestCase):
     def test_joints_mapped_by_name_and_loop_closed(self):
         import base64, struct
         mod = self._run(["--max-seconds", "0.6"])
-        self.assertEqual(mod["joints"], ["Root", "Bone1"])
+        self.assertEqual(mod["joints"], ["B", "B"])
         # 2 本目（ノード索引を入れ替えた GLB）でも Bone1 の回転トラックは骨番号 1 に来る
         c2 = mod["clips"]["wave2"]
         self.assertIn("1", c2["tracks"]); self.assertIn("r", c2["tracks"]["1"])
