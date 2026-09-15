@@ -379,6 +379,7 @@ export async function mount(root) {
   digest = initDigest({ ...common, DEMO, tray, showToast: delivery.showToast,
     enabled: !stream.enabled, canvas: scene3dOk ? scene.renderer.domElement : null,
     beforeOpen: () => { closeModal(); sheet.closeCompose(); }, restore: () => draw(now()) });
+  shell._closeOverlays = () => digest?.close?.();
   shell.querySelector("#agents").addEventListener("click", (e) => {
     const row = e.target.closest(".arow");
     if (!row) return;

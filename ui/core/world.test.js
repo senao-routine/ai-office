@@ -606,3 +606,11 @@ test("labelDensityMax: 1000px 以上は 12・それ未満は 6", () => {
   assert.equal(labelDensityMax(390), 6);
   assert.equal(labelDensityMax(undefined), 6);
 });
+
+test("deliveryState on a session brief uses the brief's own listening/attention", () => {
+  // 内訳 brief は attention を boolean で運ぶ（approvalMin/question は無い）
+  assert.equal(deliveryState({ listening: false, state: "working", attention: true, pending: false }), "saved");
+  assert.equal(deliveryState({ listening: false, state: "working", attention: false, pending: false }), "live");
+  assert.equal(deliveryState({ listening: false, state: "working", attention: true, ask: { tool: "Bash", kind: "permission" } }), "live");
+  assert.equal(deliveryState({ state: "waiting", attention: true }), "live");   // listening 未搬送＝脅さない
+});

@@ -8,7 +8,7 @@ import { inertOthers } from "/ui/hud/layers.js";
 export function init({ shell, T, getWorld, tray, showToast, beforeOpen, restore, canvas,
   enabled = true, DEMO = false }) {
   // Structural golden guard: not even listeners, timers, requests or hidden UI are installed.
-  if (frozen || DEMO || !enabled) return { update() {}, frame: () => null, canRecord: () => false, dispose() {} };
+  if (frozen || DEMO || !enabled) return { update() {}, frame: () => null, canRecord: () => false, close() {}, dispose() {} };
   const el = (tag, cls, text) => {
     const node = document.createElement(tag);
     node.className = cls;
@@ -242,6 +242,7 @@ export function init({ shell, T, getWorld, tray, showToast, beforeOpen, restore,
     if (started && data && isPresent() && card.hidden && !replay && !pendingAuto) void markSeen();
   }, 60000);
   return {
+    close: closeAll,   // R96-B 残: 通知からの遷移はダイジェスト／リプレイを閉じてから開く（inert が残ると操作不能）
     canRecord: () => Boolean(webmType(canvas)),
     saveToday: () => startReplay(true),
     afterDraw() { if (recording && elapsed >= REPLAY_SECONDS) recording.stop(); },

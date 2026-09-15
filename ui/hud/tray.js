@@ -91,6 +91,7 @@ export function init({ shell, T, el, attnKeyFor, getWorld, render, DEMO = false,
     const index = queue.findIndex((a) => a.session === session);
     if (index < 0) return false;
     trayIndex = index;
+    shell._closeOverlays?.();   // ダイジェスト／リプレイが前面なら先に閉じる（inertOthers の解除）
     closeModal();
     openCompose(queue[index]);
     if (getWorld()) render();

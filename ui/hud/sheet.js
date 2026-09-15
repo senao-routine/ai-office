@@ -21,9 +21,11 @@ export function init({ shell, T, lang, DEMO, attnKeyFor, getWorld, render,
   };
   const stateOptions = (agent) => ({ T, agent,
     offline: !!shell.closest(".offline"), stalled: isStalled(agent.session) });
-  /** 非代表セッションの内訳（_session_brief）は listening/ask を運ばない＝配達状態は代表の値で補う（別モデルレビュー）。 */
+  /** 非代表セッションの内訳（_session_brief）: 表示用の名前は代表から、配達に関わる項目（listening/ask/pending/attention/state）は
+   *  内訳自身の値だけを使う（代表の listening を引き継ぐと更新後に「届く」へ化ける・別モデルレビュー）。listening 未搬送の旧サーバーでは脅さない。 */
   const withDelivery = (agent, brief) => (brief === agent ? agent
-    : { ...agent, ...Object.fromEntries(Object.entries(brief).filter(([, v]) => v !== undefined)) });
+    : { ...agent, ...brief, listening: brief.listening, ask: brief.ask || null,
+      pending: Boolean(brief.pending), attention: Boolean(brief.attention) });
   const paintActivity = (agent) => {
     shell.querySelector("#sheetact").replaceChildren(
       sEl("span", "sheetgloss", activityGloss(agent, lang())),

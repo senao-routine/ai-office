@@ -1348,6 +1348,11 @@ def _session_brief(e):
         "attention": bool(e.get("approvalMin") or e.get("question")),
         "minions": int(e.get("minions") or 0),
         "pending": bool(e.get("pending")),
+        # R96-B 残: 非代表セッションを開いたときの配達表示（📴/届く）が代表の値にならないように、
+        # 受信待機と「承認フックが待っている」だけを運ぶ。ask は tool 名と kind だけ（本文は持たない）。
+        **({"listening": e["listening"]} if isinstance(e.get("listening"), bool) else {}),
+        **({"ask": {"tool": str(e["ask"].get("tool") or ""), "kind": str(e["ask"].get("kind") or "")}}
+           if isinstance(e.get("ask"), dict) else {}),
     }
 
 
