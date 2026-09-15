@@ -33,6 +33,16 @@ def body(a):
     parts = []; tris = 0
     for p in prims:
         pos = [(v[0] * k, v[1] * k, v[2] * k) for v in p["pos"]]
+        if a.cut_above is not None:
+            # 首より上（頭）を落として InstancedMesh の頭・顔アトラスを Head 骨のソケットへ載せる（ハイブリッド C）
+            keep = []
+            for t in range(0, len(p["idx"]) - len(p["idx"]) % 3, 3):
+                tri = p["idx"][t:t + 3]
+                if not all(pos[i][1] >= a.cut_above for i in tri): keep += tri
+            used = sorted(set(keep)); remap = {old_i: new_i for new_i, old_i in enumerate(used)}
+            p = dict(p, idx=[remap[i] for i in keep], pos=[p["pos"][i] for i in used], nrm=[p["nrm"][i] for i in used] if p["nrm"] else None,
+                     uv=[p["uv"][i] for i in used] if p["uv"] else None, joints=[p["joints"][i] for i in used], weights=[p["weights"][i] for i in used])
+            pos = [pos[i] for i in used]
         qpos = [int(round((v[i] - lo[i]) * q)) for v in pos for i in range(3)]
         nrm = p["nrm"] or [(0, 1, 0)] * len(pos)
         qnrm = [max(-127, min(127, int(round(c * 127)))) for n in nrm for c in n]
@@ -137,7 +147,7 @@ def clips(a):
 def main():
     ap = argparse.ArgumentParser(); sub = ap.add_subparsers(dest="cmd", required=True)
     b = sub.add_parser("body"); b.add_argument("glb"); b.add_argument("--name", default="robot_body"); b.add_argument("--out", default="ui/iso/gen")
-    b.add_argument("--fit-height", type=float, default=None); b.add_argument("--bake-color", action="store_true"); b.add_argument("--max-kb", type=float, default=160); b.add_argument("--dry", action="store_true")
+    b.add_argument("--fit-height", type=float, default=None); b.add_argument("--bake-color", action="store_true"); b.add_argument("--cut-above", type=float, default=None, help="この高さ（fit 後の単位）以上の三角形を落とす＝頭を外す（ハイブリッド C）"); b.add_argument("--max-kb", type=float, default=160); b.add_argument("--dry", action="store_true")
     c = sub.add_parser("clips"); c.add_argument("clip", nargs="+", help="name=path.glb"); c.add_argument("--name", default="robot_clips"); c.add_argument("--out", default="ui/iso/gen")
     c.add_argument("--fps", type=int, default=15); c.add_argument("--max-seconds", type=float, default=0, help="長い clip（idle 15s 等）を先頭で切る"); c.add_argument("--fit-height", type=float, default=None); c.add_argument("--max-kb", type=float, default=160); c.add_argument("--dry", action="store_true")
     a = ap.parse_args()

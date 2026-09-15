@@ -210,7 +210,9 @@ export class IsoScene {
 
     const q = new URLSearchParams(typeof location === "undefined" ? "" : location.search);
     this.streaming = q.get("stream") === "1";
-    this.rigOn = q.get("rig") === "1";     // R96-D2 試作: Tripo リグ付きロボ（既定 OFF＝golden 不変）
+    // R96-D2（本人裁定 D・2026-09-16）: 既定は Tripo 生成のリグ付きロボ。?rig=0 で従来の procedural、?rig=2 でハイブリッド C（比較用）。
+    this.rigMode = q.has("rig") ? (Number(q.get("rig")) || 0) : 1;
+    this.rigOn = this.rigMode > 0;
     const requestedQuality = this.streaming ? "off" : q.get("quality") || "high";
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     this.post = new PostProcess(this.renderer, {
@@ -237,7 +239,7 @@ export class IsoScene {
     this.scene.environmentIntensity = 0.55;
     resetRand(); // All procedural textures and plants consume clock.rand in construction order.
     this.materials = makeMaterials(this.post.quality);
-    this.rigKit = this.rigOn ? createRigKit(this.materials, this.scene) : null;
+    this.rigKit = this.rigOn ? createRigKit(this.materials, this.scene, this.rigMode) : null;
     // GPT-Image生成デカール（ui/iso/tex/*.webp・コミット済みアセット）。
     // 非同期ロードなので「全部確定するまで probe.ready を抑え、確定のたび再描画」を守る
     // （守らないと golden が差し替え前後どちらを撮るか不定になりフレークする）。
@@ -337,7 +339,8 @@ export class IsoScene {
     this.monitors = buildMonitors(this.displays, this.materials, this.model);
     this.scene.add(this.monitors);
 
-    this.robots = new RobotBatch(this.scene, this.materials, CAPACITY);
+    // R96-D2: 生成ロボのときはバイザー形状を生成体の顔から切り出した物に差し替える（表情アトラスがぴったり載る）
+    this.robots = new RobotBatch(this.scene, this.materials, CAPACITY, this.rigKit?.facePlate ? { visor: this.rigKit.facePlate } : null);
     // ボスロボ（データ非連動の常駐デコ・王冠つき・クリックで「ボス指令」）
     this.boss = makeSkeleton();
     this.boss.root.scale.setScalar(1.85);
@@ -1029,6 +1032,8 @@ export class IsoScene {
         const u = (t - gt) / 0.9;
         if (u >= 1) {
           this._greet.delete(agent.id);
+        } else if (u >= 0 && actor.rig) {
+          poseKind = "greet";   // R96-D2: 生成体は cheer clip で挨拶（腕の直接書き込みは procedural 用）
         } else if (u >= 0) {
           const arm = actor.nodes.arms[1];
           arm.shoulder.rotation.x = -2.5;
@@ -1136,7 +1141,17 @@ export class IsoScene {
     let n = 0;
     for (const [aid, actor] of this.actors) {
       const over = n++ >= CAPACITY;
-      if (actor.rig) { actor.rig.group.visible = !over; continue; }   // リグ付きは SkinnedMesh が本体＝部品は出さず、描画人数の上限も同じ
+      if (actor.rig) {
+        actor.rig.group.visible = !over;                 // リグ付きは SkinnedMesh が本体・描画人数の上限も同じ
+        if (over || !this.rigKit?.headParts) continue;
+        const tint = this._shellTint(actor.shellColor, actor.vendor) || (actor.lobster ? LOBSTER_TINT : actor.graphite ? GRAPHITE_TINT : null);
+        // D: 生成体の殻に個体色（ベンダー色・アーキタイプ色）を焼き分ける。部品はバイザー（表情）・胸リング（状態色）・アクセサリだけ
+        //    ベンダー幅（setVendor の比率）は生成体には無いので部品は claude 幅で出す。C: 頭ごと procedural なのでベンダーそのまま
+        actor.rig.setTint(this.rigKit.mode === 2 ? null : tint);
+        this.robots.push(actor.nodes, actor.accent || null, tint, this._archFor(actor.agentArch, aid),
+          this.rigKit.mode === 2 ? actor.vendor : "claude", actor.expression, null, this.rigKit.headParts);
+        continue;
+      }
       if (over) continue;
       this.robots.push(actor.nodes, actor.accent || null,
         this._shellTint(actor.shellColor, actor.vendor)
@@ -1555,8 +1570,8 @@ export class IsoScene {
   }
 
   /** R96-D2 試作の観測口: リグ付きロボの本体が実際にどこへ描かれているか（頂点のワールド座標）。 */
-  rigDebug() {
-    const actor = [...this.actors.values()].find((a) => a.rig);
+  rigDebug(kindFilter = null) {
+    const actor = [...this.actors.values()].find((a) => a.rig && (!kindFilter || String(a.rigKind || "").startsWith(kindFilter)));
     if (!actor) return { rigOn: this.rigOn, kit: !!this.rigKit, actors: this.actors.size, rigged: 0 };
     const mesh = actor.rig.mesh, v = new THREE.Vector3();
     mesh.updateMatrixWorld(true);
@@ -1574,7 +1589,22 @@ export class IsoScene {
       // procedural の前方＝visor のローカル +Z をワールドへ（visor の原点は首の軸上なので位置差では向きにならない・別モデルレビュー）
       visorDir: (() => { const o = new THREE.Vector3().setFromMatrixPosition(actor.nodes.visor.matrixWorld);
         const f = new THREE.Vector3(0, 0, 1).applyMatrix4(actor.nodes.visor.matrixWorld).sub(o); f.y = 0; f.normalize(); return [+f.x.toFixed(2), +f.z.toFixed(2)]; })(),
-      rootYaw: +actor.nodes.root.rotation.y.toFixed(2) };
+      rootYaw: +actor.nodes.root.rotation.y.toFixed(2),
+      // 部品の載り具合: 生成体の頭頂/前面と、procedural 部品（バイザー・胸リング・帽子）のワールド位置（root ローカル基準で比較したいので root の逆行列で戻す）
+      fit: (() => {
+        const inv = new THREE.Matrix4().copy(actor.nodes.root.matrixWorld).invert(), P = new THREE.Vector3();
+        let top = -1e9, front = -1e9, headZs = [];
+        const pos = mesh.geometry.attributes.position;
+        for (let i = 0; i < pos.count; i++) { mesh.getVertexPosition(i, P); P.applyMatrix4(mesh.matrixWorld).applyMatrix4(inv); top = Math.max(top, P.y); if (P.y > 0.9) { front = Math.max(front, P.z); headZs.push(P.z); } }
+        const local = (node) => { node.getWorldPosition(P); P.applyMatrix4(inv); return [+P.x.toFixed(3), +P.y.toFixed(3), +P.z.toFixed(3)]; };
+        const acc = actor.nodes.acc ? Object.entries(actor.nodes.acc)[0] : null;
+        const deg = (q) => { const e = new THREE.Euler().setFromQuaternion(q, "YXZ"); return [e.x, e.y, e.z].map((r) => Math.round(r * 180 / Math.PI)); };
+        const headBone = mesh.skeleton.bones.find((b) => b.name === "Head");
+        const hq = new THREE.Quaternion(); headBone?.getWorldQuaternion(hq); const rq = new THREE.Quaternion(); actor.nodes.root.getWorldQuaternion(rq); hq.premultiply(rq.invert());
+        Object.assign(P, {});
+        var extra = { neckEulerDeg: deg(actor.nodes.neck.quaternion), headBoneLocalDeg: deg(hq) };
+        return { ...extra, headTop: +top.toFixed(3), headFront: +front.toFixed(3), headBackZ: +Math.min(...headZs).toFixed(3), visor: local(actor.nodes.visor), neck: local(actor.nodes.neck), chest: local(actor.nodes.chest), acc: acc ? [acc[0], local(acc[1])] : null };
+      })() };
   }
 
   stats() {

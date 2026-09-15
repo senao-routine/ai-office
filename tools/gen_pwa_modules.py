@@ -68,8 +68,11 @@ def _pwa_gen_names():
     """R96-D: 生成什器のうち PWA に同梱する name の集合（manifest の pwa:true）。"""
     if not GEN_MANIFEST.is_file():
         return set()
-    items = json.loads(GEN_MANIFEST.read_text(encoding="utf-8")).get("items", {})
-    return {name for name, meta in items.items() if meta.get("pwa")}
+    manifest = json.loads(GEN_MANIFEST.read_text(encoding="utf-8"))
+    items = manifest.get("items", {})
+    names = {name for name, meta in items.items() if meta.get("pwa")}
+    names.update(manifest.get("rig", {}).get("pwa", []))   # R96-D2: リグ付きロボ（body/clips）
+    return names
 
 
 def _maybe_stub(url, src):

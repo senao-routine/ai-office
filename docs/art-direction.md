@@ -301,3 +301,13 @@ V4' 発光モニタ＋bloom 再調律 → V5' ガラス壁 → V6' コンパク�
   長辺が z に出た生成物は `yaw: π/2`。色は sRGB のバイトで焼き、kit がリニアへ戻す。
 - 予算: 1 点 ≤160KB・`ui/iso/gen` 合計 ≤3.5MB（verify ▶3b）。PWA は manifest `pwa:true` の物だけ同梱（残りは `export default null` のスタブ＝import 図は同じ）。
 - 採用済み: `desk`（島の 2 人机・低い薄紫フェルト仕切り）・`desk_long`（社長机）。プロンプトの型は台帳の採用行を写す（negative に「cross divider / tall panel / hutch / monitor / chair」）。
+
+## ロボ v4 = Tripo 生成のリグ付きロボ（R96-D2・本人裁定 D・2026-09-16）
+
+- 本体= `ui/iso/gen/robot_body.js`（Tripo P1・T ポーズ画像から multiview→model→rig(v1.0・tripo spec)→retarget）を three core の SkinnedMesh で描く（`ui/iso/rigbot.js`）。
+  動きは `ui/iso/gen/robot_clips.js` の 6 clip（idle/walk/sit/look_around/wait/cheer・15fps）を `ui/core/clip.js` の純関数サンプラで時刻 t から置く（mixer 無し＝決定論）。
+- 顔（表情）= 生成体の黒いバイザー領域を 3mm 外へ押し出したプレートに表情アトラス（`facePlateFromBody`）。胸の状態リング・職業アクセサリ・蝶ネクタイは従来の InstancedMesh のまま、
+  Head/Spine02 骨に「位置＋rest からの差分回転」で追従。ベンダー色・アーキタイプ色は個体の頂点色（明るい殻ほど効く）。
+- 掟: bind は単位行列／AnimationMixer は使わない／材質 clone 禁止（個体色は頂点色）／rig の group は scene 直下（骨格 root は数学用）／歩行の位相は累積距離／
+  生成体の前は +x → yaw −π/2 で既存の +z へ。観測口= `__office.debug.rig(kind)`（faceDir・fit）。
+- 据置: チビ（サブエージェント）とボスは v3 の procedural。ベンダー別の頭の形（ロブスターの角・Codex の幅）は色差だけ（次ループ）。v3 は `?rig=0` で残る（golden は v4）。

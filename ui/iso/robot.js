@@ -489,9 +489,10 @@ export function applyPose(nodes, pose) {
  * ロボット何体でも drawCalls は PARTS の数に収まる。
  */
 export class RobotBatch {
-  constructor(scene, materials, capacity) {
+  constructor(scene, materials, capacity, overrides = null) {
     this.capacity = capacity;
     this.geoms = buildPartGeometries();
+    if (overrides) Object.assign(this.geoms, overrides);   // R96-D2: 生成体の顔に合わせたバイザー形状など
     this.materials = materials;
     this.meshes = {};
     this.counts = {};
@@ -541,7 +542,7 @@ export class RobotBatch {
   /** 1体ぶんの世界行列を各 InstancedMesh へ書き込む。
    *  accent は胸リング・アンテナ先端のインスタンスカラー（HUDの状態ドットと同じ意味色）。
    *  vendor selects head/antenna/hand parts without changing the pose contract. */
-  push(nodes, accent = null, tint = null, arch = null, vendor = "claude", expression = "idle", prop = null) {
+  push(nodes, accent = null, tint = null, arch = null, vendor = "claude", expression = "idle", prop = null, only = null) {
     if (this.bodyCount >= this.capacity) return;
     this.bodyCount += 1;
     if (!VENDORS[vendor]) vendor = "claude";
@@ -550,6 +551,7 @@ export class RobotBatch {
     const profile = VENDORS[vendor];
     const bodyTint = this.bodyColor.copy(tint || profile.tint);
     const put = (part, obj) => {
+      if (only && !only.has(part)) return;   // R96-D2 ハイブリッド: 胴体・腕・脚は生成体が担う
       const i = this.counts[part];
       if (i >= this.capacity * (this.perBody[part] || 1)) return;
       this.meshes[part].setMatrixAt(i, obj.matrixWorld);
@@ -583,7 +585,7 @@ export class RobotBatch {
     }
     if (Object.hasOwn(PROP_MATERIALS, prop)) put(prop, nodes.arms[1].hand);
     // R80.7: 職業アクセサリ（該当アーキタイプのロボにだけ1個・専用色）
-    if (arch && arch.part && nodes.acc && nodes.acc[arch.part]) {
+    if (arch && arch.part && nodes.acc && nodes.acc[arch.part] && (!only || only.has("__acc"))) {
       const part = arch.part;
       const i = this.counts[part];
       if (i < this.capacity) {

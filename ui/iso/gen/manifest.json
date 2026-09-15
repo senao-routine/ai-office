@@ -109,5 +109,12 @@
       "kb": 51.9,
       "source": "4768c331"
     }
+  },
+  "rig": {
+    "_doc": "R96-D2: リグ付きロボのモジュール（tools/glb_rig.py の出力・kit.generated の対象外）。pwa に列挙した物だけ PWA に同梱する",
+    "pwa": [
+      "robot_body",
+      "robot_clips"
+    ]
   }
 }
