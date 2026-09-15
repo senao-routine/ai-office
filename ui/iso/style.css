@@ -410,8 +410,8 @@
   flex: none; font-style: normal; font-size: 11px; font-weight: 800;
   border-radius: 10px; padding: 4px 8px;
 }
-.ui-iso .hrow .hp.done { background: var(--iso-accent-chip); color: var(--iso-accent); }
-.ui-iso .hrow .hp.wait { background: var(--iso-warn-chip); color: var(--iso-warn); }
+.ui-iso .hrow .hp.dstate-live { background: var(--iso-accent-chip); color: var(--iso-accent); }
+.ui-iso .hrow .hp.dstate-pending { background: var(--iso-warn-chip); color: var(--iso-warn); }
 .ui-iso .hempty { font-size: 12.5px; color: var(--iso-ink-soft); }
 .ui-iso .hrow .hago { font-size: 11px; font-style: normal; color: var(--iso-ink-soft); flex: none; }
 .ui-iso .aage { font-size: 11px; font-style: normal; color: var(--iso-ink-soft); }
@@ -844,7 +844,7 @@
 .ui-iso .mkeysave:disabled { opacity: .5; }
 
 /* R54: クレジットゲージはクリックで⚡（連携・台帳）へ */
-.ui-iso .gauges { cursor: pointer; }
+.ui-iso .gauges { cursor: default; }
 
 /* R63: 🔌 APIプロバイダ統合コスト（⚡モーダル内セクション＋サイドバー注記） */
 .ui-iso .mapis { display: flex; flex-direction: column; gap: 8px; }
@@ -982,8 +982,7 @@
   font-size: 12.5px; line-height: 1.45; color: var(--iso-ink-soft); pointer-events: none;
 }
 
-/* トレイは1行のまま全幅を保ち、シートはその下から開く。 */
-.ui-iso #stage:has(#attn:not([hidden])) .sheet { top: 80px; }
+
 
 /* R82: 定型文エディタ（クイック定型のユーザー定義） */
 .tplchip .qicon { color: var(--iso-accent, var(--iso-accent)); }
@@ -1233,3 +1232,138 @@ html.iso-stream, html.iso-stream body { background: transparent; }
   border: 1px solid var(--iso-line); border-radius: 10px; cursor: pointer; }
 .ui-iso .tpl-existing { margin-bottom: 12px; color: var(--iso-ink-soft); }
 .ui-iso .tpl-existing > summary { cursor: pointer; padding: 8px 0; }
+
+/* R96: 状態の語彙と部品は配達面すべてで共有する。 */
+.ui-iso .dstate {
+  display: inline-flex; align-items: center; gap: 4px; max-width: 100%; min-width: 0;
+  padding: 2px 6px; border-radius: 8px; font-size: 11px; font-style: normal;
+  color: var(--iso-accent); background: var(--iso-accent-chip); vertical-align: middle;
+}
+.ui-iso .dstate-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ui-iso .dstate-saved, .ui-iso .dstate-pending, .ui-iso .dstate-sending {
+  color: var(--iso-ink); background: var(--iso-warn-chip);
+}
+.ui-iso .dstate-stalled, .ui-iso .dstate-offline { color: var(--iso-alert); background: var(--iso-alert-chip); }
+.ui-iso .dstate [hidden], .ui-iso .dstate[hidden], .ui-iso #btn-hire[hidden], .ui-iso #viewreset[hidden] { display: none; }
+.ui-iso .arow > .dstate { grid-column: 1 / -1; justify-self: start; }
+.ui-iso .sheetact { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.ui-iso .sheetgloss { flex: 1 1 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ui-iso .qb-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ui-iso .qb-edit { font: inherit; font-size: 11px; border: 0; padding: 4px; background: transparent; color: var(--iso-accent); cursor: pointer; }
+.ui-iso .compose { flex-wrap: wrap; }
+.ui-iso .compose .dstate { flex: none; }
+.ui-iso .zrow { width: 100%; border: 0; background: transparent; text-align: left; font-family: inherit; cursor: pointer; }
+.ui-iso .zrow.on { background: var(--iso-accent-chip); outline: 1px solid var(--iso-accent); outline-offset: -1px; }
+.ui-iso .hmore { align-self: flex-start; font-family: inherit; border: 0; border-radius: 8px; background: transparent; cursor: pointer; }
+.ui-iso .hmore:hover { color: var(--iso-accent); background: var(--iso-accent-chip); }
+.ui-iso .bottom .histcard.expanded { max-height: min(40vh, 420px); overflow-y: auto; }
+.ui-iso .histhead { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; }
+.ui-iso .histhead .cardtitle { margin: 0; }
+.ui-iso .histcard.expanded .histhead { position: sticky; top: 0; background: var(--iso-glass-solid); }
+.ui-iso .hmore[hidden] { display: none; }
+.ui-iso #btn-help { margin-left: auto; flex: none; padding: 4px 8px; }
+.ui-iso .head .sub { min-width: 0; max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
+.ui-iso #viewreset { position: absolute; right: 16px; bottom: 16px; background: var(--iso-glass-solid); }
+.ui-iso .run-form { display: grid; gap: 12px; }
+.ui-iso .run-field { display: grid; gap: 4px; font-size: 12.5px; }
+.ui-iso .run-field .minput { margin: 0; }
+.ui-iso .run-advanced { margin-top: 16px; }
+.ui-iso .run-advanced summary { cursor: pointer; padding: 8px 0; color: var(--iso-ink-soft); }
+.ui-iso #gauges-more { flex: none; white-space: normal; }
+
+/* シートの左に回答面を残す。狭幅とワイド表示は内容高で上下に並べる。 */
+.ui-iso .sheet-open #attn, .ui-iso .sheet-open #viewreset {
+  right: calc(clamp(480px, 58%, 720px) + 24px);
+}
+.ui-iso .sheet-open #attn { flex-wrap: wrap; white-space: normal; overflow-y: auto; max-height: calc(100% - 32px); }
+.ui-iso .sheet-open #attn > b, .ui-iso .sheet-open #attn > span:not(.dstate),
+.ui-iso .sheet-open #attn > .trayans, .ui-iso .sheet-open #attn > .traylock { flex: 1 1 100%; min-width: 0; }
+.ui-iso #attn .dstate, .ui-iso #attn .dstate span { flex: none; min-width: 0; font-size: 11px; }
+.ui-iso #attn .dstate-label { flex: 0 1 auto; }
+.ui-iso #attn .traylock { font-style: normal; font-size: 11px; color: var(--iso-ink-soft); }
+.ui-iso #attn .trayprev { border-color: var(--iso-alert); }
+.ui-iso .sheet-open:has(.sheet.wide) #stage { display: grid; grid-template-rows: auto minmax(0, 1fr); }
+.ui-iso .sheet-open:has(.sheet.wide) #attn {
+  position: relative; top: auto; left: auto; right: auto; margin: 16px 16px 8px; max-height: 28vh;
+}
+.ui-iso .sheet-open .sheet.wide {
+  position: relative; top: auto; right: auto; bottom: auto; grid-row: 2; min-height: 0;
+  width: auto; max-width: none; margin: 0 16px 16px;
+}
+.ui-iso .sheet-open:has(.sheet.wide):has(#attn[hidden]) .sheet { grid-row: 1 / -1; margin-top: 16px; }
+.ui-iso .rail-toggle { display: none; }
+@media (max-width: 1279px) {
+  .ui-iso .sheet-open #stage { display: grid; grid-template-rows: auto minmax(0, 1fr); }
+  .ui-iso .sheet-open #attn {
+    position: relative; top: auto; left: auto; right: auto; margin: 12px 12px 8px; max-height: 26vh;
+  }
+  .ui-iso .sheet-open .sheet {
+    position: relative; top: auto; right: auto; bottom: auto; grid-row: 2; min-height: 0;
+    width: auto; max-width: none; margin: 0 12px 12px;
+  }
+  .ui-iso .sheet-open:has(#attn[hidden]) .sheet { grid-row: 1 / -1; margin-top: 12px; }
+  .ui-iso .sheet-open #viewreset { right: 16px; }
+}
+@media (max-width: 1024px) {
+  .ui-iso .shell, .ui-iso.list-mode .shell { grid-template-columns: 200px minmax(0, 1fr); }
+  .ui-iso .head { overflow: visible; flex-wrap: wrap; }
+  .ui-iso .usage { flex: 1 1 160px; }
+  .ui-iso .rail { display: none; }
+  .ui-iso .rail-toggle {
+    display: block; position: absolute; top: 88px; right: 12px; writing-mode: vertical-rl;
+    padding: 12px 8px; border: 1px solid var(--iso-line); border-radius: 10px;
+    background: var(--iso-glass-solid); color: var(--iso-ink); font: inherit; font-size: 12.5px; cursor: pointer;
+  }
+  .ui-iso .rail-open .rail {
+    display: flex; position: absolute; right: 48px; top: 64px; bottom: 12px;
+    width: min(320px, calc(100% - 64px)); background: var(--iso-glass-solid);
+  }
+
+}
+@media (max-width: 820px) {
+  .ui-iso { overflow-y: auto; }
+  .ui-iso .shell, .ui-iso.list-mode .shell { grid-template-columns: minmax(0, 1fr); height: auto; min-height: 100%; }
+  .ui-iso .side { flex-direction: row; flex-wrap: wrap; gap: 8px; padding: 8px; overflow: visible; }
+  .ui-iso .side .spacer { display: none; }
+  .ui-iso .brand { flex: 1 1 160px; }
+  .ui-iso .zones { flex: 1 1 100%; flex-direction: row; flex-wrap: wrap; }
+  .ui-iso .zrow { flex: 1 1 100px; width: auto; padding: 4px; }
+  .ui-iso .side .donutcard { flex: 1 1 180px; }
+  .ui-iso .admin { flex: 1 1 100%; display: flex; flex-direction: row; overflow-x: auto; gap: 4px; }
+  .ui-iso .admin .abtn { flex: none; }
+  .ui-iso .stage { min-height: 65vh; }
+  .ui-iso .sheet-open #stage { height: 75vh; flex: none; }
+  .ui-iso #attn.tray { flex-wrap: wrap; white-space: normal; }
+  .ui-iso .rail-toggle { position: fixed; top: 50%; }
+  .ui-iso .rail-open .rail { position: fixed; top: 16px; }
+}
+
+.ui-iso .dstate:has(.dstate-hint) { flex-wrap: wrap; }
+.ui-iso .dstate-hint { flex: 1 1 100%; min-width: 0; font-size: 11px; white-space: normal; line-height: 1.45; }
+.ui-iso #attn .trayhead { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; min-width: 0; }
+.ui-iso #attn.tray { flex-wrap: wrap; white-space: normal; }
+/* 質問文は行を折り返して幅を取る（min-width:0 だと細い列で文の途中で折れる＝実レンダで確認）。 */
+.ui-iso #attn.tray > span { flex: 1 1 18em; min-width: 12em; white-space: normal; overflow: visible; text-overflow: clip; }
+
+/* HUD_LAYERS_BEGIN (generated: ui/hud/layers.js) */
+.ui-iso {
+  --z-tray: 5;
+  --z-sheet: 7;
+  --z-toast: 8;
+  --z-boss: 9;
+  --z-modal: 9;
+  --z-offbar: 30;
+  --z-consent: 30;
+  --z-stream: 40;
+  --z-digest: 45;
+}
+.ui-iso #attn.tray, .ui-iso #viewreset { z-index: 5; }
+.ui-iso .sheet, .ui-iso .rail-open .rail { z-index: 7; }
+.ui-iso .toast, .ui-iso .rail-toggle { z-index: 8; }
+.ui-iso .boss-onboarding { z-index: 9; }
+.ui-iso .modalwrap { z-index: 9; }
+.ui-iso .offbar { z-index: 30; }
+.ui-iso .sound-consent { z-index: 30; }
+.ui-iso #stream-subtitle, .ui-iso #stream-attention { z-index: 40; }
+.ui-iso .digest-card, .ui-iso .replay-controls { z-index: 45; }
+/* HUD_LAYERS_END */

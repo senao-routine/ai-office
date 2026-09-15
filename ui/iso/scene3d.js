@@ -152,6 +152,8 @@ export function makeMaterials(quality = "high") {
     glassPane: std({ color: 0xdfe9ff, roughness: .04, transparent: true, opacity: .10,
       envMapIntensity: 1.4, depthWrite: false, side: THREE.DoubleSide }),
     joint: std({ color: 0x5e5a55, roughness: .70, vertexColors: true }),
+    // R96-D: Tripo 生成什器（色は頂点色に焼いてある＝全部 1 バッチ）
+    generated: std({ color: 0xffffff, roughness: .72, vertexColors: true }),
     shadow: new THREE.MeshBasicMaterial({ map: softShadowTexture(), color: 0x2c2647,
       transparent: true, depthWrite: false, opacity: .50 }),
     islandShadow: new THREE.MeshBasicMaterial({ map: softShadowTexture(), color: 0x4a4386,

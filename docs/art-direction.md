@@ -291,3 +291,13 @@ v2 のまま（PCF・2048²・`shadow.intensity .55`・contentBox フィット�
 V1' トークン＋HUD ガラス＋ステージ背景＋ダーク → V2' 光・フォグ・環境 → V3' 材質表 v3（テクスチャは Claude が先に生成） →
 V4' 発光モニタ＋bloom 再調律 → V5' ガラス壁 → V6' コンパクト規則 → ★M1'（golden 3 枚更新＋`verify.sh` を `--profile glass` へ＋§10 の確定値を写す・同一コミット）。
 各委譲は `--update` 禁止・差分%を報告。この文書と矛盾したらこの文書が勝つ。
+
+## Tripo 生成什器（R96-D・2026-09-15）
+
+- 生成 → 取り込みの経路: `tools/tripo_gen.py`（API v3・P1・texture あり・seed 固定・台帳 `docs/tripo-ledger.md`）→ `tools/glb_to_geom.py --bake-color --register`
+  （Int16 量子化・ベースカラーを頂点色へ焼く・`ui/iso/gen/<name>.js`＋`manifest.json`＋`index.js`）→ `kit.generated(name, spec)`（材質は `generated` 1 つ・頂点色で塗り分け・
+  無ければ procedural へフォールバック）。
+- 置き方: manifest の `fit:"box"` は w/d を spec に合わせ、高さは**一番大きい上向きの面（天板・座面）を spec.h に**合わせる＝仕切りや背もたれは上へ自然に出る。
+  長辺が z に出た生成物は `yaw: π/2`。色は sRGB のバイトで焼き、kit がリニアへ戻す。
+- 予算: 1 点 ≤160KB・`ui/iso/gen` 合計 ≤3.5MB（verify ▶3b）。PWA は manifest `pwa:true` の物だけ同梱（残りは `export default null` のスタブ＝import 図は同じ）。
+- 採用済み: `desk`（島の 2 人机・低い薄紫フェルト仕切り）・`desk_long`（社長机）。プロンプトの型は台帳の採用行を写す（negative に「cross divider / tall panel / hutch / monitor / chair」）。

@@ -537,8 +537,10 @@ async function sendAttnPushes(room, env, newly, nowMap, subs, subContact) {
         const lead = first.sessions?.find((s) => s.session === first.session) || first;
         const value = Number(question && lead.age != null ? lead.age / 60 : first.approvalMin);
         const minutes = Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
+        // R96-B: 先頭 1 件の session を運ぶ（本文は載せない）＝通知タップでその❗のシートへ戻れる
+        const session = /^[A-Za-z0-9_-]{1,64}$/.test(String(first.session || "")) ? String(first.session) : "";
         const payload = { title: "🏢 AI Office",
-          body: `❗ ${head} — ${kind}を待っています（${minutes}分）`, tag: "aioffice-attn" };
+          body: `❗ ${head} — ${kind}を待っています（${minutes}分）`, tag: "aioffice-attn", session };
         const st = await sendWebPush(JSON.parse(row.v), payload, jwk, subContact);   // TTL=既定3600
         if (st === 404 || st === 410) await room.delSub(row.k.slice(5));   // 購読失効は台帳から掃除
       } catch (_) { /* 個別の送信失敗は握る（次の❗遷移で再送機会がある） */ }
@@ -884,9 +886,12 @@ const SW_JS = [
   '});',
   'self.addEventListener("notificationclick", function(e){',
   '  e.notification.close();',
+  '  // R96-B: 通知タップ → その❗のシートへ（#attn=<session>）。開いている PWA には postMessage、無ければ深リンクで開く',
+  '  var sess = (e.notification.data && e.notification.data.session) || "";',
+  '  var target = "/app" + (sess ? "#attn=" + encodeURIComponent(sess) : "");',
   '  e.waitUntil(clients.matchAll({ type: "window", includeUncontrolled: true }).then(function(cs){',
-  '    for (var i = 0; i < cs.length; i++) { if (cs[i].url.indexOf("/app") >= 0) return cs[i].focus(); }',
-  '    return clients.openWindow("/app");',
+  '    for (var i = 0; i < cs.length; i++) { if (cs[i].url.indexOf("/app") >= 0) { try { cs[i].postMessage({ type: "aioffice-open", session: sess }); } catch (_) {} return cs[i].focus(); } }',
+  '    return clients.openWindow(target);',
   '  }));',
   '});',
 ].join("\n");

@@ -2,11 +2,12 @@
 import { activityGloss, agoStr, isMuted, tidyActivity } from "/ui/core/world.js";
 import { focusTerminal } from "/ui/platform/api.js";
 import { setSound, soundOn } from "/ui/platform/sound.js";
+import { deliveryChip } from "/ui/hud/delivery.js";
 
 /** ctx: shell, T, lang, DEMO, attnKeyFor, getWorld(), render(),
  *  focusOn(id), focusOff(), delivery, dialog, getTemplates(), openTemplateEditor() */
 export function init({ shell, T, lang, DEMO, attnKeyFor, getWorld, render,
-  focusOn, focusOff, delivery: { send, allow, showToast },
+  focusOn, focusOff, delivery: { send, allow, showToast, isStalled },
   dialog: { loadDialog }, getTemplates, openTemplateEditor, paintGrowth = () => {},
   openCustomize = () => {} }) {
   let composeTarget = null;          // {session, name, id}
@@ -18,43 +19,30 @@ export function init({ shell, T, lang, DEMO, attnKeyFor, getWorld, render,
     if (text !== undefined) n.textContent = text;
     return n;
   };
-  const replyChoice = (button, text) => {
-    const wrap = sEl("div", "reply-choice");
-    const menu = sEl("details", "reply-menu");
-    const summary = sEl("summary", "", "⋯");
-    summary.setAttribute("aria-label", T("reply_options"));
-    const save = sEl("button", "reply-save", T("reply_save")); save.type = "button";
-    save.addEventListener("click", () => { menu.open = false; openTemplateEditor(text); });
-    menu.append(summary, save); wrap.append(button, menu);
-    return wrap;
-  };
-  let typeTimer = 0;
-  const typewrite = (el2, text) => {
-    clearInterval(typeTimer);
-    el2.textContent = "";
-    let i = 0;
-    typeTimer = setInterval(() => {
-      if (i >= text.length) { clearInterval(typeTimer); return; }
-      el2.textContent += text[i];
-      i += 1;
-    }, 26);
-  };
-  /** ターミナルの生ログではなく「人間が読む1文」へ変換する（ユーザーFBの核）。 */
-  const humanSummary = (a) => {
-    const g = activityGloss(a, lang());
-    const doing = g ? T("hs_doing", g) : "";
-    if (a.question) return `${doing}${T("hs_question")}`;
-    if (a.attention) return `${doing}${T("hs_approval", a.approvalMin)}`;
-    if (a.zone === "meeting") return `${doing}${T("hs_meeting", a.minions)}`;
-    if (a.zone === "lounge") return T("hs_lounge");
-    if (a.zone === "external") return T("hs_external");
-    if (a.state === "working") return doing || T("hs_working");
-    return T("hs_waiting");
+  const stateOptions = (agent) => ({ T, agent,
+    offline: !!shell.closest(".offline"), stalled: isStalled(agent.session) });
+  /** 非代表セッションの内訳（_session_brief）は listening/ask を運ばない＝配達状態は代表の値で補う（別モデルレビュー）。 */
+  const withDelivery = (agent, brief) => (brief === agent ? agent
+    : { ...agent, ...Object.fromEntries(Object.entries(brief).filter(([, v]) => v !== undefined)) });
+  const paintActivity = (agent) => {
+    shell.querySelector("#sheetact").replaceChildren(
+      sEl("span", "sheetgloss", activityGloss(agent, lang())),
+      deliveryChip(stateOptions(agent)));
   };
   /** R86-D: 受信待機が切れている相手を選んだとき、シート先頭に正直な但し書きを出す。
    *  投函はブロックしない（inboxに残り、そのセッションが次に動いた瞬間に届く）。 */
-  const listenNote = (a) => (!isMuted(a) ? null : sEl("div", "dlgnote listenoff",
-    `📴 ${T("listen_off")}`));
+  const listenNote = (a) => {
+    if (!isMuted(a)) return null;
+    const note = sEl("div", "dlgnote listenoff");
+    note.append(deliveryChip({ ...stateOptions(a), hint: true }));
+    return note;
+  };
+  const paintListenNote = (agent) => {
+    const body = shell.querySelector("#sheetbody");
+    body.querySelector(".listenoff")?.remove();
+    const note = listenNote(agent);
+    if (note) body.prepend(note);
+  };
   // 宛先表示（crew>1 のときだけ・内訳行のクリックで切替）
   const targetEl = () => shell.querySelector("#sheettarget");
   const paintTarget = (agent) => {
@@ -66,12 +54,13 @@ export function init({ shell, T, lang, DEMO, attnKeyFor, getWorld, render,
     el2.hidden = false;
   };
   const openCompose = (agent) => {
+    agent = getWorld()?.agents.find((a) => a.session === agent.session) || agent;
     composeTarget = { session: agent.session, name: agent.name, id: agent.id };
     let dlgListEl = null;                     // R86-B: crewrow の宛先切替から参照する
     let dlgHeadEl = null;                     // R86-C: previousSibling への暗黙依存をやめる
     shell.querySelector("#sheetname").textContent =
       agent.crew > 1 ? `${agent.name} ×${agent.crew}` : agent.name;
-    typewrite(shell.querySelector("#sheetact"), humanSummary(agent));
+    paintActivity(agent);
     const body = shell.querySelector("#sheetbody");
     body.replaceChildren();
     paintGrowth(agent, body, shell.querySelector("#sheetname"));
@@ -129,6 +118,8 @@ export function init({ shell, T, lang, DEMO, attnKeyFor, getWorld, render,
           for (const r of crewWrap.children) r.classList.remove("sel");
           row.classList.add("sel");
           paintTarget(agent);
+          paintActivity(withDelivery(agent, s2));
+          paintListenNote(withDelivery(agent, s2));
           // R86-B: 会話ビューアも切替先セッションのやり取りへ追随
           if (dlgListEl) loadDialog(s2.session, dlgListEl, dlgHeadEl);
           composeInput.focus();
@@ -176,7 +167,12 @@ export function init({ shell, T, lang, DEMO, attnKeyFor, getWorld, render,
     const dock = shell.querySelector("#quickdock");
     dock.replaceChildren();
     const board = sEl("div", "quickboard");
-    board.append(sEl("b", "qb-head", T("qb_head")));
+    const boardHead = sEl("b", "qb-head", T("qb_head"));
+    const edit = sEl("button", "qb-edit", T("qb_edit"));
+    edit.type = "button";
+    edit.addEventListener("click", () => openTemplateEditor());
+    boardHead.append(edit);
+    board.append(boardHead);
     if (agent.attention) {
       const answers = sEl("div", "qb-answers");
       const opts = (agent.questionOptions || []).length
@@ -204,7 +200,7 @@ export function init({ shell, T, lang, DEMO, attnKeyFor, getWorld, render,
           // R67: 成功時のみクローズ（失敗トーストの裏でシートが消える混乱を防ぐ）
           if (await send(agent.session, agent.name, o.text, attnKeyFor(agent))) closeCompose();
         });
-        answers.append(replyChoice(b, o.text));
+        answers.append(b);
       }
       board.append(answers);
     }
@@ -219,7 +215,7 @@ export function init({ shell, T, lang, DEMO, attnKeyFor, getWorld, render,
       b.addEventListener("click", async () => {
         if (await send(composeTarget?.session || agent.session, agent.name, q)) closeCompose();
       });
-      quick.append(replyChoice(b, q));
+      quick.append(b);
     });
     // R82: ユーザー定義の定型文（保存はMac・スマホへは office_json.templates で同期）
     for (const tp of getTemplates()) {
@@ -230,7 +226,7 @@ export function init({ shell, T, lang, DEMO, attnKeyFor, getWorld, render,
       b.addEventListener("click", async () => {
         if (await send(composeTarget?.session || agent.session, agent.name, tp.text)) closeCompose();
       });
-      quick.append(replyChoice(b, tp.text));
+      quick.append(b);
     }
     board.append(quick);
     dock.append(board);
@@ -252,7 +248,6 @@ export function init({ shell, T, lang, DEMO, attnKeyFor, getWorld, render,
     shell.classList.remove("sheet-open");
     composeInput.value = "";
     shell.querySelector("#quickdock").replaceChildren();
-    clearInterval(typeTimer);
     if (getWorld()) render();
   };
   const sndBtn = shell.querySelector("#sheetsnd");
@@ -311,10 +306,15 @@ export function init({ shell, T, lang, DEMO, attnKeyFor, getWorld, render,
     openCompose, closeCompose, jumpTerminal,
     refreshGrowth: () => {
       const agent = getWorld()?.agents.find((a) => a.id === composeTarget?.id);
-      if (agent && !sheetEl.hidden) paintGrowth(agent, shell.querySelector("#sheetbody"),
-        shell.querySelector("#sheetname"));
+      if (agent && !sheetEl.hidden) {
+        paintGrowth(agent, shell.querySelector("#sheetbody"), shell.querySelector("#sheetname"));
+        const target = agent.session === composeTarget.session ? agent
+          : agent.sessions?.find((s) => s.session === composeTarget.session) || agent;
+        paintActivity(withDelivery(agent, target));
+        paintListenNote(withDelivery(agent, target));
+      }
     },
     selectedId: () => composeTarget?.id ?? null,
-    dispose: () => clearInterval(typeTimer),
+    dispose: () => {},
   };
 }

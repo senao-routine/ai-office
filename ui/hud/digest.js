@@ -2,6 +2,7 @@ import { createReplay, digestSummary, replayFrame, REPLAY_SECONDS } from "/ui/co
 import { getDigest, getTimeline, postSeen } from "/ui/platform/api.js";
 import { absenceDays, epochNow, frozen, localDayStart, now } from "/ui/platform/clock.js";
 import { recordWebM, webmType } from "/ui/platform/webm.js";
+import { inertOthers } from "/ui/hud/layers.js";
 
 /** Unread summary and a separate, disposable playback world. Live polling stays live. */
 export function init({ shell, T, getWorld, tray, showToast, beforeOpen, restore, canvas,
@@ -42,7 +43,7 @@ export function init({ shell, T, getWorld, tray, showToast, beforeOpen, restore,
   let lastRefresh = -Infinity;
   let seenRequest = null;
   let recording = null, saving = false;
-  const inertBefore = new Map();
+  let releaseInert = null;
   const isPresent = () => !document.hidden && document.hasFocus();
   const formatAway = (seconds) => {
     const minutes = Math.floor(seconds / 60);
@@ -59,12 +60,10 @@ export function init({ shell, T, getWorld, tray, showToast, beforeOpen, restore,
     shell.classList.toggle("replay-active", on);
     controls.hidden = !on;
     if (on) {
-      for (const node of shell.querySelectorAll(".side, .rail, .head, #viewport, #labels, #attn, #sheet, .bottom")) {
-        inertBefore.set(node, node.inert); node.inert = true;
-      }
+      releaseInert?.();
+      releaseInert = inertOthers(shell, controls);
     } else {
-      for (const [node, value] of inertBefore) node.inert = value;
-      inertBefore.clear();
+      releaseInert?.(); releaseInert = null;
     }
   };
   const closeAll = () => {
@@ -123,6 +122,7 @@ export function init({ shell, T, getWorld, tray, showToast, beforeOpen, restore,
     previousFocus = document.activeElement;
     beforeOpen();
     pendingAuto = false; card.hidden = false;
+    releaseInert ||= inertOthers(shell, card);
     paint(); close.focus();
   };
   const refresh = async () => {

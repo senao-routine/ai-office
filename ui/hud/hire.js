@@ -6,9 +6,8 @@ import { agoStr } from "/ui/core/world.js";
 export function init({ shell, T, lang, getWorld, DEMO, arrivals, refresh, showToast,
   modals: { modal, openModal, closeModal, mEl } }) {
   if (frozen || DEMO) return { dispose() {} };
-  const button = mEl("button", "abtn", T("btn_hire"));
-  button.type = "button"; button.id = "btn-hire";
-  shell.querySelector("#btn-newproj").after(button);
+  const button = shell.querySelector("#btn-hire");
+  button.hidden = false;
   let launching = false;
   let disposed = false;
   const open = () => {
@@ -123,5 +122,5 @@ export function init({ shell, T, lang, getWorld, DEMO, arrivals, refresh, showTo
     sync(); openModal(); projects.focus();
   };
   button.addEventListener("click", open);
-  return { dispose() { disposed = true; button.removeEventListener("click", open); button.remove(); } };
+  return { dispose() { disposed = true; button.removeEventListener("click", open); } };
 }

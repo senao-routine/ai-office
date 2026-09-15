@@ -1,13 +1,63 @@
 // ❗トレイ・巡回・数字キー。描画とキー操作が同じキュー状態を共有する。
-import { attentionQueue, tidyActivity } from "/ui/core/world.js";
+import { answerOutcome, attentionQueue, tidyActivity } from "/ui/core/world.js";
+import { frozen, now } from "/ui/platform/clock.js";
+import { deliveryChip } from "/ui/hud/delivery.js";
 
 /** ctx: shell, T, el(), attnKeyFor, getWorld(), render(), delivery, sheet, modals */
-export function init({ shell, T, el, attnKeyFor, getWorld, render,
-  delivery: { send, answeredKey }, sheet: { openCompose, closeCompose },
+export function init({ shell, T, el, attnKeyFor, getWorld, render, DEMO = false,
+  delivery: { send, answeredKey, answeredAt, retryAnswer, isStalled }, sheet: { openCompose, closeCompose },
   modals: { closeModal } }) {
   let trayActions = [];
   let trayIndex = 0;
   const sheetEl = shell.querySelector("#sheet");
+  const trayEl = shell.querySelector("#attn");
+  const modalEl = shell.querySelector("#modalwrap");
+  const syncLock = () => {
+    const locked = !modalEl.hidden || !sheetEl.hidden;
+    trayEl.classList.toggle("locked", locked);
+    let lock = trayEl.querySelector(".traylock");
+    if (locked && !lock) {
+      lock = el("i", "traylock", T("tray_locked"));
+      trayEl.append(lock);
+    }
+    if (lock) lock.hidden = !locked;
+  };
+  // モーダルは world の更新を伴わずに開くため、同じフレームで鍵の表示も追随させる。
+  const lockObserver = new MutationObserver(syncLock);
+  lockObserver.observe(sheetEl, { attributes: true, attributeFilter: ["hidden"] });
+  lockObserver.observe(modalEl, { attributes: true, attributeFilter: ["hidden"] });
+  let queueIds = new Set();
+  const notifications = new Set();
+  const notificationEnabled = () => {
+    if (frozen || DEMO || shell._stream?.enabled || typeof Notification === "undefined") return false;
+    try { return localStorage.getItem("aioffice.iso.notify") === "1" && Notification.permission === "granted"; }
+    catch { return false; }
+  };
+  const notifyNew = (queue) => {
+    const nextIds = new Set(queue.map((a) => a.id));
+    if (document.hidden && notificationEnabled()) {
+      for (const a of queue) {
+        if (queueIds.has(a.id)) continue;
+        try {
+          const note = new Notification(T("tray_head", a.name, 1, 1), {
+            body: a.question || T("approval_min", a.approvalMin),
+            tag: `aioffice-attn-${a.session}`,
+          });
+          notifications.add(note);
+          note.onclose = () => notifications.delete(note);
+          note.onclick = () => {
+            window.focus();
+            const hash = `#attn=${encodeURIComponent(a.session)}`;
+            // 同じハッシュの通知をもう一度押しても、対象の会話に戻れる。
+            if (location.hash === hash) focusSession(a.session);
+            else location.hash = hash;
+            note.close();
+          };
+        } catch { /* OS が通知を使えない場合も画面内の❗は保持する。 */ }
+      }
+    }
+    queueIds = nextIds;
+  };
   // R54-A: デスクトップ通知→タブへ戻ってきた瞬間、❗集合が変わっていれば最優先の1件を
   // トレイへ出し直す（「通知を見て開いたら該当❗が待っている」）。入力中の誤リセット無し
   let hiddenAttnIds = null;
@@ -34,6 +84,17 @@ export function init({ shell, T, el, attnKeyFor, getWorld, render,
     if (q.length < 2) return;
     trayIndex = ((trayIndex + delta) % q.length + q.length) % q.length;
     if (getWorld()) render();
+  };
+  const focusSession = (session) => {
+    if (frozen || DEMO || shell._stream?.enabled) return false;
+    const queue = attentionQueue(getWorld()?.agents || []);
+    const index = queue.findIndex((a) => a.session === session);
+    if (index < 0) return false;
+    trayIndex = index;
+    closeModal();
+    openCompose(queue[index]);
+    if (getWorld()) render();
+    return true;
   };
   // All entry points, including the digest, share this exact delivery route.
   const activate = (act) => {
@@ -62,7 +123,10 @@ export function init({ shell, T, el, attnKeyFor, getWorld, render,
   };
   window.addEventListener("keydown", onKey);
   shell.querySelector("#attn").addEventListener("click", (e) => {
+    if (e.target.closest(".trayprev")) { cycleTray(-1); return; }
     if (e.target.closest(".traynext")) { cycleTray(1); return; }
+    const retry = e.target.closest(".trayretry");
+    if (retry) { retryAnswer(retry.dataset.session); return; }
     const btn = e.target.closest("button[data-idx]");
     if (!btn) return;
     const act = trayActions[Number(btn.dataset.idx)];
@@ -71,6 +135,7 @@ export function init({ shell, T, el, attnKeyFor, getWorld, render,
   const paint = (w) => {
     // ❗キュー: 表示位置はこのインスタンスの状態（J/K・▸次へ で巡回）。縮んだら先頭へ戻す
     const queue = attentionQueue(w.agents);
+    notifyNew(queue);
     let ti = trayIndex;
     if (ti >= queue.length) {
       ti = 0;
@@ -85,14 +150,24 @@ export function init({ shell, T, el, attnKeyFor, getWorld, render,
     tray.hidden = !attn;
     const acts = [];
     if (attn) {
-      tray.append(el("b", "", T("tray_head", attn.name, ti + 1, queue.length)),
-        el("span", "", attn.question
+      const head = el("b", "trayhead", T("tray_head", attn.name, ti + 1, queue.length));
+      head.append(deliveryChip({ T, agent: attn,
+        offline: !!shell.closest(".offline"), stalled: isStalled(attn.session) }));
+      tray.append(head, el("span", "", attn.question
           || T("approval_min", attn.approvalMin)
             + (attn.stuckTool ? ` — ${T("attn_target", tidyActivity(attn.stuckTool, 40))}` : "")));
       const isAnswered = answeredKey(attn.session) === attnKeyFor(attn);
       if (isAnswered) {
         // 回答済み・反映待ち: ボタンを出さない＝数字キーも無効（二重送信の窓を閉じる）
-        tray.append(el("i", "trayans", T("tray_answered")));
+        const outcome = answerOutcome(answeredAt(attn.session), now());
+        tray.append(el("i", `trayans ${outcome}`, T(outcome === "waiting"
+          ? "tray_answered" : `tray_answered_${outcome}`)));
+        if (outcome === "unconfirmed") {
+          const retry = el("button", "kbd trayretry", T("tray_retry"));
+          retry.type = "button";
+          retry.dataset.session = attn.session;
+          tray.append(retry);
+        }
       } else {
         const base = { session: attn.session, name: attn.name, attnKey: attnKeyFor(attn) };
         if ((attn.questionOptions || []).length) {
@@ -118,17 +193,21 @@ export function init({ shell, T, el, attnKeyFor, getWorld, render,
       }
       if (queue.length > 1) {
         // 巡回導線（回答済み表示中も次へ進める＝残りを捌く手が止まらない）
+        const prev = el("button", "kbd trayprev", T("tray_prev"));
+        prev.type = "button";
         const next = el("button", "kbd traynext", T("tray_next"));
         next.type = "button";
-        tray.append(next);
+        tray.append(prev, next);
       }
     }
     trayActions = acts;
+    syncLock();
 
     return attn?.id ?? null;          // 足元チップの強調対象を呼び手へ返す
   };
   return {
     render: paint,
+    focusSession,
     first: () => {
       trayIndex = 0;
       const w = getWorld();
@@ -150,6 +229,8 @@ export function init({ shell, T, el, attnKeyFor, getWorld, render,
     dispose: () => {
       window.removeEventListener("keydown", onKey);
       document.removeEventListener("visibilitychange", onVis);
+      lockObserver.disconnect();
+      for (const note of notifications) note.close();
     },
   };
 }

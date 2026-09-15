@@ -227,6 +227,31 @@ export function isMuted(agent) {
  * どのゾーンに居るべきか。場所＝状態という設計の中心。
  * external(OpenClaw等) は別Macの稼働体なので専用区画から動かさない。
  */
+// ── R96-B: 配達状態は一語彙・回答後は時間で正直化・名札密度は共通定数 ──────────────
+/** 回答後の状態。tray は「回答済み」を出しっぱなしにせず、時間で正直化する（Mac とスマホ共通）。 */
+export const ANSWER_SLOW_SEC = 60;
+export const ANSWER_UNCONFIRMED_SEC = 180;   // hook の FRESH(300s) より前＝再回答が「新しい回答」として効く
+export function answerOutcome(answeredAt, now) {
+  if (!Number.isFinite(answeredAt) || !Number.isFinite(now)) return "";
+  const age = Math.max(0, now - answeredAt);
+  return age >= ANSWER_UNCONFIRMED_SEC ? "unconfirmed" : age >= ANSWER_SLOW_SEC ? "slow" : "waiting";
+}
+
+/** 配達状態の 1 enum: offline > stalled > pending > saved > live。Mac もスマホもこの語彙だけで描く。 */
+export const DELIVERY_STATES = Object.freeze(["live", "saved", "pending", "stalled", "offline"]);
+export function deliveryState(agent, { offline = false, stalled = false } = {}) {
+  if (offline) return "offline";
+  if (stalled) return "stalled";
+  if (agent && agent.pending) return "pending";
+  if (isMuted(agent)) return "saved";
+  return "live";
+}
+
+/** 名札を全員に出す上限（超えたら二段マーカーへ）。デスクトップ 12・狭い画面 6（旧 PWA の値）を 1 か所に。 */
+export function labelDensityMax(viewportWidth) {
+  return Number(viewportWidth) >= 1000 ? 12 : 6;
+}
+
 export function zoneOf(employee) {
   if (!employee) return "desk";
   if (employee.external) return "external";

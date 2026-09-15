@@ -6,6 +6,7 @@ import {
   DESK_SLOTS, activityGloss, activityText, agoStr, assignMeetingRooms, assignRestSpots, assignSeats, attentionQueue, buildWorld, isMuted,
   countByZone, deliveryTransitions, needsAttention, stableIndex, summarizeWorld, tidyActivity,
   assignLabels, stalledSends, topAttention, triageSort, zoneOf,
+  answerOutcome, deliveryState, labelDensityMax, ANSWER_SLOW_SEC, ANSWER_UNCONFIRMED_SEC,
 } from "./world.js";
 
 const proj = (over = {}) => ({
@@ -569,4 +570,39 @@ test("explicit accessory overrides survive world normalization; null disables ke
   for (const [choice, kind] of Object.entries(expected)) assert.equal(make(choice).kind, kind);
   assert.equal(make(null).kind, "generic");
   assert.equal(make("invalid").kind, "video");
+});
+
+// ── R96-B ──────────────────────────────────────────────────────────────
+test("answerOutcome: waiting → slow → unconfirmed（境界は >=）・不正入力は空", () => {
+  const at = 1000;
+  assert.equal(answerOutcome(at, at), "waiting");
+  assert.equal(answerOutcome(at, at + ANSWER_SLOW_SEC - 1), "waiting");
+  assert.equal(answerOutcome(at, at + ANSWER_SLOW_SEC), "slow");
+  assert.equal(answerOutcome(at, at + ANSWER_UNCONFIRMED_SEC - 1), "slow");
+  assert.equal(answerOutcome(at, at + ANSWER_UNCONFIRMED_SEC), "unconfirmed");
+  assert.equal(answerOutcome(undefined, at), "");
+  assert.equal(answerOutcome(at, NaN), "");
+  assert.ok(ANSWER_UNCONFIRMED_SEC < 300, "hook の FRESH(300s) より前に正直化する");
+});
+
+test("deliveryState: offline > stalled > pending > saved > live の順で 1 語", () => {
+  const live = { listening: true, state: "waiting" };
+  assert.equal(deliveryState(live), "live");
+  assert.equal(deliveryState({ listening: false, state: "waiting" }), "saved");
+  assert.equal(isMuted({ listening: false, state: "waiting" }), true);            // saved ⇔ isMuted
+  assert.equal(deliveryState({ ...live, pending: true }), "pending");
+  assert.equal(deliveryState({ listening: false, state: "waiting", pending: true }), "pending");
+  assert.equal(deliveryState(live, { stalled: true }), "stalled");
+  assert.equal(deliveryState({ ...live, pending: true }, { stalled: true }), "stalled");
+  assert.equal(deliveryState(live, { offline: true, stalled: true }), "offline");
+  assert.equal(deliveryState(null), "live");                                       // listening 未搬送＝脅さない
+  assert.equal(deliveryState({ listening: false, state: "working", ask: { kind: "permission" } }), "live");
+});
+
+test("labelDensityMax: 1000px 以上は 12・それ未満は 6", () => {
+  assert.equal(labelDensityMax(1440), 12);
+  assert.equal(labelDensityMax(1000), 12);
+  assert.equal(labelDensityMax(999), 6);
+  assert.equal(labelDensityMax(390), 6);
+  assert.equal(labelDensityMax(undefined), 6);
 });

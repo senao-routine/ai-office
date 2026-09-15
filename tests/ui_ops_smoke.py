@@ -97,9 +97,14 @@ def main():
                 route.fulfill(status=200, content_type="application/json; charset=utf-8",
                               body=json.dumps(body))
             page.route("**/api/session/dialog*", dlg_route)
-            page.goto(f"http://127.0.0.1:{port}/?ui={STYLE}&t=3.2&seed=11")
+            page.goto(f"http://127.0.0.1:{port}/?ui={STYLE}&t=3.2&seed=11#attn={attn_session}")
             page.wait_for_function("window.__office && window.__office.ready", timeout=30000)
             page.wait_for_timeout(300)
+            if page.eval_on_selector("#sheet", "el => el.hidden"):
+                print("  ✓ R96 frozenでは初期URLの #attn でシートを開かない")
+            else:
+                print("  ✗ R96 frozenで #attn が描画を変えている")
+                ng += 1
 
             # (1) ❗トレイ: 数字キー1で選択肢を回答 → inbox に実ファイル
             page.keyboard.press("1")
@@ -109,8 +114,11 @@ def main():
             else:
                 print(f"  ✗ ❗回答が inbox に届かない: {f1}")
                 ng += 1
-            if page.eval_on_selector("#toast", "el => !el.hidden && el.textContent.includes('配達')"):
-                print("  ✓ 送信トースト表示")
+            if page.eval_on_selector("#toast", "el => !el.hidden && !!el.querySelector('.dstate-pending')"
+                                    " && el.textContent.includes('配達')"
+                                    " && el.textContent.includes('投函済み')"
+                                    " && el.textContent.includes('議事録アプリ')"):
+                print("  ✓ 送信トースト表示（宛先＋投函済みチップ）")
             else:
                 print("  ✗ 送信トーストが出ない")
                 ng += 1
@@ -368,6 +376,9 @@ def main():
             live.route("**/api/status_board*", lambda route: route.fulfill(
                 status=200, content_type="application/json; charset=utf-8", body=sb_payload))
             live.route("**/api/session/dialog*", dlg_route)
+            # 復帰ダイジェストは別スモークで検査する。ここは操作対象のシートに固定。
+            live.route("**/api/digest*", lambda route: route.fulfill(
+                status=200, content_type="application/json", body='{"available":false,"since":0,"totals":{"tasksDone":0}}'))
             live.goto(f"http://127.0.0.1:{port}/?ui={STYLE}")          # frozen にしない
             live.wait_for_function("window.__office && window.__office.ready", timeout=60000)
             live.wait_for_timeout(600)
@@ -393,6 +404,42 @@ def main():
                       f"/{lb_after['n']}枚・live）")
             else:
                 print(f"  ✗ シートを開くと名札が崩れる: 前={lb_before} 後={lb_after}")
+                ng += 1
+
+            # R96: シートを開いた際も❗への道とロック理由を実際に見られる。
+            overlap = live.evaluate(
+                "() => { const tray = document.querySelector('#attn');"
+                " const sheet = document.querySelector('#sheet');"
+                " const a = tray.getBoundingClientRect(), b = sheet.getBoundingClientRect();"
+                " return { visible: !tray.hidden && !sheet.hidden && a.width > 0 && b.width > 0,"
+                "   overlap: a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top,"
+                "   locked: tray.classList.contains('locked') && !!tray.querySelector('.traylock:not([hidden])') }; }")
+            if overlap["visible"] and overlap["locked"] and not overlap["overlap"]:
+                print("  ✓ R96 シートと❗トレイが重ならず、ロック理由も表示")
+            else:
+                print(f"  ✗ R96 シートが❗を隠す/ロック表示がない: {overlap}")
+                ng += 1
+            live.keyboard.press("Escape")
+            live.wait_for_selector("#sheet[hidden]", state="attached", timeout=3000)
+            reset_before = live.eval_on_selector("#viewreset", "el => el.hidden")
+            viewport = live.locator("#viewport").bounding_box()
+            live.mouse.move(viewport["x"] + 16, viewport["y"] + 16)
+            live.mouse.wheel(0, -160)
+            live.wait_for_selector("#viewreset:not([hidden])", timeout=3000)
+            live.click("#viewreset")
+            if reset_before and live.eval_on_selector("#viewreset", "el => el.hidden"):
+                print("  ✓ R96 ホイール操作後だけ視点リセットが現れ、押すと隠れる")
+            else:
+                print("  ✗ R96 視点リセットの表示状態が不正")
+                ng += 1
+            live.evaluate("(session) => { location.hash = '#attn=' + encodeURIComponent(session); }", attn_session)
+            live.wait_for_selector("#sheet:not([hidden])", timeout=5000)
+            hash_target = live.eval_on_selector("#sheetname", "el => el.textContent")
+            hash_tray = live.eval_on_selector("#attn .trayhead", "el => el.textContent")
+            if "議事録アプリ" in hash_target and "議事録アプリ" in hash_tray:
+                print("  ✓ R96 hashchange の #attn から該当❗と会話へ戻れる（live）")
+            else:
+                print(f"  ✗ R96 #attn の宛先が不正: sheet={hash_target!r} tray={hash_tray!r}")
                 ng += 1
             live.close()
 
@@ -462,6 +509,37 @@ def main():
                 ng += 1
             page.keyboard.press("k")
             page.wait_for_timeout(200)
+            page.click("#attn .trayprev")
+            prev_txt = page.eval_on_selector("#attn", "el => el.textContent")
+            if "xpost製品化" in prev_txt and ("（2/2）" in prev_txt or "(2/2)" in prev_txt):
+                print("  ✓ R96 ◂ボタンで（1/2）から（2/2）へ戻る")
+            else:
+                print(f"  ✗ R96 ◂ボタンで前の❗へ戻れない: {prev_txt[:60]}")
+                ng += 1
+            page.keyboard.press("j")
+            page.wait_for_timeout(200)
+
+            # R96: 集計のクリックは同じゾーンの全行だけを表示し、再クリックで解除。
+            all_rows = page.eval_on_selector_all("#agents .arow",
+                "rows => rows.map(r => ({ session: r.dataset.session, zone: r.dataset.zone }))")
+            zone = next(z for z in sorted({r["zone"] for r in all_rows})
+                        if 0 < sum(r["zone"] == z for r in all_rows) < len(all_rows))
+            expected = sorted(r["session"] for r in all_rows if r["zone"] == zone)
+            page.click(f'.zrow[data-zone="{zone}"]')
+            filtered = page.eval_on_selector_all("#agents .arow", "rows => rows.map(r => r.dataset.session).sort()")
+            zone_on = page.eval_on_selector(f'.zrow[data-zone="{zone}"]', "el => el.classList.contains('on')")
+            if zone_on and filtered == expected:
+                print(f"  ✓ R96 ゾーン集計から右レールを絞る（{zone}: {len(filtered)}行）")
+            else:
+                print(f"  ✗ R96 ゾーン絞り込みが不正: on={zone_on} expected={expected} actual={filtered}")
+                ng += 1
+            page.click(f'.zrow[data-zone="{zone}"]')
+            restored = page.eval_on_selector_all("#agents .arow", "rows => rows.map(r => r.dataset.session).sort()")
+            if restored == sorted(r["session"] for r in all_rows) and not page.locator(".zrow.on").count():
+                print("  ✓ R96 ゾーン再クリックで全行へ戻る")
+            else:
+                print("  ✗ R96 ゾーン絞り込みを解除できない")
+                ng += 1
 
             # (3c) 3Dロボットのクリック → シートが開く（座標は probe.debug から取る＝暗算しない）。
             #      足元チップが胴に被るとチップ側が先に拾う（それは別経路で検証済み）ので、
@@ -501,6 +579,28 @@ def main():
             else:
                 print("  ✗ 再送2クリック目が投函されない")
                 ng += 1
+
+            # R96: 5件を注入して、展開が表示件数を本当に増やすことを検査する。
+            history_world = json.loads(payload)
+            history_world["history"] = [dict(world["history"][0], text=f"履歴の検査 {i + 1}",
+                                             ts=world["generatedAt"] - 60 * (i + 1)) for i in range(5)]
+            page.evaluate("(w) => window.__office.inject(w)", history_world)
+            initial_rows = page.locator("#hist .hrow").count()
+            page.click(".histcard button.hmore")
+            expanded_rows = page.locator("#hist .hrow").count()
+            expanded = page.locator(".histcard.expanded").count() == 1
+            page.click(".histcard button.hmore")
+            collapsed = page.locator(".histcard.expanded").count() == 0 and page.locator("#hist .hrow").count() == 3
+            page.click(".histcard button.hmore")
+            page.keyboard.press("Escape")
+            esc_collapsed = page.locator(".histcard.expanded").count() == 0 and page.locator("#hist .hrow").count() == 3
+            if initial_rows == 3 and expanded_rows == 5 and expanded and collapsed and esc_collapsed:
+                print("  ✓ R96 履歴3→5件を展開し、再クリック/Escで3件に戻る")
+            else:
+                print(f"  ✗ R96 履歴展開が不正: initial={initial_rows} rows={expanded_rows}"
+                      f" expanded={expanded} click={collapsed} esc={esc_collapsed}")
+                ng += 1
+            page.evaluate("(w) => window.__office.inject(w)", world)
 
             # (3e) R55 リッチゲージ: fixture status_board で Codex 2段バー・リセット残・
             #      planチップ・Claude tok行・Gemini接続行が描画される（SwiftShaderは遅い＝長めに待つ）
@@ -549,6 +649,38 @@ def main():
                 print(f"  ✗ サイドバーがはみ出している: {fit}")
                 ng += 1
 
+            # R96: 枠の説明を読むクリックでは閉じず、明示した詳細ボタンでだけ進む。
+            page.click("#usage-summary")
+            page.wait_for_selector(".usage.open #gauges", timeout=3000)
+            page.click("#gtitle-credits")
+            drawer_stayed = page.locator(".usage.open #gauges").is_visible()
+            modal_stayed_closed = page.eval_on_selector("#modalwrap", "el => el.hidden")
+            if drawer_stayed and modal_stayed_closed:
+                print("  ✓ R96 ゲージ内部クリックではドロワーを閉じず、モーダルも開かない")
+            else:
+                print(f"  ✗ R96 ゲージ内部クリックの遷移が不正: drawer={drawer_stayed} modalClosed={modal_stayed_closed}")
+                ng += 1
+            page.click("#gauges-more")
+            page.wait_for_selector("#modalwrap:not([hidden])", timeout=3000)
+            page.wait_for_selector("#modal .mled", timeout=8000)
+            if "リソース" in page.locator("#modal .mtitle").inner_text():
+                print("  ✓ R96 明示した詳細ボタンからリソースモーダルへ到達")
+            else:
+                print("  ✗ R96 詳細ボタンがリソースモーダルを開かない")
+                ng += 1
+            page.keyboard.press("Escape")
+            page.wait_for_selector("#modalwrap[hidden]", state="attached", timeout=3000)
+            page.keyboard.press("?")
+            page.wait_for_selector("#modalwrap:not([hidden])", timeout=3000)
+            help_text = page.locator("#modal").inner_text()
+            if all(text in help_text for text in ["操作のヘルプ", "キーボード", "URL パラメータ", "J", "K"]):
+                print("  ✓ R96 ?キーから操作とURLのヘルプへ到達")
+            else:
+                print(f"  ✗ R96 ヘルプの内容が足りない: {help_text[:120]!r}")
+                ng += 1
+            page.keyboard.press("Escape")
+            page.wait_for_selector("#modalwrap[hidden]", state="attached", timeout=3000)
+
             # (3f) R67 送信失敗で本文が残る（従来: 失敗トーストの裏で入力全喪失の実バグ）
             page.route("**/api/instruct", lambda route: route.fulfill(
                 status=500, content_type="application/json; charset=utf-8",
@@ -573,13 +705,19 @@ def main():
             held = []
             page.route("**/api/instruct", lambda route: held.append(route))
             page.fill("#composeinput", "送信中UIの検証")
+            placeholder_before = page.eval_on_selector("#composeinput", "el => el.placeholder")
             page.keyboard.press("Enter")
             page.wait_for_timeout(250)
             busy = page.evaluate(
                 "() => ({ dis: document.querySelector('#composeinput').disabled,"
-                "  ph: document.querySelector('#composeinput').placeholder })")
-            if busy["dis"] and "送信中" in busy["ph"]:
-                print("  ✓ R67 送信中: 入力disabled＋「送信中…」表示")
+                "  ph: document.querySelector('#composeinput').placeholder,"
+                "  chip: !!document.querySelector('#compose .dstate-sending:not([hidden])'),"
+                "  text: document.querySelector('#compose .dstate-sending')?.textContent || '',"
+                "  buttons: document.querySelectorAll('#quickdock button, #attn button').length > 0 &&"
+                "    [...document.querySelectorAll('#quickdock button, #attn button')].every(b => b.disabled) })")
+            if busy["dis"] and busy["buttons"] and busy["ph"] == placeholder_before and busy["chip"] \
+                    and "送信中" in busy["text"] and page.locator("#compose .dstate-sending").is_visible():
+                print("  ✓ R67/R96 送信中: 入力/ボタンdisabled＋placeholder保持＋送信中チップ")
             else:
                 print(f"  ✗ 送信中UIが出ない: {busy}")
                 ng += 1
@@ -603,11 +741,22 @@ def main():
             page3 = browser.new_page(viewport=VIEWPORT, device_scale_factor=1)
             page3.route("**/api/office*", lambda route: route.fulfill(
                 status=200, content_type="application/json; charset=utf-8", body=payload))
-            page3.goto(f"http://127.0.0.1:{port}/?ui={STYLE}&seed=11")
+            page3.route("**/api/session/dialog*", dlg_route)
+            page3.route("**/api/digest*", lambda route: route.fulfill(
+                status=200, content_type="application/json", body='{"available":false,"since":0,"totals":{"tasksDone":0}}'))
+            page3.goto(f"http://127.0.0.1:{port}/?ui={STYLE}&seed=11#attn={attn_session}")
             page3.wait_for_function("window.__office && window.__office.ready", timeout=60000)
             # R68の環境アニメ導入後、SwiftShaderのliveモードは初回描画が更に遅い
             #（オフライン検知(4)の150s待ちと同じ教訓）
             page3.wait_for_selector(".arow", timeout=60000)
+            # R96: 初期URLの #attn は最初の world 到着後に開く＝live では .arow と同じ待ち（5 秒では SwiftShader が間に合わない・実測）
+            page3.wait_for_selector("#sheet:not([hidden])", timeout=60000)
+            if "議事録アプリ" in page3.locator("#sheetname").inner_text() \
+                    and "議事録アプリ" in page3.locator("#attn .trayhead").inner_text():
+                print("  ✓ R96 初期URLの #attn から該当❗と会話を開く（live）")
+            else:
+                print("  ✗ R96 初期URLの #attn が該当セッションを開かない")
+                ng += 1
             handle = page3.query_selector(f'.arow[data-session="{target_session}"]')
             page3.wait_for_timeout(3600)          # ポーリング1周以上またぐ
             alive = handle.evaluate("el => el.isConnected") if handle else False
@@ -617,6 +766,19 @@ def main():
                 print("  ✗ .arow がポーリングで作り直されている")
                 ng += 1
             page3.close()
+
+            # R96: 1024pxでは右レールを畳み、ステージへ横幅を返す。
+            page.set_viewport_size({"width": 1024, "height": 700})
+            page.wait_for_timeout(300)
+            compact = page.evaluate(
+                "() => ({ viewport: document.querySelector('#viewport').getBoundingClientRect().width,"
+                " shell: document.querySelector('.shell').getBoundingClientRect().width })")
+            if compact["viewport"] >= compact["shell"] * 0.6:
+                print(f"  ✓ R96 1024×700でステージ幅がshellの60%以上（{compact['viewport']}/{compact['shell']}px）")
+            else:
+                print(f"  ✗ R96 1024×700でステージが狭い: {compact}")
+                ng += 1
+            page.set_viewport_size(VIEWPORT)
 
             # (4) オフライン表示: /api/office が2回連続で落ちたら .ui-iso.offline＋バナー
             #     （クラス付与先とCSSセレクタの食い違いでサイレント故障していた回帰ピン。

@@ -12,6 +12,7 @@
 """
 import json
 import os
+import signal
 import subprocess
 import tempfile
 import time
@@ -42,12 +43,21 @@ def spawn_hook(payload, home, wait=6.0, poll=0.1):
     env = dict(os.environ)
     env.update({"OFFICE_HOME": str(home), "OFFICE_APPROVAL_WAIT": str(wait),
                 "OFFICE_APPROVAL_POLL": str(poll)})
+    # R86-H2: 自分のプロセスグループで起動する＝killpg で bash と python をまとめて殺せる
+    # （Claude Code が TUI の回答時にやるのと同じ形。片方だけ殺すと python 子が孤児になる）。
     p = subprocess.Popen(["bash", str(HOOK)], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                         stderr=subprocess.PIPE, text=True, env=env)
+                         stderr=subprocess.PIPE, text=True, env=env, start_new_session=True)
     p.stdin.write(json.dumps(payload))
     p.stdin.close()
     p.stdin = None          # communicate() が閉じた stdin を触らないように
     return p
+
+
+def kill_group(p, sig):
+    try:
+        os.killpg(os.getpgid(p.pid), sig)
+    except ProcessLookupError:
+        pass
 
 
 def approvals(home):
@@ -245,6 +255,67 @@ class ApprovalHookTest(unittest.TestCase):
         r = run_hook(BASH_PAYLOAD, self.home, wait=1.5)
         self.assertEqual(r.returncode, 0)
         self.assertEqual(r.stdout, "")
+
+
+class HeartbeatTest(unittest.TestCase):
+    """R86-H2: 人間が TUI で答えると Claude Code は hook をその場で kill する（finally は走らない）。
+    掲示の生死は**心拍（mtime）**で判定する＝hook は毎周 utime だけ打ち、中身は書き換えない。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.home = self.tmp.name
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_heartbeat_touches_posting_without_rewriting(self):
+        p = spawn_hook(BASH_PAYLOAD, self.home)
+        pend = approvals(self.home) / "sess-aaaa1111.json"
+        self.assertTrue(wait_for(pend), "掲示が出ない")
+        try:
+            body0 = pend.read_bytes(); st0 = pend.stat()
+            time.sleep(0.6)
+            st1 = pend.stat()
+            self.assertGreater(st1.st_mtime, st0.st_mtime, "心拍（mtime）が進んでいない")
+            self.assertEqual(pend.read_bytes(), body0, "心拍で中身を書き換えている（pid/ts は不変のはず）")
+            self.assertEqual(st1.st_ino, st0.st_ino, "心拍でファイルを作り直している")
+        finally:
+            kill_group(p, signal.SIGKILL); p.wait(timeout=5)
+
+    def test_sigterm_cleans_up_the_posting_immediately(self):
+        p = spawn_hook(BASH_PAYLOAD, self.home)
+        pend = approvals(self.home) / "sess-aaaa1111.json"
+        self.assertTrue(wait_for(pend))
+        kill_group(p, signal.SIGTERM)
+        end = time.time() + 2.0
+        while time.time() < end and pend.exists():
+            time.sleep(0.05)
+        self.assertFalse(pend.exists(), "SIGTERM で掲示が消えない")
+        out, _ = p.communicate(timeout=5)
+        self.assertEqual(out, "", "kill 時に出力してはいけない（ターミナルを壊す）")
+
+    def test_sigkill_freezes_the_heartbeat_but_keeps_the_posting(self):
+        """SIGKILL は捕まえられない＝掲示は残り mtime が止まる。この失敗様式を daemon 側（ASK_STALE）が拾う。"""
+        p = spawn_hook(BASH_PAYLOAD, self.home)
+        pend = approvals(self.home) / "sess-aaaa1111.json"
+        self.assertTrue(wait_for(pend))
+        kill_group(p, signal.SIGKILL); p.wait(timeout=5)
+        m0 = pend.stat().st_mtime
+        time.sleep(0.5)
+        self.assertTrue(pend.exists(), "SIGKILL では掲示が残るはず（これが幽霊の正体）")
+        self.assertEqual(pend.stat().st_mtime, m0, "死んだ hook の mtime が動いている")
+
+    def test_republishes_when_the_posting_was_swept(self):
+        p = spawn_hook(BASH_PAYLOAD, self.home)
+        pend = approvals(self.home) / "sess-aaaa1111.json"
+        self.assertTrue(wait_for(pend))
+        try:
+            pid0 = json.loads(pend.read_text())["pid"]
+            pend.unlink()
+            self.assertTrue(wait_for(pend, 3.0), "掃除された掲示を再掲示しない（スリープ復帰で❗が消えたまま）")
+            self.assertEqual(json.loads(pend.read_text())["pid"], pid0)
+        finally:
+            kill_group(p, signal.SIGKILL); p.wait(timeout=5)
 
 
 if __name__ == "__main__":

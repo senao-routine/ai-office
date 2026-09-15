@@ -8,7 +8,7 @@ import { runInNewContext } from "node:vm";
 import { APP_HTML } from "../relay/src/app_html.js";
 import { MODULES, ASSETS } from "../relay/src/modules_data.js";
 
-const EXPECT_SHA256 = "85ea87e395afc04359c6458ed275ad7d28679a91af226b772dae0e8774a4cd68";
+const EXPECT_SHA256 = "5dd5c9374feb07f20ff24dd0759cf364bbdd11e0f9c79d931deb20e0c4396b57";
 // 2026-09-10 (R87-H1): 設定シートに「🔐 暗号セルフテスト」を1行と、その実行関数を追加（+2,532B）。
 // 固定ベクタ(約11KB・base64は圧縮が効かない)は**シェルに入れず** ui/core/dialog_kat.js へ置き、
 // 遅延読み込みの modules_data.js 側へ載せた（起動のたびに払う転送量にしない）。
@@ -28,7 +28,11 @@ const EXPECT_SHA256 = "85ea87e395afc04359c6458ed275ad7d28679a91af226b772dae0e877
 // 2026-09-14 (R87-S6 7 回目): 保留要求は sessionStorage（タブごと）＝別タブが横取りしない（+328B）。
 // 2026-09-14 (R93 着地): R87 の app.js/app.html に R93-V1' の HUD トークン（白×ラベンダー×ガラス）を再生成で合流（+354B）。
 // 2026-09-14 (R93-P1'): theme-color を #f4f4fb へ・設定のテーマ説明を「白×ラベンダーのガラス面」へ（+61B）。
-const EXPECT_BYTES = 118923;
+// 2026-09-15 (R96): 配達5状態・❗1件巡回・Mac許可の手がかり・通知sessionの深リンク・
+// 日次集計の正本化と名札密度を追加し、動かないテーマ行を撤去（+4,215B）。
+// キャッシュから深リンクを開く前に会話状態も初期化するため、boot() は末尾へ移動。
+// 2026-09-15 (R96 着地): 通知の深リンクはキャッシュでは開かず最新の受信で開く（openAttnLink(false) 撤去・-20B）。
+const EXPECT_BYTES = 123118;
 const actual = createHash("sha256").update(APP_HTML, "utf8").digest("hex");
 assert.equal(actual, EXPECT_SHA256, "APP_HTML が方向Cの配信バイト列と不一致");
 assert.equal(Buffer.byteLength(APP_HTML, "utf8"), EXPECT_BYTES);

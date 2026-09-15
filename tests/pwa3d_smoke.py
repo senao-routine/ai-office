@@ -211,13 +211,29 @@ def main(argv):
                     ng += 1
 
                 # R86-H: 許可要求の相手には「承認」を出さない（スマホからは実行を通せない）。
+                # R96-B: ❗カードは 1 件ずつの巡回表示（i/N）。「次へ」で全件を回しながら文言を集める。
                 perm = page.evaluate(
-                    """() => {
-                      const t = document.body.innerText || '';
+                    """async () => {
+                      const texts = [], lies = [];
+                      const seen = new Set();
+                      for (let i = 0; i < 8; i++) {
+                        const card = document.querySelector('#attncards .attncard');
+                        const key = card?.getAttribute('data-attn-sess') || '';
+                        if (!card || seen.has(key)) break;
+                        seen.add(key);
+                        const t = document.body.innerText || '';
+                        texts.push(t);
+                        const next = document.querySelector('#attncards .attnnext');
+                        if (!next) break;
+                        next.click();
+                        await new Promise(r => setTimeout(r, 120));
+                      }
+                      const all = texts.join(' ');   // 非 raw の三重引用なのでバックスラッシュ n を書かない（JS が途中で切れる・別モデルレビュー）
                       const mini = [...document.querySelectorAll('.attnmini')]
                         .map(n => n.textContent || '').join(' ');
-                      return { hasPermLine: /ターミナルで .* の許可を待って/.test(t) || /許可を待って/.test(mini),
-                               liesApprovalNeeded: /承認が必要です/.test(t) }; }""")
+                      return { cards: seen.size,
+                               hasPermLine: /ターミナルで .* の許可を待って/.test(all) || /許可を待って/.test(mini) || /許可は Mac で/.test(all),
+                               liesApprovalNeeded: /承認が必要です/.test(all) }; }""")
                 if perm["hasPermLine"] and not perm["liesApprovalNeeded"]:
                     print("  ✓ R86-H 許可要求は事実の文言（『承認が必要です』と断定しない）")
                 else:

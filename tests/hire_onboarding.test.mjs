@@ -112,7 +112,9 @@ test("launch sheet blocks empty/oversized instructions and double submits; Codex
   const originalFetch = globalThis.fetch;
   const originalNavigator = Object.getOwnPropertyDescriptor(globalThis, "navigator");
   const shell = new Element("div"), modal = new Element("div");
-  const anchor = new Element("button"); anchor.id = "btn-newproj"; shell.append(anchor, modal);
+  const anchor = new Element("button"); anchor.id = "btn-newproj";
+  const hire = new Element("button"); hire.id = "btn-hire"; hire.hidden = true;
+  shell.append(anchor, hire, modal);
   globalThis.document = { createTextNode: (text) => new Element("text", "", text) };
   let copied = "", requested = 0, finish, refreshed = 0;
   Object.defineProperty(globalThis, "navigator", { configurable: true,
@@ -125,6 +127,8 @@ test("launch sheet blocks empty/oversized instructions and double submits; Codex
       arrivals: { hired: (id) => assert.equal(id, "abcdef12") }, refresh: () => refreshed++, showToast() {},
       modals: { modal, openModal() {}, closeModal: () => modal.replaceChildren(),
         mEl: (tag, cls, text) => new Element(tag, cls, text) } });
+    assert.equal(shell.querySelector("#btn-hire"), hire);
+    assert.equal(hire.hidden, false);
     shell.querySelector("#btn-hire").fire("click");
     const form = modal.querySelector("#hire-form"), go = modal.querySelector("#mgo-hire");
     const prompt = modal.querySelector("#hire-prompt"), provider = modal.querySelector("#hire-provider");

@@ -26,3 +26,6 @@ CleanShot*.png
 office_config.json
 # セッション作業中の一時スプライト（ユーザーファイル・リポ対象外）
 plant_sprite_pixelart.png
+
+# R96-D: Tripo の GLB 原本（重い・再生成可能）
+tools/tripo_out/

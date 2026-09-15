@@ -66,6 +66,23 @@ class OfficeDataTest(unittest.TestCase):
         o = _load("office_name", ROOT / "server" / "office_server.py")
         self.assertEqual(o.office_json()["officeName"], "テスト本部")
 
+    def test_office_json_today_answered_comes_from_daily_stats(self):
+        """R96-B: 「今日のまとめ」の正本は daemon 側の日次 stats（端末ごとに数字が違わない）。無ければ 0。"""
+        import datetime, json
+        tmp = self._tmpdir("today_")
+        config = tmp / "office_config.json"
+        config.write_text('{"projects":{}}\n', encoding="utf-8")
+        os.environ["OFFICE_HOME"] = str(tmp)
+        os.environ["OFFICE_DATA"] = str(tmp)
+        os.environ["OFFICE_CONFIG"] = str(config)
+        o = _load("office_today", ROOT / "server" / "office_server.py")
+        self.assertEqual(o.office_json()["today"]["answered"], 0)
+        day = datetime.datetime.now().strftime("%Y-%m-%d")
+        (o.DAILY_DIR).mkdir(parents=True, exist_ok=True)
+        (o.DAILY_DIR / f"{day}.stats.json").write_text(json.dumps({"answered": 3, "totalWaitSec": 900}), encoding="utf-8")
+        o._cache["t"] = 0.0
+        self.assertEqual(o.office_json()["today"]["answered"], 3)
+
     def test_office_json_setup_hook_installed_true(self):
         home = self._tmpdir("hook_true_")
         claude = home / ".claude"

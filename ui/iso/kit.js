@@ -5,6 +5,7 @@ import { DEFAULT_SPEC, FURNITURE as F } from "/ui/core/layout_specs.js";
 import { vertexAO } from "./bake.js";
 import { mergeGeometries } from "./merge.js";
 import { leafCardGeometry } from "./plants.js";
+import { GEN } from "./gen/index.js";
 
 const slabCache = new Map();
 /** Rounded horizontal slab, with exact outside dimensions and an optional bevel. */
@@ -63,8 +64,79 @@ function builder(spec) {
   return { pieces, put };
 }
 
+// ---- R96-D: Tripo 生成什器 ---------------------------------------------------------
+const genCache = new Map();
+/** 生成モジュール（tools/glb_to_geom.py の出力）→ 部品ごとの BufferGeometry（ローカル空間・底面 y=0・中心 x/z=0）。 */
+function genGeometries(mod) {
+  if (genCache.has(mod)) return genCache.get(mod);
+  const bytes = (b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+  const [lo, hi] = mod.bbox, cx = (lo[0] + hi[0]) / 2, cz = (lo[2] + hi[2]) / 2;
+  const out = mod.parts.map((part) => {
+    const q = new Int16Array(bytes(part.pos).buffer), n = part.n;
+    const pos = new Float32Array(n * 3);
+    for (let i = 0; i < n * 3; i += 3) {
+      pos[i] = q[i] * mod.scale + mod.offset[0] - cx;
+      pos[i + 1] = q[i + 1] * mod.scale + mod.offset[1] - lo[1];
+      pos[i + 2] = q[i + 2] * mod.scale + mod.offset[2] - cz;
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    if (part.nrm) {
+      const qn = new Int8Array(bytes(part.nrm).buffer), nrm = new Float32Array(n * 3);
+      for (let i = 0; i < n * 3; i++) nrm[i] = qn[i] / 127;
+      g.setAttribute("normal", new THREE.BufferAttribute(nrm, 3));
+    }
+    if (part.col) {
+      // 焼いた色は sRGB のバイト。three の頂点色はリニア前提なので、ここで伝達関数を戻す。
+      const qc = bytes(part.col), col = new Float32Array(n * 3);
+      for (let i = 0; i < n * 3; i++) {
+        const c = qc[i] / 255;
+        col[i] = c <= .04045 ? c / 12.92 : Math.pow((c + .055) / 1.055, 2.4);
+      }
+      g.setAttribute("color", new THREE.BufferAttribute(col, 3));
+    }
+    g.setIndex(new THREE.BufferAttribute(new Uint16Array(bytes(part.idx).buffer), 1));
+    if (!part.nrm) g.computeVertexNormals();
+    return { name: part.name, geometry: g, size: [hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]] };
+  });
+  genCache.set(mod, out);
+  return out;
+}
+
+/**
+ * 生成什器を置く。無ければ null（呼び出し側が procedural へ落ちる）。
+ * spec.w/d/h のどれか（manifest の fit・既定 w）に合わせて一様スケール。yaw で正面を +z へ。
+ */
+export function generated(name, spec = {}, opts = {}) {
+  const mod = GEN[name];
+  if (!mod) return null;
+  const s = { yaw: 0, fit: "w", fitH: "top", ...(mod.place || {}), ...opts };
+  const { put, pieces } = builder(spec);
+  const parts = genGeometries(mod), raw = parts[0].size;
+  // yaw を掛けた後の外形で合わせる（長辺が z に出た生成物は yaw=π/2 で x へ回してから spec.w に合わせる）。
+  const c = Math.abs(Math.cos(s.yaw)), sn = Math.abs(Math.sin(s.yaw));
+  const size = [c * raw[0] + sn * raw[2], raw[1], sn * raw[0] + c * raw[2]];
+  // fit: "w"|"d"|"h" は一様スケール。"box" は w/d/h を個別に合わせる（比率を指定して生成した物だけ＝歪みは小さい）。
+  // "box" の高さは「一番大きい上向きの面」（天板・座面）を spec.h に合わせる＝仕切りや背もたれは上へ自然にはみ出す。
+  const topH = mod.top != null && s.fitH !== "full" ? mod.top - mod.bbox[0][1] : size[1];
+  const axis = { w: [spec.w, size[0]], d: [spec.d, size[2]], h: [spec.h, size[1]], top: [spec.h, topH] };
+  const ratio = ([want, have]) => (want && have ? want / have : 1);
+  let kx, ky, kz;
+  if (s.fit === "box") { kx = ratio(axis.w); ky = ratio(axis.top); kz = ratio(axis.d); }
+  else kx = ky = kz = ratio(s.fit === "h" ? axis.top : axis[s.fit] || axis.w);
+  // 回転してから世界軸で拡縮する（R·S だと拡縮が生成物のローカル軸に掛かり、yaw=π/2 の物は w/d が入れ替わる＝別モデルレビューの実測）。
+  const m = new THREE.Matrix4().makeScale(kx, ky, kz).multiply(new THREE.Matrix4().makeRotationY(s.yaw));
+  for (const part of parts) {
+    const g = part.geometry.clone().applyMatrix4(m);
+    // 頂点 AO は builder の put が焼く（色は保持＝preserveColor）。材質は 1 つ・頂点色で塗り分ける。
+    put(g, "generated", s.dx || 0, s.dy || 0, s.dz || 0);
+  }
+  return pieces;
+}
+
 export function desk(spec = {}) {
   const s = { ...F.desk, ...DEFAULT_SPEC.desks.top, ...spec }, { put, pieces } = builder(s);
+  if (!s.table) { const g = generated(s.gen || "desk", s); if (g) return g; }
   // A light oak edge band occupies the lower 6 mm of the 30 mm top.
   put(slab(s.w, s.top, s.d, s.radius), "wood", 0, s.h - s.top / 2);
   put(tint(slab(s.w, s.edge, s.d, s.radius), 0xf1ddba, 0xd3b48a), "wood2",
@@ -83,6 +155,7 @@ export function desk(spec = {}) {
 
 export function meetingTable(spec = {}) {
   const s = { w: 4.2, d: 1.6, h: .86, ...spec }, { put, pieces } = builder(s);
+  { const g = generated("meeting_table", s); if (g) return g; }
   const top = .065, radius = Math.min(s.w, s.d) / 2;
   put(slab(s.w, top, s.d, radius), "white", 0, s.h - top / 2);
   put(slab(s.w - .08, .025, s.d - .08, radius - .04), "wood2", 0, s.h - top - .0125);
@@ -109,6 +182,7 @@ export function roundTable(spec = {}) {
 
 export function floorLamp(spec = {}) {
   const s = { w: .65, d: .65, h: 1.8, ...spec }, { put, pieces } = builder(s);
+  { const g = generated("floor_lamp", s); if (g) return g; }
   const radius = Math.min(s.w, s.d) * .46, shadeH = Math.min(.36, s.h * .24);
   put(new THREE.CylinderGeometry(radius * .75, radius * .75, .035, 32), "steel", 0, .0175);
   put(cyl(.016, s.h - shadeH * .50 - .035), "steel", 0, (s.h - shadeH * .50 + .035) / 2);
@@ -121,6 +195,7 @@ export function floorLamp(spec = {}) {
 
 export function stool(spec = {}) {
   const s = { w: .50, d: .50, h: .73, ...spec }, { put, pieces } = builder(s), seatH = .105;
+  { const g = generated("stool", s); if (g) return g; }
   put(slab(s.w, seatH, s.d, Math.min(s.w, s.d) / 2), s.material || "seatB", 0, s.h - seatH / 2);
   put(slab(s.w * .74, .028, s.d * .74, .10), "steel", 0, s.h - seatH - .014);
   const legH = s.h - seatH - .028, x = s.w * .29, z = s.d * .29;
@@ -135,6 +210,8 @@ export function stool(spec = {}) {
 
 export function chair(spec = {}) {
   const s = { ...F.chair, ...spec }, { put, pieces } = builder(s), mat = s.material || "seat";
+  // 生成椅子は座面の高さ（一番大きい上向きの面）を s.seat に合わせる＝ロボの着席位置はそのまま。
+  { const g = generated("chair", { ...s, h: s.seat }); if (g) return g; }
   put(slab(s.w, s.seatH, s.d, s.radius), mat, 0, s.seat);
   // Open mesh back, with a 5 cm frame. Fine intersecting ribbons reveal the room behind it.
   const rail = .018, bw = s.w - .02;
@@ -179,6 +256,7 @@ export function puff(w, h, d, radius = F.sofa.radius) {
 
 export function sofa(spec = {}) {
   const s = { ...F.sofa, ...spec }, { put, pieces } = builder(s), mat = s.material || "linen";
+  if (!s.pouf) { const g = generated("sofa", { ...s, h: s.seat }); if (g) return g; }
   const pad = F.sofa.puff, count = s.seats ?? Math.max(1, Math.round(s.w / .95));
   if (!s.pouf) {
     const width = (s.w - s.arm * 2) / count;
@@ -296,6 +374,7 @@ export function mediaWall(spec = {}) {
 
 export function shelf(spec = {}) {
   const s = { ...F.shelf, ...spec }, { put, pieces } = builder(s), t = s.panel;
+  { const g = generated("shelf", s); if (g) return g; }
   put(box(s.w, s.h, t), "wood2", 0, s.h / 2, -(s.d - t) / 2);
   for (const side of [-1, 1]) put(box(t, s.h, s.d), "wood2", side * (s.w - t) / 2, s.h / 2);
   for (let row = 0; row <= s.rows; row++) put(box(s.w, t, s.d), "wood", 0, t / 2 + (s.h - t) * row / s.rows);
@@ -381,6 +460,7 @@ export function phoneBooth(spec = {}) {
 
 export function waterStation(spec = {}) {
   const s = { w: .58, d: .52, h: 1.25, ...spec }, { put, pieces } = builder(s);
+  { const g = generated("water_station", s); if (g) return g; }
   put(slab(s.w, s.h * .82, s.d, .05), "white", 0, s.h * .41);
   put(slab(s.w * .72, .06, s.d * .65, .03), "darker", 0, s.h * .76, .04);
   put(box(s.w * .65, .30, .04), "wood2", 0, s.h * .87, -s.d * .35);

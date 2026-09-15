@@ -18,12 +18,17 @@
 #   中継（スマホ）経由の回答は deny+message＝「言葉を届ける」ことしかできない。
 #   スマホから任意コマンドを承認できてしまうと、中継トークンとデバイス秘密の漏洩が
 #   そのまま任意コード実行になる。ここは opt-in ですら開けない（開けるなら別プランで）。
+#
+# ★R86-H2（2026-09-15・本人「セッションは進んでいるのにオフィスは許可を求めたまま」）:
+#   人間が TUI で答えると Claude Code はこの hook をその瞬間に kill する（finally は走らない）＝掲示が
+#   12 時間残って❗の幽霊になった。だから毎周 **心拍**（mtime だけ更新）を打ち、daemon は mtime が
+#   ASK_STALE より古い掲示を幽霊扱いする。SIGTERM/SIGHUP/SIGINT には handler で即 cleanup。
 set -u
 IN=$(cat 2>/dev/null || true)
 [ -n "$IN" ] || exit 0
 
 printf '%s' "$IN" | /usr/bin/python3 -c '
-import json, os, sys, time
+import json, os, signal, sys, time
 
 def bail():
     sys.exit(0)                      # 無出力 exit 0 ＝ 素通し
@@ -76,13 +81,17 @@ elif tool == "ExitPlanMode":
 rec = {"session": sid, "tool": tool, "kind": kind, "title": title, "options": options,
        "cwd": str(d.get("cwd") or ""), "ts": time.time(), "deadline": time.time() + WAIT,
        "pid": os.getpid()}
-try:
+def publish():
     os.makedirs(dirp, exist_ok=True)
     os.chmod(dirp, 0o700)
     fd = os.open(pend + ".tmp", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w") as f:
         json.dump(rec, f, ensure_ascii=False)
     os.replace(pend + ".tmp", pend)
+    return os.stat(pend).st_ino
+
+try:
+    ino0 = publish()
 except Exception:
     bail()
 
@@ -133,11 +142,39 @@ def log(msg):
     except Exception:
         pass
 
+# R86-H2 心拍: 毎周 utime だけ打つ（中身は書かない＝pid/ts は不変・cleanup() の所有判定もそのまま）。
+# 掃除やスリープ復帰で掲示が消えていたら再掲示する（同じ pid・同じ ts）。
+def heartbeat():
+    global ino0
+    try:
+        if os.stat(pend).st_ino == ino0:
+            os.utime(pend, None)
+    except FileNotFoundError:
+        try:
+            ino0 = publish()
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+# kill されたときの即掃除（best effort・無出力）。SIGKILL は捕まえられない＝daemon 側の心拍判定が拾う。
+def _on_signal(signum, frame):
+    log("bail: signal %d" % signum)
+    cleanup()
+    os._exit(0)
+
+for _sig in (signal.SIGTERM, signal.SIGHUP, signal.SIGINT):
+    try:
+        signal.signal(_sig, _on_signal)
+    except Exception:
+        pass
+
 log("published tool=%s kind=%s tp=%s size0=%d" % (tool, kind, bool(tp), size0))
 
 end = time.time() + WAIT
 try:
     while time.time() < end:
+        heartbeat()
         if answered_elsewhere():
             log("bail: answered at the terminal")
             cleanup(); bail()

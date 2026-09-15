@@ -68,6 +68,67 @@ class PendingApprovalTest(unittest.TestCase):
         publish(self.home, "s1", deadline=time.time() - 1)
         self.assertIsNone(self.office.pending_approval("s1"))
 
+    # ── R86-H2: 心拍（mtime）が生死の一次情報 ──────────────────────────
+    def test_stale_heartbeat_is_a_ghost(self):
+        """deadline が未来でも、心拍（mtime）が ASK_STALE より古い掲示は幽霊。
+        人間が TUI で答えると Claude Code は hook を kill し finally は走らない＝掲示だけが残る（実測 3 件）。"""
+        p = publish(self.home, "s1", ts=time.time() - 30)
+        now = time.time()
+        os.utime(p, (now - 30, now - 30))
+        self.assertIsNone(self.office.pending_approval("s1"), "心拍が止まった掲示を生きていると言った")
+        os.utime(p, None)
+        self.assertIsNotNone(self.office.pending_approval("s1"), "心拍が戻ったのに幽霊のまま")
+
+    def test_ask_stale_is_a_few_seconds(self):
+        """❗が消えるまでの上限（心拍 10 周＋スリープ復帰のジッタ）。広げるなら理由を書く。"""
+        self.assertGreaterEqual(self.office.ASK_STALE, 5)
+        self.assertLessEqual(self.office.ASK_STALE, 15)
+
+    def test_ghost_posting_does_not_raise_attention(self):
+        sess = "sess-ghost001"
+        proj = Path(self.home) / ".claude/projects/-tmp-demo"
+        proj.mkdir(parents=True, exist_ok=True)
+        f = proj / f"{sess}.jsonl"
+        f.write_text(json.dumps({"type": "assistant", "cwd": "/tmp/demo", "message": {
+            "role": "assistant", "content": [{"type": "text", "text": "done"}]}}) + "\n",
+            encoding="utf-8")
+        p = publish(self.home, sess, kind="question", tool="AskUserQuestion", ts=time.time() - 40,
+                    title="幽霊?", options=["A", "B"])
+        os.utime(p, (time.time() - 40, time.time() - 40))
+        e = self.office.parse_session(f, time.time())
+        self.assertIsNone(e.get("ask"), "幽霊の掲示で ask を立てた")
+        self.assertEqual(e.get("approvalMin", 0), 0)
+        self.assertNotEqual(e.get("state"), "waiting")
+
+    def test_killed_hook_becomes_ghost_after_ask_stale(self):
+        """実 hook を SIGKILL（Claude Code が TUI 回答時にやる形）→ 掲示は残るが ASK_STALE 後に幽霊。"""
+        import signal, subprocess
+        hook = Path(__file__).resolve().parents[1] / "hooks" / "office-approval-wait.sh"
+        sess = "sess-killme001"
+        env = dict(os.environ, OFFICE_HOME=self.home, OFFICE_APPROVAL_WAIT="30", OFFICE_APPROVAL_POLL="0.1")
+        p = subprocess.Popen(["bash", str(hook)], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                             stderr=subprocess.PIPE, text=True, env=env, start_new_session=True)
+        p.stdin.write(json.dumps({"session_id": sess, "cwd": "/tmp/demo", "hook_event_name": "PermissionRequest",
+                                  "tool_name": "Bash", "tool_input": {"command": "git push"},
+                                  "transcript_path": "/nonexistent"})); p.stdin.close(); p.stdin = None
+        pend = Path(self.home) / ".claude/office_approvals" / f"{sess}.json"
+        end = time.time() + 8
+        while time.time() < end and not pend.exists():
+            time.sleep(0.05)
+        self.assertTrue(pend.exists(), "掲示が出ない")
+        try:
+            self.assertIsNotNone(self.office.pending_approval(sess), "生きている hook の掲示が幽霊扱い")
+            os.killpg(os.getpgid(p.pid), signal.SIGKILL); p.wait(timeout=5)
+            time.sleep(0.3)
+            self.assertTrue(pend.exists())
+            self.assertIsNone(self.office.pending_approval(sess, now=time.time() + self.office.ASK_STALE + 1),
+                              "kill された hook の掲示が ASK_STALE 後も生きている")
+        finally:
+            try:
+                os.killpg(os.getpgid(p.pid), signal.SIGKILL)
+            except Exception:
+                pass
+
     def test_mismatched_or_broken_posting_is_ignored(self):
         d = Path(self.home) / ".claude/office_approvals"
         d.mkdir(parents=True, exist_ok=True)
@@ -216,6 +277,44 @@ class InboxLitterTest(unittest.TestCase):
         self.assertTrue(live_pid.exists(), "心拍している受信待機を殺した")
         self.assertTrue(new_msg.exists(), "まだ届く指示を捨てた")
         self.assertTrue(hist.exists(), "送信履歴を消した")
+
+    def test_prunes_dead_postings_and_replies_only(self):
+        """R86-H2: 承認の掲示板。死んだ掲示（心拍 >1h）と古い回答/claim/tmp（>10min）だけ消し、
+        生きた掲示・新しい回答・`_` 始まり（_e2e.log）は残す。"""
+        d = Path(self.home) / ".claude" / "office_approvals"
+        d.mkdir(parents=True, exist_ok=True)
+        def aged(name, age, body="{}"):
+            p = d / name
+            p.write_text(body, encoding="utf-8")
+            os.utime(p, (time.time() - age, time.time() - age))
+            return p
+        dead = aged("s-dead.json", 2 * 3600)
+        live = aged("s-live.json", 5)
+        old_reply = aged("s-old.reply.json", 20 * 60)
+        fresh_reply = aged("s-fresh.reply.json", 30)
+        tmp = aged(".s-x.reply.tmp", 20 * 60)
+        claim = aged("s-y.reply.json.taken.1", 20 * 60)
+        log = aged("_e2e.log", 30 * 86400, "x")
+        self.office._LAST_PRUNE[0] = 0
+        n = self.office.prune_inbox_litter()
+        self.assertEqual(n, 4, "消す数が違う")
+        for p in (dead, old_reply, tmp, claim):
+            self.assertFalse(p.exists(), p.name)
+        for p in (live, fresh_reply, log):
+            self.assertTrue(p.exists(), p.name)
+
+    def test_prunes_approvals_even_without_an_inbox(self):
+        """初回の PermissionRequest だけが起きた環境: office_inbox が無くても掲示板は掃除する。"""
+        import shutil
+        shutil.rmtree(self.inbox)
+        d = Path(self.home) / ".claude" / "office_approvals"
+        d.mkdir(parents=True, exist_ok=True)
+        dead = d / "s-dead.json"
+        dead.write_text("{}", encoding="utf-8")
+        os.utime(dead, (time.time() - 2 * 3600, time.time() - 2 * 3600))
+        self.office._LAST_PRUNE[0] = 0
+        self.assertEqual(self.office.prune_inbox_litter(), 1)
+        self.assertFalse(dead.exists())
 
     def test_runs_at_most_hourly(self):
         self.office._LAST_PRUNE[0] = 0

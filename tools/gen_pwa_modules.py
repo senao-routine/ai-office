@@ -26,6 +26,19 @@ HUD_SOURCE = ROOT / "ui" / "hud-tokens.css"
 HUD_TARGETS = [ROOT / "ui" / "iso" / "style.css", ROOT / "ui" / "pwa" / "app.css"]
 HUD_BEGIN = "/* HUD_TOKENS_BEGIN (generated: ui/hud-tokens.css) */"
 HUD_END = "/* HUD_TOKENS_END */"
+LAYERS_BEGIN = "/* HUD_LAYERS_BEGIN (generated: ui/hud/layers.js) */"
+LAYERS_END = "/* HUD_LAYERS_END */"
+LAYER_SELECTORS = {
+    "tray": ".ui-iso #attn.tray, .ui-iso #viewreset",
+    "sheet": ".ui-iso .sheet, .ui-iso .rail-open .rail",
+    "toast": ".ui-iso .toast, .ui-iso .rail-toggle",
+    "boss": ".ui-iso .boss-onboarding",
+    "modal": ".ui-iso .modalwrap",
+    "offbar": ".ui-iso .offbar",
+    "consent": ".ui-iso .sound-consent",
+    "stream": ".ui-iso #stream-subtitle, .ui-iso #stream-attention",
+    "digest": ".ui-iso .digest-card, .ui-iso .replay-controls",
+}
 
 # 入口＝3Dシーンとワールド構築。ここから import を辿って閉包を作る
 # R87: 封書の入口は 3D と独立（リスト表示のままでも会話を読めるようにする）。
@@ -46,6 +59,27 @@ def _read(url):
     return path.read_text(encoding="utf-8")
 
 
+GEN_DIR = "/ui/iso/gen/"
+GEN_MANIFEST = ROOT / "ui" / "iso" / "gen" / "manifest.json"
+GEN_STUB = "// PWA には同梱しない（ui/iso/gen/manifest.json の pwa:false）＝procedural へフォールバック\nexport default null;\n"
+
+
+def _pwa_gen_names():
+    """R96-D: 生成什器のうち PWA に同梱する name の集合（manifest の pwa:true）。"""
+    if not GEN_MANIFEST.is_file():
+        return set()
+    items = json.loads(GEN_MANIFEST.read_text(encoding="utf-8")).get("items", {})
+    return {name for name, meta in items.items() if meta.get("pwa")}
+
+
+def _maybe_stub(url, src):
+    """生成什器モジュールは manifest で選んだ物だけ本物を同梱し、残りは null に差し替える（import 図は不変）。"""
+    if not url.startswith(GEN_DIR) or url == GEN_DIR + "index.js":
+        return src
+    name = url[len(GEN_DIR):-3]
+    return src if name in _pwa_gen_names() else GEN_STUB
+
+
 def collect():
     """入口から import を辿って {url: source} を作る（テストは含めない）。"""
     seen = {}
@@ -55,7 +89,7 @@ def collect():
         if url in seen:
             continue
         src = _read(url)
-        seen[url] = src
+        seen[url] = _maybe_stub(url, src)
         base = url.rsplit("/", 1)[0]
         for dep in _ABS.findall(src):
             stack.append(dep)
@@ -121,7 +155,34 @@ def render_hud_css():
         if end <= begin:
             raise SystemExit(f"✗ {path.relative_to(ROOT)} の HUD_TOKENS マーカー順が不正")
         outputs[path] = css[:begin] + block + css[end:]
+    path = ROOT / "ui" / "iso" / "style.css"
+    outputs[path] = render_layers_css(outputs[path])
     return outputs
+
+
+def render_layers_css(css):
+    """層の数値も正本から展開し、HUDトークン外のvar()を増やさない。"""
+    source = (ROOT / "ui" / "hud" / "layers.js").read_text(encoding="utf-8")
+    match = re.search(r"export const Z = Object\.freeze\(\{([^}]+)\}\)", source)
+    if not match:
+        raise SystemExit("✗ layers.js の Z 表が見つかりません")
+    values = dict(re.findall(r"(\w+):\s*(\d+)", match.group(1)))
+    if values.keys() != LAYER_SELECTORS.keys():
+        raise SystemExit("✗ layers.js と CSS 層の登録が不一致")
+    lines = [LAYERS_BEGIN, ".ui-iso {"]
+    lines.extend(f"  --z-{key}: {value};" for key, value in values.items())
+    lines.append("}")
+    lines.extend(f"{LAYER_SELECTORS[key]} {{ z-index: {value}; }}" for key, value in values.items())
+    lines.append(LAYERS_END)
+    block = "\n".join(lines)
+    if LAYERS_BEGIN not in css and LAYERS_END not in css:
+        return css.rstrip() + "\n\n" + block + "\n"
+    if css.count(LAYERS_BEGIN) != 1 or css.count(LAYERS_END) != 1:
+        raise SystemExit("✗ HUD_LAYERS マーカーは1組必要")
+    begin, end = css.index(LAYERS_BEGIN), css.index(LAYERS_END) + len(LAYERS_END)
+    if end <= begin:
+        raise SystemExit("✗ HUD_LAYERS マーカー順が不正")
+    return css[:begin] + block + css[end:]
 
 
 def render_app_html(hud_css):
@@ -166,6 +227,7 @@ def main(argv):
         print(f"✓ relay/src/modules_data.js は最新（JS {len(mods)}本＋tex {len(assets)}枚・{kb}KB）")
         print("✓ relay/src/app_html.js は最新（ui/pwa/app.html・app.css・app.js）")
         print("✓ HUDトークンは両画面で最新（ui/hud-tokens.css）")
+        print("✓ HUD層は最新（ui/hud/layers.js）")
         return 0
     for path, css in hud_css.items():
         path.write_text(css, encoding="utf-8")

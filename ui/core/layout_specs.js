@@ -104,7 +104,7 @@ const medium = {
       dx: 3.8 + dx, dz: 2.03, w: .5, d: .5, h: .73, yaw: Math.PI, solid: true })),
     { id: "phoneBooth", kind: "phoneBooth", ref: "back", dx: -4.6, dz: 2.65,
       w: 1.35, d: 1.65, h: 2.25, solid: true },
-    { id: "bossDesk", kind: "desk", ref: "back", dx: -.6, dz: 2.1, dy: .26, w: 2.9, d: 1.15 },
+    { id: "bossDesk", kind: "desk", gen: "desk_long", ref: "back", dx: -.6, dz: 2.1, dy: .26, w: 2.9, d: 1.15 },
     { id: "stageNorth", kind: "sofa", ref: "stageZone", dx: .1, dz: -.95, w: 2.2, d: .95, seats: 2 },
     { id: "stageSouth", kind: "sofa", ref: "stageZone", dx: .1, dz: 1.0, yaw: Math.PI, w: 2.2, d: .95, seats: 2 },
     { id: "stageTable", kind: "desk", ref: "stageZone", dx: .1, dz: .05, w: 1.5, d: .65, h: .34, table: true },

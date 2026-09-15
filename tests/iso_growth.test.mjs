@@ -218,8 +218,9 @@ test("every tier builds deterministic static batches with one mesh per material 
     const first = withRandState(seed, () => buildOffice(materials, spec));
     const digest = geometryDigest(first);
     // R94: recaptured at seed=11 after rebuilding four glass rooms, the lounge and cafe.
+    // R96-D: recaptured after the Tripo-generated furniture (desks, chairs, sofa, stools, tables, lamp, shelf, water) replaced the procedural pieces.
     // This covers geometry, placement and shadow flags; pixel golden is a separate gate.
-    if (tier === "M") assert.equal(digest, "2683e82af13f4a7fbdb2cfbbc811c2110c3b86cc003d2f3cd3ccb10b200eff49");
+    if (tier === "M") assert.equal(digest, "92f6db84558ea6a8b7d40710ef87ba4802a1e54c25495d46b191be1ec6c1951b");
     counts.push({ tier, batches: first.length, shadowBatches: first.filter((m) => m.castShadow).length,
       monitorScreens: spec.desks.columns.length * spec.desks.rows.length * 2 });
     assert.equal(new Set(first.map((m) => m.name)).size, first.length);

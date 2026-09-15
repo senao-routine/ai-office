@@ -11,6 +11,7 @@ export function init({ root, shell, T, lang, setLang, getWorld, applyStaticStrin
   showToast, billingOf, fmtTok, renderStreamSettings = () => {}, renderCustomizationSettings = () => {}, modals: { modal, openModal, closeModal, mEl } }) {
   // R82: 定型文エディタ（8件×120字・保存でスマホにも同期）
   let TEMPLATES = [];
+  let recipeFolder = "";
   const refreshTemplates = async () => {
     try { TEMPLATES = (await getTemplates())?.templates || []; } catch { /* 未対応サーバーでも動く */ }
   };
@@ -80,6 +81,7 @@ export function init({ root, shell, T, lang, setLang, getWorld, applyStaticStrin
     let picked;
     try {
       picked = await pickProjectFolder();
+      recipeFolder = picked.path || recipeFolder;
     } catch (err) {
       modal.replaceChildren(mEl("b", "mtitle", T("btn_newproj")),
         mEl("p", "mnote merr", err.message));
@@ -125,6 +127,29 @@ export function init({ root, shell, T, lang, setLang, getWorld, applyStaticStrin
     nameIn.focus();
   });
 
+  const renderDialogSetting = (target, id, { dialogRelay, dialogAvailable }) => {
+    const row = mEl("label", "mdev");
+    const input = mEl("input");
+    input.type = "checkbox";
+    input.id = id;
+    input.checked = dialogRelay === true;
+    input.disabled = dialogAvailable === false;
+    row.append(input, mEl("span", "", T("pair_dialog_toggle")));
+    input.addEventListener("change", async () => {
+      const enabled = input.checked;
+      input.disabled = true;
+      try {
+        await setDialogRelay(enabled);
+        showToast(T(enabled ? "pair_dialog_on" : "pair_dialog_off"));
+      } catch (err) {
+        input.checked = !enabled;
+        showToast(err.message, false);
+      }
+      input.disabled = dialogAvailable === false;
+    });
+    target.append(row, mEl("p", "mnote",
+      dialogAvailable === false ? T("pair_dialog_unavailable") : T("pair_dialog_note")));
+  };
   const renderPairPanel = async () => {
     modal.replaceChildren(mEl("b", "mtitle", T("btn_pair")),
       mEl("p", "mnote", T("pair_issuing")));
@@ -162,29 +187,9 @@ export function init({ root, shell, T, lang, setLang, getWorld, applyStaticStrin
       modal.append(mEl("p", "mnote", T("pair_norelay")));
     }
     try {
-      const { devices, dialogRelay, dialogAvailable } = await pairList();
-      // R87: 会話共有のトグル。既定 OFF・この画面が唯一の入口（遠隔から変える経路は無い）。
-      // 別モデルレビュー（2026-09-14）: API だけあって UI が無く、設定を手編集しない限り届かなかった。
-      const dlgRow = mEl("label", "mdev");
-      const dlgOn = mEl("input");
-      dlgOn.type = "checkbox";
-      dlgOn.id = "pair-dialog";
-      dlgOn.checked = dialogRelay === true;
-      dlgOn.disabled = dialogAvailable === false;
-      dlgRow.append(dlgOn, mEl("span", "", T("pair_dialog_toggle")));
-      dlgOn.addEventListener("change", async () => {
-        dlgOn.disabled = true;
-        try {
-          await setDialogRelay(dlgOn.checked);
-          showToast(T(dlgOn.checked ? "pair_dialog_on" : "pair_dialog_off"));
-        } catch (err) {
-          dlgOn.checked = !dlgOn.checked;
-          showToast(err.message, false);
-        }
-        dlgOn.disabled = false;
-      });
-      modal.append(dlgRow, mEl("p", "mnote",
-        dialogAvailable === false ? T("pair_dialog_unavailable") : T("pair_dialog_note")));
+      const data = await pairList();
+      const { devices } = data;
+      renderDialogSetting(modal, "pair-dialog", data);
       if (devices?.length) {
         const list = mEl("div", "mdevices");
         list.append(mEl("b", "msub", T("pair_devices", devices.length)));
@@ -230,6 +235,72 @@ export function init({ root, shell, T, lang, setLang, getWorld, applyStaticStrin
       return;
     }
     const recipes = data?.recipes || [];
+    const form = mEl("form", "run-form mkeyrow");
+    const field = (id, key) => {
+      const label = mEl("label", "run-field");
+      const input = mEl("input", "minput");
+      input.id = id;
+      input.type = "text";
+      input.required = true;
+      label.append(mEl("span", "", T(key)), input);
+      form.append(label);
+      return input;
+    };
+    const labelIn = field("run-label", "run_label");
+    labelIn.maxLength = 60;
+    const folderIn = field("run-folder", "run_folder");
+    folderIn.readOnly = true;
+    folderIn.value = recipeFolder;
+    const pick = mEl("button", "abtn", T("run_pick_folder"));
+    pick.type = "button";
+    pick.id = "run-pick-folder";
+    folderIn.parentElement.append(pick);
+    const commandIn = field("run-command", "run_command");
+    const add = mEl("button", "mgo", T("run_add"));
+    add.type = "submit";
+    add.id = "run-add";
+    let saving = false;   // 保存中は入力を直しても追加を再有効化しない（二重送信で同じ r_N が上書きし合う・別モデルレビュー）
+    const updateAdd = () => {
+      add.disabled = saving || !labelIn.value.trim() || !folderIn.value || !commandIn.value.trim();
+    };
+    form.addEventListener("input", updateAdd);
+    pick.addEventListener("click", async () => {
+      pick.disabled = true;
+      try {
+        const picked = await pickProjectFolder();
+        if (picked?.path) {
+          recipeFolder = picked.path;
+          folderIn.value = recipeFolder;
+        }
+      } catch (err) {
+        showToast(err.message, false);
+      }
+      pick.disabled = false;
+      updateAdd();
+    });
+    form.addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      if (add.disabled || saving || !form.reportValidity()) return;
+      saving = true; add.disabled = true;
+      // 短い連番なら日本語のラベルでも安定した許可リストIDになる。
+      let index = 1;
+      while (recipes.some((r) => r.id === `r_${index}`)) index++;
+      const recipe = { id: `r_${index}`, label: labelIn.value.trim(),
+        cwd: folderIn.value, argv: commandIn.value.trim().split(/\s+/),
+        timeoutSec: 600, returnOutput: "none" };
+      try {
+        const res = await setRecipes([...recipes, recipe]);
+        showToast(res?.msg || T("run_saved"));
+        renderRunPanel();
+      } catch (err) {
+        showToast(err.message, false);
+        saving = false;
+        updateAdd();
+      }
+    });
+    updateAdd();
+    form.append(add);
+    modal.append(form);
     if (!recipes.length) modal.append(mEl("p", "mnote", T("run_empty")));
     for (const r of recipes) {
       const row = mEl("div", "mkeyrow");
@@ -271,13 +342,16 @@ export function init({ root, shell, T, lang, setLang, getWorld, applyStaticStrin
       const example = {
         id: "r_status", label: T("run_sample_label"),
         argv: ["git", "status", "--short"],
-        cwd: "/Users/you/path/to/your-project",
+        cwd: recipeFolder || "/Users/you/path/to/your-project",
         timeoutSec: 30, returnOutput: "tail",
       };
       ta.value = JSON.stringify({ recipes: [...cur, example] }, null, 1);
       showToast(T("run_sample_note"));
     });
-    modal.append(mEl("p", "mnote", T("run_hint")), ta, sample, save);
+    const advanced = mEl("details", "run-advanced");
+    advanced.append(mEl("summary", "", T("run_advanced")),
+      mEl("p", "mnote", T("run_hint")), ta, sample, save);
+    modal.append(advanced);
   };
   shell.querySelector("#btn-run").addEventListener("click", renderRunPanel);
 
@@ -651,10 +725,13 @@ export function init({ root, shell, T, lang, setLang, getWorld, applyStaticStrin
     modal.append(led);
     await renderKeysSection(sb);
   });
-  // クレジットのゲージをクリック→⚡（アカウント連携・台帳がある画面）を開く（R54ユーザーFB）
-  shell.querySelector("#gauges").addEventListener("click", () => {
+  const gaugesMore = mEl("button", "abtn", T("gauges_more"));
+  gaugesMore.type = "button";
+  gaugesMore.id = "gauges-more";
+  gaugesMore.addEventListener("click", () => {
     shell.querySelector("#btn-res").click();
   });
+  shell.querySelector("#gauges").append(gaugesMore);
 
   // 🧾ライセンスパネルは R84 全機能無料化で撤去（R85-2）。購入導線・鍵登録UIは存在しない。
 
@@ -690,6 +767,7 @@ export function init({ root, shell, T, lang, setLang, getWorld, applyStaticStrin
 
   // ── R85-3: ⚙ 設定（PC初の設定パネル＝ダークテーマ・言語。PWAの⚙タブと対） ──
   const THEME_KEY = "aioffice.iso.theme";
+  const NOTIFY_KEY = "aioffice.iso.notify";
   const savedTheme = () => {
     try { return localStorage.getItem(THEME_KEY) || "light"; } catch { return "light"; }
   };
@@ -724,6 +802,40 @@ export function init({ root, shell, T, lang, setLang, getWorld, applyStaticStrin
       } catch (err) {
         showToast(err.message, false);
       }
+    });
+    const notifyRow = mEl("label", "mdev");
+    const notify = mEl("input");
+    notify.type = "checkbox";
+    notify.id = "set-notify";
+    notify.disabled = typeof Notification === "undefined";
+    try {
+      notify.checked = !notify.disabled && Notification.permission === "granted"
+        && localStorage.getItem(NOTIFY_KEY) === "1";
+    } catch { /* プライベートモード */ }
+    const notifyHint = mEl("p", "mnote", T("set_notify_hint"));
+    notifyHint.id = "set-notify-hint";
+    notify.setAttribute("aria-describedby", notifyHint.id);
+    notify.addEventListener("change", async () => {
+      notify.disabled = true;
+      try {
+        const enabled = notify.checked;
+        const permission = enabled ? await Notification.requestPermission() : "default";
+        notify.checked = enabled && permission === "granted";
+        localStorage.setItem(NOTIFY_KEY, notify.checked ? "1" : "0");
+      } catch (err) {
+        notify.checked = false;
+        showToast(err.message, false);
+      }
+      notify.disabled = false;
+    });
+    notifyRow.append(notify, mEl("span", "", T("set_notify")));
+    modal.append(notifyRow, notifyHint);
+    const dialog = mEl("div", "setting-dialog");
+    modal.append(dialog);
+    pairList().then((data) => {
+      if (modal.contains(dialog)) renderDialogSetting(dialog, "set-dialog", data);
+    }).catch((err) => {
+      if (modal.contains(dialog)) dialog.append(mEl("p", "mnote merr", err.message));
     });
     renderCustomizationSettings(seg, renderSettings);
     renderStreamSettings();

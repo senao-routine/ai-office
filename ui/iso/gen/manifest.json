@@ -1,0 +1,86 @@
+{
+  "_doc": "R96-D 生成什器の台帳。name: { pwa: PWA に同梱するか, yaw: 正面を +z に向ける回転(rad), fit: 'w'|'d'|'h' どの寸法を spec に合わせるか, source: Tripo task id }",
+  "items": {
+    "chair": {
+      "pwa": true,
+      "yaw": -1.5708,
+      "fit": "box",
+      "fitH": "top",
+      "tris": 3786,
+      "kb": 79.8,
+      "source": "58432eac"
+    },
+    "desk": {
+      "pwa": true,
+      "yaw": 0.0,
+      "fit": "box",
+      "fitH": "top",
+      "tris": 4731,
+      "kb": 128.8,
+      "source": "7b5daf5b"
+    },
+    "desk_long": {
+      "pwa": true,
+      "yaw": 1.5708,
+      "fit": "box",
+      "fitH": "top",
+      "tris": 3509,
+      "kb": 69.6,
+      "source": "3d0246a2"
+    },
+    "floor_lamp": {
+      "pwa": false,
+      "yaw": 0.0,
+      "fit": "h",
+      "fitH": "full",
+      "tris": 2480,
+      "kb": 64.0,
+      "source": "daf5e965"
+    },
+    "meeting_table": {
+      "pwa": true,
+      "yaw": 1.5708,
+      "fit": "box",
+      "fitH": "top",
+      "tris": 2772,
+      "kb": 60.3,
+      "source": "87fd9502"
+    },
+    "shelf": {
+      "pwa": true,
+      "yaw": 1.5708,
+      "fit": "box",
+      "fitH": "full",
+      "tris": 3498,
+      "kb": 107.4,
+      "source": "6b4e1698"
+    },
+    "sofa": {
+      "pwa": true,
+      "yaw": -1.5708,
+      "fit": "box",
+      "fitH": "top",
+      "tris": 4357,
+      "kb": 105.2,
+      "source": "f7da189d"
+    },
+    "stool": {
+      "pwa": true,
+      "yaw": 0.0,
+      "fit": "box",
+      "fitH": "top",
+      "tris": 2414,
+      "kb": 52.5,
+      "source": "72e57358"
+    },
+    "water_station": {
+      "pwa": false,
+      "yaw": 0.0,
+      "fit": "h",
+      "fitH": "full",
+      "tris": 2425,
+      "kb": 51.9,
+      "source": "4768c331"
+    }
+  }
+}

@@ -149,3 +149,7 @@ Codex は `~/.codex/state_5.sqlite` と `~/.codex/thread_history_1.sqlite` の�
 - 守られること／守られないこと（README と同じ文言）: 中継（Cloudflare）と輸送 Bearer だけを持つ第三者は中身を読めない。
   ただしメタデータ（いつ・どの端末が・どのセッションを要求したか・8KB 単位の長さ）は見える。前方秘匿性は無い。
   暗号文は TTL まで中継に残る。Mac は当然読める。端末を失うと会話も読まれる（Mac から失効させた瞬間に封は作られなくなる）。
+
+## `today`（R96-B・2026-09-15）
+
+`today = {sent, answered, lastSentAgo, capped}`。`answered` は daemon が積む日次 stats（`~/.claude/office_daily/<day>.stats.json`）の当日解消❗数＝**「今日のまとめ」の正本**。Mac もスマホもこれを表示し、端末ローカルの数字を正本にしない。中継はトップレベル `today` を allowlist で通す。

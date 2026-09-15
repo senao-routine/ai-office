@@ -4,7 +4,7 @@
 // 全ての数値は world（実データ）から。参考画像にある FUNDS 等の
 // 実データが無い数値は出さない（嘘のメトリクス禁止＝プラン確定事項）。
 import {
-  STARVE_MIN, activityGloss, agoStr, buildWorld, isMuted, summarizeWorld, tidyActivity,
+  STARVE_MIN, activityGloss, agoStr, buildWorld, labelDensityMax, summarizeWorld, tidyActivity,
 } from "/ui/core/world.js";
 import { events, getOffice, poll } from "/ui/platform/api.js";
 import { frozen, loop, now } from "/ui/platform/clock.js";
@@ -12,6 +12,7 @@ import { createArrivals } from "/ui/platform/arrivals.js";
 import { installProbe } from "/ui/platform/probe.js";
 import { STYLES } from "/ui/platform/style.js";
 import { init as initSend } from "/ui/hud/send.js";
+import { deliveryChip, paintDeliveryChip } from "/ui/hud/delivery.js";
 import { init as initSheet } from "/ui/hud/sheet.js";
 import { init as initDialog } from "/ui/hud/dialog.js";
 import { init as initAdmin } from "/ui/hud/admin.js";
@@ -23,7 +24,7 @@ import { init as initDigest } from "/ui/hud/digest.js";
 import { init as initGrowth } from "/ui/hud/growth.js";
 import { init as initCustomize } from "/ui/hud/customize.js";
 import { init as initHire } from "/ui/hud/hire.js";
-import { init as initOnboarding } from "/ui/hud/onboarding.js";
+import { init as initFirstRun } from "/ui/hud/firstrun.js";
 import { initStream, privateBadge, privateStatus, streamOptions, streamSettings } from "/ui/hud/stream.js";
 import { IsoScene } from "./scene3d.js";
 import { DEFAULT_SPEC } from "/ui/core/layout_specs.js";
@@ -53,6 +54,7 @@ export async function mount(root) {
   shell.className = "shell";
   shell.innerHTML = `
     <aside class="side glass">
+      <button id="rail-toggle" class="rail-toggle" type="button" aria-expanded="false" aria-controls="agents"></button>
       <div class="brand">
         <span class="mark">🤖</span>
         <span class="txt"><b id="greet">AI Office</b><i id="brandoffice">…</i></span>
@@ -69,6 +71,7 @@ export async function mount(root) {
       <div class="spacer"></div>
       <div class="admin">
         <button class="abtn" id="btn-newproj" type="button"></button>
+        <button class="abtn" id="btn-hire" type="button" hidden></button>
         <button class="abtn" id="btn-launch" type="button"></button>
         <button class="abtn" id="btn-pair" type="button"></button>
         <button class="abtn" id="btn-run" type="button"></button>
@@ -93,6 +96,7 @@ export async function mount(root) {
           </div>
         </div>
         <i class="freshness" id="freshness" hidden></i>
+        <button id="btn-help" class="abtn" type="button">?</button>
       </header>
       <section class="stage" id="stage">
         <div class="viewport" id="viewport"></div>
@@ -100,6 +104,7 @@ export async function mount(root) {
         <div class="labels" id="labels"></div>
         <div class="offbar" id="offbar" hidden></div>
         <div class="tray" id="attn" hidden></div>
+        <button id="viewreset" class="abtn" type="button" hidden></button>
         <aside class="sheet" id="sheet" hidden>
           <header class="sheethead">
             <b id="sheetname"></b>
@@ -127,7 +132,10 @@ export async function mount(root) {
       </section>
       <footer class="bottom">
         <div class="card histcard">
-          <b class="cardtitle" id="title-hist"></b>
+          <header class="histhead">
+            <b class="cardtitle" id="title-hist"></b>
+            <button class="hmore" type="button" aria-expanded="false" hidden></button>
+          </header>
           <div class="hist" id="hist"></div>
         </div>
       </footer>
@@ -197,7 +205,6 @@ export async function mount(root) {
     usage.hidden = gaugesEl.hidden;
   };
   paintPins([]);
-  gaugesEl.addEventListener("click", () => setUsageOpen(false));
   shell.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && usage.classList.contains("open")) {
       setUsageOpen(false);
@@ -215,6 +222,8 @@ export async function mount(root) {
   let scene;
   const openList = () => {
     root.classList.add("list-mode");
+    shell.classList.add("rail-open");
+    shell.querySelector("#rail-toggle").setAttribute("aria-expanded", "true");
     shell.querySelector("#agents").tabIndex = -1;
     shell.querySelector("#agents").focus();
   };
@@ -239,7 +248,7 @@ export async function mount(root) {
   let arrivalTick = -1;
   const arrivals = createArrivals({ isolated: frozen || stream.enabled, demo: DEMO });
   shell._arrivals = arrivals;
-  const onboarding = initOnboarding({ shell, T, scene, enabled: scene3dOk && !DEMO && !stream.enabled });
+  const firstrun = initFirstRun({ shell, T, scene, DEMO, enabled: scene3dOk && !stream.enabled });
   const freshEl = shell.querySelector("#freshness");
   const draw = (t) => {
     if (!built) return;
@@ -249,7 +258,7 @@ export async function mount(root) {
     scene.update(shown, frame?.t ?? t);
     broadcast.paint(shown);
     if (scene3dOk) paintLabels(shell, scene, shown);
-    onboarding.paint(t);
+    firstrun.paint(t);
     if (!frozen && Math.floor(t) !== arrivalTick) {
       arrivalTick = Math.floor(t);
       for (const row of shell.querySelectorAll(".arow")) {
@@ -279,6 +288,8 @@ export async function mount(root) {
     hud.board = departmentBoard(office, built);
     gauges.start();   // 初回データ到着後に起動
     render(shell, built, hud);
+    firstrun.update(built);
+    if (!hashApplied) { hashApplied = true; openAttentionHash(); }
     growth.update();
     sheet.refreshGrowth();
     digest?.update();
@@ -309,8 +320,62 @@ export async function mount(root) {
     openCustomize: (a) => customize.openAccessories(a),
   });
   const { openCompose, jumpTerminal } = sheet;
-  const tray = initTray({ ...common, el, attnKeyFor, delivery, sheet, modals });
+  const tray = initTray({ ...common, el, attnKeyFor, delivery, sheet, modals, DEMO });
   const hud = { tray, sheet, board: [] };
+  let hashApplied = false;
+  const openAttentionHash = () => {
+    if (frozen || DEMO || stream.enabled || !built) return;
+    const match = /^#attn=(.+)$/.exec(location.hash);
+    if (!match) return;
+    let session;
+    try { session = decodeURIComponent(match[1]); } catch { return; }
+    tray.focusSession(session);
+  };
+  window.addEventListener("hashchange", openAttentionHash);
+  const setRailOpen = (open) => {
+    shell.classList.toggle("rail-open", open);
+    shell.querySelector("#rail-toggle").setAttribute("aria-expanded", String(open));
+  };
+  shell.querySelector("#rail-toggle").addEventListener("click", () => setRailOpen(!shell.classList.contains("rail-open")));
+  shell.querySelector("#zones").addEventListener("click", (e) => {
+    const row = e.target.closest(".zrow");
+    if (!row) return;
+    shell._zoneFilter = shell._zoneFilter === row.dataset.zone ? null : row.dataset.zone;
+    setRailOpen(true);
+    repaint();
+    shell.querySelector(`.zrow[data-zone="${row.dataset.zone}"]`)?.focus();
+  });
+  shell.querySelector(".histcard").addEventListener("click", (e) => {
+    if (!e.target.closest(".hmore")) return;
+    shell.querySelector(".histcard").classList.toggle("expanded");
+    repaint();
+    shell.querySelector(".hmore")?.focus();
+  });
+  const openHelp = () => {
+    // ダイジェスト（留守中のまとめ）が前面のときは開かない＝ヘルプの裏でダイジェストの数字キーが生き続けて誤送信する（別モデルレビュー）。
+    if (stream.enabled || shell.classList.contains("replay-active")
+      || shell.querySelector("#digest-card")?.hidden === false) return;
+    modal.replaceChildren(mEl("b", "mtitle", T("help_title")),
+      mEl("b", "msubtitle", T("help_keys_title")), mEl("p", "mnote", T("help_keys")),
+      mEl("b", "msubtitle", T("help_urls_title")), mEl("p", "mnote", T("help_urls")));
+    modal.dataset.kind = "help";
+    openModal();
+  };
+  shell.querySelector("#btn-help").addEventListener("click", openHelp);
+  const onHudKey = (e) => {
+    if (e.target.closest?.("input, textarea, select, [contenteditable=true]")) return;
+    if (e.key === "?" && !e.metaKey && !e.ctrlKey && !e.altKey) { e.preventDefault(); openHelp(); }
+    // ダイジェスト／リプレイが前面のときは Escape を背景の折り畳みで消費しない（前面の閉じる処理へ渡す・別モデルレビュー）。
+    const overlayActive = shell.classList.contains("replay-active") || shell.querySelector("#digest-card")?.hidden === false;
+    if (e.key === "Escape" && !overlayActive && shell.querySelector("#modalwrap").hidden && shell.querySelector("#sheet").hidden) {
+      if (shell.querySelector(".histcard").classList.contains("expanded")) {
+        e.stopImmediatePropagation(); shell.querySelector(".histcard").classList.remove("expanded"); repaint();
+      } else if (shell.classList.contains("rail-open")) {
+        e.stopImmediatePropagation(); setRailOpen(false); shell.querySelector("#rail-toggle").focus();
+      }
+    }
+  };
+  window.addEventListener("keydown", onHudKey, true);
   digest = initDigest({ ...common, DEMO, tray, showToast: delivery.showToast,
     enabled: !stream.enabled, canvas: scene3dOk ? scene.renderer.domElement : null,
     beforeOpen: () => { closeModal(); sheet.closeCompose(); }, restore: () => draw(now()) });
@@ -319,6 +384,7 @@ export async function mount(root) {
     if (!row) return;
     const a = (built?.agents || []).find((x) => x.id === row.dataset.project);
     if (a) {
+      setRailOpen(false);
       const member = hud.board.flatMap((group) => group.sessions)
         .find((item) => item.id === a.id && item.session === row.dataset.session);
       // 非代表も自身の会話・質問・宛先で開く（内訳の8件表示上限には依存しない）。
@@ -349,6 +415,10 @@ export async function mount(root) {
   });
   // 3Dステージのクリック: ボス＝「ボス指令」／ロボット＝そのプロジェクトのシート
   const viewportEl = shell.querySelector("#viewport");
+  const viewReset = shell.querySelector("#viewreset");
+  const markViewChanged = () => { viewReset.hidden = !scene3dOk || frozen || stream.enabled; };
+  const resetView = () => { scene.viewReset?.(); viewReset.hidden = true; };
+  viewReset.addEventListener("click", resetView);
   if (stream.enabled) viewportEl.addEventListener("pointerdown", () => scene.stopCinematic?.());
   const stagePoint = (e) => {
     const rect = viewportEl.getBoundingClientRect();
@@ -389,6 +459,7 @@ export async function mount(root) {
     e.preventDefault();
     const { x, y } = stagePoint(e);
     scene.viewZoomBy?.(e.deltaY < 0 ? 1.12 : 1 / 1.12, x, y);
+    markViewChanged();
   }, { passive: false });
   let dragFrom = null;
   let dragMoved = 0;
@@ -402,7 +473,7 @@ export async function mount(root) {
     const dx = e.clientX - dragFrom.x;
     const dy = e.clientY - dragFrom.y;
     dragMoved += Math.abs(dx) + Math.abs(dy);
-    if (dragMoved > 5) scene.viewPanBy?.(dx, dy);
+    if (dragMoved > 5) { scene.viewPanBy?.(dx, dy); markViewChanged(); }
     dragFrom = { x: e.clientX, y: e.clientY };
   });
   window.addEventListener("mouseup", () => { dragFrom = null; });
@@ -414,12 +485,12 @@ export async function mount(root) {
   // R53: ロボをダブルクリック → そのセッションの実ターミナルを前面へ（見る→実物の輪）
   viewportEl.addEventListener("dblclick", (e) => {
     clearTimeout(clickTimer);                 // R67: シングルクリック側を無効化
-    if (stream.enabled) { scene.viewReset?.(); return; }
+    if (stream.enabled) { resetView(); return; }
     const { x, y } = stagePoint(e);
     const id = scene.pickAgent?.(x, y);
     const a = id && (built?.agents || []).find((q) => q.id === id);
     if (a && !a.external) jumpTerminal(a.session, a.name);
-    else if (!a) scene.viewReset?.();       // R80.8: 空きダブルクリック=全景（スマホと同じ）
+    else if (!a) resetView();
   });
   // ホバー: ロボット/ボスの上で cursor:pointer＋対応する足元チップを強調（60msスロットリング）
   let hoverLast = 0;
@@ -449,7 +520,7 @@ export async function mount(root) {
   const hireButton = shell.querySelector("#btn-hire");
   if (hireButton) hireButton.title = hireButton.textContent;
   // 描画側（paintLabels）が読む演出状態。純粋なworldに混ぜない。
-  shell._fx = { wakeActive: delivery.wakeActive, hoverId: null };
+  shell._fx = { wakeActive: delivery.wakeActive, stalled: delivery.isStalled, hoverId: null };
 
   // オフライン表示は .ui-iso ルート（root）に付ける（CSS は .ui-iso.offline を見る。
   // shell に付けるとセレクタが永遠にマッチしない＝実際にサイレント故障していた）
@@ -465,6 +536,8 @@ export async function mount(root) {
           : T("off_stale", age < 90 ? T("ago_sec", age) : T("ago_min", Math.round(age / 60)));
       }
       offBar.hidden = !offline;
+      repaint();
+      sheet.refreshGrowth();
     },
     frozen ? 1e9 : 3000,          // 固定時刻のときはポーリングしない（スクショが揺れる）
   );
@@ -515,8 +588,10 @@ export async function mount(root) {
   return () => {
     stopEvents(); stop(); stopLoop(); uninstall();
     window.removeEventListener("resize", onResize);
+    window.removeEventListener("hashchange", openAttentionHash);
+    window.removeEventListener("keydown", onHudKey, true);
     broadcast.dispose();
-    hire.dispose(); onboarding.dispose(); customize.dispose();
+    hire.dispose(); firstrun.dispose(); customize.dispose();
     digest.dispose(); tray.dispose(); sheet.dispose(); delivery.dispose(); gauges.dispose();
     document.title = "AI Office";
     scene.dispose();
@@ -545,8 +620,8 @@ function paintLabels(shell, scene, w) {
   // R90 配備後の実測（22セッション）: 全員に名前を出すと中央で名札が団子になり、
   // 「誰がどれか」がむしろ読めない。13体以上では**名前を出すのは意味のある相手だけ**
   // （選択中・❗・📨・ホバー）にし、残りはバッジ1文字＋状態リングで足元に置く。
-  // 12体以下（golden の 9 体を含む）では従来どおり全員に名前を出す＝golden 不変。
-  const dense = w.agents.length > 12;
+  // 全員表示の上限は画面幅で切り替える（1000px以上は12体、未満は6体）。
+  const dense = w.agents.length > labelDensityMax(window.innerWidth);
   const hostTop = host.getBoundingClientRect().top;
   // R95: 下段カードはステージの外の行に戻した＝名札の床はステージ下端（配信は字幕帯のまま）
   const bottomBar = stream?.enabled ? shell.querySelector("#stream-subtitle") : null;
@@ -733,13 +808,21 @@ function applyStaticStrings(shell) {
   shell.querySelector("#title-tasks").textContent = T("card_tasks");
   shell.querySelector("#title-hist").textContent = T("card_hist");
   shell.querySelector("#title-agents").textContent = T("board_title");
-  shell.querySelector("#gauges").title = T("gauges_title");
+  const gaugesMore = shell.querySelector("#gauges-more");
+  if (gaugesMore) gaugesMore.textContent = T("gauges_more");
+  shell.querySelector("#rail-toggle").textContent = T("rail_list");
+  shell.querySelector("#btn-help").title = T("help_title");
+  shell.querySelector("#btn-help").setAttribute("aria-label", T("help_title"));
+  shell.querySelector("#viewreset").textContent = T("view_reset");
 }
 
 function render(shell, w, { tray, sheet, board }) {
   const z = w.counts;
   // Missing recipe metadata is unknown (older servers/fixtures), not a confirmed empty list.
-  shell.querySelector("#btn-run").hidden = Array.isArray(w.actions?.recipes) && w.actions.recipes.length === 0;
+  const runButton = shell.querySelector("#btn-run");
+  runButton.hidden = false;
+  runButton.textContent = T(Array.isArray(w.actions?.recipes) && w.actions.recipes.length === 0 ? "btn_run_empty" : "btn_run");
+  runButton.title = runButton.textContent;
   shell._traySel = tray.render(w);           // 足元チップの強調用（paintLabels が読む）
 
   // ── 左: ブランド＋ゾーン概況 ─────────────────────────────────
@@ -747,87 +830,20 @@ function render(shell, w, { tray, sheet, board }) {
   const zones = shell.querySelector("#zones");
   zones.replaceChildren();
   for (const key of ZONES) {
-    const row = el("div", `zrow z-${key}`);
+    const row = el("button", `zrow z-${key}${shell._zoneFilter === key ? " on" : ""}`);
+    row.type = "button"; row.dataset.zone = key;
+    row.setAttribute("aria-pressed", String(shell._zoneFilter === key));
     row.append(el("i", "zdot"), el("span", "zlabel", zoneLabel(key)),
       el("b", "zcount", String(z[key] ?? 0)));
     zones.append(row);
   }
 
   // ── 中央: 挨拶＋❗トレイ ─────────────────────────────────────
-  const sessions = board.flatMap((group) => group.sessions);
-  shell.querySelector("#sub").textContent = T("board_summary", sessions.length,
-    sessions.filter((a) => a.state === "working" && !a.attention).length,
-    sessions.filter((a) => a.attention).length,
-    sessions.filter((a) => a.state === "resting" && !a.attention).length);
-
-  // R80-A20: 0体のとき、視線が向かう**中央ステージ**にも一言置く
-  //（右レールのカードだけでは、広い空オフィスを見て「壊れている?」と思われる）
-  const stage = shell.querySelector("#viewport");
-  let stageHint = shell.querySelector("#stagehint");
-  if (!DEMO && stage && w.agents.length === 0 && !shell.querySelector("#no3d")) {
-    if (!stageHint) {
-      stageHint = el("div", "stagehint");
-      stageHint.id = "stagehint";
-      stage.append(stageHint);
-    }
-    stageHint.textContent = T("ob_p1");
-  } else if (stageHint) {
-    stageHint.remove();
-  }
-
-  // 📮 配達未設定バナー（旧UIのオンボーディング表現の復元）。demoでは出ない
-  let setupBar = shell.querySelector("#setupbar");
-  if (!DEMO && w.setup && (!frozen || w.setup.hookInstalled === false)) {
-    if (!setupBar) {
-      setupBar = el("div", "setupbar");
-      setupBar.id = "setupbar";
-      shell.querySelector(".main").insertBefore(setupBar, shell.querySelector("#stage"));
-    }
-    // R80-A21: コマンドを読ませるだけでなく**コピーできる**ようにする
-    //（この帯は「回答が実セッションへ届かない」という致命的な前提条件を伝えている）
-    if (!setupBar.dataset.built) {
-      setupBar.replaceChildren();
-      setupBar.append(el("span", "sb-msg"), el("code", "sb-cmd"));
-      const copy = el("button", "sb-copy");
-      copy.type = "button";
-      copy.addEventListener("click", async () => {
-        try {
-          await navigator.clipboard.writeText(T("setup_hook_cmd"));
-          copy.textContent = T("setup_hook_copied");
-          setTimeout(() => { copy.textContent = T("setup_hook_copy"); }, 1800);
-        } catch { /* クリップボード不許可でもコマンドは読める */ }
-      });
-      setupBar.append(copy);
-      setupBar.dataset.built = "1";
-    }
-    if (!frozen) {
-      if (!setupBar.querySelector(".setup-checklist")) {
-        const checklist = el("div", "setup-checklist");
-        checklist.append(el("b", "setup-title"), el("span", "setup-hooks"), el("span", "setup-events"));
-        setupBar.prepend(checklist);
-      }
-      const hook = w.setup.hookInstalled === true;
-      const events = w.setup.eventsWired === true;
-      setupBar.querySelector(".setup-title").textContent = T("setup_checklist");
-      setupBar.querySelector(".setup-hooks").textContent = T(hook ? "setup_hooks_ready" : "setup_hooks_pending");
-      setupBar.querySelector(".setup-events").textContent = T(events ? "setup_events_ready"
-        : w.setup.eventsWired === false ? "setup_events_pending" : "setup_events_unknown");
-      setupBar.classList.toggle("setup-complete", hook && events);
-      setupBar.querySelector(".sb-msg").hidden = hook;
-      setupBar.querySelector(".sb-cmd").hidden = hook && events;
-      setupBar.querySelector(".sb-copy").hidden = hook && events;
-    }
-    setupBar.querySelector(".sb-msg").textContent = T("setup_hook");
-    setupBar.querySelector(".sb-cmd").textContent = T("setup_hook_cmd");
-    setupBar.querySelector(".sb-copy").textContent = T("setup_hook_copy");
-  } else if (setupBar) {
-    setupBar.remove();
-  }
+  shell.querySelector("#sub").textContent = w.officeName || T("office_fallback");
 
   // ── 左: 部署→セッション。既存行を再利用し、クリック中のdetachを避ける ──
   const agents = shell.querySelector("#agents");
   const selectedId = sheet.selectedId();
-  agents.querySelector(".onboard")?.remove();
   const oldGroups = new Map([...agents.querySelectorAll(".department")]
     .map((n) => [n._groupKey, n]));
   const oldRows = new Map([...agents.querySelectorAll(".arow")]
@@ -837,7 +853,11 @@ function render(shell, w, { tray, sheet, board }) {
     return false;
   };
   let groupCursor = agents.firstElementChild;
-  for (const group of board) {
+  const visibleBoard = shell._zoneFilter
+    ? board.map((group) => ({ ...group, sessions: group.sessions.filter((a) => a.zone === shell._zoneFilter) }))
+      .filter((group) => group.sessions.length)
+    : board;
+  for (const group of visibleBoard) {
     let department = oldGroups.get(group.key);
     if (!department) {
       department = el("section", "department");
@@ -880,15 +900,15 @@ function render(shell, w, { tray, sheet, board }) {
         row.tabIndex = 0;
         row.setAttribute("role", "button");
         const head = el("div", "arowhead");
-        head.append(el("i", "adot"), el("b", "aname"), el("span", "acrew"),
-          el("span", "apend", "📨"), el("span", "amute", "📴"));
+        head.append(el("i", "adot"), el("b", "aname"), el("span", "acrew"));
         const act = el("div", "aact");
         act.append(el("span", "atext"));
         const prog = el("div", "aprog");
         const track = el("div", "abar");
         track.append(el("i", "afill"));
         prog.append(track, el("span", "apct"));
-        row.append(head, act, el("i", "aage"), el("span", "alevel"), prog);
+        row.append(head, act, el("i", "aage"), el("span", "alevel"), prog,
+          deliveryChip({ T, agent: a, aliases: true, quietLive: true }));
       }
       oldRows.delete(key);
       if (cursor === row) cursor = cursor.nextElementSibling;
@@ -907,10 +927,9 @@ function render(shell, w, { tray, sheet, board }) {
         if (value) row.title += `\n${value.text}`;
       }
       row.querySelector(".acrew").hidden = true; // 件数は親のプロジェクト行へ集約
-      row.querySelector(".apend").hidden = !a.pending;
-      const muteEl = row.querySelector(".amute");
-      muteEl.hidden = !isMuted(a);
-      if (!muteEl.hidden) muteEl.title = T("listen_off_hint");
+      paintDeliveryChip(row.querySelector(".dstate"), { T, agent: a, aliases: true, quietLive: true,
+        offline: shell.closest(".ui-iso").classList.contains("offline"),
+        stalled: shell._fx?.stalled?.(a.session) });
       const act = row.querySelector(".aact");
       act.className = "aact" + (a.attention && a.approvalMin >= STARVE_MIN ? " starve" : "");
       changed = setText(act.querySelector(".atext"), a.detail || T("board_no_detail")) || changed;
@@ -933,21 +952,6 @@ function render(shell, w, { tray, sheet, board }) {
   }
   for (const leftover of oldRows.values()) leftover.remove();
   for (const leftover of oldGroups.values()) leftover.remove();
-  if (!w.agents.length) {
-    // 空オフィス: 次の一歩を必ず示す（美しい無人オフィスで放置しない＝初回体験の断線対策）
-    const card = el("div", "onboard");
-    card.append(
-      el("b", "", T("ob_title")),
-      el("p", "", T("ob_p1")),
-      el("p", "", T("ob_p2")));
-    if (!DEMO) {
-      const demoLink = el("a", "odemo", T("ob_demo"));
-      demoLink.href = "?demo=1";
-      card.append(demoLink);
-    }
-    agents.append(card);
-  }
-
   // ── 下段: タスクのドーナツ＋指示履歴 ──────────────────────────
   // R86-I: タスクが1件も無いときドーナツは「0のリング」＝永久に空のパネルになる
   // （実測: どのセッションもタスク管理ツールを使っておらず常に 0/0/0 だった）。
@@ -957,7 +961,8 @@ function render(shell, w, { tray, sheet, board }) {
   hist.replaceChildren();
   // R67: 4件目は全解像度でカード高さから完全にはみ出て不可視だった（実測）＝
   // 見える3件＋「他N件」注記に正直化
-  const histItems = (w.history || []).slice(0, 3);
+  const expanded = shell.querySelector(".histcard").classList.contains("expanded");
+  const histItems = (w.history || []).slice(0, expanded ? 12 : 3);
   for (const h of histItems) {
     const row = el("div", "hrow");
     const resend = el("button", "hresend", "↻");
@@ -971,14 +976,15 @@ function render(shell, w, { tray, sheet, board }) {
     if (w.generatedAt && h.ts) {
       row.append(el("i", "hago", agoStr(w.generatedAt - h.ts, w.lang)));
     }
-    row.append(
-      el("i", h.pending ? "hp wait" : "hp done", h.pending ? T("hist_wait") : T("hist_done")),
-      resend);
+    const status = deliveryChip({ T, state: h.pending ? "pending" : "live" });
+    status.classList.add("hp");
+    row.append(status, resend);
     hist.append(row);
   }
-  if ((w.history || []).length > 3) {
-    hist.append(el("div", "hmore", T("hist_more", w.history.length - 3)));
-  }
+  const more = shell.querySelector(".hmore");
+  more.hidden = (w.history || []).length <= 3;
+  more.textContent = T(expanded ? "hist_less" : "hist_more", (w.history || []).length - 3);
+  more.setAttribute("aria-expanded", String(expanded));
   if (!hist.children.length) hist.append(el("div", "hempty", T("hist_empty")));
 }
 
@@ -1040,13 +1046,9 @@ function renderBottomLeft(shell, w) {
     shell.querySelector(".donutcard").append(digest);
   }
   digest.hidden = false;
-  const agents = w.agents || [];
-  const n = (f) => agents.filter(f).length;
   const rows = [
     ["", T("today_sent"), String(w.today?.sent ?? 0) + T("unit_items")],
-    ["", T("today_attn"), String(n((a) => a.attention)) + T("unit_items")],
-    ["", T("today_working"), String(n((a) => a.state === "working")) + T("unit_people")],
-    ["", T("today_resting"), String(n((a) => a.state === "resting")) + T("unit_people")],
+    ["", T("today_answered"), String(w.today?.answered ?? 0) + T("unit_items")],
   ];
   digest.replaceChildren();
   for (const [icon, label, value] of rows) {
@@ -1055,7 +1057,7 @@ function renderBottomLeft(shell, w) {
     digest.append(row);
   }
   const ago = w.today?.lastSentAgo;
-  digest.append(el("div", "tnote", ago == null ? T("today_none") : T("today_last", agoStr(ago))));
+  digest.append(el("div", "tnote", ago == null ? T("today_none") : T("today_last", agoStr(ago, w.lang))));
 }
 
 /** タスクのドーナツ（SVG・実データのみ・アニメ無し＝golden を揺らさない）。 */

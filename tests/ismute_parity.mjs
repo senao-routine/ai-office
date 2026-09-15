@@ -53,3 +53,28 @@ assert.equal(core.isMuted({ listening: false, state: "working", approvalMin: 2,
                             ask: { kind: "permission" } }), false);
 assert.equal(pwa({ listening: false, state: "working", approvalMin: 2, ask: { kind: "permission" } }), false);
 console.log(`✓ isMute parity: ${CASES.length} ケースで Mac↔スマホ一致`);
+
+// R96-B: 配達状態の 5 語彙（live/saved/pending/stalled/offline）も Mac と スマホで同一に保つ。
+// PWA の deliveryState は isMute と同じ APP_HTML から切り出す（順序: offline > stalled > pending > saved > live）。
+{
+  const dBegin = src.indexOf("function deliveryState(");
+  const dEnd = src.indexOf("function deliveryChip(", dBegin);
+  assert.ok(dBegin >= 0 && dEnd > dBegin, "PWA deliveryState source not found in app_html.js");
+  globalThis.isMute = pwa;
+  (0, eval)(src.slice(dBegin, dEnd).replace("function deliveryState", "__ismuteParity.deliveryState = function deliveryState"));
+  const pwaState = globalThis.__ismuteParity.deliveryState;
+  const OPTS = [{}, { offline: true }, { stalled: true }, { offline: true, stalled: true }];
+  let n = 0;
+  for (const c of [...CASES, { ...CASES[0], pending: true }, { ...CASES[6], pending: true }, { listening: false, state: "working", approvalMin: 2, pending: true }]) {
+    for (const o of OPTS) {
+      const a = core.deliveryState(c, o), b = pwaState(c, o);
+      assert.ok(core.DELIVERY_STATES.includes(a), `core が未知の状態: ${a}`);
+      assert.equal(b, a, `deliveryState 不一致: ${JSON.stringify(c)} ${JSON.stringify(o)} core=${a} pwa=${b}`);
+      n++;
+    }
+  }
+  assert.equal(core.deliveryState({ listening: true, state: "waiting", pending: true }), "pending");
+  assert.equal(pwaState({ listening: false, state: "waiting" }), "saved");
+  assert.equal(pwaState({ listening: true, state: "waiting" }, { stalled: true }), "stalled");
+  console.log(`✓ deliveryState parity: ${n} ケースで Mac↔スマホ一致`);
+}

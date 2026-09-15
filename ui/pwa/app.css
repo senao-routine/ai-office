@@ -300,3 +300,27 @@ body.th-big .card .st, body.th-big .feedline, body.th-big .sheet .feedbox .feedl
 #shdlg .dlgm .dlgr{display:inline-block;margin-right:6px;font-size:11px;font-weight:700;opacity:.7}
 #shdlg .dlgnote{font-size:11.5px;color:var(--ink-2,#555);margin-top:4px}
 #shdlg .dlgerr{font-size:12.5px;color:var(--alert,#c0483a);font-weight:700}
+
+/* R96 pwa */
+#app .dchip, #sheetwrap .dchip, #banner .dchip { display: inline-block; max-width: 100%; padding: 4px 8px; font-size: 11px; line-height: 1.45; white-space: normal; overflow-wrap: anywhere; }
+#app .dstate-live, #sheetwrap .dstate-live { color: var(--accent); background: var(--accent-chip); }
+#app .dstate-saved, #sheetwrap .dstate-saved { color: var(--ink-2); background: var(--paper-2); }
+#app .dstate-pending, #sheetwrap .dstate-pending { color: var(--accent-2); background: var(--accent-chip); }
+#app .dstate-stalled, #sheetwrap .dstate-stalled, #banner .dstate-stalled,
+#app .dstate-offline, #sheetwrap .dstate-offline, #banner .dstate-offline { color: var(--alert); background: var(--alert-chip); }
+#banner { padding: 4px 12px; }
+#banner .dchip { border: 0; }
+#attncards .attnnav { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; padding: 0 4px; }
+#attncards .attncount { font-size: 12.5px; font-weight: 700; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+#attncards .attnnext { flex: none; width: auto; min-height: 44px; margin: 0; padding: 8px 12px; background: var(--paper); color: var(--accent); border-color: var(--line); font-size: 12.5px; }
+#attncards .attnhead { flex-wrap: wrap; }
+#attncards .attnidentity { flex-basis: calc(100% - 36px); }
+#attncards .attnhead .dchip { margin-left: 36px; max-width: calc(100% - 36px); }
+#attncards .attnactions .attnghost, #quickbtns .attnghost { background: var(--paper-2); color: var(--ink-2); border: 1px dashed var(--line); }
+#attncards .attnactions .attnghost:active, #quickbtns .attnghost:active { background: var(--paper-3); }
+#shdelivery { margin: 8px 0; }
+#list .meta { flex-wrap: wrap; }
+#list .meta .dchip { order: 1; margin-left: 44px; }
+#roster .dchip { align-self: flex-start; }
+/* 圧縮中も配達状態は省略せず、保存済みの説明が折り返せる高さを確保する。 */
+#room:has(#attncards.on) #roster .rchip { height: auto; min-height: 64px; }

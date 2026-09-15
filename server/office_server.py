@@ -851,6 +851,12 @@ _SESSION_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 
 ASK_GRACE = 3.0       # 掲示が出てすぐは❗にしない（下の理由）
+# R86-H2: 掲示の生死は**心拍**（hook が毎 POLL に mtime だけ更新）で判定する。deadline は最後の砦。
+# 人間が TUI で答えると Claude Code は hook をその場で kill し finally は走らない＝掲示が 12 時間残り、
+# ❗の幽霊・デスクトップの回答が誰にも読まれない・スマホの指示が inbox に届かない、が同時に起きた（実測 3 件）。
+ASK_STALE = float(os.environ.get("OFFICE_ASK_STALE", 10))   # POLL 1s × 10・スリープ復帰のジッタ込み
+ASK_LITTER = 3600.0          # 心拍が止まって 1 時間＝死骸（prune で消す）
+REPLY_LITTER = 600.0         # hook の FRESH(300s) の倍＝誰も受け取らない回答
 
 
 def pending_approval(session, now=None, grace=0.0):
@@ -871,6 +877,13 @@ def pending_approval(session, now=None, grace=0.0):
     now = now or time.time()
     if float(rec.get("deadline") or 0) < now:
         return None                      # フックが死んだ後の掲示は幽霊
+    try:
+        if now - (APPROVALS / f"{session}.json").stat().st_mtime > ASK_STALE:
+            return None                  # 心拍が止まった＝hook が kill された幽霊（R86-H2）
+            # 移行: 配備前から待機中の旧 hook（心拍なし）も 10 秒で幽霊扱い＝その質問はターミナルで答える。
+            # 次の PermissionRequest からは新 hook（毎回スクリプトを読み直す）が心拍を打つ。互換経路は作らない。
+    except OSError:
+        return None
     # ★grace: PermissionRequest フックは「結局そのまま許可される操作」でも一度は発火する
     # （信頼済みフォルダへの Write 等・実機で確認）。掲示は出るがコンマ数秒で消える＝
     # ❗を一瞬光らせてスマホへ誤プッシュする。数秒生き残った掲示だけを「本当に止まっている」と見る。
@@ -1484,6 +1497,7 @@ def prune_inbox_litter(now=None):
 
     実測（2026-08-28）: pidfile が **262個・最古35日前**、さらに宛先セッションが消えた
     51日前の未配達指示が1件残っていた。どちらも実害は無いが、放っておくと増え続ける。
+    R86-H2（2026-09-15）: 承認の掲示板 office_approvals/ も対象（幽霊の掲示・未消費の回答が残っていた）。
     ★消してよい根拠: pidfile は hook が毎周 touch する（寿命12時間）ので1日以上古いものは
     死骸。指示は TTL=3時間で hook 自身が捨てるので、その倍を過ぎたものは誰も受け取らない。
     """
@@ -1497,7 +1511,7 @@ def prune_inbox_litter(now=None):
     try:
         entries = list(INBOX.iterdir())
     except OSError:
-        return 0
+        entries = []                     # inbox が無くても承認掲示板は掃除する（別モデルレビュー 2026-09-15）
     for f in entries:
         try:
             if f.name.startswith(".") and f.name.endswith(".pid"):
@@ -1506,6 +1520,25 @@ def prune_inbox_litter(now=None):
             elif f.suffix == ".json" and not f.name.startswith("_"):
                 age = now - f.stat().st_mtime
                 if age > INBOX_TTL * 2:          # hook が捨てる窓の倍＝誰も受け取らない
+                    f.unlink(); removed += 1
+        except OSError:
+            pass
+    # R86-H2: 承認の掲示板も掃除する。掲示は心拍が止まって ASK_LITTER、回答/claim/tmp は REPLY_LITTER。
+    # `_` 始まり（_e2e.log 等）は触らない。
+    try:
+        approvals = list(APPROVALS.iterdir())
+    except OSError:
+        approvals = []
+    for f in approvals:
+        try:
+            if f.name.startswith("_"):
+                continue
+            age = now - f.stat().st_mtime
+            if ".reply." in f.name or f.suffix == ".tmp":
+                if age > REPLY_LITTER:
+                    f.unlink(); removed += 1
+            elif f.suffix == ".json":
+                if age > ASK_LITTER:
                     f.unlink(); removed += 1
         except OSError:
             pass
@@ -1605,6 +1638,7 @@ def scan_office():
     today_sent = sum(1 for h in all_hist if float(h.get("ts") or 0) >= day_start)
     last_ts = max((float(h.get("ts") or 0) for h in all_hist), default=0.0)
     today_view = {"sent": today_sent,
+                  "answered": _today_answered(),      # R96-B: 今日答えた❗（daemon 側の一次情報＝端末ごとに数字が違わない）
                   "lastSentAgo": int(now - last_ts) if last_ts else None,
                   "capped": len(all_hist) >= 50}
     hist = []
@@ -3719,6 +3753,16 @@ def _attn_track(seen, roster, now_ts):
     except Exception:
         pass
     return new_seen, resolved
+
+
+def _today_answered(day=None):
+    """今日解消した❗の数（`_append_daily_stats` が積む日次 stats から）。無ければ 0。"""
+    day = day or datetime.now().strftime("%Y-%m-%d")
+    try:
+        d = json.loads((DAILY_DIR / f"{day}.stats.json").read_text(encoding="utf-8"))
+        return int(d.get("answered") or 0)
+    except (OSError, ValueError, TypeError):
+        return 0
 
 
 def _append_daily_stats(resolved_secs, day):
