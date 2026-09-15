@@ -584,6 +584,7 @@ export async function mount(root) {
       bossPoint: () => scene.projectBoss(),
       // 間取りの実測用（R73）。床座標→画面座標＝候補地が本当に空床かをレンダに投影して確かめる
       worldPoint: (x, y, z) => scene.project(x, y, z),
+      rig: () => scene.rigDebug?.(),
     },
   });
   return () => {

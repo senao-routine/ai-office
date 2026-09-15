@@ -220,7 +220,7 @@ test("every tier builds deterministic static batches with one mesh per material 
     // R94: recaptured at seed=11 after rebuilding four glass rooms, the lounge and cafe.
     // R96-D: recaptured after the Tripo-generated furniture (desks, chairs, sofa, stools, tables, lamp, shelf, water) replaced the procedural pieces.
     // This covers geometry, placement and shadow flags; pixel golden is a separate gate.
-    if (tier === "M") assert.equal(digest, "92f6db84558ea6a8b7d40710ef87ba4802a1e54c25495d46b191be1ec6c1951b");
+    if (tier === "M") assert.equal(digest, "8cbbe0cbcce1819894d3b78861781851c3e32a217608421871b1a670f9748672");
     counts.push({ tier, batches: first.length, shadowBatches: first.filter((m) => m.castShadow).length,
       monitorScreens: spec.desks.columns.length * spec.desks.rows.length * 2 });
     assert.equal(new Set(first.map((m) => m.name)).size, first.length);

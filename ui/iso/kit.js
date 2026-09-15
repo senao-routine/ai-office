@@ -257,6 +257,7 @@ export function puff(w, h, d, radius = F.sofa.radius) {
 export function sofa(spec = {}) {
   const s = { ...F.sofa, ...spec }, { put, pieces } = builder(s), mat = s.material || "linen";
   if (!s.pouf) { const g = generated("sofa", { ...s, h: s.seat }); if (g) return g; }
+  else { const g = generated("pouf", s); if (g) return g; }
   const pad = F.sofa.puff, count = s.seats ?? Math.max(1, Math.round(s.w / .95));
   if (!s.pouf) {
     const width = (s.w - s.arm * 2) / count;
@@ -318,6 +319,7 @@ export function frame(spec = {}) {
 
 export function counter(spec = {}) {
   const s = { ...F.counter, ...spec }, { put, pieces } = builder(s);
+  { const g = generated("counter", s); if (g) return g; }
   put(slab(s.w, s.top, s.d, .12), "wood", 0, s.h - s.top / 2);
   put(slab(s.w - .08, .10, s.d - .08, .10), "white", 0, .05);
   put(box(s.w - .12, s.h - s.top - .10, s.d - .12), "wood2", 0, (s.h - s.top + .10) / 2);
@@ -330,6 +332,7 @@ export function counter(spec = {}) {
 
 export function cafeCounter(spec = {}) {
   const s = { w: 3.4, d: .90, h: 1.06, ...spec }, { put, pieces } = builder(s), top = .055;
+  { const g = generated("cafe_counter", s); if (g) return g; }
   put(slab(s.w - .14, .075, s.d - .12, .08), "steel", 0, .0375);
   put(slab(s.w - .08, s.h - top - .075, s.d - .08, .085), "white", 0, (s.h - top + .075) / 2);
   put(slab(s.w, top, s.d, .10), "white", 0, s.h - top / 2);

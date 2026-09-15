@@ -1,6 +1,15 @@
 {
   "_doc": "R96-D 生成什器の台帳。name: { pwa: PWA に同梱するか, yaw: 正面を +z に向ける回転(rad), fit: 'w'|'d'|'h' どの寸法を spec に合わせるか, source: Tripo task id }",
   "items": {
+    "cafe_counter": {
+      "pwa": true,
+      "yaw": -1.5708,
+      "fit": "box",
+      "fitH": "top",
+      "tris": 3029,
+      "kb": 90.0,
+      "source": "65d05527"
+    },
     "chair": {
       "pwa": true,
       "yaw": -1.5708,
@@ -9,6 +18,15 @@
       "tris": 3786,
       "kb": 79.8,
       "source": "58432eac"
+    },
+    "counter": {
+      "pwa": true,
+      "yaw": 1.5708,
+      "fit": "box",
+      "fitH": "top",
+      "tris": 3284,
+      "kb": 99.8,
+      "source": "5c624a00"
     },
     "desk": {
       "pwa": true,
@@ -45,6 +63,15 @@
       "tris": 2772,
       "kb": 60.3,
       "source": "87fd9502"
+    },
+    "pouf": {
+      "pwa": true,
+      "yaw": 0.0,
+      "fit": "box",
+      "fitH": "top",
+      "tris": 1978,
+      "kb": 37.9,
+      "source": "f5b30c1c"
     },
     "shelf": {
       "pwa": true,

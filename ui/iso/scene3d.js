@@ -30,6 +30,7 @@ import { SHELL_COLORS } from "/ui/core/archetype.js";
 import { assignMeetingRooms, assignRestSpots, assignSeats, assignOverflow, stableIndex } from "/ui/core/world.js";
 
 import { ActivityScreens, boardTexture } from "./screens.js";
+import { createRigKit } from "./rigbot.js";
 import { leafAtlasTexture } from "./plants.js";
 import { PostProcess } from "./post.js";
 import { roomEnvironment } from "./env.js";
@@ -209,6 +210,7 @@ export class IsoScene {
 
     const q = new URLSearchParams(typeof location === "undefined" ? "" : location.search);
     this.streaming = q.get("stream") === "1";
+    this.rigOn = q.get("rig") === "1";     // R96-D2 試作: Tripo リグ付きロボ（既定 OFF＝golden 不変）
     const requestedQuality = this.streaming ? "off" : q.get("quality") || "high";
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     this.post = new PostProcess(this.renderer, {
@@ -235,6 +237,7 @@ export class IsoScene {
     this.scene.environmentIntensity = 0.55;
     resetRand(); // All procedural textures and plants consume clock.rand in construction order.
     this.materials = makeMaterials(this.post.quality);
+    this.rigKit = this.rigOn ? createRigKit(this.materials, this.scene) : null;
     // GPT-Image生成デカール（ui/iso/tex/*.webp・コミット済みアセット）。
     // 非同期ロードなので「全部確定するまで probe.ready を抑え、確定のたび再描画」を守る
     // （守らないと golden が差し替え前後どちらを撮るか不定になりフレークする）。
@@ -890,6 +893,7 @@ export class IsoScene {
           enteringAt: this.seeded && !frozen ? t : null,
         };
         actor.nodes.root.scale.setScalar(1.62);   // 主役は大きめ（部屋拡張で負けない）
+        if (this.rigKit) actor.rig = this.rigKit.attach(actor.nodes);
         this.actors.set(agent.id, actor);
         welcome ||= this.seeded && !frozen;
       } else if (actor.reroute || actor.leavingAt != null || actor.dest[0] !== target.x || actor.dest[1] !== target.z) {
@@ -1048,6 +1052,12 @@ export class IsoScene {
       if (walking && actor.trYaw) { actor.trYaw.from = m.yaw; actor.trYaw.to = m.yaw; }
       actor.nodes.root.position.set(m.x, dispY, m.z);
       actor.nodes.root.rotation.y = dispYaw;
+      if (actor.rig) {
+        // R96-D2: 骨は clip の純関数サンプル（同じ t → 同じ姿勢）。poseKind が変わったら 0.45s で前の clip から混ぜる。
+        if (actor.rigKind !== poseKind) { actor.rigPrev = actor.rigKind ?? null; actor.rigKind = poseKind; }
+        actor.rig.apply(poseKind, t, walking ? m.dist : 0, seated, actor.poseChangedAt ?? -Infinity, actor.rigPrev, actor.seed);
+        actor.nodes.root.updateMatrixWorld(true);
+      }
       if (!walking) {
         actor.y = actor.targetY ?? actor.y;
         actor.yaw = actor.targetYaw ?? actor.yaw;
@@ -1115,6 +1125,7 @@ export class IsoScene {
     let n = 0;
     for (const [aid, actor] of this.actors) {
       if (n++ >= CAPACITY) break;
+      if (actor.rig) continue;   // リグ付きは SkinnedMesh が本体＝InstancedMesh の部品は出さない
       this.robots.push(actor.nodes, actor.accent || null,
         this._shellTint(actor.shellColor, actor.vendor)
           || (actor.lobster ? LOBSTER_TINT : actor.graphite ? GRAPHITE_TINT : null),
@@ -1520,6 +1531,22 @@ export class IsoScene {
     const ri = assignRestSpots(world.agents, this.model.restSpots).get(agent.id);
     const a = ri !== undefined ? this.model.restSpots[ri] : this.anchorFor(agent, world, index);
     return this.project(a.x, Math.max(0, (a.y || 0) - 0.02), a.z);
+  }
+
+  /** R96-D2 試作の観測口: リグ付きロボの本体が実際にどこへ描かれているか（頂点のワールド座標）。 */
+  rigDebug() {
+    const actor = [...this.actors.values()].find((a) => a.rig);
+    if (!actor) return { rigOn: this.rigOn, kit: !!this.rigKit, actors: this.actors.size, rigged: 0 };
+    const mesh = actor.rig.mesh, v = new THREE.Vector3();
+    mesh.updateMatrixWorld(true);
+    const pts = [0, 100, 1000, 3000].filter((i) => i < mesh.geometry.attributes.position.count)
+      .map((i) => { mesh.getVertexPosition(i, v); v.applyMatrix4(mesh.matrixWorld); return [+v.x.toFixed(2), +v.y.toFixed(2), +v.z.toFixed(2)]; });
+    const b0 = mesh.skeleton.bones[1]; const bw = new THREE.Vector3(); b0.getWorldPosition(bw);
+    return { rigOn: this.rigOn, kit: !!this.rigKit, actors: this.actors.size, rigged: [...this.actors.values()].filter((a) => a.rig).length,
+      root: actor.nodes.root.position.toArray().map((x) => +x.toFixed(2)), rootScale: actor.nodes.root.scale.x,
+      visible: mesh.visible, inScene: (() => { let o = mesh; while (o.parent) o = o.parent; return o === this.scene; })(), bones: mesh.skeleton.bones.length, hipWorld: bw.toArray().map((x) => +x.toFixed(2)),
+      verts: mesh.geometry.attributes.position.count, hasColor: !!mesh.geometry.attributes.color, hasSkin: !!mesh.geometry.attributes.skinIndex,
+      material: mesh.material?.type, points: pts, kind: actor.rigKind };
   }
 
   stats() {
