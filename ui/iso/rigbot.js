@@ -8,7 +8,7 @@ const smoothstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b
 import robotBody from "./gen/robot_body.js";
 import robotClips from "./gen/robot_clips.js";
 
-const FRONT_YAW = Math.PI / 2;    // 生成体は +x を向く（バイザーの頂点重心で判定）→ 既存ロボの向きへ（-π/2 だと背中を見せた・実レンダで確認）
+const FRONT_YAW = -Math.PI / 2;   // 生成体は +x を向く（バイザーの頂点重心）→ 既存ロボの前＝+z（胸リング attach(hip,0,.10,+.207) の側）へ。R_y(-π/2)·(1,0,0)=(0,0,1)。+π/2 だと歩行が後ろ向きになる（本人指摘）
 const bytes = (b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
 
 /** poseKind（scene3d が組む文字列）→ clip 名。無い種類は idle。 */

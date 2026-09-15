@@ -1567,7 +1567,13 @@ export class IsoScene {
       root: actor.nodes.root.position.toArray().map((x) => +x.toFixed(2)), rootScale: actor.nodes.root.scale.x,
       visible: mesh.visible, inScene: (() => { let o = mesh; while (o.parent) o = o.parent; return o === this.scene; })(), bones: mesh.skeleton.bones.length, hipWorld: bw.toArray().map((x) => +x.toFixed(2)),
       verts: mesh.geometry.attributes.position.count, hasColor: !!mesh.geometry.attributes.color, hasSkin: !!mesh.geometry.attributes.skinIndex,
-      material: mesh.material?.type, points: pts, kind: actor.rigKind };
+      material: mesh.material?.type, points: pts, kind: actor.rigKind,
+      // 向きの検算: procedural の visor（root→visor のワールド方向）と、生成体の顔（group ローカル +x のワールド方向）
+      faceDir: (() => { const g = actor.rig.group; const o = new THREE.Vector3().setFromMatrixPosition(g.matrixWorld);
+        const f = new THREE.Vector3(1, 0, 0).applyMatrix4(g.matrixWorld).sub(o).normalize(); return [+f.x.toFixed(2), +f.z.toFixed(2)]; })(),
+      visorDir: (() => { const r = new THREE.Vector3(), vv = new THREE.Vector3(); actor.nodes.root.getWorldPosition(r); actor.nodes.visor.getWorldPosition(vv);
+        const dir = vv.sub(r); dir.y = 0; dir.normalize(); return [+dir.x.toFixed(2), +dir.z.toFixed(2)]; })(),
+      rootYaw: +actor.nodes.root.rotation.y.toFixed(2) };
   }
 
   stats() {
