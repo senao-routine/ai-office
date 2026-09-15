@@ -136,7 +136,7 @@ export function createRigKit(materials, scene, mode = 1) {
         geo.setAttribute("color", new THREE.BufferAttribute(baseColor.array.slice(), 3));
       }
       const color = geo.getAttribute("color");
-      let tintKey = "";
+      let tintKey = null;   // null＝未適用。プールから来た器は前の個体色を持つので、最初の setTint(null) でも基準色へ戻す（別モデルレビュー）
       const setTint = (tint) => {
         const key = tint ? tint.getHexString() : "";
         if (key === tintKey) return; tintKey = key;

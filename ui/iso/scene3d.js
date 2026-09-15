@@ -1353,7 +1353,9 @@ export class IsoScene {
     }
     this.seeded = true;            // 次に現れた社員からは入口から歩かせる
     if (this.streaming) this.cinematic(t);
-    this.robots.faces.render(this.renderer, () => this.post.render(this.scene, this.camera));
+    // 表情アトラスの退避（シェーダー失敗→表情別 InstancedMesh）は従来バッチと生成体用バッチの両方で守る
+    const draw = () => this.post.render(this.scene, this.camera);
+    this.robots.faces.render(this.renderer, () => (this.robots.facesRig ? this.robots.facesRig.render(this.renderer, draw) : draw()));
   }
 
   /** 画面座標へ投影（ガラスのフローティングラベルを貼るため）。 */
