@@ -14,7 +14,7 @@ const bytes = (b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
 /** poseKind（scene3d が組む文字列）→ clip 名。無い種類は idle。 */
 export function clipFor(poseKind, seated) {
   const k = poseKind || "";
-  if (k.startsWith("walk") || k === "enter" || k === "run") return "walk";
+  if (k.startsWith("walk") || k === "enter" || k === "run" || k === "exit") return "walk";
   if (k.startsWith("question")) return "look_around";
   if (k.startsWith("celebrate")) return "cheer";
   if (k === "think") return "wait";
@@ -88,13 +88,14 @@ export function createRigKit(materials, scene) {
       };
       return {
         group, mesh,
-        apply(poseKind, t, dist, seated, changedAt = -Infinity, prevKind = null, seed = 0) {
+        apply(poseKind, t, dist, seated, changedAt = -Infinity, prevKind = null, seed = 0, prevDist = dist) {
           const name = clipFor(poseKind, seated), clip = clips.clips[name] || clips.clips.idle;
           let sample = sampleClip(clip, clips.fps, timeFor(name, t, dist, seed));
           const w = smoothstep(0, .45, t - changedAt);
           if (prevKind !== null && w < 1) {
+            // 遷移元が歩行なら到着時の距離で位相を止める（0 に戻すと先頭フレームへ跳ぶ・別モデルレビュー）
             const pname = clipFor(prevKind, seated), pclip = clips.clips[pname] || clips.clips.idle;
-            sample = blendPoses(sampleClip(pclip, clips.fps, timeFor(pname, t, dist, seed)), sample, w);
+            sample = blendPoses(sampleClip(pclip, clips.fps, timeFor(pname, t, prevDist, seed)), sample, w);
           }
           setPose(sample);
           nodes.root.updateMatrix();

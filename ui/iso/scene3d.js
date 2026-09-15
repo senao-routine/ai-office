@@ -1054,8 +1054,11 @@ export class IsoScene {
       actor.nodes.root.rotation.y = dispYaw;
       if (actor.rig) {
         // R96-D2: 骨は clip の純関数サンプル（同じ t → 同じ姿勢）。poseKind が変わったら 0.45s で前の clip から混ぜる。
-        if (actor.rigKind !== poseKind) { actor.rigPrev = actor.rigKind ?? null; actor.rigKind = poseKind; }
-        actor.rig.apply(poseKind, t, walking ? m.dist : 0, seated, actor.poseChangedAt ?? -Infinity, actor.rigPrev, actor.seed);
+        // 歩行の位相は距離駆動＝止まった後も到着時の距離（rigDist）を遷移元に渡して膝が跳ばないようにする。
+        if (actor.rigKind !== poseKind) { actor.rigPrev = actor.rigKind ?? null; actor.rigPrevDist = actor.rigDist ?? 0; actor.rigKind = poseKind; }
+        if (walking) actor.rigDist = m.dist;
+        actor.rig.apply(poseKind, t, walking ? m.dist : (actor.rigDist ?? 0), seated, actor.poseChangedAt ?? -Infinity,
+          actor.rigPrev, actor.seed, actor.rigPrevDist ?? 0);
         actor.nodes.root.updateMatrixWorld(true);
       }
       if (!walking) {
@@ -1087,7 +1090,7 @@ export class IsoScene {
     // R68: 退勤＝即消滅ではなく、入口まで歩いて退場してから消える（出勤と対称）
     for (const [id, actor] of [...this.actors]) {
       if (seen.has(id)) { actor.leavingAt = null; continue; }
-      if (!this.seeded || frozen) { this.actors.delete(id); continue; }
+      if (!this.seeded || frozen) { actor.rig?.dispose(); this.actors.delete(id); continue; }
       if (actor.leavingAt == null) {
         const pos = actor.nodes.root.position;
         actor.leavingAt = t;
@@ -1101,6 +1104,7 @@ export class IsoScene {
       const dt = t - actor.leavingAt;
       const m = pathTravel(actor.path, actor.startedAt, t);
       if (dt >= LEAVE_SECONDS && m.u >= 1) {
+        actor.rig?.dispose();
         this.actors.delete(id);
         continue;
       }
@@ -1119,13 +1123,21 @@ export class IsoScene {
       actor.expression = exprFor({ state: "waiting" }, t, actor.seed);
       actor.nodes.root.position.set(m.x, dispY, m.z);
       actor.nodes.root.rotation.y = this._track(actor, "trYaw", m.yaw, t, .45, true);
+      if (actor.rig) {
+        // 退勤中も同じ経路で骨を置く（放置すると scene 直下のリグが最後の位置で固まる・別モデルレビュー）
+        if (actor.rigKind !== actor.poseKind) { actor.rigPrev = actor.rigKind ?? null; actor.rigPrevDist = actor.rigDist ?? 0; actor.rigKind = actor.poseKind; }
+        if (!preparing) actor.rigDist = m.dist;
+        actor.rig.apply(preparing ? "idle" : "exit", t, actor.rigDist ?? 0, false, actor.poseChangedAt ?? -Infinity, actor.rigPrev, actor.seed, actor.rigPrevDist ?? 0);
+        actor.nodes.root.updateMatrixWorld(true);
+      }
     }
 
     this.robots.begin();
     let n = 0;
     for (const [aid, actor] of this.actors) {
-      if (n++ >= CAPACITY) break;
-      if (actor.rig) continue;   // リグ付きは SkinnedMesh が本体＝InstancedMesh の部品は出さない
+      const over = n++ >= CAPACITY;
+      if (actor.rig) { actor.rig.group.visible = !over; continue; }   // リグ付きは SkinnedMesh が本体＝部品は出さず、描画人数の上限も同じ
+      if (over) continue;
       this.robots.push(actor.nodes, actor.accent || null,
         this._shellTint(actor.shellColor, actor.vendor)
           || (actor.lobster ? LOBSTER_TINT : actor.graphite ? GRAPHITE_TINT : null),

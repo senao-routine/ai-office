@@ -89,21 +89,32 @@ def clips(a):
         if a.fit_height:
             prims = G.skinned_primitives(gltf, bin_chunk)
             ys = [v[1] for p in prims for v in p["pos"]]; k = a.fit_height / (max(ys) - min(ys))
-        if joints_ref is None: joints_ref = sk["joints"]; out["joints"] = [sk["nodes"][j]["name"] for j in joints_ref]
-        elif [sk["nodes"][j]["name"] for j in sk["joints"]] != out["joints"]: sys.exit(f"{name}: 骨の集合が body と違う")
+        names_here = [sk["nodes"][j]["name"] for j in sk["joints"]]
+        if joints_ref is None: joints_ref = list(names_here); out["joints"] = list(names_here)
+        elif names_here != out["joints"]: sys.exit(f"{name}: 骨の集合が body と違う")
+        # この GLB のノード索引 → 骨名 → body 側の骨番号（別 GLB では nodes[] の並びが違い得る＝索引で対応させない）
+        node_to_joint = {j: out["joints"].index(sk["nodes"][j]["name"]) for j in sk["joints"]}
         cl = G.read_clips(gltf, bin_chunk, fps=a.fps, joints=set(sk["joints"]), root_joint=sk["root"])
         # 1 本なら name、複数（≤5 まとめの retarget 出力）なら animation 名の末尾（preset:biped:walk → walk）
         for c in cl:
             cname = name if len(cl) == 1 and name != "*" else c["name"].split(":")[-1]
             if a.max_seconds and c["duration"] > a.max_seconds:
                 cut = int(round(a.max_seconds * a.fps)) + 1
+                blend = max(1, int(round(0.5 * a.fps)))   # 末尾 0.5 秒を先頭フレームへ寄せてループの継ぎ目を消す
                 for rec in c["tracks"].values():
                     for key in ("r", "t"):
-                        if key in rec: rec[key] = rec[key][:cut]
+                        if key not in rec: continue
+                        seq = rec[key][:cut]
+                        for i in range(1, blend + 1):
+                            idx = cut - 1 - blend + i
+                            if idx <= 0 or idx >= cut: continue
+                            w = i / blend
+                            seq[idx] = G._slerp(seq[idx], seq[0], w) if key == "r" else [x + (y - x) * w for x, y in zip(seq[idx], seq[0])]
+                        rec[key] = seq
                 c["frames"] = cut; c["duration"] = round((cut - 1) / a.fps, 4)
             tracks = {}
             for node, rec in c["tracks"].items():
-                ji = joints_ref.index(node) if node in joints_ref else None
+                ji = node_to_joint.get(node)
                 if ji is None: continue
                 t = {}
                 if "r" in rec:
