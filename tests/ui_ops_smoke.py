@@ -425,7 +425,8 @@ def main():
             viewport = live.locator("#viewport").bounding_box()
             live.mouse.move(viewport["x"] + 16, viewport["y"] + 16)
             live.mouse.wheel(0, -160)
-            live.wait_for_selector("#viewreset:not([hidden])", timeout=3000)
+            # 高負荷（並走の verify／エージェント）では SwiftShader の wheel 処理が 3 秒を超える＝他の待ちと同じ余裕を取る
+            live.wait_for_selector("#viewreset:not([hidden])", timeout=15000)
             live.click("#viewreset")
             if reset_before and live.eval_on_selector("#viewreset", "el => el.hidden"):
                 print("  ✓ R96 ホイール操作後だけ視点リセットが現れ、押すと隠れる")

@@ -145,7 +145,13 @@ class ProjectGroupTest(unittest.TestCase):
         put("-Users-test-demo-project", "sess-brk000001.jsonl", "working_tool.jsonl", age=5)
         proj = office.scan_office()["roster"][0]
         entry = proj["sessions"][0]
-        self.assertEqual(set(entry), {"session", "vendor", "state", "age", "attention", "minions", "pending"})
+        # R96-B: listening（bool）と ask{tool,kind} は配達表示のために載る（本文・パスは持たない）。それ以外の鍵は増やさない。
+        self.assertEqual(set(entry) - {"listening", "ask"},
+                         {"session", "vendor", "state", "age", "attention", "minions", "pending"})
+        if "listening" in entry:
+            self.assertIsInstance(entry["listening"], bool)
+        if "ask" in entry:
+            self.assertEqual(set(entry["ask"]), {"tool", "kind"})
 
     # ── external は集約しない ────────────────────────────────
     def test_external_is_not_grouped(self):

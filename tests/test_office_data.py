@@ -262,7 +262,7 @@ class SessionBriefDeliveryTest(unittest.TestCase):
     """R96-B 残: 内訳 brief は listening と ask{tool,kind} を運ぶが、本文・パス・その他の ask 項目は構造的に持たない。"""
 
     def test_brief_carries_listening_and_ask_shape_only(self):
-        import office_server as office
+        office = _load("office_brief", ROOT / "server" / "office_server.py")
         e = {"session": "s1", "state": "working", "listening": False,
              "ask": {"tool": "Bash", "kind": "permission", "command": "rm -rf /secret", "prompt": "本文"},
              "cwd": "/Users/x/secret", "lastSaid": "本文"}
