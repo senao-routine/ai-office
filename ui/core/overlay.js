@@ -92,8 +92,9 @@ export function overlayFor(poseKind, t, seed = 0, since = Infinity) {
     // カウンターの陰で頭しか見えないのを直した R75 の狙い（手が動いて見える）を取り戻す
     return [...handsOnTop(0.8), ...typing(t, seed, 0.04, 1.6)];
   }
-  // マグを持っている間（"desk::mug"）は右手が塞がっている＝打鍵にしない
-  if (k.startsWith("desk")) return k.endsWith(":mug") ? [] : typing(t, seed);
+  // 打鍵は**実際に作業している席**だけ（scene3d が ":work" を付ける）。指示待ちの席は机の姿勢のまま動かさない。
+  // マグを持っている間（"desk::mug"）も右手が塞がっている＝打鍵にしない。
+  if (k.startsWith("desk")) return k.endsWith(":work") ? typing(t, seed) : [];
   return [];
 }
 

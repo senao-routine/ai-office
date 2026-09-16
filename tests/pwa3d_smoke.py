@@ -774,11 +774,13 @@ def main(argv):
                 else:
                     print(f"  ✓ ピンチズーム/パン（scale 1→{view['s1']:.2f}→リセット1・パン可）")
 
-                # R79-6: B10再発ガード＝ダークにすると本文色が hairline アルファ(.08〜.22)に
-                # 落ちる一括置換事故の再発を、計算済みcolorの不透明度で機械検知する
-                dark_alpha = page.evaluate(
+                # R79-6 の B10 再発ガード（本文色が hairline アルファ .08〜.22 に落ちる一括置換事故）。
+                # R96-B Tier 3 で PWA のテーマ切替（setTheme・呼び出し元ゼロ・th-dark の CSS も無い死んだ行）を
+                # 撤去したので、ダークへ切り替えてから測る形はもう成り立たない（実測: setTheme is not defined で
+                # スモークごと落ちていた＝RUN_RELAY=1 でしか走らない経路なので通常の verify では見えなかった）。
+                # 守りたいのは「本文が透ける置換事故を見つける」ことなので、いまの唯一のテーマで同じ検査をする。
+                text_alpha = page.evaluate(
                     """() => {
-                        setTheme('dark');
                         const sels = ['.sheet h3', '#shsay', '.sheet .sec',
                                       '.sheet button.sub', '.sheet .feedbox .feedline'];
                         const out = [];
@@ -790,15 +792,18 @@ def main(argv):
                             const p = m ? m[1].split(',').map(parseFloat) : [];
                             out.push([s, c, p.length > 3 ? p[3] : 1]);
                         }
-                        setTheme('classic');
-                        return out;
+                        return { out, hasTheme: typeof window.setTheme === 'function' };
                     }""")
-                bad = [r for r in dark_alpha if r[2] < 0.75]
-                if bad or not dark_alpha:
-                    print(f"  ✗ ダーク本文が透けている(B10再発): {bad or 'シート要素なし'}")
+                bad = [r for r in text_alpha["out"] if r[2] < 0.75]
+                if bad or not text_alpha["out"]:
+                    print(f"  ✗ 本文が透けている(B10再発): {bad or 'シート要素なし'}")
+                    ng += 1
+                elif text_alpha["hasTheme"]:
+                    # 復活させるなら th-dark の CSS とセット。呼び出し元の無い切替が戻る方が事故（Tier 3 の理由）
+                    print("  ✗ 撤去したテーマ切替(setTheme)が復活している → ダーク本文の検査も戻すこと")
                     ng += 1
                 else:
-                    print(f"  ✓ ダーク本文の不透明度OK（{len(dark_alpha)}要素・B10ガード）")
+                    print(f"  ✓ 本文の不透明度OK（{len(text_alpha['out'])}要素・B10ガード）")
 
                 if errors:
                     print(f"  ✗ console/page error: {errors[:3]}")

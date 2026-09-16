@@ -27,11 +27,13 @@
 //   （ack が飛ばなければ）次の pull で再取得できる。指示が「静かに消える」ことがない。
 // Mac1台=1 Room（getByName("mac")）。P2は共有トークン認証。P3でQRペアリング＋HMAC署名へ。
 import { DurableObject } from "cloudflare:workers";
-import { ASSETS, BUILD as UI_BUILD, MODULES } from "./modules_data.js";
+// R96-D3: /ui/** の応答（ファイル単位の ETag）は ui_etag.js が決める。modules_data を直接触らない
+//（worker.js は "cloudflare:workers" を import する＝node から読めないので、テストできる側へ寄せた）。
+import { REVALIDATE as UI_REVALIDATE, uiResponse } from "./ui_etag.js";
 import { APP_HTML } from "./app_html.js";
 
 // R79: PWAシェル(APP_HTML/SW_JS/MANIFEST)の版ID。**シェル自身の内容**から作る。
-// ここでモジュール束の UI_BUILD を流用すると、アプリだけ直したときに版が変わらず
+// ここでモジュール束の版（modules_data.js の BUILD）を流用すると、アプリだけ直したときに版が変わらず
 // 古いシェルが配られる（ETagの意味が消える）。起動時に1回だけ計算する。
 function _fnv1a(s) {
   let h = 0x811c9dc5;
@@ -624,26 +626,16 @@ export default {
       // 1年キャッシュだと boot3d.js の不具合修正が既存端末へ最大1年届かない
       // （R77→R78 の focus() 追加が実際に届かない状態だった）。
       // no-cache + 内容ハッシュETag ＝ 毎回検証させるが、変わっていなければ 304（数百バイト）。
-      const REVALIDATE = "public, max-age=0, must-revalidate";
-      const etag = 'W/"ui-' + UI_BUILD + '"';
-      if (request.headers.get("If-None-Match") === etag) {
-        return new Response(null, { status: 304, headers: { ETag: etag, "Cache-Control": REVALIDATE } });
+      // R96-D3: ETag は**ファイル単位**（ui_etag.js）。版全体だと 1 本直すたびに 64 URL 全部を再送していた。
+      const r = uiResponse(path, request.headers.get("If-None-Match"));
+      if (r.status === 404) return new Response("not found", { status: 404 });
+      if (r.status === 304) {
+        return new Response(null, { status: 304, headers: { ETag: r.etag, "Cache-Control": UI_REVALIDATE } });
       }
-      const src = (Object.prototype.hasOwnProperty.call(MODULES, path) && MODULES[path]) || "";
-      if (src) {
-        return new Response(src, {
-          headers: { "Content-Type": "text/javascript; charset=utf-8",
-                     "Cache-Control": REVALIDATE, ETag: etag },
-        });
-      }
-      // 3Dシーンが URL で読むテクスチャ（importでは辿れないので別マップ）
-      const asset = (Object.prototype.hasOwnProperty.call(ASSETS, path) && ASSETS[path]) || null;
-      if (asset) {
-        return new Response(spriteBytes(asset[1]), {
-          headers: { "Content-Type": asset[0], "Cache-Control": REVALIDATE, ETag: etag },
-        });
-      }
-      return new Response("not found", { status: 404 });
+      // 3Dシーンが URL で読むテクスチャ（importでは辿れないので別マップ）は base64 で持っている
+      return new Response(r.b64 ? spriteBytes(r.b64) : r.body, {
+        headers: { "Content-Type": r.type, "Cache-Control": UI_REVALIDATE, ETag: r.etag },
+      });
     }
 
     // 認証（/ ・/app* 以外は全て Bearer 必須）。RELAY_POST_TOKEN=OpenClaw用の限定トークンで
@@ -977,5 +969,5 @@ const PWA_GLOSS_SOURCE = tidyActivityPWA.toString() + "\n" + activityGlossPWA.to
 
 // R79: PWAシェルの版ID（起動時に1回だけ計算）。APP_HTML は生成モジュールから import。
 // SW_JS / MANIFEST の定義後に算出する。
-// モジュール束の UI_BUILD とは別物: アプリだけ直したときにも必ず版が変わる必要がある。
+// モジュール束の版（ui_etag.js が使う）とは別物: アプリだけ直したときにも必ず版が変わる必要がある。
 const APP_BUILD = _fnv1a(APP_HTML) + "-" + _fnv1a(SW_JS + MANIFEST);

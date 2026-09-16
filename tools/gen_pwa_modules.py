@@ -125,6 +125,15 @@ def build_id(mods, assets):
     return h.hexdigest()[:12]
 
 
+def file_id(url, body):
+    """ファイル単位の版ID。1 本直しても他は 304 で済む＝転送を払い直さない（R96-D3 項目 6）。
+    実測: 64 URL 全部に同じ ETag を返していたので、1 行の修正で raw 2.4MB／gzip 1.07MB を再送していた。"""
+    h = hashlib.sha256()
+    h.update(url.encode("utf-8")); h.update(b"\x00")
+    h.update(body.encode("utf-8") if isinstance(body, str) else body)
+    return h.hexdigest()[:12]
+
+
 def render(mods, assets):
     lines = [
         "// 自動生成: tools/gen_pwa_modules.py（手で編集しない）",
@@ -141,6 +150,14 @@ def render(mods, assets):
     lines.append("export const ASSETS = Object.assign(Object.create(null), {")
     for url, (mime, b64) in assets.items():
         lines.append(f"  {json.dumps(url)}: [{json.dumps(mime)}, {json.dumps(b64)}],")
+    lines.append("});")
+    lines.append("")
+    lines.append("// ファイル単位の ETag（内容ハッシュ）。無い URL は BUILD へ落ちる＝旧挙動。")
+    lines.append("export const ETAGS = Object.assign(Object.create(null), {")
+    for url, src in mods.items():
+        lines.append(f"  {json.dumps(url)}: {json.dumps(file_id(url, src))},")
+    for url, (mime, b64) in assets.items():
+        lines.append(f"  {json.dumps(url)}: {json.dumps(file_id(url, b64))},")
     lines.append("});")
     lines.append("")
     return "\n".join(lines)

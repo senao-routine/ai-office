@@ -26,7 +26,7 @@ test("立っているときの poseKind → clip", () => {
 });
 
 test("着席中は question / think でも座り clip（立ち clip だと椅子と床を貫く・R96-D3）", () => {
-  for (const kind of ["question", "think", "desk:", "meeting:", "lounge:", "relax", "loungeTab", "read:book", "chat", ""]) {
+  for (const kind of ["question", "think", "desk:", "desk::work", "desk::mug", "meeting:", "lounge:", "relax", "loungeTab", "read:book", "chat", ""]) {
     assert.equal(clipFor(kind, true), "sit", `${kind} が座り clip にならない`);
   }
   // 歩き・一発芸は着席フラグより強い（遷移中に座り clip へ落ちない）
@@ -146,13 +146,15 @@ test("承認の頷き: approval で頭の前方ベクトルが 0.3 秒に 0.05ra
   assert.equal(overlayFor("approval", 10, 0.7, 2.0).length, 0);
 });
 
-test("打鍵: desk では手が動き、待機では動かない（マグを持っている間は打鍵しない）", () => {
+test("打鍵: 作業中の席だけ手が動く（指示待ちの席とマグを持っている間は動かさない）", () => {
   const span = (kind) => { const pts = []; for (let t = 10; t < 10.35; t += 0.01) pts.push(solve(kind, t, 0.2, true).rHand);
     return Math.max(...pts.map((p) => dist(p, pts[0]))); };
   // sit clip 自体が呼吸で 0.35 秒に 5mm ほど動く（実測）。打鍵はその 3 倍動くことで区別する
-  const work = span("desk:"), idle = span("");
+  const work = span("desk::work"), idle = span("desk:");
   assert.ok(work >= 0.012, `打鍵の振れ ${work.toFixed(4)}`);
-  assert.ok(work > idle * 2.5, `打鍵 ${work.toFixed(4)} と待機 ${idle.toFixed(4)} が区別できない`);
+  assert.ok(work > idle * 2.5, `打鍵 ${work.toFixed(4)} と指示待ち ${idle.toFixed(4)} が区別できない`);
+  // 机の姿勢は作業中も指示待ちも同じ clip。働いている印（:work）が無い席では所作を足さない
+  assert.deepEqual(overlayFor("desk:", 10, 0.2), []);
   assert.deepEqual(overlayFor("desk::mug", 10, 0.2), []);
 });
 
@@ -176,7 +178,7 @@ test("会議チビ: 頷きが出て、23 秒周期の跳ねと挙手が生きて
 
 test("4 状態が互いに違う姿勢になる（working / waiting / attention / approval）", () => {
   const at = (kind, t, since) => solve(kind, t, 0.9, true, since);
-  const waiting = at("", 12.08), working = at("desk:", 12.08), attention = at("question", 12.08), approval = at("approval", 12.08, 0.2);
+  const waiting = at("desk:", 12.08), working = at("desk::work", 12.08), attention = at("question", 12.08), approval = at("approval", 12.08, 0.2);
   assert.ok(dist(working.rHand, waiting.rHand) > 0.005, "打鍵と待機が同じ手の位置");
   assert.ok(dist(attention.rHand, waiting.rHand) > 0.2, "挙手と待機が同じ手の位置");
   // 承認は首だけ動く所作（procedural の approvalPose と同じ）＝手ではなく頭で違いを測る
@@ -187,4 +189,35 @@ test("借り姿勢の定数は単位クォータニオン（生成 clip から�
   for (const [name, q] of [...Object.entries(RAISE_R), ...Object.entries(DESK_ARMS)]) {
     assert.ok(Math.abs(Math.hypot(...q) - 1) < 1e-3, `${name} が単位でない`);
   }
+});
+
+test("所作も遷移で混ざる（❗の発生・解消で腕が瞬間移動しない）", () => {
+  // 仕様: 前の所作と今の所作を「同じ clip 姿勢の上に作って w で混ぜる」。w=0 は前のまま・w=1 は今だけ。
+  const blended = (prevKind, kind, t, w) => {
+    const sample = sampleClip(clipData.clips[clipFor(kind, true)], clipData.fps, t);
+    const bone = (name) => {
+      const { ni, j } = nodeOf.get(name), base = sample[j]?.r || sk.nodes[ni].r;
+      const put = (k, since) => {
+        let q = [...base];
+        for (const e of overlayFor(k, t, 0.9, since)) {
+          if (e.bone !== name) continue;
+          q = e.q ? slerp(q, e.q, e.w) : qmul(q, qaxis(qrot(qconj(REST[ni].q), e.axis), e.angle));
+        }
+        return q;
+      };
+      return slerp(put(prevKind, Infinity), put(kind, Infinity), w);
+    };
+    const local = [];
+    for (let j = 0; j < sk.joints.length; j++) {
+      const ni = sk.joints[j], r0 = sk.nodes[ni], s = sample[j];
+      local[ni] = { r: s?.r ? [...s.r] : [...r0.r], t: s?.t ? [r0.t[0]+s.t[0], r0.t[1]+s.t[1], r0.t[2]+s.t[2]] : [...r0.t] };
+    }
+    for (const name of ["R_Upperarm", "R_Forearm", "R_Hand"]) local[nodeOf.get(name).ni].r = bone(name);
+    return fk(local)[nodeOf.get("R_Hand").ni].p;
+  };
+  const down = blended("desk:", "question", 12.0, 0), up = blended("desk:", "question", 12.0, 1);
+  const mid = blended("desk:", "question", 12.0, 0.5);
+  assert.ok(up[1] - down[1] > 0.2, "そもそも挙手で手が上がっていない");
+  assert.ok(mid[1] > down[1] + 0.05 && mid[1] < up[1] - 0.05, `補間の途中 ${mid[1].toFixed(3)} が両端のどちらかに張り付いている`);
+  assert.ok(dist(mid, down) < dist(up, down), "混合が遷移先へ跳んでいる");
 });

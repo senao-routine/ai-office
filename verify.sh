@@ -130,6 +130,7 @@ fi
 if command -v node >/dev/null 2>&1; then
   node --check relay/src/worker.js >/dev/null 2>&1 && ok "worker.js 構文OK" || ng "worker.js 構文エラー"
   node tests/pwa_app_html_kat.mjs && ok "APP_HTML バイト同一 (SHA-256)" || ng "APP_HTML SHA-256 不一致"
+  node tests/ui_etag.mjs >/dev/null 2>&1 && ok "/ui/ の ETag はファイル単位 (1本直しても他は304)" || ng "/ui/ の ETag が版全体に戻っている → node tests/ui_etag.mjs"
 else
   echo "  - node無し → worker.js構文チェック省略"
 fi

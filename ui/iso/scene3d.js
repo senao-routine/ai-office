@@ -1075,15 +1075,19 @@ export class IsoScene {
         // 歩行の位相は距離駆動＝止まった後も到着時の距離（rigDist）を遷移元に渡して膝が跳ばないようにする。
         // R96-D3: 遷移時刻は rig 側で持つ。procedural の変化検出（上のブロック）は greet の上書き前に走るので、
         // actor.poseChangedAt を借りると挨拶中ずっと「いま変わった」になり補間重みが 0 から進まない（別モデルレビューの実測）。
-        if (actor.rigKind !== poseKind) {
+        // R96-D3: 机の姿勢は「作業中」も「指示待ち」も同じ（procedural の poseFor も zone だけで typingPose を返す）。
+        // 打鍵の所作は本当に手を動かしている人だけに出したいので、リグへ渡す種別に働きを載せる（別モデルレビュー）。
+        const rigKind = act.pose === "typing" && poseKind.startsWith("desk") && !poseKind.endsWith(":mug")
+          ? `${poseKind}:work` : poseKind;
+        if (actor.rigKind !== rigKind) {
           actor.rigPrev = actor.rigKind ?? null;
           actor.rigPrevChangedAt = actor.rigChangedAt ?? -Infinity;
           actor.rigChangedAt = actor.rigKind === undefined || frozen ? -Infinity : t;
-          actor.rigKind = poseKind;
+          actor.rigKind = rigKind;
         }
         // 歩行の位相は「累積の歩行距離」で駆動する。経路の再計算（m.dist が 0 へ戻る）や停止でも位相が跳ばない。
         const walked = this._rigWalked(actor, walking ? m.dist : null);
-        actor.rig.apply(poseKind, t, walked, seated, actor.rigChangedAt ?? -Infinity, actor.rigPrev, actor.seed, walked,
+        actor.rig.apply(rigKind, t, walked, seated, actor.rigChangedAt ?? -Infinity, actor.rigPrev, actor.seed, walked,
           actor.rigPrevChangedAt ?? -Infinity);
         actor.nodes.root.updateMatrixWorld(true);
       }

@@ -277,7 +277,34 @@ export function createRigKit(materials, scene, mode = 1) {
       const _v = new THREE.Vector3(), _q = new THREE.Quaternion(), _qr = new THREE.Quaternion(), _off = new THREE.Vector3();
       const _e = new THREE.Euler();
       const _ov = new THREE.Vector3(), _oq = new THREE.Quaternion();   // オーバーレイ層の作業用
+      const _obase = new THREE.Quaternion(), _ocur = new THREE.Quaternion();
       const _inv = new THREE.Matrix4();
+      /** 差分 1 本を骨のローカル回転へ合成する（軸は体の rest 軸＝OVERLAY が骨ローカルへ落とす）。 */
+      const addEntry = (q, e, m) => {
+        if (e.q) { _oq.set(e.q[0], e.q[1], e.q[2], e.q[3]); q.slerp(_oq, e.w); }
+        else {
+          _ov.set(e.axis[0], e.axis[1], e.axis[2]).applyQuaternion(m.inv).normalize();
+          q.multiply(_oq.setFromAxisAngle(_ov, e.angle));
+        }
+      };
+      /** 今の所作（cur）と前の所作（prev）を同じ clip 姿勢の上に作り、w で混ぜて骨へ書く。 */
+      const applyOverlay = (cur, prev, w) => {
+        if (!cur.length && !(prev && prev.length)) return;
+        const names = new Set(cur.map((e) => e.bone));
+        if (prev) for (const e of prev) names.add(e.bone);
+        for (const name of names) {
+          const m = OVERLAY.get(name);
+          const b = m ? jointBones[m.j] : null;
+          if (!b) continue;
+          _obase.copy(b.quaternion);
+          for (const e of cur) if (e.bone === name) addEntry(b.quaternion, e, m);
+          if (!prev) continue;
+          _ocur.copy(b.quaternion);
+          b.quaternion.copy(_obase);
+          for (const e of prev) if (e.bone === name) addEntry(b.quaternion, e, m);
+          b.quaternion.slerp(_ocur, w);
+        }
+      };
       const boneLocalQuat = (bone, out) => { bone.getWorldQuaternion(out); nodes.root.getWorldQuaternion(_qr); return out.premultiply(_qr.invert()); };
       const restQuat = new Map();
       const follow = (node, bone, lift, fwd) => {
@@ -364,17 +391,12 @@ export function createRigKit(materials, scene, mode = 1) {
           // 姿勢オーバーレイ（❗の挙手・承認の頷き・打鍵・コンソール・会議チビの所作）を clip の上に足す。
           // **followAll() より前**でなければならない: 後ろに書くと neck が Head 骨で上書きされて頷きが消える
           // ＝ R96-D2 で承認の頷きが死んでいた理由そのもの（監査の実測: 頭の前方ベクトルが 3 時点とも完全一致）。
-          for (const e of overlayFor(poseKind, t, seed, Number.isFinite(changedAt) ? t - changedAt : Infinity)) {
-            const m = OVERLAY.get(e.bone);
-            if (!m) continue;
-            const b = jointBones[m.j];
-            if (!b) continue;
-            if (e.q) { _oq.set(e.q[0], e.q[1], e.q[2], e.q[3]); b.quaternion.slerp(_oq, e.w); }
-            else {
-              _ov.set(e.axis[0], e.axis[1], e.axis[2]).applyQuaternion(m.inv).normalize();
-              b.quaternion.multiply(_oq.setFromAxisAngle(_ov, e.angle));
-            }
-          }
+          // 所作も clip と同じ重みで混ぜる。ここを混ぜないと ❗の発生・解消で腕が瞬間移動する
+          // （別モデルレビューの実測: 同時刻の切替で右手が root ローカルに 0.225 跳ぶ）。
+          const ov = overlayFor(poseKind, t, seed, Number.isFinite(changedAt) ? t - changedAt : Infinity);
+          const prevOv = prevKind !== null && w < 1
+            ? overlayFor(prevKind, t, seed, Number.isFinite(prevChangedAt) ? t - prevChangedAt : Infinity) : null;
+          applyOverlay(ov, prevOv, w);
           nodes.root.updateMatrix(); nodes.root.updateMatrixWorld(true);
           group.matrix.multiplyMatrices(nodes.root.matrix, FRONT_ROT);
           group.updateMatrixWorld(true);
