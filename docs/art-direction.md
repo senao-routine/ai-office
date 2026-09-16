@@ -310,4 +310,6 @@ V4' 発光モニタ＋bloom 再調律 → V5' ガラス壁 → V6' コンパク�
   Head/Spine02 骨に「位置＋rest からの差分回転」で追従。ベンダー色・アーキタイプ色は個体の頂点色（明るい殻ほど効く）。
 - 掟: bind は単位行列／AnimationMixer は使わない／材質 clone 禁止（個体色は頂点色）／rig の group は scene 直下（骨格 root は数学用）／歩行の位相は累積距離／
   生成体の前は +x → yaw −π/2 で既存の +z へ。観測口= `__office.debug.rig(kind)`（faceDir・fit）。
-- 据置: チビ（サブエージェント）とボスは v3 の procedural。ベンダー別の頭の形（ロブスターの角・Codex の幅）は色差だけ（次ループ）。v3 は `?rig=0` で残る（golden は v4）。
+- ボス・チビも同じ生成体（2026-09-16）。ボスの 👑 王冠は**ロボの頭部品**（以前は office.js の静的家具＝姿勢に追従せず 0.5m ずれた）・clip は wait で自席に立つ。
+  チビは makeSkeleton を小さく置くだけ（生成体は元から頭が大きい）。ベンダー差= Head 骨のスケール（claude 1／codex 1.37×0.98／openclaw 1.5×0.90）＋ OpenClaw は手の骨にハサミ。
+  バイザーは幅を push の setVendor、奥行きを rig の setVendorShape が頭に合わせる。v3 は `?rig=0` で残る（golden は v4）。
