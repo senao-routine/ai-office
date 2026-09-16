@@ -16,9 +16,12 @@ const bytes = (b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
 export function clipFor(poseKind, seated) {
   const k = poseKind || "";
   if (k.startsWith("walk") || k === "enter" || k === "run" || k === "exit") return "walk";
-  if (k.startsWith("question")) return "look_around";
   if (k.startsWith("celebrate") || k === "greet") return "cheer";
-  if (k === "think" || k === "chibi") return "wait";
+  if (k === "chibi") return "wait";
+  // R96-D3: 着席中は question/think でも座り clip（立ち clip＋SIT_DROP だと椅子と床を貫く。挙手・思考は姿勢オーバーレイで出す）
+  if (seated) return "sit";
+  if (k.startsWith("question")) return "look_around";
+  if (k === "think") return "wait";
   if (k.startsWith("read") || k === "relax" || k === "loungeTab" || k.startsWith("lounge")) return "sit";
   if (k.startsWith("meeting:present") || k.endsWith(":stand")) return "idle";
   if (seated || k.startsWith("desk") || k.startsWith("meeting")) return "sit";
@@ -51,15 +54,52 @@ function buildGeometry(mod) {
 /** ハイブリッド C で procedural 側から出す部品（頭・顔・耳・アンテナ・胸リング・職業アクセサリ）。胴体・腕・脚は生成体。 */
 export const HYBRID_PARTS = new Set(["head", "headCodex", "headOpenclaw", "visor", "ear", "antStem", "antCodex", "antOpenclaw", "antTip", "chest", "__acc"]);
 /** D（採用案）で生成体に重ねる部品: 表情アトラスのバイザー・胸の状態リング・職業アクセサリ。頭・耳・アンテナは生成体のもの。 */
-export const D_PARTS = new Set(["visorRig", "chest", "__acc"]);
+export const D_PARTS = new Set(["visorRig", "chest", "antTip", "__acc", "__prop"]);
 /** ベンダー差（R96-D2）: 頭の幅は Head 骨のスケール、OpenClaw は手の骨にハサミ。色は個体の頂点色。 */
 const VENDOR_HEAD = { claude: [1, 1, 1], codex: [1.37, 1, 0.98], openclaw: [1.5, 1, 0.90] };
 export const D_PARTS_CLAW = new Set([...D_PARTS, "claw"]);
 const HEAD_LIFT = 0.166;   // C: Head 骨（首・0.645）から procedural の neck 原点へ: 頭の底が切り口に載る高さ（1.035 − HEAD_Y 0.2244 − 0.645）
 const HEAD_LIFT_D = 0.18;  // D: 生成体の頭の中心に procedural の neck 原点（+HEAD_Y 0.2244）を合わせる（帽子が頭頂に触れる高さ・実レンダで 0.205→0.18）
 const HEAD_Y_P = 0.2244, FACE_Y_P = -0.054;   // robot.js の HEAD_Y / FACE_Y（visor 原点 = neck + HEAD_Y + FACE_Y）
-const CHEST_FWD = 0.40;    // Spine02 から胸リングまでの前方オフセット（生成体の胸の前面 z≈0.40・実測）
-const CHEST_LIFT = 0.12;   // Spine02（y≈0.41）から胸リングの高さへ
+// R96-D3: Spine02 から胸の表面までは実測 0.240（体ローカル・前＝+x／root ローカルでは +z）。
+// 0.40 は「肩の左右半幅」を前方と取り違えた値で、リングが体の 0.17（実寸 0.28m）前に浮いていた。
+const CHEST_FWD = 0.235;   // リングの後面が体表に触れる
+const CHEST_LIFT = 0.12;   // Spine02（y≈0.406）から胸リングの高さへ
+const BOWTIE_FWD = 0.295;  // 蝶ネクタイは高さが違う（y≈0.586）＝体表 0.282 の少し前。リングと連動させない
+
+/** 骨の rest ワールド位置（親から積む・回転込み）。 */
+function restWorld(sk, nodeIndex) {
+  const n = sk.nodes[nodeIndex];
+  if (n.parent < 0) return [n.t[0], n.t[1], n.t[2]];
+  const chain = [];
+  for (let j = n.parent; j >= 0; j = sk.nodes[j].parent) chain.unshift(sk.nodes[j]);
+  const q = new THREE.Quaternion();
+  for (const c of chain) q.multiply(new THREE.Quaternion(c.r[0], c.r[1], c.r[2], c.r[3]));
+  const v = new THREE.Vector3(n.t[0], n.t[1], n.t[2]).applyQuaternion(q);
+  const p = restWorld(sk, n.parent);
+  return [p[0] + v.x, p[1] + v.y, p[2] + v.z];
+}
+
+/**
+ * 生成体の頭を 1 回だけ実測する（R96-D3）。procedural の頭（半径 0.36・中心 neck+HEAD_Y）を前提にした固定値のままだと、
+ * 帽子が頭の 0.148 上に浮き、ヘッドセットのバンドがアンテナの高さで宙を回る（監査で実測）。返す値は体ローカル（+x=前・+y=上・z=左右）。
+ */
+function headMetrics(mod) {
+  const sk = mod.skeleton, part = mod.parts[0], n = part.n;
+  const q = new Int16Array(bytes(part.pos).buffer);
+  const headIdx = sk.joints.map((ni) => sk.nodes[ni].name).indexOf("Head");
+  const neckBoneY = headIdx >= 0 ? restWorld(sk, sk.joints[headIdx])[1] : 0.645;
+  let lo = Infinity, hi = -Infinity, halfW = 0, domeTop = -Infinity;
+  for (let i = 0; i < n; i++) {
+    const vy = q[i * 3 + 1] * mod.scale + mod.offset[1];
+    if (vy <= neckBoneY) continue;
+    lo = Math.min(lo, vy); hi = Math.max(hi, vy);
+    const w = Math.abs(q[i * 3 + 2] * mod.scale + mod.offset[2]);
+    if (w > halfW) halfW = w;
+    if (w > 0.12) domeTop = Math.max(domeTop, vy);   // 細いアンテナを除いた「頭のドーム」の上端
+  }
+  return { neckBoneY, centerY: (lo + domeTop) / 2, halfW, domeTop, antTipY: hi - 0.02 };
+}
 
 /** mode 1= 生成体そのまま（D）／ mode 2= ハイブリッド（C）。 */
 /**
@@ -109,6 +149,7 @@ export function createRigKit(materials, scene, mode = 1) {
   const geometry = buildGeometry(bodyMod);
   const sk = bodyMod.skeleton;
   const facePlate = mode === 2 ? null : facePlateFromBody(robotBody, HEAD_LIFT_D);
+  const metrics = mode === 2 ? null : headMetrics(bodyMod);
   const pool = [];   // 退場した個体の BufferGeometry（色バッファ付き）を次の入場者へ回す
   const ibm = sk.ibm ? new Float32Array(bytes(sk.ibm).buffer) : null;
   const clips = decodeClips(robotClips);
@@ -166,6 +207,19 @@ export function createRigKit(materials, scene, mode = 1) {
       // 頭（D はバイザーだけ出す）・胸リング・蝶ネクタイの dummy を root 直下へ移し、毎フレーム骨の位置＋差分回転へ追従させる
       nodes.root.add(nodes.neck); nodes.root.add(nodes.chest);
       const bowtie = nodes.acc?.bowtie; if (bowtie) nodes.root.add(bowtie);
+      if (metrics) {
+        nodes.rigFitted = true;   // robot.js の setVendor に「アンテナ先端は procedural 座標で上書きしない」と伝える印
+        // R96-D3: 頭に付く物（帽子・ヘッドセット・王冠・アンテナ先端）を生成体の頭の実測へ合わせる。
+        // neck ダミーは Head 骨 + HEAD_LIFT_D に居るので、そこからの相対で置き直す。
+        const neckY = metrics.neckBoneY + HEAD_LIFT_D;
+        const accScale = metrics.halfW / 0.335;   // procedural のアクセサリは「頭半径 0.335（scale 前）」を想定した形
+        for (const [part, node] of Object.entries(nodes.acc || {})) {
+          if (part === "bowtie") continue;        // 胸なので別（下の follow で置く）
+          node.position.y = metrics.centerY - neckY;
+          node.scale.setScalar(accScale);
+        }
+        for (const tip of nodes.antTips || []) tip.position.set(0, metrics.antTipY - neckY, 0);
+      }
       // ハサミ（OpenClaw）は手の骨に追従させる。腕は生成体なので procedural の hand ノードだけ借りる
       const handJ = ["L_Hand", "R_Hand"].map((n) => sk.joints.findIndex((ni) => rest[ni].name === n));
       const hands = (nodes.arms || []).map((arm) => arm.hand);
@@ -176,6 +230,7 @@ export function createRigKit(materials, scene, mode = 1) {
       const visorBaseZ = nodes.visor.scale.z;
       // 部品は骨の位置＋回転（rest からの差分）に追従する。位置だけだと首を傾げた時に帽子が頭から浮く（実測）。
       const _v = new THREE.Vector3(), _q = new THREE.Quaternion(), _qr = new THREE.Quaternion(), _off = new THREE.Vector3();
+      const _e = new THREE.Euler();
       const boneLocalQuat = (bone, out) => { bone.getWorldQuaternion(out); nodes.root.getWorldQuaternion(_qr); return out.premultiply(_qr.invert()); };
       const restQuat = new Map();
       const follow = (node, bone, lift, fwd) => {
@@ -204,27 +259,48 @@ export function createRigKit(materials, scene, mode = 1) {
       };
       const followAll = () => {
         if (HEAD_J >= 0) follow(nodes.neck, jointBones[HEAD_J], mode === 2 ? HEAD_LIFT : HEAD_LIFT_D, 0);
-        if (SPINE_J >= 0) { follow(nodes.chest, jointBones[SPINE_J], CHEST_LIFT, CHEST_FWD); if (bowtie) follow(bowtie, jointBones[SPINE_J], CHEST_LIFT + 0.06, CHEST_FWD - 0.02); }
-        for (let i = 0; i < hands.length; i++) if (hands[i] && handJ[i] >= 0) follow(hands[i], jointBones[handJ[i]], 0, 0);
+        if (SPINE_J >= 0) { follow(nodes.chest, jointBones[SPINE_J], CHEST_LIFT, CHEST_FWD); if (bowtie) follow(bowtie, jointBones[SPINE_J], CHEST_LIFT + 0.06, BOWTIE_FWD); }
+        for (let i = 0; i < hands.length; i++) {
+          if (!hands[i] || handJ[i] < 0) continue;
+          follow(hands[i], jointBones[handJ[i]], 0, 0);
+          // R96-D3: 手に持つ物（マグ・タブレット・ハサミ）は姿勢の向きをそのまま貰うと逆さになる
+          //（props は procedural の手首を前提に焼いてある・別モデルレビューの実測: マグの開口の上向き成分 −0.352）。
+          // 位置は骨に追従し、向きは体の向き（yaw）だけ貰う＝中身がこぼれない・ハサミも前を向く。
+          _e.setFromQuaternion(hands[i].quaternion, "YXZ");
+          hands[i].quaternion.setFromEuler(_e.set(0, _e.y, 0, "YXZ"));
+        }
       };
       let headScale = VENDOR_HEAD.claude;
+      let lastClip = null;   // 直前に再生していた clip 名（遷移元はこれで解く）
       followAll();
       return {
         group, mesh, setTint,
         setVendorShape(vendor) {
           headScale = VENDOR_HEAD[vendor] || VENDOR_HEAD.claude;
           if (mode !== 2) nodes.visor.scale.z = visorBaseZ * headScale[2];
+          // アンテナ先端の位置は attach で置いた値のまま（setVendor は nodes.rigFitted を見て触らない）
         },
-        apply(poseKind, t, dist, seated, changedAt = -Infinity, prevKind = null, seed = 0, prevDist = dist) {
+        apply(poseKind, t, dist, seated, changedAt = -Infinity, prevKind = null, seed = 0, prevDist = dist, prevChangedAt = -Infinity) {
           const name = clipFor(poseKind, seated), clip = clips.clips[name] || clips.clips.idle;
-          let sample = sampleClip(clip, clips.fps, timeFor(name, t, dist, seed));
+          // 一発芸（挨拶・お祝い）は cheer の**先頭から**再生する。任意位相だと 0.9 秒窓がほぼ静止の区間に当たる（監査の実測: 80 分の 15）
+          const oneShot = name === "cheer" && Number.isFinite(changedAt);
+          let sample = oneShot
+            ? sampleClip(clip, clips.fps, Math.max(0, t - changedAt), false)
+            : sampleClip(clip, clips.fps, timeFor(name, t, dist, seed));
           const w = smoothstep(0, .45, t - changedAt);
           if (prevKind !== null && w < 1) {
             // 遷移元も同じ距離（累積の歩行距離＝経路再計算や停止で 0 に戻らない）でサンプルする。
             // 同じ clip 同士なら位相が同じで混合は恒等、違う clip なら 0.45s で混ざる（別モデルレビュー 2 巡分の帰結）。
-            const pname = clipFor(prevKind, seated), pclip = clips.clips[pname] || clips.clips.idle;
-            sample = blendPoses(sampleClip(pclip, clips.fps, timeFor(pname, t, prevDist, seed)), sample, w);
+            // 遷移元が一発芸なら、そのイベント開始からの経過で読む（t+seed で読むと別位相へ跳ぶ・別モデルレビューの実測 0.24）
+            // 遷移元は「そのとき実際に再生していた clip」で読む。いまの seated で解き直すと、着席 think（sit）→歩行のように
+            // 着席状態が変わる遷移で別 clip から補間される（別モデルレビューの実測 0.204）。
+            const pname = lastClip || clipFor(prevKind, seated), pclip = clips.clips[pname] || clips.clips.idle;
+            const prevSample = pname === "cheer" && Number.isFinite(prevChangedAt)
+              ? sampleClip(pclip, clips.fps, Math.max(0, t - prevChangedAt), false)
+              : sampleClip(pclip, clips.fps, timeFor(pname, t, prevDist, seed));
+            sample = blendPoses(prevSample, sample, w);
           }
+          if (name !== lastClip) lastClip = name;
           setPose(sample);
           nodes.root.updateMatrix(); nodes.root.updateMatrixWorld(true);
           group.matrix.multiplyMatrices(nodes.root.matrix, FRONT_ROT);
@@ -233,7 +309,7 @@ export function createRigKit(materials, scene, mode = 1) {
           nodes.root.updateMatrixWorld(true);
         },
         // 個体専用の資源（BufferGeometry の器と色バッファ）を解放する。共有属性（位置/法線/skin/index）は kit.dispose() が持つ
-        dispose() { scene.remove(group); pool.push(geo); },
+        dispose() { scene.remove(group); mesh.skeleton.dispose(); pool.push(geo); },
       };
     },
     dispose() { for (const g of pool) g.dispose(); pool.length = 0; geometry.dispose(); },

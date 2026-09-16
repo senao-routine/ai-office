@@ -59,7 +59,7 @@ if command -v node >/dev/null 2>&1; then
   #   `tests/*.test.mjs` を glob で拾わないのは、relay 側（wrangler 前提）の .mjs を
   #   巻き込まないため。足したらこの行に足す。
   node --test tests/sound.test.mjs tests/hire_onboarding.test.mjs tests/hud_growth_frozen.test.mjs \
-    tests/iso_acts.mjs tests/iso_floor_ao.mjs tests/iso_growth.test.mjs tests/stream.test.mjs \
+    tests/iso_acts.mjs tests/iso_floor_ao.mjs tests/iso_growth.test.mjs tests/rigbot.test.mjs tests/stream.test.mjs \
     tests/dialog_seal_kat.mjs tests/iso_no_fake_glow.test.mjs \
     || ng "R90 presentation の node テスト（音・雇う・成長・所作・床AO・ティア・配信・封書KAT・fake glow 非復活）"
   UIJS_NG=0

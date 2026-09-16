@@ -1038,6 +1038,7 @@ export class IsoScene {
           this._greet.delete(agent.id);
         } else if (u >= 0 && actor.rig) {
           poseKind = "greet";   // R96-D2: 生成体は cheer clip で挨拶（腕の直接書き込みは procedural 用）
+          // 遷移時刻は rig 側（actor.rigChangedAt）が poseKind の変化で持つ＝ここでは何も書かない
         } else if (u >= 0) {
           const arm = actor.nodes.arms[1];
           arm.shoulder.rotation.x = -2.5;
@@ -1048,7 +1049,9 @@ export class IsoScene {
         }
       }
 
-      const SIT_DROP = 0.24;          // 腰が座面に載る高さ（scale 1.62 に合わせ再調整）
+      // 腰が座面に載る高さ（scale 1.62 に合わせ再調整）。R96-D3: 生成体の sit clip は腰を落とさない
+      // （Hip のワールド y が全フレーム rest と同値）ので、ここで沈めると椅子と床を貫く＝rig では 0。
+      const SIT_DROP = this.rigKit ? 0 : 0.24;
       const standingRole = target.role === "present" || target.role === "stand";
       const seated = !walking && !standingRole
         && (agent.zone === "desk" || agent.zone === "meeting" || agent.zone === "lounge");
@@ -1069,10 +1072,18 @@ export class IsoScene {
         actor.rig.setVendorShape?.(actor.vendor);
         // 骨は clip の純関数サンプル（同じ t → 同じ姿勢）。poseKind が変わったら 0.45s で前の clip から混ぜる。
         // 歩行の位相は距離駆動＝止まった後も到着時の距離（rigDist）を遷移元に渡して膝が跳ばないようにする。
-        if (actor.rigKind !== poseKind) { actor.rigPrev = actor.rigKind ?? null; actor.rigKind = poseKind; }
+        // R96-D3: 遷移時刻は rig 側で持つ。procedural の変化検出（上のブロック）は greet の上書き前に走るので、
+        // actor.poseChangedAt を借りると挨拶中ずっと「いま変わった」になり補間重みが 0 から進まない（別モデルレビューの実測）。
+        if (actor.rigKind !== poseKind) {
+          actor.rigPrev = actor.rigKind ?? null;
+          actor.rigPrevChangedAt = actor.rigChangedAt ?? -Infinity;
+          actor.rigChangedAt = actor.rigKind === undefined || frozen ? -Infinity : t;
+          actor.rigKind = poseKind;
+        }
         // 歩行の位相は「累積の歩行距離」で駆動する。経路の再計算（m.dist が 0 へ戻る）や停止でも位相が跳ばない。
         const walked = this._rigWalked(actor, walking ? m.dist : null);
-        actor.rig.apply(poseKind, t, walked, seated, actor.poseChangedAt ?? -Infinity, actor.rigPrev, actor.seed, walked);
+        actor.rig.apply(poseKind, t, walked, seated, actor.rigChangedAt ?? -Infinity, actor.rigPrev, actor.seed, walked,
+          actor.rigPrevChangedAt ?? -Infinity);
         actor.nodes.root.updateMatrixWorld(true);
       }
       if (!walking) {
@@ -1139,9 +1150,16 @@ export class IsoScene {
       actor.nodes.root.rotation.y = this._track(actor, "trYaw", m.yaw, t, .45, true);
       if (actor.rig) {
         // 退勤中も同じ経路で骨を置く（放置すると scene 直下のリグが最後の位置で固まる・別モデルレビュー）
-        if (actor.rigKind !== actor.poseKind) { actor.rigPrev = actor.rigKind ?? null; actor.rigKind = actor.poseKind; }
+        const exitKind = preparing ? "idle" : "exit";
+        if (actor.rigKind !== exitKind) {
+          actor.rigPrev = actor.rigKind ?? null;
+          actor.rigPrevChangedAt = actor.rigChangedAt ?? -Infinity;
+          actor.rigChangedAt = frozen ? -Infinity : t;
+          actor.rigKind = exitKind;
+        }
         const walked = this._rigWalked(actor, preparing ? null : m.dist);
-        actor.rig.apply(preparing ? "idle" : "exit", t, walked, false, actor.poseChangedAt ?? -Infinity, actor.rigPrev, actor.seed, walked);
+        actor.rig.apply(exitKind, t, walked, false, actor.rigChangedAt ?? -Infinity, actor.rigPrev, actor.seed, walked,
+          actor.rigPrevChangedAt ?? -Infinity);
         actor.nodes.root.updateMatrixWorld(true);
       }
     }
@@ -1155,7 +1173,7 @@ export class IsoScene {
         if (over || !this.rigKit?.headParts) continue;
         // 形と色は姿勢の段で決めてある（actor.rigTint）。ここは部品（バイザー・胸リング・アクセサリ・ハサミ）を出すだけ
         this.robots.push(actor.nodes, actor.accent || null, actor.rigTint || null, this._archFor(actor.agentArch, aid),
-          actor.vendor, actor.expression, null, this.rigKit.partsFor(actor.vendor));
+          actor.vendor, actor.expression, actor.prop, this.rigKit.partsFor(actor.vendor));
         continue;
       }
       if (over) continue;
@@ -1207,9 +1225,15 @@ export class IsoScene {
     if (this.bossRig) {
       // 王冠は静的家具なので身長は procedural と同じ（変換時に --fit-height 1.484）。歩いているときだけ walk clip。
       const kind = bossWalking ? "walk" : "wait";
-      if (this.bossKind !== kind) { this.bossPrevKind = this.bossKind ?? null; this.bossChangedAt = this.bossKind === undefined || frozen ? -Infinity : t; this.bossKind = kind; }
+      if (this.bossKind !== kind) {
+        this.bossPrevKind = this.bossKind ?? null;
+        this.bossPrevChangedAt = this.bossChangedAt ?? -Infinity;
+        this.bossChangedAt = this.bossKind === undefined || frozen ? -Infinity : t;
+        this.bossKind = kind;
+      }
       const walked = this._rigWalked(this.boss, bossWalking ? bm.dist : null);
-      this.bossRig.apply(kind, t, walked, false, this.bossChangedAt ?? -Infinity, this.bossPrevKind, 7.7, walked);
+      this.bossRig.apply(kind, t, walked, false, this.bossChangedAt ?? -Infinity, this.bossPrevKind, 7.7, walked,
+        this.bossPrevChangedAt ?? -Infinity);
       this.boss.root.updateMatrixWorld(true);
     }
     this.robots.push(this.boss, this.bossAccent, null, this.bossCrown, "claude", exprFor({ state: "waiting" }, t, 7.7),

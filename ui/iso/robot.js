@@ -404,15 +404,19 @@ export function makeSkeleton() {
 
 function setVendor(nodes, vendor) {
   if (nodes.vendor === vendor) return;
+  // R96-D3: リグ（生成体）の頭に合わせて置き直した物は procedural の座標で上書きしない
+  const rigFitted = nodes.rigFitted === true;
   const profile = VENDORS[vendor], previous = VENDORS[nodes.vendor]?.width || 1;
   const ratio = profile.width / previous;
   nodes.visor.scale.x *= ratio;
   for (const node of [nodes.collar, nodes.torso, nodes.pelvis, ...Object.values(nodes.acc)]) node.scale.x *= ratio;
   for (const ear of nodes.ears) ear.position.x *= ratio;
   for (const arm of nodes.arms) arm.shoulder.position.x *= ratio;
-  for (const [i, side] of (vendor === "claude" ? [0] : [-1, 1]).entries()) {
-    const tip = antennaPoints(vendor, side).at(-1);
-    nodes.antTips[i].position.copy(tip); nodes.antTips[i].position.y += HEAD_Y;
+  if (!rigFitted) {
+    for (const [i, side] of (vendor === "claude" ? [0] : [-1, 1]).entries()) {
+      const tip = antennaPoints(vendor, side).at(-1);
+      nodes.antTips[i].position.copy(tip); nodes.antTips[i].position.y += HEAD_Y;
+    }
   }
   nodes.vendor = vendor;
 }
@@ -574,8 +578,8 @@ export class RobotBatch {
     nodes.root.updateMatrixWorld(true);
     const profile = VENDORS[vendor];
     const bodyTint = this.bodyColor.copy(tint || profile.tint);
-    const put = (part, obj) => {
-      if (only && !only.has(part)) return;   // R96-D2 ハイブリッド: 胴体・腕・脚は生成体が担う
+    const put = (part, obj, force = false) => {
+      if (only && !force && !only.has(part)) return;   // R96-D2: 胴体・腕・脚は生成体が担う（force＝部品名で列挙しない小道具）
       const i = this.counts[part];
       if (i >= this.capacity * (this.perBody[part] || 1)) return;
       this.meshes[part].setMatrixAt(i, obj.matrixWorld);
@@ -589,7 +593,9 @@ export class RobotBatch {
     };
     put(profile.head, nodes.head);
     put(profile.antenna, nodes.antStem);
-    for (let i = 0; i < (vendor === "claude" ? 1 : 2); i++) put("antTip", nodes.antTips[i]);
+    // 生成体はアンテナが 1 本なので状態ランプも 1 個（ベンダーの識別は頭の幅・ハサミ・個体色が担う）
+    const tips = only && only.has("visorRig") ? 1 : (vendor === "claude" ? 1 : 2);
+    for (let i = 0; i < tips; i++) put("antTip", nodes.antTips[i]);
     const visorPart = only && only.has("visorRig") && this.facesRig ? "visorRig" : "visor";
     (visorPart === "visorRig" ? this.facesRig : this.faces).setCell(this.counts[visorPart], expression);
     put(visorPart, nodes.visor);
@@ -608,7 +614,8 @@ export class RobotBatch {
       put("shin", leg.shin);
       put("foot", leg.foot);
     }
-    if (Object.hasOwn(PROP_MATERIALS, prop)) put(prop, nodes.arms[1].hand);
+    // R96-D3: 小道具（マグ・タブレット等）は右手のノードに載る。生成体では手の骨に追従しているので同じ経路で出る
+    if (Object.hasOwn(PROP_MATERIALS, prop) && (!only || only.has("__prop"))) put(prop, nodes.arms[1].hand, true);
     // R80.7: 職業アクセサリ（該当アーキタイプのロボにだけ1個・専用色）
     if (arch && arch.part && nodes.acc && nodes.acc[arch.part] && (!only || only.has("__acc"))) {
       const part = arch.part;
