@@ -340,10 +340,7 @@ export function buildOffice(materials, spec = DEFAULT_SPEC, model = buildLayout(
     P.push({ geometry: slab(.30, .025, .20, .015), material: "dark", matrix: upright(x, 1.15, W.front - 2.08) });
   }
   put(slab(.68, .024, .24, .02), "kbd", -.75, BOSS_SEAT.baseY + F.desk.h + .012, W.back + 2.32);
-  put(slab(.56, .10, .56, .25), "crown", BOSS_SEAT.x, 2.42, BOSS_SEAT.z);
-  for (const [dx, dz] of [[-.18, 0], [0, -.16], [.18, 0], [0, .16]]) {
-    put(slab(.09, .17, .09, .03), "crown", BOSS_SEAT.x + dx, 2.55, BOSS_SEAT.z + dz);
-  }
+  // 👑 王冠は robot.js の頭部品へ移した（R96-D2）＝ボスの姿勢・首の向きに追従する
   for (let i = 0; i < 6; i++) {
     put(slab(1.14, 2.3, 1.0, .04), "darker", L.serverZone.x - 3.375 + i * 1.35, 1.185, L.serverZone.z);
   }

@@ -12,7 +12,7 @@ const PARTS = [
   "torso", "pelvis", "upper", "fore", "hand", "thigh", "shin", "foot",
   "claw",
   // R80.7/R80.8: 職業アクセサリ（core/archetype.js が決める）。各1 InstancedMesh
-  "phones", "cap", "beret", "pencil", "bowtie",
+  "phones", "cap", "beret", "pencil", "crown", "bowtie",
   "mortar", "headset", "hardhat", "eyeshade",
   ...Object.keys(PROP_MATERIALS),
 ];
@@ -179,7 +179,7 @@ export function buildPartGeometries() {
     claw: clawGeometry(),
     phones: phonesGeometry(),
     cap: capGeometry(),
-    beret: beretGeometry(),
+    beret: beretGeometry(), crown: crownGeometry(),
     pencil: pencilGeometry(),
     bowtie: bowtieGeometry(),
     mortar: mortarGeometry(),
@@ -218,6 +218,21 @@ function capGeometry() {
   const dome = new THREE.SphereGeometry(0.35, 28, 14, 0, Math.PI * 2, 0, 0.62);
   const brim = new THREE.BoxGeometry(0.30, 0.032, 0.20);
   return mergeGeometries([bake(dome, 0, 0.045, 0), bake(brim, 0, 0.185, 0.335)]);
+}
+
+/**
+ * 👑 ボスの王冠（R96-D2）。以前は静的家具（office.js に world 座標で直置き）だったので、
+ * ボスがどんな姿勢でも同じ場所に浮いていた（生成体ロボにしたら頭から 0.5m ずれた・実測）。
+ * 頭のソケットに載せる部品にして、姿勢・首の向きに追従させる。
+ */
+function crownGeometry() {
+  const parts = [bake(new THREE.CylinderGeometry(0.17, 0.19, 0.055, 18), 0, 0.27, 0)];
+  for (let i = 0; i < 4; i++) {
+    const a = i * Math.PI / 2;
+    parts.push(bake(new THREE.BoxGeometry(0.05, 0.095, 0.05),
+      Math.cos(a) * 0.105, 0.34, Math.sin(a) * 0.105));
+  }
+  return mergeGeometries(parts);
 }
 
 /** 🎨 デザイン: ベレー帽（斜めの平たい円＋ちょこん） */
@@ -340,6 +355,7 @@ export function makeSkeleton() {
       beret: attach(neck, 0, 0.16, 0),
       pencil: attach(neck, 0, 0.16, 0),
       bowtie: attach(hip, 0, 0.18, 0.18),
+      crown: attach(neck, 0, 0.16, 0),
       mortar: attach(neck, 0, 0.16, 0),
       headset: attach(neck, 0, 0.16, 0),
       hardhat: attach(neck, 0, 0.16, 0),
@@ -508,7 +524,7 @@ export class RobotBatch {
       torso: "shell", pelvis: "shell", upper: "shell", fore: "shell",
       hand: "joint", thigh: "shell", shin: "shell", foot: "joint",
       claw: "joint",
-      phones: "shell", cap: "shell", beret: "shell", pencil: "shell",
+      phones: "shell", cap: "shell", beret: "shell", pencil: "shell", crown: "crown",
       bowtie: "shell", mortar: "shell", headset: "shell", hardhat: "shell",
       eyeshade: "shell",
       ...PROP_MATERIALS,

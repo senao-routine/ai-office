@@ -18,7 +18,7 @@ export function clipFor(poseKind, seated) {
   if (k.startsWith("walk") || k === "enter" || k === "run" || k === "exit") return "walk";
   if (k.startsWith("question")) return "look_around";
   if (k.startsWith("celebrate") || k === "greet") return "cheer";
-  if (k === "think") return "wait";
+  if (k === "think" || k === "chibi") return "wait";
   if (k.startsWith("read") || k === "relax" || k === "loungeTab" || k.startsWith("lounge")) return "sit";
   if (k.startsWith("meeting:present") || k.endsWith(":stand")) return "idle";
   if (seated || k.startsWith("desk") || k.startsWith("meeting")) return "sit";
@@ -52,6 +52,9 @@ function buildGeometry(mod) {
 export const HYBRID_PARTS = new Set(["head", "headCodex", "headOpenclaw", "visor", "ear", "antStem", "antCodex", "antOpenclaw", "antTip", "chest", "__acc"]);
 /** D（採用案）で生成体に重ねる部品: 表情アトラスのバイザー・胸の状態リング・職業アクセサリ。頭・耳・アンテナは生成体のもの。 */
 export const D_PARTS = new Set(["visorRig", "chest", "__acc"]);
+/** ベンダー差（R96-D2）: 頭の幅は Head 骨のスケール、OpenClaw は手の骨にハサミ。色は個体の頂点色。 */
+const VENDOR_HEAD = { claude: [1, 1, 1], codex: [1.37, 1, 0.98], openclaw: [1.5, 1, 0.90] };
+export const D_PARTS_CLAW = new Set([...D_PARTS, "claw"]);
 const HEAD_LIFT = 0.166;   // C: Head 骨（首・0.645）から procedural の neck 原点へ: 頭の底が切り口に載る高さ（1.035 − HEAD_Y 0.2244 − 0.645）
 const HEAD_LIFT_D = 0.18;  // D: 生成体の頭の中心に procedural の neck 原点（+HEAD_Y 0.2244）を合わせる（帽子が頭頂に触れる高さ・実レンダで 0.205→0.18）
 const HEAD_Y_P = 0.2244, FACE_Y_P = -0.054;   // robot.js の HEAD_Y / FACE_Y（visor 原点 = neck + HEAD_Y + FACE_Y）
@@ -114,7 +117,9 @@ export function createRigKit(materials, scene, mode = 1) {
   const jointIndex = (name) => sk.joints.findIndex((ni) => rest[ni].name === name);
   const HEAD_J = jointIndex("Head"), SPINE_J = jointIndex("Spine02");
   return {
-    clips, mode, headParts: mode === 2 ? HYBRID_PARTS : D_PARTS, facePlate,
+    clips, mode, headParts: mode === 2 ? HYBRID_PARTS : D_PARTS,
+    partsFor: (vendor) => (mode === 2 ? HYBRID_PARTS : vendor === "openclaw" ? D_PARTS_CLAW : D_PARTS),
+    facePlate,
     /** リグ＋皮を scene に置き、毎フレーム nodes.root の行列（root は scene に居ない数学用の骨格）を写す。
      *  返り値の apply(poseKind, t, dist, seated, changedAt, prevKind, seed) で骨を置く。 */
     attach(nodes) {
@@ -161,6 +166,10 @@ export function createRigKit(materials, scene, mode = 1) {
       // 頭（D はバイザーだけ出す）・胸リング・蝶ネクタイの dummy を root 直下へ移し、毎フレーム骨の位置＋差分回転へ追従させる
       nodes.root.add(nodes.neck); nodes.root.add(nodes.chest);
       const bowtie = nodes.acc?.bowtie; if (bowtie) nodes.root.add(bowtie);
+      // ハサミ（OpenClaw）は手の骨に追従させる。腕は生成体なので procedural の hand ノードだけ借りる
+      const handJ = ["L_Hand", "R_Hand"].map((n) => sk.joints.findIndex((ni) => rest[ni].name === n));
+      const hands = (nodes.arms || []).map((arm) => arm.hand);
+      for (const h of hands) if (h) nodes.root.add(h);
       const baseQuat = new Map();   // 部品の初期回転（胸リングは X 回転 π/2＝円面が前を向く）を保持して差分回転と合成する
       // D: バイザーは生成体の顔から切り出したプレート（RobotBatch の visor 形状を差し替え）＝拡縮・前後ずらし無し
       // 部品は骨の位置＋回転（rest からの差分）に追従する。位置だけだと首を傾げた時に帽子が頭から浮く（実測）。
@@ -180,6 +189,7 @@ export function createRigKit(materials, scene, mode = 1) {
       const setPose = (sample) => {
         for (let j = 0; j < jointBones.length; j++) {
           const b = jointBones[j], s = sample[j];
+          if (j === HEAD_J) b.scale.fromArray(headScale);   // ベンダー別の頭の幅（Head は葉の骨＝頭だけが伸びる）
           if (s?.r) b.quaternion.fromArray(s.r); else b.quaternion.fromArray(restTRS[j].r);
           // t は rest からの差分（in_place の retarget は Hip の rest が別の GLB と違う）
           if (s?.t) b.position.set(restTRS[j].t[0] + s.t[0], restTRS[j].t[1] + s.t[1], restTRS[j].t[2] + s.t[2]); else b.position.fromArray(restTRS[j].t);
@@ -193,10 +203,13 @@ export function createRigKit(materials, scene, mode = 1) {
       const followAll = () => {
         if (HEAD_J >= 0) follow(nodes.neck, jointBones[HEAD_J], mode === 2 ? HEAD_LIFT : HEAD_LIFT_D, 0);
         if (SPINE_J >= 0) { follow(nodes.chest, jointBones[SPINE_J], CHEST_LIFT, CHEST_FWD); if (bowtie) follow(bowtie, jointBones[SPINE_J], CHEST_LIFT + 0.06, CHEST_FWD - 0.02); }
+        for (let i = 0; i < hands.length; i++) if (hands[i] && handJ[i] >= 0) follow(hands[i], jointBones[handJ[i]], 0, 0);
       };
+      let headScale = VENDOR_HEAD.claude;
       followAll();
       return {
         group, mesh, setTint,
+        setVendorShape(vendor) { headScale = VENDOR_HEAD[vendor] || VENDOR_HEAD.claude; },
         apply(poseKind, t, dist, seated, changedAt = -Infinity, prevKind = null, seed = 0, prevDist = dist) {
           const name = clipFor(poseKind, seated), clip = clips.clips[name] || clips.clips.idle;
           let sample = sampleClip(clip, clips.fps, timeFor(name, t, dist, seed));

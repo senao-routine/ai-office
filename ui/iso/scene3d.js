@@ -344,7 +344,11 @@ export class IsoScene {
     // ボスロボ（データ非連動の常駐デコ・王冠つき・クリックで「ボス指令」）
     this.boss = makeSkeleton();
     this.boss.root.scale.setScalar(1.85);
+    // R96-D2: ボスとチビ（サブエージェント）も生成体に揃える＝画面に 2 系統のロボが同居しない（骨格を作った後に付ける）
+    this.bossRig = this.rigKit ? this.rigKit.attach(this.boss) : null;
+    this.chibiRigs = [];
     this.bossAccent = new THREE.Color(0xd8b45c);
+    this.bossCrown = { kind: "boss", part: "crown", accC: new THREE.Color(0xffffff) };   // 👑 頭のソケットに載る（材質 crown が金色）
 
     // ❗マーカー（承認/質問まちの頭上・ユーザーFB）。スプライト=常にカメラを向く
     this.attnMarkers = [];
@@ -1148,8 +1152,10 @@ export class IsoScene {
         // D: 生成体の殻に個体色（ベンダー色・アーキタイプ色）を焼き分ける。部品はバイザー（表情）・胸リング（状態色）・アクセサリだけ
         //    ベンダー幅（setVendor の比率）は生成体には無いので部品は claude 幅で出す。C: 頭ごと procedural なのでベンダーそのまま
         actor.rig.setTint(this.rigKit.mode === 2 ? null : tint);
+        // ベンダー差: 頭の幅は Head 骨、バイザーとアクセサリは push の setVendor が同じ比率で広げる。OpenClaw は手の骨にハサミ
+        actor.rig.setVendorShape?.(actor.vendor);
         this.robots.push(actor.nodes, actor.accent || null, tint, this._archFor(actor.agentArch, aid),
-          this.rigKit.mode === 2 ? actor.vendor : "claude", actor.expression, null, this.rigKit.headParts);
+          actor.vendor, actor.expression, null, this.rigKit.partsFor(actor.vendor));
         continue;
       }
       if (over) continue;
@@ -1190,13 +1196,24 @@ export class IsoScene {
       const back = !frozen ? this.bossReturn : null;
       const k = back ? smoothstep(0, .45, t - back.at) : 1;
       bossPose = mixPose(back?.pose, bossPose, k);
-      const y = (back?.y ?? 0) * (1 - k) + (this.stops.boss.baseY - .35) * k;
+      // 生成体のボスは自席に立つ（clip の sit は椅子用で、机の天板に頭が沈む・実レンダで確認）
+      const seatY = this.stops.boss.baseY - (this.bossRig ? 0 : .35);
+      const y = (back?.y ?? 0) * (1 - k) + seatY * k;
       this.boss.root.position.set(this.stops.boss.x, y, this.stops.boss.z);
       this.boss.root.rotation.y = this._track(this.boss, "trYaw", 0, t, .45, true);
     }
     applyPose(this.boss, bossPose);
     this.bossLastPose = bossPose;
-    this.robots.push(this.boss, this.bossAccent, null, null, "claude", exprFor({ state: "waiting" }, t, 7.7));
+    if (this.bossRig) {
+      // 王冠は静的家具なので身長は procedural と同じ（変換時に --fit-height 1.484）。歩いているときだけ walk clip。
+      const kind = bossWalking ? "walk" : "wait";
+      if (this.bossKind !== kind) { this.bossPrevKind = this.bossKind ?? null; this.bossChangedAt = this.bossKind === undefined || frozen ? -Infinity : t; this.bossKind = kind; }
+      const walked = this._rigWalked(this.boss, bossWalking ? bm.dist : null);
+      this.bossRig.apply(kind, t, walked, false, this.bossChangedAt ?? -Infinity, this.bossPrevKind, 7.7, walked);
+      this.boss.root.updateMatrixWorld(true);
+    }
+    this.robots.push(this.boss, this.bossAccent, null, this.bossCrown, "claude", exprFor({ state: "waiting" }, t, 7.7),
+      null, this.rigKit?.headParts || null);
 
     // R56: 会議チビロボ＝minions を親と同じ卓の縁に立たせて頷かせる（上限4/卓・8/全体）。
     // InstancedMesh への行列追加だけ＝drawCalls は増えない。位相は親id+序数で分散。
@@ -1207,12 +1224,24 @@ export class IsoScene {
     const borrowChibi = () => {
       let ch = this.chibiPool[chibiN];
       if (!ch) {
-        // R58: 2頭身のチビ骨格（大きな頭・短い手足）＝「部下のチビ感」はデザインで出す
-        ch = makeChibiSkeleton();
+        // R58: 2頭身のチビ骨格（大きな頭・短い手足）＝「部下のチビ感」はデザインで出す。
+        // R96-D2: 生成体のときは通常の骨格＝生成体（元から頭が大きい）をそのまま小さく置く。
+        ch = this.rigKit ? makeSkeleton() : makeChibiSkeleton();
         this.chibiPool[chibiN] = ch;
+        if (this.rigKit) (this.chibiRigs ||= [])[chibiN] = this.rigKit.attach(ch);
       }
       chibiN += 1;
       return ch;
+    };
+    /** チビ 1 体を置いて描く（生成体のときは clip で待たせ、部品はバイザー・胸リングだけ）。 */
+    const paintChibi = (ch, tint, vendor, seed, expr) => {
+      const rig = this.chibiRigs?.[chibiN - 1];
+      if (rig) {
+        rig.group.visible = true;
+        rig.apply("chibi", t, 0, false, -Infinity, null, seed);
+        ch.root.updateMatrixWorld(true);
+      }
+      this.robots.push(ch, tint, null, null, vendor, expr, null, this.rigKit?.headParts || null);
     };
     this._chibiMeta = this._chibiMeta || new Map();
     for (const agent of world.agents) {
@@ -1238,7 +1267,7 @@ export class IsoScene {
         // アクセントは親の淡色版＝「同じチームの部下」が色で伝わる
         this._chibiTint.copy(actor.accent || ACCENTS.resting).lerp(CHIBI_WHITE, 0.45);
         this._chibiMeta.set(key, { seat, seed, tint: this._chibiTint.clone(), vendor: actor.vendor });
-        this.robots.push(ch, this._chibiTint, null, null, actor.vendor, exprFor({ state: "waiting" }, t, seed));
+        paintChibi(ch, this._chibiTint, actor.vendor, seed, exprFor({ state: "waiting" }, t, seed));
       }
     }
     // 解散したチビ（前フレームまで居た席）は0.3秒縮んで消える
@@ -1257,8 +1286,10 @@ export class IsoScene {
       ch.root.scale.setScalar(0.95 * Math.max(0.001, k));
       ch.root.position.set(gone.seat.x, gone.seat.y, gone.seat.z);
       ch.root.rotation.y = gone.seat.yaw;
-      this.robots.push(ch, gone.tint, null, null, gone.vendor, exprFor({ state: "waiting" }, t, gone.seed));
+      paintChibi(ch, gone.tint, gone.vendor, gone.seed, exprFor({ state: "waiting" }, t, gone.seed));
     }
+    // 使わなかったプールのリグは隠す（scene 直下に居るので放置すると前フレームの位置に残る）
+    for (let i = chibiN; i < (this.chibiRigs?.length || 0); i++) if (this.chibiRigs[i]) this.chibiRigs[i].group.visible = false;
     this.robots.end();
 
     // ❗マーカー: attention のアバター頭上でゆっくり浮く（R68: ポンと弾んで出る）
@@ -1572,6 +1603,23 @@ export class IsoScene {
   }
 
   /** R96-D2 試作の観測口: リグ付きロボの本体が実際にどこへ描かれているか（頂点のワールド座標）。 */
+  /** R96-D2: ボス（王冠は静的家具＝頭頂の高さが合っているか）とチビの検算。 */
+  bossDebug() {
+    const out = { root: this.boss.root.position.toArray().map((v) => +v.toFixed(3)), scale: this.boss.root.scale.x, kind: this.bossKind };
+    if (this.bossRig) {
+      const mesh = this.bossRig.mesh, v = new THREE.Vector3(); mesh.updateMatrixWorld(true);
+      let top = -1e9, minY = 1e9;
+      for (let i = 0; i < mesh.geometry.attributes.position.count; i += 7) { mesh.getVertexPosition(i, v); v.applyMatrix4(mesh.matrixWorld); top = Math.max(top, v.y); minY = Math.min(minY, v.y); }
+      out.headTopWorld = +top.toFixed(3); out.feetWorld = +minY.toFixed(3);
+      // 頭（y>2.2）の重心＝王冠を載せたい位置
+      let hx = 0, hz = 0, n = 0;
+      for (let i = 0; i < mesh.geometry.attributes.position.count; i += 3) { mesh.getVertexPosition(i, v); v.applyMatrix4(mesh.matrixWorld); if (v.y > top - 0.45) { hx += v.x; hz += v.z; n++; } }
+      out.headCenter = [+(hx / n).toFixed(3), +(hz / n).toFixed(3)];
+    }
+    out.chibis = (this.chibiRigs || []).filter((r) => r?.group.visible).length;
+    return out;
+  }
+
   rigDebug(kindFilter = null) {
     const actor = [...this.actors.values()].find((a) => a.rig && (!kindFilter || String(a.rigKind || "").startsWith(kindFilter)));
     if (!actor) return { rigOn: this.rigOn, kit: !!this.rigKit, actors: this.actors.size, rigged: 0 };
