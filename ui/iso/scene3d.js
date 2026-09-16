@@ -1,5 +1,6 @@
 // 3Dアイソメ・レンダラ本体。world（core が作る純データ）を受け取って絵にする。
 // 契約は mount/update/dispose の3つだけ。
+import { chibiBounce } from "/ui/core/overlay.js";
 import {
   chatBlend, chatPose, chatSpeaker, chibiPose, mixPose, pathTravel, poseFor,
   relaxPose, seedOf, smoothstep, thinkingPose, walkPhaseFor, walkPose,
@@ -1288,9 +1289,11 @@ export class IsoScene {
         chibiKeys.add(key);
         const ch = borrowChibi();
         const seed = actor.seed + (i + 1) * 1.9;
-        applyPose(ch, chibiPose(t, seed));       // 頷き＋たまにピョコン跳ね・挙手
+        // procedural の所作（頷き・ピョコン跳ね・挙手）。生成体では骨が clip で上書きされるので、
+        // 頷きと挙手は ui/core/overlay.js が clip の上に足し、跳ねだけは root の y で体ごと動かす。
+        applyPose(ch, chibiPose(t, seed));
         ch.root.scale.setScalar(0.95 * Math.max(0.001, this._popScale(key, t)));
-        ch.root.position.set(seat.x, seat.y, seat.z);
+        ch.root.position.set(seat.x, seat.y + (this.rigKit ? chibiBounce(t, seed) : 0), seat.z);
         ch.root.rotation.y = seat.yaw;
         // アクセントは親の淡色版＝「同じチームの部下」が色で伝わる
         this._chibiTint.copy(actor.accent || ACCENTS.resting).lerp(CHIBI_WHITE, 0.45);
@@ -1312,7 +1315,7 @@ export class IsoScene {
       const ch = borrowChibi();
       applyPose(ch, chibiPose(t, gone.seed));
       ch.root.scale.setScalar(0.95 * Math.max(0.001, k));
-      ch.root.position.set(gone.seat.x, gone.seat.y, gone.seat.z);
+      ch.root.position.set(gone.seat.x, gone.seat.y + (this.rigKit ? chibiBounce(t, gone.seed) : 0), gone.seat.z);
       ch.root.rotation.y = gone.seat.yaw;
       paintChibi(ch, gone.tint, gone.vendor, gone.seed, exprFor({ state: "waiting" }, t, gone.seed));
     }
@@ -1668,6 +1671,9 @@ export class IsoScene {
       visorDir: (() => { const o = new THREE.Vector3().setFromMatrixPosition(actor.nodes.visor.matrixWorld);
         const f = new THREE.Vector3(0, 0, 1).applyMatrix4(actor.nodes.visor.matrixWorld).sub(o); f.y = 0; f.normalize(); return [+f.x.toFixed(2), +f.z.toFixed(2)]; })(),
       rootYaw: +actor.nodes.root.rotation.y.toFixed(2),
+      // 姿勢オーバーレイの検算: 手と頭の骨（root ローカル）。❗の挙手が本当に出ているかは
+      // 静止画では机に隠れて分からない＝数値で見る（R96-D3 項目 4・向きを止め絵で判断して間違えた反省）
+      hands: { r: actor.rig.bonePos("R_Hand"), l: actor.rig.bonePos("L_Hand"), head: actor.rig.bonePos("Head") },
       // 部品の載り具合: 生成体の頭頂/前面と、procedural 部品（バイザー・胸リング・帽子）のワールド位置（root ローカル基準で比較したいので root の逆行列で戻す）
       fit: (() => {
         const inv = new THREE.Matrix4().copy(actor.nodes.root.matrixWorld).invert(), P = new THREE.Vector3();

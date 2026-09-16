@@ -47,3 +47,9 @@ GLB そのものはリポに置かない（`tools/tripo_out/` は gitignore）�
 | 2026-09-15 | S1 | retarget 5 本まとめ（walk/sit/look_around/wait/cheer・in_place・tripo spec rig） | 50 | a7d6a245 | 1 GLB（2.5MB）に 5 animations・各 42 ノード×TRS 126 channel・LINEAR・24fps。**in_place は Hip の絶対 translation が 0 付近**（rest は 0.137）＝絶対値で置くと腰の高さぶん沈む→ 変換器は先頭フレームからの差分にして rest に足す |
 | 2026-09-15 | S2 | 変換 `tools/glb_rig.py`（body 132KB・clips 6 本 101KB・15fps・idle/look_around/cheer は 8 秒で切る） | 0 | – | 41 骨のうち回転が動くのは 15（Twist 系は定数で落ちる） |
 | 2026-09-15 | S4 | `?rig=1` で 9 体を SkinnedMesh 化（drawCalls 153→155・materials 61 のまま） | 0 | – | 骨格 root は scene に居ない数学用なので、rig の group は scene に直接置いて root の行列を毎フレーム写す |
+
+## 元 GLB の置き場（恒久退避・2026-09-16）
+
+生成の**元データ**はリポに置かない（`tools/tripo_out/` は gitignore・Tripo の出力 URL は 5 分で失効＝再取得できない）。
+`~/Documents/ai-office-assets/` に退避した: `rig/`（6 本・キャラの生・Tripo spec リグ・retarget したアニメ）と `furniture/`（22 点）。
+同フォルダの README.md に各ファイルの役目を書いてある。clip を焼き直す作業はこの GLB が前提。

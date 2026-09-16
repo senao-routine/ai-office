@@ -4,6 +4,7 @@
 import * as THREE from "/ui/vendor/three/three.module.min.js";
 import { decodeClips, sampleClip, blendPoses } from "/ui/core/clip.js";
 import { RIG as ANIM_RIG } from "/ui/core/anim.js";
+import { overlayFor, OVERLAY_BONES } from "/ui/core/overlay.js";
 const smoothstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 import robotBody from "./gen/robot_body.js";
 import robotBodyH from "./gen/robot_body_h.js";   // 首（y≈0.655）で頭を落とした胴体＝ハイブリッド C 用
@@ -14,16 +15,31 @@ const bytes = (b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
 
 /** poseKind（scene3d が組む文字列）→ clip 名。無い種類は idle。 */
 /**
- * 姿勢遷移の「遷移元 clip」を補間が終わるまで保持する追跡器（純粋・テストの門）。
- * 毎フレーム「直前に再生した clip」を書き換えると、遷移 1 フレーム目で遷移元が遷移先に化け、
- * 0.45 秒の補間が丸ごと消える（別モデルレビューの実測: 翌フレームの骨の最大移動 0.0012 → 0.34）。
+ * 姿勢遷移の「遷移元」を追う（純粋・テストの門）。返すのは最大 2 本の clip とその混合比。
+ *
+ * 2 つの失敗を同時に避ける:
+ *  1. 毎フレーム「直前に再生した clip」を書き換えると、遷移 1 フレーム目で遷移元が遷移先に化け、
+ *     0.45 秒の補間が丸ごと消える（別モデルレビューの実測: 翌フレームの骨の最大移動 0.0012 → 0.34）。
+ *  2. 補間の途中（0.45 秒以内）に次の遷移が始まったとき、遷移元を「まだ到達していない遷移先 clip」にすると、
+ *     画面に出ている混合姿勢からその clip へ跳ぶ。遷移元は**そのとき表示していた混合姿勢**でなければならない。
+ *
+ * 混合比は**イベント時刻の差**（changedAt − prevChangedAt＝中断された区間の長さ）から決める。
+ * フレームの刻みに依らない＝ golden のビット一致（決定論）を壊さない。
  */
 export function transitionTracker() {
-  let curKind, curClip = null, prevClip = null, started = false;
-  return { step(poseKind, name) {
-    if (!started || poseKind !== curKind) { prevClip = curClip; curKind = poseKind; started = true; }
+  let curKind, curClip = null, srcA = null, srcB = null, srcMix = 1, started = false;
+  return { step(poseKind, name, changedAt = -Infinity, prevChangedAt = -Infinity) {
+    if (!started || poseKind !== curKind) {
+      if (started) {
+        const held = { clip: curClip, at: prevChangedAt };
+        const mix0 = smoothstep(0, .45, changedAt - prevChangedAt);
+        if (mix0 >= 1 || !srcA) { srcA = held; srcB = null; srcMix = 1; }
+        else { srcA = srcB || srcA; srcB = held; srcMix = mix0; }   // 3 本目は一番古いものを落とす
+      }
+      curKind = poseKind; started = true;
+    }
     curClip = name;
-    return prevClip;
+    return { a: srcA, b: srcB, mix: srcMix };
   } };
 }
 
@@ -80,6 +96,15 @@ const HEAD_Y_P = 0.2244, FACE_Y_P = -0.054;   // robot.js の HEAD_Y / FACE_Y（
 const CHEST_FWD = 0.235;   // リングの後面が体表に触れる
 const CHEST_LIFT = 0.12;   // Spine02（y≈0.406）から胸リングの高さへ
 const BOWTIE_FWD = 0.295;  // 蝶ネクタイは高さが違う（y≈0.586）＝体表 0.282 の少し前。リングと連動させない
+
+/** 骨の rest ワールド回転（親から積む）。体の軸（+x=前・+y=上・+z=右）を骨ローカルへ落とすのに使う。 */
+function restWorldQuat(sk, nodeIndex) {
+  const chain = [];
+  for (let j = nodeIndex; j >= 0; j = sk.nodes[j].parent) chain.unshift(sk.nodes[j]);
+  const q = new THREE.Quaternion();
+  for (const c of chain) q.multiply(new THREE.Quaternion(c.r[0], c.r[1], c.r[2], c.r[3]));
+  return q;
+}
 
 /** 骨の rest ワールド位置（親から積む・回転込み）。 */
 function restWorld(sk, nodeIndex) {
@@ -171,6 +196,12 @@ export function createRigKit(materials, scene, mode = 1) {
   const rest = sk.nodes;
   const jointIndex = (name) => sk.joints.findIndex((ni) => rest[ni].name === name);
   const HEAD_J = jointIndex("Head"), SPINE_J = jointIndex("Spine02");
+  // 姿勢オーバーレイ層が触る骨。rest は個体で変わらないので、体の軸→骨ローカル軸の変換は kit で 1 回だけ作る
+  const OVERLAY = new Map();
+  for (const name of OVERLAY_BONES) {
+    const j = jointIndex(name);
+    if (j >= 0) OVERLAY.set(name, { j, inv: restWorldQuat(sk, sk.joints[j]).invert() });
+  }
   return {
     clips, mode, headParts: mode === 2 ? HYBRID_PARTS : D_PARTS,
     partsFor: (vendor) => (mode === 2 ? HYBRID_PARTS : vendor === "openclaw" ? D_PARTS_CLAW : D_PARTS),
@@ -245,6 +276,8 @@ export function createRigKit(materials, scene, mode = 1) {
       // 部品は骨の位置＋回転（rest からの差分）に追従する。位置だけだと首を傾げた時に帽子が頭から浮く（実測）。
       const _v = new THREE.Vector3(), _q = new THREE.Quaternion(), _qr = new THREE.Quaternion(), _off = new THREE.Vector3();
       const _e = new THREE.Euler();
+      const _ov = new THREE.Vector3(), _oq = new THREE.Quaternion();   // オーバーレイ層の作業用
+      const _inv = new THREE.Matrix4();
       const boneLocalQuat = (bone, out) => { bone.getWorldQuaternion(out); nodes.root.getWorldQuaternion(_qr); return out.premultiply(_qr.invert()); };
       const restQuat = new Map();
       const follow = (node, bone, lift, fwd) => {
@@ -285,10 +318,17 @@ export function createRigKit(materials, scene, mode = 1) {
         }
       };
       let headScale = VENDOR_HEAD.claude;
-      const track = transitionTracker();   // 遷移元の clip は補間が終わるまで動かさない
+      const track = transitionTracker();   // 遷移元は補間が終わるまで動かさない（中断されたら混合姿勢のまま引き継ぐ）
       followAll();
       return {
         group, mesh, setTint,
+        /** 骨のワールド位置を root ローカルで返す（デバッグ probe 用・所作が本当に出たかを数値で見る）。 */
+        bonePos(name) {
+          const j = jointIndex(name), b = j >= 0 ? jointBones[j] : null;
+          if (!b) return null;
+          b.getWorldPosition(_v); _v.applyMatrix4(_inv.copy(nodes.root.matrixWorld).invert());
+          return [+_v.x.toFixed(3), +_v.y.toFixed(3), +_v.z.toFixed(3)];
+        },
         setVendorShape(vendor) {
           headScale = VENDOR_HEAD[vendor] || VENDOR_HEAD.claude;
           if (mode !== 2) nodes.visor.scale.z = visorBaseZ * headScale[2];
@@ -296,7 +336,7 @@ export function createRigKit(materials, scene, mode = 1) {
         },
         apply(poseKind, t, dist, seated, changedAt = -Infinity, prevKind = null, seed = 0, prevDist = dist, prevChangedAt = -Infinity) {
           const name = clipFor(poseKind, seated), clip = clips.clips[name] || clips.clips.idle;
-          const prevClipName = track.step(poseKind, name);
+          const src = track.step(poseKind, name, changedAt, prevChangedAt);
           // 一発芸（挨拶・お祝い）は cheer の**先頭から**再生する。任意位相だと 0.9 秒窓がほぼ静止の区間に当たる（監査の実測: 80 分の 15）
           const oneShot = name === "cheer" && Number.isFinite(changedAt);
           let sample = oneShot
@@ -309,13 +349,32 @@ export function createRigKit(materials, scene, mode = 1) {
             // 遷移元が一発芸なら、そのイベント開始からの経過で読む（t+seed で読むと別位相へ跳ぶ・別モデルレビューの実測 0.24）
             // 遷移元は「そのとき実際に再生していた clip」で読む。いまの seated で解き直すと、着席 think（sit）→歩行のように
             // 着席状態が変わる遷移で別 clip から補間される（別モデルレビューの実測 0.204）。
-            const pname = prevClipName || clipFor(prevKind, seated), pclip = clips.clips[pname] || clips.clips.idle;
-            const prevSample = pname === "cheer" && Number.isFinite(prevChangedAt)
-              ? sampleClip(pclip, clips.fps, Math.max(0, t - prevChangedAt), false)
-              : sampleClip(pclip, clips.fps, timeFor(pname, t, prevDist, seed));
+            const srcSample = (s) => {
+              const pname = s?.clip || clipFor(prevKind, seated), pclip = clips.clips[pname] || clips.clips.idle;
+              return pname === "cheer" && Number.isFinite(s?.at)
+                ? sampleClip(pclip, clips.fps, Math.max(0, t - s.at), false)
+                : sampleClip(pclip, clips.fps, timeFor(pname, t, prevDist, seed));
+            };
+            let prevSample = srcSample(src.a);
+            // 中断された遷移は「そのとき表示していた混合」をそのまま遷移元にする（混合比はイベント時刻の差で凍結済み）
+            if (src.b) prevSample = blendPoses(prevSample, srcSample(src.b), src.mix);
             sample = blendPoses(prevSample, sample, w);
           }
           setPose(sample);
+          // 姿勢オーバーレイ（❗の挙手・承認の頷き・打鍵・コンソール・会議チビの所作）を clip の上に足す。
+          // **followAll() より前**でなければならない: 後ろに書くと neck が Head 骨で上書きされて頷きが消える
+          // ＝ R96-D2 で承認の頷きが死んでいた理由そのもの（監査の実測: 頭の前方ベクトルが 3 時点とも完全一致）。
+          for (const e of overlayFor(poseKind, t, seed, Number.isFinite(changedAt) ? t - changedAt : Infinity)) {
+            const m = OVERLAY.get(e.bone);
+            if (!m) continue;
+            const b = jointBones[m.j];
+            if (!b) continue;
+            if (e.q) { _oq.set(e.q[0], e.q[1], e.q[2], e.q[3]); b.quaternion.slerp(_oq, e.w); }
+            else {
+              _ov.set(e.axis[0], e.axis[1], e.axis[2]).applyQuaternion(m.inv).normalize();
+              b.quaternion.multiply(_oq.setFromAxisAngle(_ov, e.angle));
+            }
+          }
           nodes.root.updateMatrix(); nodes.root.updateMatrixWorld(true);
           group.matrix.multiplyMatrices(nodes.root.matrix, FRONT_ROT);
           group.updateMatrixWorld(true);
