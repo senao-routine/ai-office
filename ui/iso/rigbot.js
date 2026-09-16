@@ -13,6 +13,20 @@ const FRONT_YAW = -Math.PI / 2;   // 生成体は +x を向く（バイザーの
 const bytes = (b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
 
 /** poseKind（scene3d が組む文字列）→ clip 名。無い種類は idle。 */
+/**
+ * 姿勢遷移の「遷移元 clip」を補間が終わるまで保持する追跡器（純粋・テストの門）。
+ * 毎フレーム「直前に再生した clip」を書き換えると、遷移 1 フレーム目で遷移元が遷移先に化け、
+ * 0.45 秒の補間が丸ごと消える（別モデルレビューの実測: 翌フレームの骨の最大移動 0.0012 → 0.34）。
+ */
+export function transitionTracker() {
+  let curKind, curClip = null, prevClip = null, started = false;
+  return { step(poseKind, name) {
+    if (!started || poseKind !== curKind) { prevClip = curClip; curKind = poseKind; started = true; }
+    curClip = name;
+    return prevClip;
+  } };
+}
+
 export function clipFor(poseKind, seated) {
   const k = poseKind || "";
   if (k.startsWith("walk") || k === "enter" || k === "run" || k === "exit") return "walk";
@@ -271,7 +285,7 @@ export function createRigKit(materials, scene, mode = 1) {
         }
       };
       let headScale = VENDOR_HEAD.claude;
-      let lastClip = null;   // 直前に再生していた clip 名（遷移元はこれで解く）
+      const track = transitionTracker();   // 遷移元の clip は補間が終わるまで動かさない
       followAll();
       return {
         group, mesh, setTint,
@@ -282,6 +296,7 @@ export function createRigKit(materials, scene, mode = 1) {
         },
         apply(poseKind, t, dist, seated, changedAt = -Infinity, prevKind = null, seed = 0, prevDist = dist, prevChangedAt = -Infinity) {
           const name = clipFor(poseKind, seated), clip = clips.clips[name] || clips.clips.idle;
+          const prevClipName = track.step(poseKind, name);
           // 一発芸（挨拶・お祝い）は cheer の**先頭から**再生する。任意位相だと 0.9 秒窓がほぼ静止の区間に当たる（監査の実測: 80 分の 15）
           const oneShot = name === "cheer" && Number.isFinite(changedAt);
           let sample = oneShot
@@ -294,13 +309,12 @@ export function createRigKit(materials, scene, mode = 1) {
             // 遷移元が一発芸なら、そのイベント開始からの経過で読む（t+seed で読むと別位相へ跳ぶ・別モデルレビューの実測 0.24）
             // 遷移元は「そのとき実際に再生していた clip」で読む。いまの seated で解き直すと、着席 think（sit）→歩行のように
             // 着席状態が変わる遷移で別 clip から補間される（別モデルレビューの実測 0.204）。
-            const pname = lastClip || clipFor(prevKind, seated), pclip = clips.clips[pname] || clips.clips.idle;
+            const pname = prevClipName || clipFor(prevKind, seated), pclip = clips.clips[pname] || clips.clips.idle;
             const prevSample = pname === "cheer" && Number.isFinite(prevChangedAt)
               ? sampleClip(pclip, clips.fps, Math.max(0, t - prevChangedAt), false)
               : sampleClip(pclip, clips.fps, timeFor(pname, t, prevDist, seed));
             sample = blendPoses(prevSample, sample, w);
           }
-          if (name !== lastClip) lastClip = name;
           setPose(sample);
           nodes.root.updateMatrix(); nodes.root.updateMatrixWorld(true);
           group.matrix.multiplyMatrices(nodes.root.matrix, FRONT_ROT);

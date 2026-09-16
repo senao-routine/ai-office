@@ -9,7 +9,7 @@ registerHooks({ resolve(specifier, context, next) {
   if (specifier.startsWith("/ui/")) return next(new URL(`..${specifier}`, import.meta.url).href, context);
   return next(specifier, context);
 } });
-const { clipFor, D_PARTS, D_PARTS_CLAW, HYBRID_PARTS } = await import("../ui/iso/rigbot.js");
+const { clipFor, transitionTracker, D_PARTS, D_PARTS_CLAW, HYBRID_PARTS } = await import("../ui/iso/rigbot.js");
 
 /** scene3d が実際に組む poseKind の語彙（ui/iso/scene3d.js の poseKind 代入箇所から）。 */
 const STANDING = {
@@ -44,4 +44,21 @@ test("重ねる部品の集合（消えると表情・状態・小道具が黙�
   assert.ok(!D_PARTS.has("claw"), "claude/codex にハサミが付いている");
   // ハイブリッド（?rig=2）は頭ごと procedural
   for (const part of ["head", "visor", "chest", "__acc"]) assert.ok(HYBRID_PARTS.has(part), `HYBRID_PARTS に ${part} が無い`);
+});
+
+test("遷移元の clip は補間が終わるまで動かない（1 フレームで遷移先に化けると 0.45 秒の補間が消える）", () => {
+  const t = transitionTracker();
+  assert.equal(t.step("desk:", "sit"), null);          // 初回は遷移元なし
+  assert.equal(t.step("desk:", "sit"), null);          // 同じ姿勢のあいだは据え置き
+  assert.equal(t.step("walk", "walk"), "sit");         // 遷移の 1 フレーム目
+  assert.equal(t.step("walk", "walk"), "sit");         // 2 フレーム目以降も遷移元は sit のまま（ここが回帰した箇所）
+  assert.equal(t.step("walk", "walk"), "sit");
+  assert.equal(t.step("greet", "cheer"), "walk");      // 次の遷移で初めて更新される
+  assert.equal(t.step("greet", "cheer"), "walk");
+});
+
+test("同じ clip へ渡る遷移は恒等（kind だけ変わって clip が同じなら混合は無害）", () => {
+  const t = transitionTracker();
+  t.step("walk", "walk");
+  assert.equal(t.step("run", "walk"), "walk");
 });
