@@ -171,7 +171,9 @@ export function createRigKit(materials, scene, mode = 1) {
       const hands = (nodes.arms || []).map((arm) => arm.hand);
       for (const h of hands) if (h) nodes.root.add(h);
       const baseQuat = new Map();   // 部品の初期回転（胸リングは X 回転 π/2＝円面が前を向く）を保持して差分回転と合成する
-      // D: バイザーは生成体の顔から切り出したプレート（RobotBatch の visor 形状を差し替え）＝拡縮・前後ずらし無し
+      // D: バイザーは生成体の顔から切り出したプレート（RobotBatch の visor 形状を差し替え）＝拡縮・前後ずらし無し。
+      //    奥行きだけはベンダーの頭スケール（OpenClaw 0.90）へ合わせる＝顔が頭の面から浮かない（幅は push の setVendor が掛ける）。
+      const visorBaseZ = nodes.visor.scale.z;
       // 部品は骨の位置＋回転（rest からの差分）に追従する。位置だけだと首を傾げた時に帽子が頭から浮く（実測）。
       const _v = new THREE.Vector3(), _q = new THREE.Quaternion(), _qr = new THREE.Quaternion(), _off = new THREE.Vector3();
       const boneLocalQuat = (bone, out) => { bone.getWorldQuaternion(out); nodes.root.getWorldQuaternion(_qr); return out.premultiply(_qr.invert()); };
@@ -209,7 +211,10 @@ export function createRigKit(materials, scene, mode = 1) {
       followAll();
       return {
         group, mesh, setTint,
-        setVendorShape(vendor) { headScale = VENDOR_HEAD[vendor] || VENDOR_HEAD.claude; },
+        setVendorShape(vendor) {
+          headScale = VENDOR_HEAD[vendor] || VENDOR_HEAD.claude;
+          if (mode !== 2) nodes.visor.scale.z = visorBaseZ * headScale[2];
+        },
         apply(poseKind, t, dist, seated, changedAt = -Infinity, prevKind = null, seed = 0, prevDist = dist) {
           const name = clipFor(poseKind, seated), clip = clips.clips[name] || clips.clips.idle;
           let sample = sampleClip(clip, clips.fps, timeFor(name, t, dist, seed));

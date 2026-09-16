@@ -1062,7 +1062,12 @@ export class IsoScene {
       actor.nodes.root.position.set(m.x, dispY, m.z);
       actor.nodes.root.rotation.y = dispYaw;
       if (actor.rig) {
-        // R96-D2: 骨は clip の純関数サンプル（同じ t → 同じ姿勢）。poseKind が変わったら 0.45s で前の clip から混ぜる。
+        // R96-D2: 形と色は姿勢を作る前に決める（後回しにすると初回フレームだけ頭が claude 幅・バイザーだけ広い状態で描かれる）
+        actor.rigTint = this._shellTint(actor.shellColor, actor.vendor)
+          || (actor.lobster ? LOBSTER_TINT : actor.graphite ? GRAPHITE_TINT : null);
+        actor.rig.setTint(this.rigKit.mode === 2 ? null : actor.rigTint);
+        actor.rig.setVendorShape?.(actor.vendor);
+        // 骨は clip の純関数サンプル（同じ t → 同じ姿勢）。poseKind が変わったら 0.45s で前の clip から混ぜる。
         // 歩行の位相は距離駆動＝止まった後も到着時の距離（rigDist）を遷移元に渡して膝が跳ばないようにする。
         if (actor.rigKind !== poseKind) { actor.rigPrev = actor.rigKind ?? null; actor.rigKind = poseKind; }
         // 歩行の位相は「累積の歩行距離」で駆動する。経路の再計算（m.dist が 0 へ戻る）や停止でも位相が跳ばない。
@@ -1148,13 +1153,8 @@ export class IsoScene {
       if (actor.rig) {
         actor.rig.group.visible = !over;                 // リグ付きは SkinnedMesh が本体・描画人数の上限も同じ
         if (over || !this.rigKit?.headParts) continue;
-        const tint = this._shellTint(actor.shellColor, actor.vendor) || (actor.lobster ? LOBSTER_TINT : actor.graphite ? GRAPHITE_TINT : null);
-        // D: 生成体の殻に個体色（ベンダー色・アーキタイプ色）を焼き分ける。部品はバイザー（表情）・胸リング（状態色）・アクセサリだけ
-        //    ベンダー幅（setVendor の比率）は生成体には無いので部品は claude 幅で出す。C: 頭ごと procedural なのでベンダーそのまま
-        actor.rig.setTint(this.rigKit.mode === 2 ? null : tint);
-        // ベンダー差: 頭の幅は Head 骨、バイザーとアクセサリは push の setVendor が同じ比率で広げる。OpenClaw は手の骨にハサミ
-        actor.rig.setVendorShape?.(actor.vendor);
-        this.robots.push(actor.nodes, actor.accent || null, tint, this._archFor(actor.agentArch, aid),
+        // 形と色は姿勢の段で決めてある（actor.rigTint）。ここは部品（バイザー・胸リング・アクセサリ・ハサミ）を出すだけ
+        this.robots.push(actor.nodes, actor.accent || null, actor.rigTint || null, this._archFor(actor.agentArch, aid),
           actor.vendor, actor.expression, null, this.rigKit.partsFor(actor.vendor));
         continue;
       }
@@ -1236,12 +1236,16 @@ export class IsoScene {
     /** チビ 1 体を置いて描く（生成体のときは clip で待たせ、部品はバイザー・胸リングだけ）。 */
     const paintChibi = (ch, tint, vendor, seed, expr) => {
       const rig = this.chibiRigs?.[chibiN - 1];
+      const body = vendor === "openclaw" ? LOBSTER_TINT : vendor === "codex" ? GRAPHITE_TINT : null;
       if (rig) {
         rig.group.visible = true;
+        rig.setTint(this.rigKit.mode === 2 ? null : body);   // 形・色は姿勢の前に（親と同じ扱い）
+        rig.setVendorShape?.(vendor);
         rig.apply("chibi", t, 0, false, -Infinity, null, seed);
         ch.root.updateMatrixWorld(true);
       }
-      this.robots.push(ch, tint, null, null, vendor, expr, null, this.rigKit?.headParts || null);
+      this.robots.push(ch, tint, body, null, vendor, expr, null,
+        this.rigKit ? this.rigKit.partsFor(vendor) : null);
     };
     this._chibiMeta = this._chibiMeta || new Map();
     for (const agent of world.agents) {
