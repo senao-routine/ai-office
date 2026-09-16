@@ -714,10 +714,23 @@ if [ "${RUN_RELAY:-}" = "1" ]; then
     ng "中継E2E要求(RUN_RELAY=1)だが relay/node_modules 無し（cd relay && npm install）"
   else
     bash tests/relay_e2e.sh | sed 's/^/  /'
-    [ "${PIPESTATUS[0]}" = "0" ] || ng "中継E2E失敗"
+    if [ "${PIPESTATUS[0]}" = "0" ]; then
+      mkdir -p tests/artifacts && date +%s > tests/artifacts/.relay_e2e_ok   # 最後に通った日時（gitignore）
+    else
+      ng "中継E2E失敗"
+    fi
   fi
 else
   echo "  - RUN_RELAY=1 で wrangler dev を使うE2Eを実行（例: RUN_RELAY=1 bash \"AI Office/verify.sh\"）"
+  # R96-D3: この経路（PWA 3D スモークを含む）が赤いまま気づかれずに 1 日以上進んだ実績がある
+  #（撤去した setTheme をスモークが呼び続けて例外死。通常の verify では走らないので見えなかった）。
+  # 落とすと wrangler の無い環境で全員止まるので、鮮度だけ知らせる。
+  if [ -f tests/artifacts/.relay_e2e_ok ]; then
+    RELAY_AGO=$(( ( $(date +%s) - $(cat tests/artifacts/.relay_e2e_ok) ) / 86400 ))
+    [ "$RELAY_AGO" -ge 3 ] && echo "  ⚠ 中継E2Eを最後に通してから ${RELAY_AGO} 日。配備の前に RUN_RELAY=1 で 1 回通すこと"
+  else
+    echo "  ⚠ この作業ツリーで中継E2Eを通した記録が無い（配備の前に RUN_RELAY=1 で 1 回）"
+  fi
 fi
 
 echo "▶ 10 P4常駐の配線検査 (temp-deploy・実launchctlはしない)"

@@ -31,7 +31,7 @@ export function transitionTracker() {
   return { step(poseKind, name, changedAt = -Infinity, prevChangedAt = -Infinity) {
     if (!started || poseKind !== curKind) {
       if (started) {
-        const held = { clip: curClip, at: prevChangedAt };
+        const held = { clip: curClip, kind: curKind, at: prevChangedAt };
         const mix0 = smoothstep(0, .45, changedAt - prevChangedAt);
         if (mix0 >= 1 || !srcA) { srcA = held; srcB = null; srcMix = 1; }
         else { srcA = srcB || srcA; srcB = held; srcMix = mix0; }   // 3 本目は一番古いものを落とす
@@ -277,7 +277,7 @@ export function createRigKit(materials, scene, mode = 1) {
       const _v = new THREE.Vector3(), _q = new THREE.Quaternion(), _qr = new THREE.Quaternion(), _off = new THREE.Vector3();
       const _e = new THREE.Euler();
       const _ov = new THREE.Vector3(), _oq = new THREE.Quaternion();   // オーバーレイ層の作業用
-      const _obase = new THREE.Quaternion(), _ocur = new THREE.Quaternion();
+      const _obase = new THREE.Quaternion(), _ocur = new THREE.Quaternion(), _oprev = new THREE.Quaternion();
       const _inv = new THREE.Matrix4();
       /** 差分 1 本を骨のローカル回転へ合成する（軸は体の rest 軸＝OVERLAY が骨ローカルへ落とす）。 */
       const addEntry = (q, e, m) => {
@@ -287,21 +287,32 @@ export function createRigKit(materials, scene, mode = 1) {
           q.multiply(_oq.setFromAxisAngle(_ov, e.angle));
         }
       };
-      /** 今の所作（cur）と前の所作（prev）を同じ clip 姿勢の上に作り、w で混ぜて骨へ書く。 */
-      const applyOverlay = (cur, prev, w) => {
-        if (!cur.length && !(prev && prev.length)) return;
-        const names = new Set(cur.map((e) => e.bone));
-        if (prev) for (const e of prev) names.add(e.bone);
+      /**
+       * 所作を骨へ書く。cur= 今の所作／prevA・prevB= 遷移元の所作（中断された遷移は 2 本＝表示していた混合）。
+       * clip と同じ順序で混ぜる: base の上に各所作を作り、prevA→prevB を mix、その結果→cur を w。
+       * 遷移元を「完成形の所作」で作ると、0.45 秒以内に次の遷移が来たとき腕が瞬間移動する（別モデルレビュー 2 巡）。
+       */
+      const applyOverlay = (cur, prevA, prevB, mix, w) => {
+        const names = new Set();
+        for (const list of [cur, prevA, prevB]) if (list) for (const e of list) names.add(e.bone);
+        if (!names.size) return;
+        const put = (q, list, name, m) => { for (const e of list) if (e.bone === name) addEntry(q, e, m); };
         for (const name of names) {
           const m = OVERLAY.get(name);
           const b = m ? jointBones[m.j] : null;
           if (!b) continue;
           _obase.copy(b.quaternion);
-          for (const e of cur) if (e.bone === name) addEntry(b.quaternion, e, m);
-          if (!prev) continue;
+          put(b.quaternion, cur, name, m);
+          if (!prevA && !prevB) continue;
           _ocur.copy(b.quaternion);
           b.quaternion.copy(_obase);
-          for (const e of prev) if (e.bone === name) addEntry(b.quaternion, e, m);
+          if (prevA) put(b.quaternion, prevA, name, m);
+          if (prevB) {
+            _oprev.copy(b.quaternion);
+            b.quaternion.copy(_obase);
+            put(b.quaternion, prevB, name, m);
+            b.quaternion.copy(_oprev.slerp(b.quaternion, mix));
+          }
           b.quaternion.slerp(_ocur, w);
         }
       };
@@ -394,9 +405,15 @@ export function createRigKit(materials, scene, mode = 1) {
           // 所作も clip と同じ重みで混ぜる。ここを混ぜないと ❗の発生・解消で腕が瞬間移動する
           // （別モデルレビューの実測: 同時刻の切替で右手が root ローカルに 0.225 跳ぶ）。
           const ov = overlayFor(poseKind, t, seed, Number.isFinite(changedAt) ? t - changedAt : Infinity);
-          const prevOv = prevKind !== null && w < 1
-            ? overlayFor(prevKind, t, seed, Number.isFinite(prevChangedAt) ? t - prevChangedAt : Infinity) : null;
-          applyOverlay(ov, prevOv, w);
+          // 遷移元の所作は clip と同じ出どころ（追跡器）で引く。中断された遷移は 2 本＝表示していた混合を作り直す
+          const srcOv = (sp, fallbackKind, fallbackAt) => {
+            const kind = sp ? sp.kind : fallbackKind, at = sp ? sp.at : fallbackAt;
+            if (kind === undefined || kind === null) return null;
+            return overlayFor(kind, t, seed, Number.isFinite(at) ? t - at : Infinity);
+          };
+          const blending = w < 1 && (prevKind !== null || src.a);
+          applyOverlay(ov, blending ? srcOv(src.a, prevKind, prevChangedAt) : null,
+            blending ? srcOv(src.b, null, null) : null, src.mix, w);
           nodes.root.updateMatrix(); nodes.root.updateMatrixWorld(true);
           group.matrix.multiplyMatrices(nodes.root.matrix, FRONT_ROT);
           group.updateMatrixWorld(true);

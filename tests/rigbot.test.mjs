@@ -53,6 +53,7 @@ test("遷移元の clip は補間が終わるまで動かない（1 フレーム
   for (let i = 0; i < 3; i++) {
     const src = tr.step("walk", "walk", 10, 0);                        // 遷移の 1・2・3 フレーム目
     assert.equal(src.a.clip, "sit", "遷移元が遷移先に化けた（今回の回帰そのもの）");
+    assert.equal(src.a.kind, "desk:", "所作の遷移元（姿勢の種別）も同じ側に残る");
     assert.equal(src.b, null, "十分に経った遷移は 1 本に畳まれる");
   }
   assert.equal(tr.step("greet", "cheer", 30, 10).a.clip, "walk");      // 次の遷移で初めて更新される
@@ -65,6 +66,9 @@ test("補間の途中で次の遷移が来たら、表示中の混合姿勢を�
   const src = tr.step("greet", "cheer", 10.2, 10);                     // 0.2 秒で挨拶に割り込まれる
   assert.equal(src.a.clip, "sit");
   assert.equal(src.b.clip, "walk", "中断された遷移先が遷移元の片側に残らない＝そこへ跳ぶ");
+  // 所作（挙手・頷き・打鍵）も同じ出どころで引くので、姿勢の種別と開始時刻がどちらの側にも要る
+  assert.equal(src.a.kind, "desk:");
+  assert.equal(src.b.kind, "walk", "遷移元の所作を完成形で作り直すと腕が瞬間移動する");
   assert.ok(src.mix > 0.3 && src.mix < 0.6, `混合比 ${src.mix} がイベント時刻の差から決まっていない`);
   assert.equal(src.b.at, 10, "一発芸の位相を読むための開始時刻が失われている");
   // 3 本目が来たら一番古いものを落とす（2 本に畳む）
