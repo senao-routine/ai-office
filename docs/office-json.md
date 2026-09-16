@@ -18,6 +18,7 @@ hook 記録行や署名封筒にも `v` がありますが、office_json とは�
 | キー | ローカルで返す形・意味 | 中継 |
 |---|---|---|
 | `v` | 整数 `2` | ○ |
+| `app` | `{version}`＝**動いているコードの版**（R97-D・正本= `server/office_version.py`）。`v` はデータ形式の版で別物。 | **×**（新フィールドは既定で載せない） |
 | `officeName` `lang` `avatarMode` `generatedAt` | 表示名・言語・表示単位・生成時刻（epoch秒） | ○ |
 | `employees[]` | 1セッション=1件。Claude / Codex / OpenClaw を統合 | entry allowlist |
 | `roster[]` | 表示単位。`avatarMode=session` が既定、`project` ではプロジェクト集約 | entry allowlist |

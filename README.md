@@ -1,4 +1,6 @@
-# 🏢 AI Office 2.0
+# 🏢 AI Office
+
+<!--version-->v2.1.0<!--/version--> · macOS · MIT · no account, no telemetry, no server of mine
 
 **A live 3D office on your Mac for Claude Code, Codex CLI and OpenClaw: answer sessions, catch up on their work, and keep a calm screen beside your editor or on stream.**
 
@@ -72,6 +74,22 @@ Open <http://localhost:4780>. Local sessions appear as robots; use `/?demo=1` to
 - `~/Library/LaunchAgents/com.senao.aioffice.plist` — starts the office at login.
 - macOS may ask for Automation permission when the office opens Terminal, and for notification permission.
 
+### What leaves your Mac
+
+Nothing is sent to me. There is no account, no telemetry, and no server of mine: the repository
+contains no endpoint I control, and the app does not even check for updates on start-up. The HTTP
+server binds `127.0.0.1` only, so it is not reachable from your LAN.
+
+Exactly two kinds of outbound request exist, and you switch both on yourself:
+
+| Destination | When | What is sent |
+|---|---|---|
+| **The Cloudflare Worker you deploy** (`relay/`) | Only if you set up the phone relay | The office view on an allowlist — no message bodies, no local paths. New fields are excluded by default. |
+| **api.x.com · api.openai.com · openrouter.ai · api.moonshot.ai · api.deepseek.com** | Only for a provider whose API key you entered | A `GET` with your key, to read your own balance or quota. Nothing about your office is included, and with no key stored not a single byte is sent. Answers are cached for 15 minutes. |
+
+The browser side loads nothing from the internet: no CDN, no web fonts, no analytics. three.js is
+vendored in this repository.
+
 ### MCP setup (optional)
 
 ```bash
@@ -117,14 +135,29 @@ The hook wiring in `~/.claude/settings.json` is not removed automatically. Remov
 
 ## Requirements
 
-- macOS, Python 3.9+; the server uses only the Python standard library.
-- Claude Code, Codex CLI and/or a configured OpenClaw integration. Hiring requires Claude Code with background-session support; Codex delivery requires `codex queue`.
-- A WebGL-capable browser for 3D; a list fallback is available.
-- Node.js for development checks and the optional phone relay setup; no UI package install is required to run the local office.
-- UI language: English/Japanese, auto-detected. Pin `"lang"` in `office_config.json`; resident installs use `~/Library/Application Support/AIOffice/data/office_config.json`.
+| | |
+|---|---|
+| **Mac** | Apple Silicon or Intel. macOS 13 Ventura or newer (tested on 15 Sequoia). |
+| **Python** | The stock `/usr/bin/python3` (3.9.6) is enough — the server uses the standard library only. Xcode Command Line Tools provide it: `xcode-select --install`. |
+| **Agents** | Claude Code (interactive and background), Codex CLI, or a configured OpenClaw connection. Hiring needs Claude Code with background sessions; delivery to Codex needs `codex queue`. Answering permission prompts from the office needs a Claude Code build with `PermissionRequest` hooks. |
+| **Browser** | Any WebGL-capable browser for the 3D view; without it the office falls back to a list. |
+| **Node.js** | Only for development checks and the optional phone relay (wrangler needs Node 22+). Running the local office needs no package install. |
+| **Language** | English/Japanese, auto-detected. Pin `"lang"` in `office_config.json`. |
+
+**Not supported:** Windows and Linux. The resident app, the Terminal integration and the sealed-dialog
+backend are macOS-specific.
 
 ## Documentation
 
-[日本語](README.ja.md) · [Art direction](docs/art-direction.md) · [Office JSON](docs/office-json.md) · [Roadmap](docs/ROADMAP.md)
+[日本語](README.ja.md) · [Changelog](CHANGELOG.md) · [Art direction](docs/art-direction.md) · [Office JSON](docs/office-json.md)
+
+## Support
+
+Run `bash setup.sh --check` first — it diagnoses the things that break most often and its output
+is what a bug report needs. Then open an [issue](https://github.com/senao-routine/ai-office/issues)
+(English or Japanese). For anything security-related, use GitHub's private vulnerability reporting
+instead of a public issue; see [SECURITY.md](.github/SECURITY.md).
+
+This is a one-person project, so I cannot promise a response time — but I read everything.
 
 Built by [senao](https://github.com/senao-routine) / Routine Labo.

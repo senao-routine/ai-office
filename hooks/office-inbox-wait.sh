@@ -7,8 +7,35 @@
 # - 同一セッションで新しいターンが終わると新インスタンスが立ち、古い方は自動退場（pidfile）
 # - 失敗・タイムアウトは常に exit 0（セッションを邪魔しない）
 set -u
+# R97-A: python の解決を 1 本化する（従来は /usr/bin/python3 固定・/usr/bin/env python3・python3 の 3 通り混在）。
+# `/usr/bin/python3` は Xcode CLT が無い Mac では実体が無く、この hook は**無出力 exit 0** で終わっていた
+# ＝「❗は出るのに答えても届かない」がログも無しに起きる（2026-09-17 の棚卸し）。
+# 探索結果はキャッシュする（office-event.sh は毎ツール呼び出しで走る＝python の起動を増やさない）。
+OFFICE_PY=""
+OFFICE_PY_CACHE="${OFFICE_HOME:-$HOME}/.claude/.office_python"
+if [ -s "$OFFICE_PY_CACHE" ]; then
+  OFFICE_PY=$(cat "$OFFICE_PY_CACHE" 2>/dev/null || true)
+  [ -n "$OFFICE_PY" ] && [ -x "$OFFICE_PY" ] || OFFICE_PY=""
+fi
+if [ -z "$OFFICE_PY" ]; then
+  for OFFICE_PY_CAND in /usr/bin/python3 "$(command -v python3 2>/dev/null || true)"; do
+    [ -n "$OFFICE_PY_CAND" ] && [ -x "$OFFICE_PY_CAND" ] || continue
+    "$OFFICE_PY_CAND" -c 'import json,sys' >/dev/null 2>&1 || continue
+    OFFICE_PY="$OFFICE_PY_CAND"
+    mkdir -p "${OFFICE_PY_CACHE%/*}" 2>/dev/null || true
+    printf '%s' "$OFFICE_PY" 2>/dev/null > "$OFFICE_PY_CACHE" || true
+    break
+  done
+fi
+if [ -z "$OFFICE_PY" ]; then
+  # 黙って消えない。オフィス側が「なぜ届かないか」を言えるように 1 行だけ残す（本文は書かない）。
+  OFFICE_EVD="${OFFICE_HOME:-$HOME}/.claude/office_events"
+  mkdir -p "$OFFICE_EVD" 2>/dev/null || true
+  { printf '{"t":%s,"kind":"hook_no_python"}\n' "$(date +%s 2>/dev/null || echo 0)" >> "$OFFICE_EVD/hook_errors.jsonl"; } 2>/dev/null || true
+  exit 0
+fi
 IN=$(cat 2>/dev/null || true)
-SID=$(printf '%s' "$IN" | /usr/bin/python3 -c 'import json,sys
+SID=$(printf '%s' "$IN" | "$OFFICE_PY" -c 'import json,sys
 try: print(json.load(sys.stdin).get("session_id",""))
 except Exception: print("")' 2>/dev/null)
 case "$SID" in *[!a-zA-Z0-9-]*|"") exit 0;; esac
@@ -36,7 +63,7 @@ for _ in $(seq 1 "$LOOPS"); do
   if [ -f "$MSGF" ]; then
     # R79: ttl 切れは配達しない（閉じたセッション宛の指示が数時間後に突然実行されるのを防ぐ）。
     # 期限切れ・壊れたJSONは空文字を返し、下で rm されて静かに消える。
-    TXT=$(/usr/bin/python3 -c 'import json,sys,time
+    TXT=$("$OFFICE_PY" -c 'import json,sys,time
 try:
     d = json.load(open(sys.argv[1]))
     ttl = float(d.get("ttl") or 0)

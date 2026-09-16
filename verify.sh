@@ -45,6 +45,37 @@ if bad:
 print("  ✓ シェル変数展開の罠なし（$VAR+全角）")
 SHVAR
 
+echo "▶ 2c 素の Mac の python3 で server/ が動く（配布先で死なない）"
+# 2026-09-17 の実測: office_events.py の注釈 2 行（PEP 604 の `dict | None`）だけで
+# office_server / mcp_office / relay_agent / office_timeline が 3.9.6 で import できず、
+# **Homebrew の python3 を入れていない Mac では 1 秒も動かない**状態だった。
+# 開発機は 3.14 なので気づけず、▶12 の「素の Mac の python3」検査は封書だけを見ていた。
+python3 tools/check_py39.py || ng "3.9 で落ちる書き方が server/ に入っている"
+if [ -x /usr/bin/python3 ]; then
+  P39TMP="$(mktemp -d)"
+  if OFFICE_HOME="$P39TMP" /usr/bin/python3 -c "
+import sys; sys.path.insert(0, 'server')
+import office_server, mcp_office, relay_agent, office_timeline, office_events" >/dev/null 2>&1; then
+    ok "素の Mac の python3（$(/usr/bin/python3 -V 2>&1 | cut -d' ' -f2)）で server/ が import できる"
+  else
+    ng "素の Mac の python3 で server/ が import できない（配布先で起動しない）"
+  fi
+  P39PORT=$(/usr/bin/python3 -c 'import socket;s=socket.socket();s.bind(("127.0.0.1",0));print(s.getsockname()[1]);s.close()')
+  OFFICE_HOME="$P39TMP" /usr/bin/python3 server/office_server.py --port "$P39PORT" >"$P39TMP/srv.log" 2>&1 &
+  P39PID=$!
+  P39OK=0
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    sleep 0.4
+    curl -sf -H "X-Office-Local: 1" "http://127.0.0.1:$P39PORT/api/office" 2>/dev/null | grep -q '"employees"' && { P39OK=1; break; }
+  done
+  kill "$P39PID" 2>/dev/null; wait "$P39PID" 2>/dev/null
+  [ "$P39OK" = "1" ] && ok "素の Mac の python3 で起動して /api/office が返る" \
+    || ng "素の Mac の python3 で起動できない → $(tail -1 "$P39TMP/srv.log" 2>/dev/null | cut -c1-120)"
+  rm -rf "$P39TMP"
+else
+  echo "  ℹ /usr/bin/python3 が無い環境（配布先の検査は省略）"
+fi
+
 echo "▶ 2b 新UI(R50) の層と core ユニット"
 # 層lint: ui/core が DOM/通信/時刻/乱数に触っていないこと＝core を node だけでテストできる前提を守る番人
 python3 tools/js_layer_lint.py || ng "R50 層lint 違反（core の逆流）"
@@ -78,6 +109,33 @@ if command -v node >/dev/null 2>&1; then
 else
   echo "  - node なし → 新UIのJS検査を省略"
 fi
+
+echo "▶ 2e 版が 1 箇所から波及している（server/office_version.py が正本）"
+python3 tools/check_version.py || ng "版の食い違い（tools/check_version.py）"
+
+echo "▶ 2d JS 側の KAT とパリティ（wrangler 不要・毎回走る）"
+# R97-B: この 7 本は node だけで走るのに RUN_RELAY=1 の裏に居た＝**既定の verify では一度も走らなかった**。
+# CLAUDE.md 不変条件 #10「署名 canonical と KAT は Python/JS 両側」を、Python 側（▶4）だけが守っている状態だった。
+# JS↔Python 署名パリティ＋APP_HTML canonical 検査（node のみ・node_modules不要＝クローン直後でも走る）
+if command -v node >/dev/null 2>&1; then
+  node tests/js_sign_kat.mjs && ok "JS署名KAT一致 (canonical相互運用)" || ng "JS署名KAT不一致"
+  # R65: PWAへ移植した gloss が正本 ui/core/world.js と同一出力（片方だけ直すと落ちる）
+  node tests/gloss_parity.mjs >/dev/null 2>&1 && ok "R65 gloss parity (PWA↔core 同一出力)" || ng "R65 gloss parity 不一致 (node tests/gloss_parity.mjs で詳細)"
+  # R80-A11: ❗の「最優先の1件」がMacとスマホで一致すること（順序の正本を2つ持たない）
+  node tests/triage_parity.mjs >/dev/null 2>&1 && ok "R80 ❗順序パリティ (PWA↔core 同一の先頭)" || ng "R80 ❗順序パリティ不一致 (node tests/triage_parity.mjs で詳細)"
+  # R86-G: 「届かない」の判定を Mac/スマホで同一に保つ（片方だけ直すと❗中に嘘をつく）
+  node tests/ismute_parity.mjs >/dev/null 2>&1 && ok "R86-G isMute パリティ (PWA↔core 同一)" || ng "R86-G isMute パリティ不一致 (node tests/ismute_parity.mjs で詳細)"
+  node tests/badge_parity.mjs >/dev/null 2>&1 && ok "R86-I 識別バッジ パリティ (PWA↔core 同一・常に一意)" || ng "R86-I バッジ パリティ不一致 (node tests/badge_parity.mjs で詳細)"
+  # P7: Web Push暗号KAT（RFC8291 Appendix A公式ベクタ＋VAPID自己検証・wrangler不要）
+  node tests/webpush_kat.mjs >/dev/null 2>&1 && ok "Web Push KAT (RFC8291ベクタ+VAPID)" || ng "Web Push KAT失敗 (node tests/webpush_kat.mjs で詳細)"
+  # R5: Cloudflare依存を読み込まず、worker.js から純関数だけを抽出して購読フィルタを固定。
+  node -e 'const fs=require("fs"),a=require("assert");const s=fs.readFileSync("relay/src/worker.js","utf8"),i=s.indexOf("function pushTargets("),j=s.indexOf("// R5_PUSH_TARGETS_END",i);if(i<0||j<0)throw Error("pushTargets not found");eval(s.slice(i,j));const row=(d)=>({v:JSON.stringify(d)});a.strictEqual(pushTargets([row({depts:[]})],"開発").length,1);a.strictEqual(pushTargets([row({depts:["開発"]})],"開発").length,1);a.strictEqual(pushTargets([row({depts:["営業"]})],"開発").length,0);a.strictEqual(pushTargets([row({endpoint:"https://legacy"})],"開発").length,1)' \
+    && ok "R5 pushTargets 空/一致/不一致/レガシー" || ng "R5 pushTargets フィルタ判定失敗"
+else
+  echo "  - node 無し → JS署名KAT省略"
+fi
+
+node tests/relay_usage_lint.mjs && ok "中継の使用量: 書込経路がすべて計上される" || ng "中継の使用量に数えていない書込経路がある（node tests/relay_usage_lint.mjs）"
 
 echo "▶ 3/8 office_config.json 検証"
 # R80 Phase4: アセット検査（sprite実在/PNGマジック/寸法）は退役＝assets/ ごと撤去した。
@@ -536,6 +594,7 @@ elif [ -x "$VENV_PY" ] && "$VENV_PY" -c 'import playwright' >/dev/null 2>&1 \
   run_ui "R50 初回体験スモーク" "$VENV_PY" tests/ui_onboard_smoke.py
   # R80-B6: WebGL不可の環境（古いGPU/VM/リモートデスクトップ）でも仕事ができるか。
   # 配布すると必ず一定数いる環境で、以前は白画面＋英語の行き止まりだった
+  run_ui "R97 公開デモ（静的ホスト・サーバー無し）" "$VENV_PY" tests/demo_site_smoke.py
   run_ui "R80 WebGL退避スモーク" "$VENV_PY" tests/ui_webgl_fallback_smoke.py \
     "http://127.0.0.1:$TPORT" tests/artifacts/ui_webgl_fallback.png
   # R50提案2c: 新UIの日本語文字カナリア（lang=en で日本語0・旧i18n_smokeの新UI版）
@@ -713,7 +772,7 @@ if [ "${RUN_RELAY:-}" = "1" ]; then
   if [ ! -d relay/node_modules ]; then
     ng "中継E2E要求(RUN_RELAY=1)だが relay/node_modules 無し（cd relay && npm install）"
   else
-    bash tests/relay_e2e.sh 2>&1 | tee /tmp/relay_e2e_out.txt | sed 's/^/  /'
+    KAT_ALREADY=1 bash tests/relay_e2e.sh 2>&1 | tee /tmp/relay_e2e_out.txt | sed 's/^/  /'
     if [ "${PIPESTATUS[0]}" != "0" ]; then
       ng "中継E2E失敗"
     elif grep -q "Playwright無し→PWAスモーク省略" /tmp/relay_e2e_out.txt; then

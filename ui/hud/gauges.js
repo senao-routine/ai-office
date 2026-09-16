@@ -13,7 +13,7 @@ export const fmtTok = (v) => v >= 1e9 ? `${(v / 1e9).toFixed(1)}B` :
   v >= 1e6 ? `${(v / 1e6).toFixed(1)}M` : v >= 1e3 ? `${(v / 1e3).toFixed(1)}K` : String(v);
 
 /** ctx: shell, T, lang, getWorld() */
-export function init({ shell, T, lang, getWorld, onPins = () => {} }) {
+export function init({ shell, T, lang, getWorld, onPins = () => {}, demo = false }) {
   let kicked = false;
   // ── 経費ゲージ（左サイドバー常設・status_board 60秒ポーリング） ──────
   const gaugesEl = shell.querySelector("#gauges");
@@ -84,6 +84,8 @@ export function init({ shell, T, lang, getWorld, onPins = () => {} }) {
   const refreshGauges = async () => {
     if (document.hidden) return;
     if (!getWorld()) return;
+    // R97-C: デモ（静的ホスト）には /api/status_board が無い。畳んだまま何も要求しない
+    if (demo) { gaugesEl.hidden = true; onPins([]); return; }
     let sb;
     try {
       sb = await getStatusBoard();

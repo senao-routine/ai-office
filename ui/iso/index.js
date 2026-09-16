@@ -38,9 +38,15 @@ const zoneLabel = (z) => (ZONES.includes(z) ? T(`zone_${z}`) : "");
 /** ❗の内容キー。質問文が変われば別の❗として扱う（回答済み楽観表示の解除判定に使う）。 */
 const attnKeyFor = (a) => (a?.question ? `q:${a.question}` : `approval:${a?.session || ""}`);
 
-/** 🎬デモモード（?demo=1）: /ui/demo/world.json を1回だけ読み、投函は行わない。 */
+/**
+ * 🎬デモモード（?demo=1）: /ui/demo/world.json を1回だけ読み、投函は行わない。
+ * R97-C: 公開デモ（静的ホスト）はページ自体に `<meta name="office-demo" content="1">` を焼くので、
+ * 素の URL を踏んだ人も必ずデモに入る（?demo=1 を付け忘れてライブ UI が空振りするのを構造的に防ぐ）。
+ */
 const DEMO = new URLSearchParams(
-  typeof location === "undefined" ? "" : location.search).get("demo") === "1";
+  typeof location === "undefined" ? "" : location.search).get("demo") === "1"
+  || (typeof document !== "undefined"
+    && document.querySelector('meta[name="office-demo"]')?.getAttribute("content") === "1");
 
 // R85-2: 購入導線 PRODUCT_SITE は R84 全機能無料化で撤去（LPへの導線は README が担う）。
 
@@ -511,6 +517,7 @@ export async function mount(root) {
   const customize = initCustomize({ shell, T, scene, DEMO, stream, modals,
     refresh: () => stop.refresh?.(), showToast: delivery.showToast });
   const admin = initAdmin({
+    demo: DEMO,
     ...common, root, lang, setLang, modals, billingOf, fmtTok,
     showToast: delivery.showToast, applyStaticStrings: () => applyStaticStrings(shell),
     renderCustomizationSettings: customize.renderSettings,
@@ -551,7 +558,7 @@ export async function mount(root) {
     },
   );
 
-  const gauges = initGauges({ ...common, lang, onPins: paintPins });
+  const gauges = initGauges({ ...common, lang, onPins: paintPins, demo: DEMO });
 
   if (DEMO) {
     // 🎬デモ: 同梱worldを1回だけ読む（ポーリングしない・実セッション不要）。

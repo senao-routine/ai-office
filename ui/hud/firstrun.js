@@ -42,13 +42,16 @@ export function init({ shell, T, scene, DEMO = false, enabled = true }) {
       setupBar.append(message, command, copy);
       if (!frozen) {
         const checklist = el("div", "setup-checklist");
-        checklist.append(el("b", "setup-title"), el("span", "setup-hooks"), el("span", "setup-events"));
+        checklist.append(el("b", "setup-title"), el("span", "setup-hooks"),
+          el("span", "setup-events"), el("span", "setup-approval"));
         setupBar.prepend(checklist);
       }
       shell.querySelector(".main").insertBefore(setupBar, shell.querySelector("#stage"));
     }
     const hook = world.setup?.hookInstalled === true;
     const events = world.setup?.eventsWired === true;
+    // R97-A: 許可プロンプトに答える hook（PermissionRequest）。未配線なら README に書いてある機能が黙って効かない
+    const approval = world.setup?.approvalWired === true;
     setupBar.querySelector(".sb-msg").textContent = T("setup_hook");
     setupBar.querySelector(".sb-cmd").textContent = T("setup_hook_cmd");
     setupBar.querySelector(".sb-copy").textContent = T(copiedUntil > now() ? "setup_hook_copied" : "setup_hook_copy");
@@ -57,9 +60,11 @@ export function init({ shell, T, scene, DEMO = false, enabled = true }) {
       setupBar.querySelector(".setup-hooks").textContent = T(hook ? "setup_hooks_ready" : "setup_hooks_pending");
       setupBar.querySelector(".setup-events").textContent = T(events ? "setup_events_ready"
         : world.setup?.eventsWired === false ? "setup_events_pending" : "setup_events_unknown");
+      setupBar.querySelector(".setup-approval").textContent = T(approval ? "setup_approval_ready"
+        : world.setup?.approvalWired === false ? "setup_approval_pending" : "setup_approval_unknown");
       setupBar.querySelector(".sb-msg").hidden = hook;
-      setupBar.querySelector(".sb-cmd").hidden = hook && events;
-      setupBar.querySelector(".sb-copy").hidden = hook && events;
+      setupBar.querySelector(".sb-cmd").hidden = hook && events && approval;
+      setupBar.querySelector(".sb-copy").hidden = hook && events && approval;
     }
   };
   const paintEmpty = (show) => {
@@ -92,13 +97,17 @@ export function init({ shell, T, scene, DEMO = false, enabled = true }) {
       if (disposed) return;
       world = next;
       const empty = !world.agents.length;
-      const missingHooks = world.setup?.hookInstalled === false || world.setup?.eventsWired === false;
+      const missingHooks = world.setup?.hookInstalled === false || world.setup?.eventsWired === false
+        || world.setup?.approvalWired === false;
       const attention = world.agents.some((agent) => agent.attention);
       state = missingHooks ? "hooks" : empty ? "empty"
         : enabled && !frozen && attention && (!read || bubble) ? "first_alert" : "ready";
       paintSetup(state === "hooks" && (!frozen || world.setup?.hookInstalled === false));
-      // Frozen onboarding fixtures retain both existing smoke surfaces.
-      paintEmpty(state === "empty" || (frozen && empty));
+      // R97-A: 「誰も居ない」なら**常に**空オフィスのカード（🎬 デモを見る）を出す。
+      // 以前は frozen（= ?t= 付き＝回帰テスト専用）のときだけ出す枝があり、
+      // 「hook 未配線かつ誰も居ない」という**初見でいちばん普通の状態**で導線が消えていた
+      // （スモークは frozen 枝しか踏まないので緑のままだった）。
+      paintEmpty(empty);
       if (state !== "first_alert") { bubble?.remove(); bubble = null; }
     },
     paint(t) {

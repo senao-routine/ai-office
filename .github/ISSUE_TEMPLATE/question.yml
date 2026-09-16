@@ -1,0 +1,20 @@
+name: Question / 質問
+description: How do I …? / 使い方が分からない。
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Ask in English or Japanese. 日本語で構いません。
+        If the office is running but something looks wrong, a screenshot helps more than words.
+  - type: textarea
+    id: question
+    attributes:
+      label: Your question
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version (optional)
+      description: "`python3 server/office_version.py`"

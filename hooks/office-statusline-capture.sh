@@ -14,10 +14,40 @@
 # OFFICE_HOME はテスト注入口（既定 ${HOME}）。
 set +e
 H="${OFFICE_HOME:-$HOME}"
+# R97-A: python の解決を 1 本化する（従来は /usr/bin/python3 固定・/usr/bin/env python3・python3 の 3 通り混在）。
+# `/usr/bin/python3` は Xcode CLT が無い Mac では実体が無く、この hook は**無出力 exit 0** で終わっていた
+# ＝「❗は出るのに答えても届かない」がログも無しに起きる（2026-09-17 の棚卸し）。
+# 探索結果はキャッシュする（office-event.sh は毎ツール呼び出しで走る＝python の起動を増やさない）。
+OFFICE_PY=""
+OFFICE_PY_CACHE="${OFFICE_HOME:-$HOME}/.claude/.office_python"
+if [ -s "$OFFICE_PY_CACHE" ]; then
+  OFFICE_PY=$(cat "$OFFICE_PY_CACHE" 2>/dev/null || true)
+  [ -n "$OFFICE_PY" ] && [ -x "$OFFICE_PY" ] || OFFICE_PY=""
+fi
+if [ -z "$OFFICE_PY" ]; then
+  for OFFICE_PY_CAND in /usr/bin/python3 "$(command -v python3 2>/dev/null || true)"; do
+    [ -n "$OFFICE_PY_CAND" ] && [ -x "$OFFICE_PY_CAND" ] || continue
+    "$OFFICE_PY_CAND" -c 'import json,sys' >/dev/null 2>&1 || continue
+    OFFICE_PY="$OFFICE_PY_CAND"
+    mkdir -p "${OFFICE_PY_CACHE%/*}" 2>/dev/null || true
+    printf '%s' "$OFFICE_PY" 2>/dev/null > "$OFFICE_PY_CACHE" || true
+    break
+  done
+fi
+if [ -z "$OFFICE_PY" ]; then
+  # 黙って消えない。オフィス側が「なぜ届かないか」を言えるように 1 行だけ残す（本文は書かない）。
+  OFFICE_EVD="${OFFICE_HOME:-$HOME}/.claude/office_events"
+  mkdir -p "$OFFICE_EVD" 2>/dev/null || true
+  { printf '{"t":%s,"kind":"hook_no_python"}\n' "$(date +%s 2>/dev/null || echo 0)" >> "$OFFICE_EVD/hook_errors.jsonl"; } 2>/dev/null || true
+  # ★ここで exit しない。枠の取り込みは諦めても、**元の statusLine への転送は python に依存しない**。
+  #   ここで抜けると、この hook を入れただけで既存の表示が消える（別モデルレビュー）。
+fi
 INPUT="$(cat 2>/dev/null)"
 # 注意: `python3 - <<HEREDOC` はプログラム自体をstdinから読む＝payloadをパイプで
 # 渡すとheredocに上書きされて届かない（実測1敗）。payloadは環境変数で渡す。
-LINE="$(SL_JSON="$INPUT" OFFICE_HOME="$H" python3 - 2>/dev/null <<'PYEOF'
+LINE=""
+if [ -n "$OFFICE_PY" ]; then
+LINE="$(SL_JSON="$INPUT" OFFICE_HOME="$H" "$OFFICE_PY" - 2>/dev/null <<'PYEOF'
 import json
 import os
 import time
@@ -80,6 +110,7 @@ if isinstance(payload, dict):
 print(" | ".join(bits) if bits else "AI Office")
 PYEOF
 )"
+fi
 PASS="$H/.claude/office_usage/passthrough.cmd"
 if [ -f "$PASS" ]; then
   printf '%s' "$INPUT" | bash -c "$(cat "$PASS" 2>/dev/null)" 2>/dev/null && exit 0

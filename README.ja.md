@@ -1,4 +1,6 @@
-# 🏢 AI Office 2.0
+# 🏢 AI Office
+
+<!--version-->v2.1.0<!--/version--> · macOS 専用 · MIT · アカウント不要・テレメトリ無し・作者のサーバーは存在しません
 
 **Claude Code・Codex CLI・OpenClaw のセッションに答え、留守中の仕事を振り返り、作業中も配信中も置いておける Mac の3Dオフィス。**
 
@@ -76,6 +78,22 @@ bash setup.sh --no-daemon   # 常駐登録せず、その場で起動
 - `~/Library/LaunchAgents/com.senao.aioffice.plist` — ログイン時の自動起動。
 - Terminal を開く際の「自動化」と通知について、macOS が許可を求める場合があります。
 
+### この Mac から何が出るか
+
+作者には何も送られません。アカウントもテレメトリも、こちらのサーバーもありません（リポジトリの
+どこにも作者のエンドポイントは無く、起動時の版チェックの通信すらしません）。HTTP サーバーは
+`127.0.0.1` だけで待ち受けるので、同じ LAN の他の機械からも触れません。
+
+外へ出る通信は 2 種類だけで、どちらも自分で有効にしたときだけ動きます。
+
+| 宛先 | いつ | 何を送るか |
+|---|---|---|
+| **自分で置いた Cloudflare Worker**（`relay/`） | スマホ中継を設定したときだけ | allowlist を通したオフィスの表示情報。本文もローカルパスも載りません（新しいフィールドは既定で載りません）。 |
+| **api.x.com・api.openai.com・openrouter.ai・api.moonshot.ai・api.deepseek.com** | API キーを入れたプロバイダの分だけ | 自分の残高や枠を読むための `GET` 1 本（キー付き）。オフィスの情報は 1 つも載らず、キーが無ければ 1 バイトも出ません。結果は 15 分キャッシュします。 |
+
+ブラウザ側はインターネットから何も読みません（CDN も Web フォントも解析タグも無し）。three.js は
+このリポジトリに同梱しています。
+
 ### MCP登録（任意）
 
 ```bash
@@ -121,14 +139,27 @@ bash macapp/uninstall.sh --purge-data # アプリの設定・データも削除
 
 ## 動作環境
 
-- macOS・Python 3.9+。サーバーは Python 標準ライブラリのみ。
-- Claude Code、Codex CLI、または設定済みの OpenClaw 連携。雇用には Claude Code のバックグラウンド起動、Codex への配達には `codex queue` 対応が必要です。
-- 3Dは WebGL 対応ブラウザ。利用できない場合は一覧表示へ切り替えられます。
-- 開発時の検査と任意のスマホ中継セットアップには Node.js が必要です。ローカルオフィスの起動に UI のパッケージインストールは不要です。
-- UI言語は日本語/英語。`office_config.json` の `"lang"` で固定でき、常駐版の設定は `~/Library/Application Support/AIOffice/data/office_config.json` にあります。
+| | |
+|---|---|
+| **Mac** | Apple Silicon / Intel。macOS 13 Ventura 以降（動作確認は 15 Sequoia）。 |
+| **Python** | 素の `/usr/bin/python3`（3.9.6）で足ります（サーバーは標準ライブラリのみ）。無ければ `xcode-select --install`。 |
+| **エージェント** | Claude Code（対話・バックグラウンド）／Codex CLI／設定済みの OpenClaw 連携のいずれか。雇用には Claude Code のバックグラウンド起動、Codex への配達には `codex queue`、**オフィスから許可プロンプトに答えるには `PermissionRequest` フックに対応した Claude Code** が要ります。 |
+| **ブラウザ** | 3D は WebGL 対応ブラウザ。使えない環境では一覧表示に切り替わります。 |
+| **Node.js** | 開発時の検査と、任意のスマホ中継だけに必要（wrangler が Node 22 以上）。ローカルで動かすだけなら不要です。 |
+| **言語** | 日本語／英語（自動）。`office_config.json` の `"lang"` で固定できます。 |
+
+**対応していないもの:** Windows と Linux。常駐・ターミナル連携・封書の暗号は macOS 固有の仕組みを使っています。
 
 ## 開発者向け
 
-`bash dev.sh --check` が高速レーン、`bash verify.sh` が全ゲートです。[アートディレクション](docs/art-direction.md)・[Office JSON](docs/office-json.md)・[ロードマップ](docs/ROADMAP.md) を正本として参照してください。
+`bash dev.sh --check` が高速レーン、`bash verify.sh` が全ゲートです。[アートディレクション](docs/art-direction.md)・[Office JSON](docs/office-json.md)・[変更履歴](CHANGELOG.md) を正本として参照してください。
+
+## 困ったときは
+
+まず `bash setup.sh --check` を実行してください。詰まりやすい所（Python・フック・常駐・ポート）を診断します。
+その出力を添えて [Issue](https://github.com/senao-routine/ai-office/issues) を立ててください（日本語で構いません）。
+セキュリティに関わるものは公開 Issue ではなく、GitHub の非公開の脆弱性報告からお願いします（[SECURITY.md](.github/SECURITY.md)）。
+
+個人で作っているので返信の速さは約束できませんが、全部読みます。
 
 Built by [senao](https://github.com/senao-routine) / Routine Labo.

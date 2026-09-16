@@ -1,0 +1,48 @@
+name: Bug report / 不具合の報告
+description: Something does not work. 動かない・おかしい。
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. This is a one-person project, so a precise report goes a long way.
+        日本語で書いてもらって構いません。
+
+        **Before you file:** run `bash setup.sh --check` and paste its output below. It checks the
+        things that break most often (Python, hooks, the resident app, ports).
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Output of `bash setup.sh --check`
+      description: This is the single most useful thing you can paste. / これが一番役に立ちます。
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what you expected
+      description: 何をしたら、何が起きて、どうなってほしかったか。
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: "Output of `python3 server/office_version.py` (or the release you downloaded)."
+    validations:
+      required: true
+  - type: input
+    id: mac
+    attributes:
+      label: macOS and Mac
+      description: "e.g. macOS 15.3, Apple Silicon (M2) / Intel"
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log tail (optional)
+      description: |
+        `tail -40 "$HOME/Library/Application Support/AIOffice/logs/office.daemon.log"`
+      render: shell

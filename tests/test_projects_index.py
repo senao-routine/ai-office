@@ -140,11 +140,14 @@ class ProjectsIndexTests(unittest.TestCase):
         # R82: templates（ユーザー定義定型文=遠隔利用が目的の意図的搬送）も追加。
         # R85-2: rosterCounts は撤去（読者ゼロ）。R86-A: avatarMode（session/project・機微なし）追加。
         # R90-D12: "v" はスキーマ版（docs/office-json.md が正本・中継 allowlist にも入っている）。
-        self.assertEqual({"v", "officeName", "employees", "history", "today", "generatedAt", "setup",
+        # R97-D: "app" は**動いているコードの版**（正本= server/office_version.py）。"v" とは別物で、
+        # 中継の allowlist には**入れない**（新フィールドは既定でスマホに載せない）。
+        self.assertEqual({"v", "app", "officeName", "employees", "history", "today", "generatedAt", "setup",
                           "counts", "lang", "avatarMode", "roster", "tasks",
                           "actions", "relay", "res", "launchable", "templates", "sources", "events", "growth"},
                          set(data))
         self.assertEqual(data["v"], 2)
+        self.assertEqual(set(data["app"]), {"version"})   # 版だけ。パスやビルド情報を足さない
         self.assertNotIn("projects", data)
         # launchable は中継へ流れる前提＝ローカルパスを1バイトも運ばない（projectIdはハッシュ）
         for pj in data["launchable"]:

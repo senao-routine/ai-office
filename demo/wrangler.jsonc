@@ -1,0 +1,16 @@
+{
+  // R97-C: 公開デモ（静的ホスト）。インストール不要で 3D オフィスを触ってもらうための入口。
+  //
+  // 中身は `python3 tools/build_demo.py` が作る dist/demo-site（ui/ の import 閉包＋テクスチャ＋
+  // 同梱 world）。サーバーは要らない: `?demo=1` は /ui/demo/world.json を 1 回読むだけで、
+  // /api/ を 1 本も叩かない（tests/demo_site_smoke.py が毎回それを確かめる）。
+  //
+  // **ルート（/）で配ること**が条件: ui/ の import は /ui/... の絶対指定なので、
+  // サブパス配下（GitHub Pages の /<repo>/ など）では解決できない。
+  //
+  // デプロイ: bash demo/deploy.sh
+  "name": "ai-office-demo",
+  "compatibility_date": "2025-01-01",
+  "workers_dev": true,
+  "assets": { "directory": "../dist/demo-site" }
+}

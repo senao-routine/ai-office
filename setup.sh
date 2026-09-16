@@ -98,7 +98,12 @@ fi
 # ── 2. 指示配達の配線（この製品の心臓＝回答が実セッションへ届く経路） ─────────
 say ""
 say "2. 指示配達を配線します（回答があなたのセッションへ届くようにする）"
-if bash "$HERE/hooks/install.sh" --wire >/tmp/aioffice_hook.log 2>&1; then
+# 出力はそのまま見せる（「新しいセッションから有効」「statusline は別配線」が /tmp に消えていた）。
+# ただし成否は**パイプの先頭**で見る（${PIPESTATUS[0]}）。素直に書くと最後の sed の終了コードになり、
+# 配線に失敗しても「配線しました」と言ってしまう（別モデルレビューで再現）。
+bash "$HERE/hooks/install.sh" --wire 2>&1 | tee /tmp/aioffice_hook.log | sed 's/^/    /'
+HOOK_RC=${PIPESTATUS[0]}
+if [ "$HOOK_RC" = "0" ]; then
   good "Stop hook を配線しました（~/.claude/settings.json・バックアップあり）"
 else
   bad "配線に失敗しました → 詳細: /tmp/aioffice_hook.log"
@@ -145,7 +150,7 @@ done
 if [ -n "$up" ]; then
   good "サーバーが応答しました（http://localhost:${PORT}）"
 else
-  bad "サーバーが応答しません → ログ: /tmp/aioffice_server.log または officectl.sh log"
+  bad "サーバーが応答しません → ログ: \"$HOME/Library/Application Support/AIOffice/logs/office.daemon.log\"（常駐時）／/tmp/aioffice_server.log（--no-daemon 時）"
 fi
 
 say ""
@@ -161,12 +166,14 @@ if [ "$ng" -eq 0 ]; then
   command -v open >/dev/null 2>&1 && open "http://localhost:$PORT" 2>/dev/null || true
   # R90-U4: optional first question; Enter/EOF skips, and failure never fails setup.
   say ""
-  say "  いま1体出勤させて❗を体験しますか？ [Y/n]（Enterでスキップ）"
+  say "  いま1体出勤させて❗を体験しますか？ [y/N]（Enter はスキップ）"
   FIRST_SESSION=""
   read -r FIRST_SESSION || FIRST_SESSION=""
   case "$FIRST_SESSION" in
     y|Y|yes|YES|Yes)
-      if (cd "$HERE" && claude --bg "README を1行で要約し、AskUserQuestion で続けるか聞いて"); then
+      if ! command -v claude >/dev/null 2>&1; then
+        info "claude コマンドが見つかりません（Claude Code を入れてから試してください）。セットアップは完了しています。"
+      elif (cd "$HERE" && claude --bg "README を1行で要約し、AskUserQuestion で続けるか聞いて"); then
         info "起動しました。オフィスで❗が出るのをお待ちください。"
       else
         info "体験セッションは起動できませんでした。セットアップは完了しています。"

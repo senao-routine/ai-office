@@ -192,6 +192,7 @@ export class Room extends DurableObject {
   _kvPutIfChanged(k, v) {
     if (this._kvGet(k) === v) return false;    // 読み(安い)で書き(高い)を節約する
     this._kvPut(k, v);
+    this._bump(1);                             // R97-B: WS 接続時の origin/site も枠を食う
     return true;
   }
 
@@ -257,6 +258,7 @@ export class Room extends DurableObject {
   enqueue(session, text, ts) {
     this.ctx.storage.sql.exec(
       "INSERT INTO inbox(session,text,ts) VALUES (?,?,?)", session, text, ts);
+    this._bump(1);        // R97-B: 書込経路は自分で計上する（sync() からは呼ばれない）
     // R79-7 扇形配信フックその1: 指示が積まれたらMac(agent)を起こす（R79-8で受信側を実装。
     // sync()にはフックしない＝二重pushを構造的に防ぐ）
     this._fan("agent", '{"t":"wake"}');
@@ -277,6 +279,19 @@ export class Room extends DurableObject {
     const ph = clean.map(() => "?").join(",");
     this.ctx.storage.sql.exec(`DELETE FROM inbox WHERE id IN (${ph})`, ...clean);
     return clean.length;
+  }
+
+  /** /ack ルート専用。sync() 内の ack は sync 側で計上するので、こちらだけが数える（R97-B）。 */
+  ackRemote(ids) {
+    const n = this.ack(ids);
+    if (n) this._bump(1);
+    return n;
+  }
+
+  /** POST /status（mini の片方向）専用。sync() 経由の putStatus は sync 側で計上する（R97-B）。 */
+  putStatusRemote(json, ts) {
+    this.putStatus(json, ts);
+    this._bump(1);
   }
 
   putStatus(json, ts) {
@@ -311,11 +326,13 @@ export class Room extends DurableObject {
     this.ctx.storage.sql.exec(
       "INSERT INTO kv(k,v,ts) VALUES (?,?,?) " +
       "ON CONFLICT(k) DO UPDATE SET v=excluded.v, ts=excluded.ts", "push:" + id, json, ts);
+    this._bump(1);
     return true;
   }
 
   delSub(id) {
     this.ctx.storage.sql.exec("DELETE FROM kv WHERE k=?", "push:" + id);
+    this._bump(1);
   }
 
   listSubs() {
@@ -385,7 +402,8 @@ export class Room extends DurableObject {
     // R80: この周で書いた行数（status + attnstate + agentseen）を計上して返す。
     // Mac側は usage.level を見て自分のscan間隔を伸ばす＝**枠を割る前に自動で減速する**。
     const wrote = 1 + (typeof p.officeJson === "string" ? 1 : 0)
-      + (p.attnNow && typeof p.attnNow === "object" ? 1 : 0) + dlgWrote;   // R87: 封書の行も計上
+      + (p.attnNow && typeof p.attnNow === "object" ? 1 : 0) + dlgWrote   // R87: 封書の行も計上
+      + (acked ? 1 : 0);                                                  // R97-B: ack の DELETE も 1 行
     this._bump(wrote);
     return { acked, items, newly, subs, appSeenAgo, appOnline, usage: this.usage() };
   }
@@ -394,7 +412,14 @@ export class Room extends DurableObject {
   // R79-8.1: HTTPポーリング退避中の端末にも agentOnline（Mac WS在席）を添える
   statusForApp() {
     const now = Date.now();
-    this._touchSeen("appseen", now);
+    // R97-B: ここは 20 秒ポーリングのたびに 1 行書いていた＝1 端末 4,320 行/日が
+    // 使用量ゲージに載らないまま無料枠（100,000 行/日）の 4.3% を食っていた。
+    // 在席判定に要る粒度は分単位なので 60 秒以内の再書込は省く（読みは安い・書きが高い）。
+    const prevSeen = this._seenTs("appseen");
+    if (prevSeen == null || now - prevSeen >= 60000) {
+      this._touchSeen("appseen", now);
+      this._bump(1);
+    }
     const s = this.getStatus();
     const agent = this._seenTs("agentseen");
     return { json: s.json, ts: s.ts,
@@ -728,7 +753,7 @@ export default {
 
     if (method === "POST" && path === "/ack") {
       const b = await readJson(request);
-      const acked = await room.ack(b.ids);
+      const acked = await room.ackRemote(b.ids);
       return jsonResp({ ok: true, acked });
     }
 
@@ -766,7 +791,7 @@ export default {
     if (method === "POST" && path === "/status") {
       const b = await readJson(request);
       const office = b.office ?? b;
-      await room.putStatus(JSON.stringify(office), Date.now());
+      await room.putStatusRemote(JSON.stringify(office), Date.now());
       // P7: ❗遷移のWeb Pushはレスポンスをブロックしない（relay_agentの5秒tickを遅らせない）。
       // R42.4: 通知はsite=macのみ（miniの生pushとメインのマージ済みpushで二重通知しない）
       if (env.VAPID_JWK && site === "mac") ctx.waitUntil(notifyAttn(room, env, office, url.origin));

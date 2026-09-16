@@ -24,10 +24,37 @@
 #   12 時間残って❗の幽霊になった。だから毎周 **心拍**（mtime だけ更新）を打ち、daemon は mtime が
 #   ASK_STALE より古い掲示を幽霊扱いする。SIGTERM/SIGHUP/SIGINT には handler で即 cleanup。
 set -u
+# R97-A: python の解決を 1 本化する（従来は /usr/bin/python3 固定・/usr/bin/env python3・python3 の 3 通り混在）。
+# `/usr/bin/python3` は Xcode CLT が無い Mac では実体が無く、この hook は**無出力 exit 0** で終わっていた
+# ＝「❗は出るのに答えても届かない」がログも無しに起きる（2026-09-17 の棚卸し）。
+# 探索結果はキャッシュする（office-event.sh は毎ツール呼び出しで走る＝python の起動を増やさない）。
+OFFICE_PY=""
+OFFICE_PY_CACHE="${OFFICE_HOME:-$HOME}/.claude/.office_python"
+if [ -s "$OFFICE_PY_CACHE" ]; then
+  OFFICE_PY=$(cat "$OFFICE_PY_CACHE" 2>/dev/null || true)
+  [ -n "$OFFICE_PY" ] && [ -x "$OFFICE_PY" ] || OFFICE_PY=""
+fi
+if [ -z "$OFFICE_PY" ]; then
+  for OFFICE_PY_CAND in /usr/bin/python3 "$(command -v python3 2>/dev/null || true)"; do
+    [ -n "$OFFICE_PY_CAND" ] && [ -x "$OFFICE_PY_CAND" ] || continue
+    "$OFFICE_PY_CAND" -c 'import json,sys' >/dev/null 2>&1 || continue
+    OFFICE_PY="$OFFICE_PY_CAND"
+    mkdir -p "${OFFICE_PY_CACHE%/*}" 2>/dev/null || true
+    printf '%s' "$OFFICE_PY" 2>/dev/null > "$OFFICE_PY_CACHE" || true
+    break
+  done
+fi
+if [ -z "$OFFICE_PY" ]; then
+  # 黙って消えない。オフィス側が「なぜ届かないか」を言えるように 1 行だけ残す（本文は書かない）。
+  OFFICE_EVD="${OFFICE_HOME:-$HOME}/.claude/office_events"
+  mkdir -p "$OFFICE_EVD" 2>/dev/null || true
+  { printf '{"t":%s,"kind":"hook_no_python"}\n' "$(date +%s 2>/dev/null || echo 0)" >> "$OFFICE_EVD/hook_errors.jsonl"; } 2>/dev/null || true
+  exit 0
+fi
 IN=$(cat 2>/dev/null || true)
 [ -n "$IN" ] || exit 0
 
-printf '%s' "$IN" | /usr/bin/python3 -c '
+printf '%s' "$IN" | "$OFFICE_PY" -c '
 import json, os, signal, sys, time
 
 def bail():

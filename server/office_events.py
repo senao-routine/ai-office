@@ -10,6 +10,7 @@ import re
 import sys
 import threading
 import time
+from typing import Optional   # 素の Mac の python3（3.9）は注釈を実行時に評価する＝`X | None` は使えない
 
 from office_common import IncrementalTail
 
@@ -177,7 +178,7 @@ def recent(since_seq=0, limit=200) -> list[dict]:
         return deepcopy(rows[:max(0, limit)])
 
 
-def state_of(sid, now) -> dict | None:
+def state_of(sid, now) -> Optional[dict]:
     with _LOCK:
         state = _STATE.get(sid)
         if state is None or now - state["ts"] > STATE_TTL:
@@ -205,7 +206,7 @@ def overlay(info, home, now) -> dict:
     return result
 
 
-def subscribe() -> queue.Queue | None:
+def subscribe() -> Optional[queue.Queue]:
     with _LOCK:
         if len(_SUBSCRIBERS) >= 8:
             return None

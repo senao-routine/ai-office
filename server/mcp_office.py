@@ -36,7 +36,15 @@ SUPPORTED = {"2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25"}
 LATEST = "2025-11-25"
 MAX_LINE = 10 * 1024 * 1024          # 巨大行ガード（10MB）
 MAX_EMPLOYEES = 30                   # status 要約の打切り（10kトークン警告回避）
-SERVER_INFO = {"name": "aioffice", "title": "AI Office", "version": "1.0.0"}
+try:
+    from office_version import VERSION as _APP_VERSION
+except ImportError:      # 直接ファイルを読む経路（sys.path が通っていない）
+    import pathlib as _pl, re as _re
+    _m = _re.search(r'VERSION = "([^"]+)"',
+                    (_pl.Path(__file__).resolve().parent / "office_version.py").read_text(encoding="utf-8"))
+    _APP_VERSION = _m.group(1) if _m else "0.0.0"
+# R97-D: 版の正本は server/office_version.py（ここに数字を書かない）
+SERVER_INFO = {"name": "aioffice", "title": "AI Office", "version": _APP_VERSION}
 
 TOOLS = [
     {"name": "office_status",

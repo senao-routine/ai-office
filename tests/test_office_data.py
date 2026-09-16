@@ -97,7 +97,8 @@ class OfficeDataTest(unittest.TestCase):
         os.environ["OFFICE_HOME"] = str(home)
         o = _load("office_hook_true", ROOT / "server" / "office_server.py")
         snapshot = o.office_json()
-        self.assertEqual(snapshot["setup"], {"hookInstalled": True, "eventsWired": False})
+        self.assertEqual(snapshot["setup"],
+                         {"hookInstalled": True, "eventsWired": False, "approvalWired": False})
         self.assertNotIn("settings.json", json.dumps(snapshot, ensure_ascii=False))
         self.assertNotIn("test-secret", json.dumps(snapshot, ensure_ascii=False))
 
@@ -120,11 +121,13 @@ class OfficeDataTest(unittest.TestCase):
         (home / ".claude").mkdir()
         os.environ["OFFICE_HOME"] = str(home)
         o = _load("office_hook_missing", ROOT / "server" / "office_server.py")
-        self.assertEqual(o.office_json()["setup"], {"hookInstalled": False, "eventsWired": False})
+        self.assertEqual(o.office_json()["setup"],
+                         {"hookInstalled": False, "eventsWired": False, "approvalWired": False})
 
         (home / ".claude" / "settings.json").write_text("{broken", encoding="utf-8")
         o = _load("office_hook_invalid", ROOT / "server" / "office_server.py")
-        self.assertEqual(o.office_json()["setup"], {"hookInstalled": False, "eventsWired": False})
+        self.assertEqual(o.office_json()["setup"],
+                         {"hookInstalled": False, "eventsWired": False, "approvalWired": False})
 
 
 class SourcesMetadataTest(unittest.TestCase):

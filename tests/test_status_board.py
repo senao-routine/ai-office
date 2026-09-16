@@ -954,7 +954,9 @@ class PrivacyIsolationRegressionTest(unittest.TestCase):
             # 構造的に出さない＝中継に新しい秘密を運ばない）。launchable も projectId+名前のみ。
             # R85-2: rosterCounts は撤去（読者ゼロ）。R86-A: avatarMode 追加（機微なし）。
             # R90-D12: "v" はスキーマ版（docs/office-json.md が正本）。
-            self.assertEqual(set(snapshot), {"v", "officeName", "employees", "history", "today", "generatedAt",
+            # R97-D: "app" は動いているコードの版（server/office_version.py が正本）。中継へは出さない
+            #（下の relay push 検査で「本文に app が無い」ことまで見る）。
+            self.assertEqual(set(snapshot), {"v", "app", "officeName", "employees", "history", "today", "generatedAt",
                                              "setup", "counts", "lang", "avatarMode",
                                              "roster", "tasks", "actions",
                                              "relay", "res", "launchable", "templates", "sources", "events", "growth"})
@@ -983,6 +985,8 @@ class PrivacyIsolationRegressionTest(unittest.TestCase):
             self.assertTrue(sent["url"].endswith("/status"))
             self.assertNotIn("usedPercent", body)
             self.assertNotIn("office_resources", body)
+            # R97-D: 版は中継に載せない（新フィールドは既定で載らない＝allowlist の不変条件）
+            self.assertNotIn('"app"', body)
             # R79-10: actions は中継へ通る（スマホの▶実行UIが要る）が、**構成情報は持たない**。
             # argv/cwd/env が中継に出たら「何をどこで動かしているか」が漏れる＝ここでピンする。
             actions = (sent["body"].get("office") or {}).get("actions") or {}

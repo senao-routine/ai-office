@@ -61,6 +61,7 @@ def _load_office_events():
 
 try:
     import office_common
+    import office_version
     import projects_index
     import status_board
     import openclaw_source
@@ -74,6 +75,7 @@ except ModuleNotFoundError:  # importlibでファイルを直接読む既存テ�
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     try:
         import office_common
+        import office_version
         import projects_index
         import status_board
         import openclaw_source
@@ -1290,6 +1292,30 @@ def events_wired():
                for h in (g.get("hooks") if isinstance(g.get("hooks"), list) else []))
 
 
+def approval_wired():
+    """R97-A: 許可プロンプトに答える hook（PermissionRequest・office-approval-wait.sh）が配線済みか。
+
+    なぜ要るか: これまで office_json は Stop hook（配達）と 17 イベント（記録）しか見ておらず、
+    UI の「📱 接続チェック」は承認 hook が未配線でも「✓ フックは配線済み」と言っていた。
+    README は「権限プロンプトで止まった端末には PermissionRequest フックが答える」と書いているので、
+    未配線の人は**書いてある機能が黙って効かない**状態に置かれる（2026-09-17 の棚卸し）。
+    """
+    settings_file = _HOME / ".claude" / "settings.json"
+    try:
+        settings = json.loads(settings_file.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return False
+    hooks = settings.get("hooks") if isinstance(settings, dict) else None
+    groups = hooks.get("PermissionRequest") if isinstance(hooks, dict) else None
+    if isinstance(groups, dict):
+        groups = [groups]
+    if not isinstance(groups, list):
+        return False
+    return any(isinstance(h, dict) and "office-approval-wait" in str(h.get("command") or "")
+               for g in groups if isinstance(g, dict)
+               for h in (g.get("hooks") if isinstance(g.get("hooks"), list) else []))
+
+
 def hook_installed():
     """~/.claude/settings.json の Stop hook 配線だけを確認する。
 
@@ -1564,7 +1590,8 @@ def scan_office():
         "codex": {"connected": False, "n": 0, "reason": "disabled"},
         "openclaw": {"connected": False},
     }
-    setup = {"hookInstalled": hook_installed(), "eventsWired": events_wired()}
+    setup = {"hookInstalled": hook_installed(), "eventsWired": events_wired(),
+             "approvalWired": approval_wired()}
     employees = []
     scan_dirs = PROJECTS.iterdir() if PROJECTS.is_dir() else ()
     for proj in scan_dirs:
@@ -1730,6 +1757,10 @@ def scan_office():
     return {
         # R90-D12: スキーマ版。docs/office-json.md が正本（v2 = sources/events/growth を持つ形）。
         "v": 2,
+        # R97-D: 動いているコードの版。正本は server/office_version.py の 1 箇所だけ
+        #（`"v"` はデータ形式の版で別物）。**中継の allowlist には足さない**＝新フィールドは
+        # 既定でスマホに載せない、という不変条件をここでも守る（docs/office-json.md）。
+        "app": {"version": office_version.VERSION},
         "officeName": config.get("officeName") or default_office_name(_LANG),
         "employees": employees,
         "sources": sources,

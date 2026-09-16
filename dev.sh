@@ -26,6 +26,10 @@ fast_lane() {
     && ok "python 構文" || ng "python 構文: $out"
   out=$(python3 tools/check_stdlib.py server/*.py 2>&1) \
     && ok "stdlib番人" || ng "stdlib番人: $out"
+  out=$(python3 tools/check_py39.py 2>&1) \
+    && ok "py39番人（素の Mac の python3 で server/ が import できる）" || { ng "py39番人"; echo "$out"; }
+  out=$(python3 tools/check_version.py 2>&1) \
+    && ok "版番人（正本 1 箇所から README・MCP・CHANGELOG へ）" || { ng "版番人"; echo "$out"; }
   out=$(python3 tools/js_layer_lint.py 2>&1) \
     && ok "層lint（core が DOM/通信/乱数に触っていない）" || { ng "層lint"; echo "$out"; }
   out=$(python3 tools/css_var_lint.py 2>&1) \

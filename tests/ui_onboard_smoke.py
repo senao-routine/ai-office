@@ -74,6 +74,33 @@ def main():
                 ng += 1
             page.close()
 
+            # (2b) R97-A: **?t= の無い実機の枝**でも空オフィスの導線が出る。
+            # 以前は frozen（?t= 付き＝回帰テスト専用）のときだけ出る枝があり、
+            # 「hook 未配線かつ誰も居ない」という初見でいちばん普通の状態でデモ導線が消えていた。
+            # このスモークが frozen でしか踏んでいなかったので、緑のまま本番に出ていた。
+            page = browser.new_page(viewport=VIEWPORT, device_scale_factor=1)
+            page.on("pageerror", lambda e: errors.append(f"pageerror: {e}"))
+            page.route("**/api/office*", lambda route: route.fulfill(
+                status=200, content_type="application/json; charset=utf-8",
+                body=json.dumps(EMPTY_WORLD, ensure_ascii=False)))
+            page.goto(f"http://127.0.0.1:{port}/?ui={STYLE}&seed=11")
+            page.wait_for_function("window.__office && window.__office.ready", timeout=30000)
+            page.wait_for_timeout(300)
+            if page.query_selector(".onboard") and page.query_selector(".odemo"):
+                print("  ✓ 実機の枝（?t= 無し）でも 空オフィス＋デモ導線")
+            else:
+                print("  ✗ 実機の枝でデモ導線が出ない（frozen のときだけ出ている）")
+                ng += 1
+            # R97-A: 接続チェックは 3 行（配達・記録・**許可の代理応答**）。frozen では組み立てないので
+            # ここで見る。承認 hook が未配線でも「✓ フックは配線済み」としか言わない状態を止める。
+            appr = page.query_selector("#setupbar .setup-approval")
+            if appr and appr.text_content().strip():
+                print(f"  ✓ 接続チェックに許可の代理応答の行がある（{appr.text_content().strip()}）")
+            else:
+                print("  ✗ 接続チェックに許可の代理応答の行が無い（未配線でも気づけない）")
+                ng += 1
+            page.close()
+
             # (3) デモモード: 同梱worldで出勤・投函ブロック
             page = browser.new_page(viewport=VIEWPORT, device_scale_factor=1)
             page.on("pageerror", lambda e: errors.append(f"pageerror: {e}"))

@@ -14,23 +14,29 @@ TOKEN="e2e-relay-token"
 DID="d_0123456789ab"
 SECRET="00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff"
 
-# JS↔Python 署名パリティ＋APP_HTML canonical 検査（node のみ・node_modules不要＝クローン直後でも走る）
-if command -v node >/dev/null 2>&1; then
-  node tests/js_sign_kat.mjs && ok "JS署名KAT一致 (canonical相互運用)" || ng "JS署名KAT不一致"
-  # R65: PWAへ移植した gloss が正本 ui/core/world.js と同一出力（片方だけ直すと落ちる）
-  node tests/gloss_parity.mjs >/dev/null 2>&1 && ok "R65 gloss parity (PWA↔core 同一出力)" || ng "R65 gloss parity 不一致 (node tests/gloss_parity.mjs で詳細)"
-  # R80-A11: ❗の「最優先の1件」がMacとスマホで一致すること（順序の正本を2つ持たない）
-  node tests/triage_parity.mjs >/dev/null 2>&1 && ok "R80 ❗順序パリティ (PWA↔core 同一の先頭)" || ng "R80 ❗順序パリティ不一致 (node tests/triage_parity.mjs で詳細)"
-  # R86-G: 「届かない」の判定を Mac/スマホで同一に保つ（片方だけ直すと❗中に嘘をつく）
-  node tests/ismute_parity.mjs >/dev/null 2>&1 && ok "R86-G isMute パリティ (PWA↔core 同一)" || ng "R86-G isMute パリティ不一致 (node tests/ismute_parity.mjs で詳細)"
-  node tests/badge_parity.mjs >/dev/null 2>&1 && ok "R86-I 識別バッジ パリティ (PWA↔core 同一・常に一意)" || ng "R86-I バッジ パリティ不一致 (node tests/badge_parity.mjs で詳細)"
-  # P7: Web Push暗号KAT（RFC8291 Appendix A公式ベクタ＋VAPID自己検証・wrangler不要）
-  node tests/webpush_kat.mjs >/dev/null 2>&1 && ok "Web Push KAT (RFC8291ベクタ+VAPID)" || ng "Web Push KAT失敗 (node tests/webpush_kat.mjs で詳細)"
-  # R5: Cloudflare依存を読み込まず、worker.js から純関数だけを抽出して購読フィルタを固定。
-  node -e 'const fs=require("fs"),a=require("assert");const s=fs.readFileSync("relay/src/worker.js","utf8"),i=s.indexOf("function pushTargets("),j=s.indexOf("// R5_PUSH_TARGETS_END",i);if(i<0||j<0)throw Error("pushTargets not found");eval(s.slice(i,j));const row=(d)=>({v:JSON.stringify(d)});a.strictEqual(pushTargets([row({depts:[]})],"開発").length,1);a.strictEqual(pushTargets([row({depts:["開発"]})],"開発").length,1);a.strictEqual(pushTargets([row({depts:["営業"]})],"開発").length,0);a.strictEqual(pushTargets([row({endpoint:"https://legacy"})],"開発").length,1)' \
-    && ok "R5 pushTargets 空/一致/不一致/レガシー" || ng "R5 pushTargets フィルタ判定失敗"
+# R97-B: この塊は wrangler も node_modules も要らない＝**既定の verify で毎回走る**（verify.sh ▶2d）。
+# ここは単体実行（bash tests/relay_e2e.sh）のための保険で、verify.sh から来た回は二重実行しない。
+if [ "${KAT_ALREADY:-}" = "1" ]; then
+  echo "  - JS の KAT とパリティは verify.sh ▶2d で実行済み"
 else
-  echo "  - node 無し → JS署名KAT省略"
+  # JS↔Python 署名パリティ＋APP_HTML canonical 検査（node のみ・node_modules不要＝クローン直後でも走る）
+  if command -v node >/dev/null 2>&1; then
+    node tests/js_sign_kat.mjs && ok "JS署名KAT一致 (canonical相互運用)" || ng "JS署名KAT不一致"
+    # R65: PWAへ移植した gloss が正本 ui/core/world.js と同一出力（片方だけ直すと落ちる）
+    node tests/gloss_parity.mjs >/dev/null 2>&1 && ok "R65 gloss parity (PWA↔core 同一出力)" || ng "R65 gloss parity 不一致 (node tests/gloss_parity.mjs で詳細)"
+    # R80-A11: ❗の「最優先の1件」がMacとスマホで一致すること（順序の正本を2つ持たない）
+    node tests/triage_parity.mjs >/dev/null 2>&1 && ok "R80 ❗順序パリティ (PWA↔core 同一の先頭)" || ng "R80 ❗順序パリティ不一致 (node tests/triage_parity.mjs で詳細)"
+    # R86-G: 「届かない」の判定を Mac/スマホで同一に保つ（片方だけ直すと❗中に嘘をつく）
+    node tests/ismute_parity.mjs >/dev/null 2>&1 && ok "R86-G isMute パリティ (PWA↔core 同一)" || ng "R86-G isMute パリティ不一致 (node tests/ismute_parity.mjs で詳細)"
+    node tests/badge_parity.mjs >/dev/null 2>&1 && ok "R86-I 識別バッジ パリティ (PWA↔core 同一・常に一意)" || ng "R86-I バッジ パリティ不一致 (node tests/badge_parity.mjs で詳細)"
+    # P7: Web Push暗号KAT（RFC8291 Appendix A公式ベクタ＋VAPID自己検証・wrangler不要）
+    node tests/webpush_kat.mjs >/dev/null 2>&1 && ok "Web Push KAT (RFC8291ベクタ+VAPID)" || ng "Web Push KAT失敗 (node tests/webpush_kat.mjs で詳細)"
+    # R5: Cloudflare依存を読み込まず、worker.js から純関数だけを抽出して購読フィルタを固定。
+    node -e 'const fs=require("fs"),a=require("assert");const s=fs.readFileSync("relay/src/worker.js","utf8"),i=s.indexOf("function pushTargets("),j=s.indexOf("// R5_PUSH_TARGETS_END",i);if(i<0||j<0)throw Error("pushTargets not found");eval(s.slice(i,j));const row=(d)=>({v:JSON.stringify(d)});a.strictEqual(pushTargets([row({depts:[]})],"開発").length,1);a.strictEqual(pushTargets([row({depts:["開発"]})],"開発").length,1);a.strictEqual(pushTargets([row({depts:["営業"]})],"開発").length,0);a.strictEqual(pushTargets([row({endpoint:"https://legacy"})],"開発").length,1)' \
+      && ok "R5 pushTargets 空/一致/不一致/レガシー" || ng "R5 pushTargets フィルタ判定失敗"
+  else
+    echo "  - node 無し → JS署名KAT省略"
+  fi
 fi
 
 if [ ! -d relay/node_modules ]; then

@@ -7,12 +7,14 @@ import {
 
 /** ctx: root, shell, T, lang, setLang, getWorld(), applyStaticStrings(),
  *  showToast(), billingOf(), fmtTok(), modals */
-export function init({ root, shell, T, lang, setLang, getWorld, applyStaticStrings,
+export function init({ root, shell, T, lang, setLang, getWorld, applyStaticStrings, demo = false,
   showToast, billingOf, fmtTok, renderStreamSettings = () => {}, renderCustomizationSettings = () => {}, modals: { modal, openModal, closeModal, mEl } }) {
   // R82: 定型文エディタ（8件×120字・保存でスマホにも同期）
   let TEMPLATES = [];
   let recipeFolder = "";
   const refreshTemplates = async () => {
+    // R97-C: デモ（静的ホスト）ではサーバーが無い。同梱 world の templates を使い、API は叩かない
+    if (demo) { TEMPLATES = getWorld()?.templates || []; return; }
     try { TEMPLATES = (await getTemplates())?.templates || []; } catch { /* 未対応サーバーでも動く */ }
   };
   refreshTemplates();

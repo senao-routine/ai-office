@@ -29,3 +29,9 @@ plant_sprite_pixelart.png
 
 # R96-D: Tripo の GLB 原本（重い・再生成可能）
 tools/tripo_out/
+
+# R97-C: 公開デモの生成物（tools/build_demo.py・検査の直前に作り直す）
+dist/
+
+# R97-C: Tripo CLI の副産物（開発の一時状態）
+.tripo/
