@@ -713,12 +713,16 @@ if [ "${RUN_RELAY:-}" = "1" ]; then
   if [ ! -d relay/node_modules ]; then
     ng "中継E2E要求(RUN_RELAY=1)だが relay/node_modules 無し（cd relay && npm install）"
   else
-    bash tests/relay_e2e.sh | sed 's/^/  /'
-    if [ "${PIPESTATUS[0]}" = "0" ]; then
-      mkdir -p tests/artifacts && date +%s > tests/artifacts/.relay_e2e_ok   # 最後に通った日時（gitignore）
-    else
+    bash tests/relay_e2e.sh 2>&1 | tee /tmp/relay_e2e_out.txt | sed 's/^/  /'
+    if [ "${PIPESTATUS[0]}" != "0" ]; then
       ng "中継E2E失敗"
+    elif grep -q "Playwright無し→PWAスモーク省略" /tmp/relay_e2e_out.txt; then
+      # スモークを省いた回で日時を更新すると「PWA を検査した」ことになってしまう（別モデルレビュー）
+      echo "  ⚠ PWAスモークを省いた回なので鮮度は更新しない（VENV_PY に Playwright 入りの python を渡す）"
+    else
+      mkdir -p tests/artifacts && date +%s > tests/artifacts/.relay_e2e_ok   # 最後に通った日時（gitignore）
     fi
+    rm -f /tmp/relay_e2e_out.txt
   fi
 else
   echo "  - RUN_RELAY=1 で wrangler dev を使うE2Eを実行（例: RUN_RELAY=1 bash \"AI Office/verify.sh\"）"
