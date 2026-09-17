@@ -55,7 +55,9 @@ def main():
         src = path.read_text(encoding="utf-8")
         rel = path.relative_to(ROOT)
         try:
-            tree = ast.parse(src, filename=str(path))
+            # feature_version を渡さないと、**走っている側**（3.14 等）の文法で通ってしまう。
+            # 実測: `except* Exception:` を含むファイルが検査を素通りした（別モデルレビュー）。
+            tree = ast.parse(src, filename=str(path), feature_version=MIN)
         except SyntaxError as exc:                      # 3.10+ の構文（match 等）はここで出る
             bad.append(f"{rel}:{exc.lineno} 構文が {MIN[0]}.{MIN[1]} で読めない: {exc.msg}")
             continue

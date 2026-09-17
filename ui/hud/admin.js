@@ -152,7 +152,13 @@ export function init({ root, shell, T, lang, setLang, getWorld, applyStaticStrin
     target.append(row, mEl("p", "mnote",
       dialogAvailable === false ? T("pair_dialog_unavailable") : T("pair_dialog_note")));
   };
+  /** デモ（静的ホスト）で、サーバー専用の操作を開いたときの断り書き。 */
+  const demoOnly = (title) => {
+    modal.replaceChildren(mEl("b", "mtitle", title), mEl("p", "mnote", T("demo_server_only")));
+    openModal();
+  };
   const renderPairPanel = async () => {
+    if (demo) return demoOnly(T("btn_pair"));   // /api/pair/* は静的ホストに存在しない
     modal.replaceChildren(mEl("b", "mtitle", T("btn_pair")),
       mEl("p", "mnote", T("pair_issuing")));
     openModal();
@@ -797,6 +803,8 @@ export function init({ root, shell, T, lang, setLang, getWorld, applyStaticStrin
     // 🌐 サーバーの lang を切り替える（office_json.lang が正本＝PWA/通知の言語も揃う）
     seg(T("set_lang"), [["ja", "日本語"], ["en", "English"]], lang(), async (v) => {
       try {
+        // デモはサーバーを持たないので、この画面の中だけで切り替える（/api/lang は叩かない）
+        if (demo) { setLang(v); applyStaticStrings(); renderSettings(); return; }
         await setServerLang(v);
         setLang(v);
         applyStaticStrings();
@@ -834,7 +842,7 @@ export function init({ root, shell, T, lang, setLang, getWorld, applyStaticStrin
     modal.append(notifyRow, notifyHint);
     const dialog = mEl("div", "setting-dialog");
     modal.append(dialog);
-    pairList().then((data) => {
+    (demo ? Promise.reject(new Error(T("demo_server_only"))) : pairList()).then((data) => {
       if (modal.contains(dialog)) renderDialogSetting(dialog, "set-dialog", data);
     }).catch((err) => {
       if (modal.contains(dialog)) dialog.append(mEl("p", "mnote merr", err.message));

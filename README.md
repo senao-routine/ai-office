@@ -12,11 +12,24 @@ The office is a daylight Scandinavian interior: oak floors, white walls, large w
 
 > Try it with no sessions running: <http://localhost:4780/?demo=1>
 
-## Three pillars
+## What it is for
 
-- **Answer across vendors.** See Claude Code (interactive and background), Codex CLI and connected OpenClaw sessions together. Use the ❗ tray's number keys, click a robot for its sheet, or reply from your phone. Delivery follows each vendor's supported route; Claude permission decisions use the local PermissionRequest hook.
-- **Measure the human side, with a timeline.** See what waited for your answer and what finished while you were away. An away digest, a 20-second replay, and XP/levels turn recorded activity into a history you can inspect. XP excludes token volume; the Mac view exposes its breakdown.
-- **A 3D screen worth leaving open.** A white × pale-lavender glass loft in cool daylight, ceramic robots, and black monitors that glow blue-white (real bloom on emissive screens, plus vignette and static grain, a PMREM room environment). It grows from S through M and L to XL (24 seats) with peak concurrent activity; levels unlock decorations. Stream mode makes it useful beside your editor or in OBS.
+Anthropic already ships the tools for *driving* your sessions: **Agent View** lists every parallel
+session in one place, and **Remote Control** answers them from your phone. Both are good, and AI
+Office is not a replacement for either. It is the other half of the problem — *seeing* a whole
+day's work, across more than one vendor, at a glance.
+
+- **Every vendor on the same floor.** Claude Code (interactive and background), Codex CLI and a
+  connected OpenClaw all appear as employees in one room. One session is one robot; `/rename`
+  becomes the name on its desk.
+- **Quota and spend in one picture.** Subscription limits and metered API balances sit side by
+  side — five providers, with the "no limit is set" case stated instead of a made-up percentage.
+- **It never leaves your Mac.** No account, no telemetry, no server of mine. The only outbound
+  requests are to a relay **you** deploy and to providers **you** hold keys for (see "What leaves
+  your Mac").
+- **A room worth leaving open.** A white × pale-lavender glass loft in cool daylight, generated
+  furniture and rigged robots that walk, sit, type and raise a hand when they need you. It reads
+  from across the desk, and it holds up on a stream.
 
 ## Working with sessions
 
