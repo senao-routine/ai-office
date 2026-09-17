@@ -259,9 +259,24 @@ class CrewPeakTest(unittest.TestCase):
         self.assertEqual(again.observed_peak(0), 9)
 
     def test_peak_survives_broken_file(self):
+        """手編集・復元で JSON が壊れても、辞書でなくても、/api/office ごと落ちない。"""
         o = self._office()
-        (self.home / ".claude" / "office_peak.json").write_text("{壊れた", encoding="utf-8")
-        self.assertEqual(o.observed_peak(4), 4)
+        peak = self.home / ".claude" / "office_peak.json"
+        peak.parent.mkdir(parents=True, exist_ok=True)
+        for broken in ("{壊れた", "null", "[]", '"x"', '{"maxSeen": "九"}'):
+            peak.write_text(broken, encoding="utf-8")
+            self.assertEqual(o.observed_peak(4), 4, broken)
+
+    def test_peak_is_serialized_between_processes(self):
+        """daemon と relay_agent は別プロセスで併走する。直列化しないと 12 を 9 で上書きできる。"""
+        o = self._office("office_server_peak_race")
+        self.assertEqual(o.observed_peak(12), 12)
+        code = ("import os, sys; os.environ['OFFICE_HOME'] = %r; sys.path.insert(0, %r);"
+                "import office_server as s; print(s.observed_peak(9))"
+                % (str(self.home), str(ROOT / "server")))
+        out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
+        self.assertEqual(out.stdout.strip(), "12", out.stderr[-400:])
+        self.assertEqual(o.observed_peak(0), 12, "別プロセスが小さい値で上書きした")
 
 if __name__ == "__main__":
     unittest.main()

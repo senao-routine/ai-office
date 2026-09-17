@@ -1280,28 +1280,45 @@ def observed_peak(current):
 
     オフィスの広さはこの値で決まる（S≦8 / M≦12 / L≦18 / XL）。**増える方向にしか動かさない**:
     セッションを閉じるたびに机が消えると、動いている物が壊れたように見える。
+
+    daemon と relay_agent は別プロセスで併走するので、読み→書きは flock で直列化する。
+    直列化しないと 12 を書いた直後に 9 で上書きできる＝**部屋が縮む**（別モデルレビューが別プロセスで再現）。
+
+    ここで `_lock`（スレッドロック）は**取らない**: この関数は `office_json()` が `_lock` を握ったまま
+    呼ぶ経路にあり、`threading.Lock` は再入できないので自分で自分を待って**サーバーごと止まる**
+    （実際に固まった）。flock は open ごとに効くのでスレッド間の直列化もこれで足りる。
     """
     try:
-        cur = int(current)
+        cur = max(0, int(current))
     except (TypeError, ValueError):
         cur = 0
-    cur = max(0, cur)
-    peak = 0
+
+    def _read():
+        try:
+            data = json.loads(PEAK_FILE.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            return 0
+        if not isinstance(data, dict):      # null / [] / "x" でも壊れない（手編集・復元の事故）
+            return 0
+        try:
+            return max(0, int(data.get("maxSeen") or 0))
+        except (TypeError, ValueError):
+            return 0
+
+    if cur <= _read():                      # 大半はここで終わる（読みだけ＝安い）
+        return _read()
     try:
-        data = json.loads(PEAK_FILE.read_text(encoding="utf-8"))
-        peak = int(data.get("maxSeen") or 0)
-    except (OSError, UnicodeError, json.JSONDecodeError, TypeError, ValueError):
-        peak = 0
-    if cur <= peak:
-        return peak
-    try:
-        PEAK_FILE.parent.mkdir(parents=True, exist_ok=True)
-        tmp = PEAK_FILE.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps({"maxSeen": cur}), encoding="utf-8")
-        os.replace(tmp, PEAK_FILE)
+        with _file_flock(PEAK_FILE):
+            peak = _read()                  # ロックの中で読み直す（これが無いと lost update）
+            if cur <= peak:
+                return peak
+            PEAK_FILE.parent.mkdir(parents=True, exist_ok=True)
+            tmp = PEAK_FILE.with_name(f".{PEAK_FILE.name}.tmp")
+            tmp.write_text(json.dumps({"maxSeen": cur}), encoding="utf-8")
+            tmp.replace(PEAK_FILE)
+            return cur
     except OSError:
-        return max(peak, cur)      # 書けなくても、この周の値は返す（画面は縮まない）
-    return cur
+        return max(_read(), cur)            # 書けなくても、この周の値は返す（画面は縮まない）
 
 
 def events_wired():
