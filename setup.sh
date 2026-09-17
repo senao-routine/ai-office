@@ -48,7 +48,7 @@ if [ "$MODE" = "--demo" ]; then
   PY="$(command -v python3 || true)"
   [ -x "/usr/bin/python3" ] && PY="/usr/bin/python3"
   [ -n "$PY" ] || { say "  ❌ python3 が見つかりません（xcode-select --install）"; exit 1; }
-  DEMO_HOME="$(mktemp -d /tmp/aioffice-demo.XXXXXX)"
+  DEMO_HOME="$(mktemp -d "${TMPDIR:-/tmp}/aioffice-demo.XXXXXX")"
   mkdir -p "$DEMO_HOME/.claude"
   DEMO_PID=""
   # 非対話 bash から起動した子は SIGINT を無視して生き残る＝Ctrl-C で親だけ消えて

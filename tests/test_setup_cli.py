@@ -50,10 +50,13 @@ class SetupCliTest(unittest.TestCase):
         # そのバックアップは、セッション検出のために `claude` が動いた副産物なので数えない。
         before = marker.read_bytes()
         plists = home / "Library" / "LaunchAgents"
-        tmp_before = {d for d in os.listdir("/tmp") if d.startswith("aioffice-demo.")}
+        # 一時領域は**このテスト専用の TMPDIR** に作らせる。/tmp 全体の差分で見ると、
+        # 同時に走っている別のデモを自分の残骸と取り違えて落ちる（別モデルレビュー）。
+        tmpdir = Path(tempfile.mkdtemp())
         proc = subprocess.Popen(["bash", str(SETUP), "--demo"], stdout=subprocess.PIPE,
                                 stderr=subprocess.STDOUT, text=True, cwd=str(ROOT),
-                                env={**os.environ, "HOME": str(home), "OFFICE_HOME": str(home)},
+                                env={**os.environ, "HOME": str(home), "OFFICE_HOME": str(home),
+                                     "TMPDIR": str(tmpdir)},
                                 start_new_session=True)
         url, out = None, ""
         try:
@@ -93,8 +96,8 @@ class SetupCliTest(unittest.TestCase):
             self.assertEqual(held, "", "Ctrl-C のあともデモのサーバーが残っている")
             # 「何も残さない」の実測: この実行で作った一時領域が消えていること。
             # PID だけ止めると `claude`（セッション検出）が孤児になり、消したはずの領域を作り直す。
-            left = {d for d in os.listdir("/tmp") if d.startswith("aioffice-demo.")} - tmp_before
-            self.assertEqual(left, set(), f"デモの一時領域が残っている: {left}")
+            left = [d.name for d in tmpdir.iterdir() if d.name.startswith("aioffice-demo.")]
+            self.assertEqual(left, [], f"デモの一時領域が残っている: {left}")
         self.assertEqual(before, marker.read_bytes(), "--demo が settings.json を書き換えている")
         self.assertFalse(plists.exists() and list(plists.glob("com.senao.aioffice*")),
                          "--demo が LaunchAgent を作っている")
