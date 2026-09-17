@@ -110,6 +110,11 @@ else
   echo "  - node なし → 新UIのJS検査を省略"
 fi
 
+echo "▶ 2f 配布物（zip / tar.gz）の除外が効いている"
+# R97-D: 公開リポと配布物で除外リストがずれると、片方だけから内部物が漏れる。
+# 正本は tools/_publish_excludes.sh の 1 本で、両方がそれを食う（--check は HEAD を見るだけ＝速い）。
+bash tools/pack_release.sh --check || ng "配布物の除外に取りこぼしがある（bash tools/pack_release.sh --check）"
+
 echo "▶ 2e 版が 1 箇所から波及している（server/office_version.py が正本）"
 python3 tools/check_version.py || ng "版の食い違い（tools/check_version.py）"
 

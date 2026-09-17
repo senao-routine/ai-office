@@ -2,8 +2,10 @@
 # AI Office セットアップ（1コマンド） — これを実行すれば「使える状態」まで到達する。
 #
 #   bash setup.sh              # 配線 → 常駐登録 → 起動 → 疎通確認 → 画面を開く
+#   bash setup.sh --demo       # **何も入れずに**デモのオフィスを見るだけ（Ctrl-C で全部消える）
 #   bash setup.sh --no-daemon  # 常駐にはせず、この場で起動して試すだけ
 #   bash setup.sh --check      # 何もインストールせず、現在の状態だけ診断する
+#   bash setup.sh --help       # 使い方だけ表示する
 #
 # 設計の意図（R80）:
 #   配布して初めて分かったのは、詰まる場所が機能ではなく**手順**だということ。
@@ -20,6 +22,70 @@ say()  { printf '%s\n' "$*"; }
 good() { printf '  ✅ %s\n' "$*"; ok=$((ok+1)); }
 bad()  { printf '  ❌ %s\n' "$*"; ng=$((ng+1)); }
 info() { printf '  ・ %s\n' "$*"; }
+
+usage() {
+  say ""
+  say "🏢 AI Office セットアップ"
+  say ""
+  say "  bash setup.sh              配線 → 常駐登録 → 起動 → 画面を開く（通常はこれ）"
+  say "  bash setup.sh --demo       何も入れずにデモのオフィスを見る（Ctrl-C で全部消える）"
+  say "  bash setup.sh --no-daemon  常駐にはせず、この場で起動する"
+  say "  bash setup.sh --check      何もインストールせず、いまの状態を診断する"
+  say "  bash setup.sh --help       この説明"
+  say ""
+}
+# R97-A: 未知の引数で**フルインストールが走っていた**（`--help` のつもりが常駐まで入る）。
+case "$MODE" in
+  ""|--demo|--no-daemon|--check) ;;
+  -h|--help) usage; exit 0 ;;
+  *) usage; say "  ❌ 知らない指定です: ${MODE}"; exit 2 ;;
+esac
+
+# ── 0. デモ（何も入れない・何も残さない） ─────────────────────────────────
+# R97-C: 「まず見たい」人のための 60 秒経路。~/.claude も LaunchAgent も Cloudflare も触らない。
+# 使うのは同梱の ui/demo/world.json だけで、実セッションは読まない（OFFICE_HOME を一時領域へ逃がす）。
+if [ "$MODE" = "--demo" ]; then
+  PY="$(command -v python3 || true)"
+  [ -x "/usr/bin/python3" ] && PY="/usr/bin/python3"
+  [ -n "$PY" ] || { say "  ❌ python3 が見つかりません（xcode-select --install）"; exit 1; }
+  DEMO_HOME="$(mktemp -d /tmp/aioffice-demo.XXXXXX)"
+  mkdir -p "$DEMO_HOME/.claude"
+  DEMO_PID=""
+  # 非対話 bash から起動した子は SIGINT を無視して生き残る＝Ctrl-C で親だけ消えて
+  # サーバーがポートを掴んだまま残っていた（別モデルレビューで再現）。明示的に止める。
+  demo_stop() {
+    [ -n "$DEMO_PID" ] && kill "$DEMO_PID" 2>/dev/null
+    [ -n "$DEMO_PID" ] && wait "$DEMO_PID" 2>/dev/null
+    rm -rf "$DEMO_HOME"
+    say ""; say "  デモを終了しました（この Mac には何も残していません）"
+  }
+  trap 'demo_stop; exit 0' INT TERM
+  trap 'demo_stop' EXIT
+  DEMO_PORT="$("$PY" -c 'import socket;s=socket.socket();s.bind(("127.0.0.1",0));print(s.getsockname()[1]);s.close()')"
+  say ""
+  say "🎬 デモのオフィスを開きます（何も入れません・Ctrl-C で終了）"
+  # HOME も一時領域へ逃がす: サーバーはセッション検出のため `claude` を呼ぶことがあり、
+  # 子は OFFICE_HOME ではなく HOME を継ぐ＝**実セッションを読み、実の ~/.claude に触れてしまう**
+  # （デモの約束は「何も入れない・何も見ない」・別モデルレビュー）。
+  HOME="$DEMO_HOME" OFFICE_HOME="$DEMO_HOME" OFFICE_DATA="$DEMO_HOME" "$PY" "$HERE/server/office_server.py" \
+    --port "$DEMO_PORT" >"$DEMO_HOME/server.log" 2>&1 &
+  DEMO_PID=$!
+  for _ in $(seq 1 20); do
+    sleep 0.4
+    curl -sf -o /dev/null -H "X-Office-Local: 1" "http://127.0.0.1:$DEMO_PORT/api/office" 2>/dev/null && break
+  done
+  if ! kill -0 "$DEMO_PID" 2>/dev/null; then
+    say "  ❌ 起動できませんでした → $(tail -1 "$DEMO_HOME/server.log" 2>/dev/null)"
+    exit 1
+  fi
+  URL="http://127.0.0.1:$DEMO_PORT/?demo=1"
+  say "  ✅ ${URL}"
+  say ""
+  say "  自分のセッションを出勤させるときは、同じ場所で bash setup.sh を実行してください。"
+  command -v open >/dev/null 2>&1 && open "$URL" 2>/dev/null || true
+  wait "$DEMO_PID"
+  exit 0
+fi
 
 say ""
 say "🏢 AI Office セットアップ"

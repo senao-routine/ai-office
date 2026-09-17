@@ -61,8 +61,18 @@ Settings can copy URLs for OBS, vertical video or a second monitor. In browsers 
 
 ## Quick start
 
+**Just look first** — nothing is installed, and `Ctrl-C` leaves no trace:
+
 ```bash
-git clone https://github.com/senao-routine/ai-office.git && cd ai-office
+git clone https://github.com/senao-routine/ai-office.git
+cd ai-office
+bash setup.sh --demo
+```
+
+
+**Then, when you want your own sessions in the room:**
+
+```bash
 bash setup.sh
 ```
 

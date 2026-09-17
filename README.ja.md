@@ -61,8 +61,18 @@ Claude Code への指示は `~/.claude/office_inbox/<セッションID>.json` �
 
 ## クイックスタート
 
+**まず見るだけ** — 何も入れず、`Ctrl-C` で跡形もなく消えます:
+
 ```bash
-git clone https://github.com/senao-routine/ai-office.git && cd ai-office
+git clone https://github.com/senao-routine/ai-office.git
+cd ai-office
+bash setup.sh --demo
+```
+
+
+**自分のセッションを出勤させるときは:**
+
+```bash
 bash setup.sh
 ```
 
