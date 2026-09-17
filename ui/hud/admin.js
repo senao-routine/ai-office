@@ -8,6 +8,7 @@ import {
 /** ctx: root, shell, T, lang, setLang, getWorld(), applyStaticStrings(),
  *  showToast(), billingOf(), fmtTok(), modals */
 export function init({ root, shell, T, lang, setLang, getWorld, applyStaticStrings, demo = false,
+  reapplyWorld = () => {},
   showToast, billingOf, fmtTok, renderStreamSettings = () => {}, renderCustomizationSettings = () => {}, modals: { modal, openModal, closeModal, mEl } }) {
   // R82: 定型文エディタ（8件×120字・保存でスマホにも同期）
   let TEMPLATES = [];
@@ -803,8 +804,9 @@ export function init({ root, shell, T, lang, setLang, getWorld, applyStaticStrin
     // 🌐 サーバーの lang を切り替える（office_json.lang が正本＝PWA/通知の言語も揃う）
     seg(T("set_lang"), [["ja", "日本語"], ["en", "English"]], lang(), async (v) => {
       try {
-        // デモはサーバーを持たないので、この画面の中だけで切り替える（/api/lang は叩かない）
-        if (demo) { setLang(v); applyStaticStrings(); renderSettings(); return; }
+        // デモはサーバーを持たないので、この画面の中だけで切り替える（/api/lang は叩かない）。
+        // ポーリングが無い＝world 由来の文言は自分で貼り直さないと前の言語のまま残る。
+        if (demo) { setLang(v); applyStaticStrings(); reapplyWorld(); renderSettings(); return; }
         await setServerLang(v);
         setLang(v);
         applyStaticStrings();

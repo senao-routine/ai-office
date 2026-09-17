@@ -518,6 +518,8 @@ export async function mount(root) {
     refresh: () => stop.refresh?.(), showToast: delivery.showToast });
   const admin = initAdmin({
     demo: DEMO,
+    // R97-C: デモはポーリングしない＝言語を切り替えたら、その場で現在の world を貼り直す必要がある
+    reapplyWorld: () => { if (world) apply(world); },
     ...common, root, lang, setLang, modals, billingOf, fmtTok,
     showToast: delivery.showToast, applyStaticStrings: () => applyStaticStrings(shell),
     renderCustomizationSettings: customize.renderSettings,
