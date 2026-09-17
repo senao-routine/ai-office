@@ -6,8 +6,11 @@ import {
   relaxPose, seedOf, smoothstep, thinkingPose, walkPhaseFor, walkPose,
   approvalPose, celebratePose, enterPose, leavePose, questionPose, readPose, runPose,
   ENTER_SECONDS, LEAVE_SECONDS, CELEBRATE_SECONDS,
-  celebrationFlash,
+  celebrationFlash, RIG as ANIM_RIG,
 } from "/ui/core/anim.js";
+
+// R97-G: ボスの見回りだけ少し遅い。位相の計算で使うので名前を付けて 1 箇所に置く
+const BOSS_SPEED = 1.15;
 import { actFor } from "/ui/core/act.js";
 import { exprFor } from "/ui/core/expr.js";
 import { growthChanges } from "/ui/core/growth.js";
@@ -1203,7 +1206,7 @@ export class IsoScene {
     }
     this.bossPatrol = patrol;
     const trip = !frozen && this.seeded ? this.bossTrip : null;
-    const bm = trip ? pathTravel(trip.route, trip.at, t, 1.15) : null;
+    const bm = trip ? pathTravel(trip.route, trip.at, t, BOSS_SPEED) : null;
     const bossWalking = bm && bm.u < 1;
     let bossPose = poseFor("meeting", t * .55, 7.7);
     if (bossWalking) {
@@ -1236,7 +1239,9 @@ export class IsoScene {
         this.bossChangedAt = this.bossKind === undefined || frozen ? -Infinity : t;
         this.bossKind = kind;
       }
-      const walked = this._rigWalked(this.boss, bossWalking ? bm.dist : null);
+      // R97-G: ボスだけ速度 1.15 で歩くのに、位相の除数は ANIM_RIG.speed(1.25) 固定だった＝8% 余分にずれる。
+      // 距離を「基準速度で歩いたときの距離」へ換算してから渡す（rigbot 側の式は 1 本のまま）。
+      const walked = this._rigWalked(this.boss, bossWalking ? bm.dist * (ANIM_RIG.speed / BOSS_SPEED) : null);
       this.bossRig.apply(kind, t, walked, false, this.bossChangedAt ?? -Infinity, this.bossPrevKind, 7.7, walked,
         this.bossPrevChangedAt ?? -Infinity);
       this.boss.root.updateMatrixWorld(true);

@@ -93,6 +93,12 @@ const HEAD_LIFT_D = 0.18;  // D: 生成体の頭の中心に procedural の neck
 const HEAD_Y_P = 0.2244, FACE_Y_P = -0.054;   // robot.js の HEAD_Y / FACE_Y（visor 原点 = neck + HEAD_Y + FACE_Y）
 // R96-D3: Spine02 から胸の表面までは実測 0.240（体ローカル・前＝+x／root ローカルでは +z）。
 // 0.40 は「肩の左右半幅」を前方と取り違えた値で、リングが体の 0.17（実寸 0.28m）前に浮いていた。
+// R97-G: 生成 walk clip の歩幅（1 周期で接地足が腰に対して後退する量・実測 0.199）。
+// clip を焼き直したらここも測り直す（`tests/rigbot.test.mjs` が clip から再計算して照合する）。
+export const WALK_STRIDE = 0.199;
+// 脚の回転が見られる範囲の上限（等倍の何倍まで速く回してよいか）。
+// 歩幅どおりだと 15 倍になるので、ここで頭打ちにする。
+export const WALK_RATE_MAX = 3;
 const CHEST_FWD = 0.235;   // リングの後面が体表に触れる
 const CHEST_LIFT = 0.12;   // Spine02（y≈0.406）から胸リングの高さへ
 const BOWTIE_FWD = 0.295;  // 蝶ネクタイは高さが違う（y≈0.586）＝体表 0.282 の少し前。リングと連動させない
@@ -338,8 +344,22 @@ export function createRigKit(materials, scene, mode = 1) {
         }
       };
       const timeFor = (name, t, dist, seed) => {
-        const c = clips.clips[name];
-        if (name === "walk") return dist / ANIM_RIG.speed;              // 距離駆動＝足が滑らない
+        // R97-G: ここは「距離駆動＝足が滑らない」と書いてあったが、**それは嘘だった**。
+        // 除数 ANIM_RIG.speed はアクターの移動速度と同じ定数なので `dist / speed` は経過秒と恒等で、
+        // 距離は 1 ミリも効いていなかった（clip は常に等倍再生）。
+        //
+        // 実測（tests/rigbot.test.mjs が同じ計算で固定）: 生成 walk clip は 1 周期 2.38 秒で、
+        // 接地足が腰に対して後退する量＝**歩幅は 0.199**（体高 1.48 の 13%＝小刻みな足運び）。
+        // 一方この 2.38 秒で体は 1.25×2.38 ＝ 2.97 進む＝**約 15 倍の過走**。
+        // 歩幅どおりに回すと脚が 15 倍速で回って見られないので、ここでは
+        //   ・位相は**本当に距離で**駆動する（止まる・経路が変わるで跳ばない）
+        //   ・ただし再生速度に上限を置く（脚が回りすぎない範囲）
+        // とし、残る滑りは「歩幅の大きい walk clip を焼き直すまでの既知の制約」として文書に残す。
+        if (name === "walk") {
+          const cycles = dist / WALK_STRIDE;                 // 距離から見た本来の周期数
+          const capped = Math.min(cycles, dist / (ANIM_RIG.speed * clips.clips.walk.duration) * WALK_RATE_MAX);
+          return capped * clips.clips.walk.duration;
+        }
         return t + seed;                                               // 個体差は位相オフセット
       };
       const followAll = () => {

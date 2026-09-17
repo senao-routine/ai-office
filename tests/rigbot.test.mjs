@@ -9,7 +9,7 @@ registerHooks({ resolve(specifier, context, next) {
   if (specifier.startsWith("/ui/")) return next(new URL(`..${specifier}`, import.meta.url).href, context);
   return next(specifier, context);
 } });
-const { clipFor, transitionTracker, D_PARTS, D_PARTS_CLAW, HYBRID_PARTS } = await import("../ui/iso/rigbot.js");
+const { clipFor, transitionTracker, D_PARTS, D_PARTS_CLAW, HYBRID_PARTS, WALK_STRIDE, WALK_RATE_MAX } = await import("../ui/iso/rigbot.js");
 
 /** scene3d が実際に組む poseKind の語彙（ui/iso/scene3d.js の poseKind 代入箇所から）。 */
 const STANDING = {
@@ -224,4 +224,38 @@ test("所作も遷移で混ざる（❗の発生・解消で腕が瞬間移動�
   assert.ok(up[1] - down[1] > 0.2, "そもそも挙手で手が上がっていない");
   assert.ok(mid[1] > down[1] + 0.05 && mid[1] < up[1] - 0.05, `補間の途中 ${mid[1].toFixed(3)} が両端のどちらかに張り付いている`);
   assert.ok(dist(mid, down) < dist(up, down), "混合が遷移先へ跳んでいる");
+});
+
+test("歩幅は clip から再計算した値と一致する（焼き直したら気づけるようにする）", () => {
+  // R97-G: `dist / speed` は「距離駆動＝足が滑らない」と書いてあったが、除数がアクターの移動速度と
+  // 同じ定数なので**経過秒と恒等**＝距離は効いていなかった。歩幅を定数で持つ以上、その値が
+  // 実際の clip と食い違ったら落ちること（＝clip を焼き直したら必ず気づくこと）をここで担保する。
+  const walk = clipData.clips.walk;
+  const rows = [];
+  for (let i = 0; i < walk.frames; i++) {
+    const sample = sampleClip(walk, clipData.fps, i / clipData.fps);
+    const local = [];
+    for (let j = 0; j < sk.joints.length; j++) {
+      const ni = sk.joints[j], r0 = sk.nodes[ni], s = sample[j];
+      local[ni] = { r: s?.r ? [...s.r] : [...r0.r],
+        t: s?.t ? [r0.t[0]+s.t[0], r0.t[1]+s.t[1], r0.t[2]+s.t[2]] : [...r0.t] };
+    }
+    const W = fk(local);
+    const hip = W[nodeOf.get("Hip").ni].p, foot = W[nodeOf.get("L_Foot").ni].p;
+    rows.push({ x: foot[0] - hip[0], y: foot[1] });
+  }
+  // in_place の retarget なので clip 自体は前進しない＝**接地中に足が腰に対して後退した量**が歩幅
+  const ys = rows.map((r) => r.y), lo = Math.min(...ys), hi = Math.max(...ys);
+  const planted = lo + (hi - lo) * 0.4;
+  let stride = 0;
+  for (let i = 1; i < rows.length; i++) {
+    const a = rows[i - 1], b = rows[i];
+    if (a.y <= planted && b.y <= planted && b.x < a.x) stride += a.x - b.x;
+  }
+  assert.ok(Math.abs(stride - WALK_STRIDE) < 0.01,
+    `clip の歩幅 ${stride.toFixed(3)} と定数 ${WALK_STRIDE} が食い違う（clip を焼き直したなら定数も更新する）`);
+  // 体は 1 周期のあいだに stride より遥かに長く進む＝滑りは残る。その事実を数値で残しておく
+  const overrun = (walk.duration * 1.25) / stride;
+  assert.ok(overrun > 10, `過走倍率 ${overrun.toFixed(1)}（歩幅の大きい clip を焼けば下がる）`);
+  assert.ok(WALK_RATE_MAX >= 1 && WALK_RATE_MAX <= 5, "再生速度の上限が現実的な範囲にある");
 });
