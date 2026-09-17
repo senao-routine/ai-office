@@ -54,8 +54,14 @@ if [ "$MODE" = "--demo" ]; then
   # 非対話 bash から起動した子は SIGINT を無視して生き残る＝Ctrl-C で親だけ消えて
   # サーバーがポートを掴んだまま残っていた（別モデルレビューで再現）。明示的に止める。
   demo_stop() {
-    [ -n "$DEMO_PID" ] && kill "$DEMO_PID" 2>/dev/null
-    [ -n "$DEMO_PID" ] && wait "$DEMO_PID" 2>/dev/null
+    if [ -n "$DEMO_PID" ]; then
+      # サーバーはセッション検出で `claude` を起動することがある。PID だけ止めると孫が孤児になり、
+      # 消したはずの一時ディレクトリを**作り直す**（＝「何も残さない」が破れる・別モデルレビュー）。
+      # set -m で独立したプロセスグループにしてあるので、グループごと止める。
+      kill -TERM "-$DEMO_PID" 2>/dev/null || kill "$DEMO_PID" 2>/dev/null
+      wait "$DEMO_PID" 2>/dev/null
+      DEMO_PID=""
+    fi
     rm -rf "$DEMO_HOME"
     say ""; say "  デモを終了しました（この Mac には何も残していません）"
   }
@@ -67,9 +73,11 @@ if [ "$MODE" = "--demo" ]; then
   # HOME も一時領域へ逃がす: サーバーはセッション検出のため `claude` を呼ぶことがあり、
   # 子は OFFICE_HOME ではなく HOME を継ぐ＝**実セッションを読み、実の ~/.claude に触れてしまう**
   # （デモの約束は「何も入れない・何も見ない」・別モデルレビュー）。
+  set -m      # 子を独立したプロセスグループにする（孫＝`claude` まで確実に止めるため）
   HOME="$DEMO_HOME" OFFICE_HOME="$DEMO_HOME" OFFICE_DATA="$DEMO_HOME" "$PY" "$HERE/server/office_server.py" \
     --port "$DEMO_PORT" >"$DEMO_HOME/server.log" 2>&1 &
   DEMO_PID=$!
+  set +m
   for _ in $(seq 1 20); do
     sleep 0.4
     curl -sf -o /dev/null -H "X-Office-Local: 1" "http://127.0.0.1:$DEMO_PORT/api/office" 2>/dev/null && break
