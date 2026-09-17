@@ -722,6 +722,9 @@ def _redact_office_for_relay(office_snapshot):
                           for pid, row in by.items() if isinstance(row, dict)},
             "office": {k: v for k, v in (gr.get("office") or {}).items() if k in ("xp", "level", "nextAt")},
             "streak15": gr.get("streak15", 0),
+            # R97: オフィスの広さ（机の数）を決める「同時に居た最大人数」。ただの整数で、
+            # 誰が・何をしたかは載らない。スマホも別ブラウザ＝これが無いと部屋が縮む。
+            "maxSeen": gr.get("maxSeen", 0),
         }
     # history[] は指示の全文（Mac UIから打った機微になりうる本文）を含む。PWAは
     # history を描画しない＝送る必要が無いので丸ごと落とす（lastOrder と同じ思想）。

@@ -1049,11 +1049,23 @@ class AllowlistRedactionTest(unittest.TestCase):
         self.assertEqual(out["roster"][0]["sessions"], [{"session": "s1", "state": "working", "vendor": "claude"}])
         self.assertNotIn("bg", out["roster"][0])
         self.assertEqual(out["growth"], {"byProject": {"abc": {"xp": 10, "level": 0}},
-                                         "office": {"xp": 10, "level": 0, "nextAt": 100}, "streak15": 2})
+                                         "office": {"xp": 10, "level": 0, "nextAt": 100}, "streak15": 2,
+                                         "maxSeen": 0})
         self.assertEqual(out["sources"], {"claude": {"fg": 1, "bg": 1, "agentsCli": True},
                                           "codex": {"connected": True, "n": 2}, "openclaw": {"connected": False}})
         self.assertEqual(out["events"], {"seq": 5, "wired": True})
         self.assertNotIn("/", json.dumps(out, ensure_ascii=False))
+
+    def test_growth_carries_crew_peak(self):
+        """R97: オフィスの広さ（机の数）を決める maxSeen はスマホにも要る（別ブラウザだから）。
+        載るのは整数ひとつで、誰が・何をしたかは載らない。"""
+        out = ra._redact_office_for_relay({"growth": {
+            "byProject": {"p1": {"xp": 3, "level": 1, "secret": "x"}},
+            "office": {"xp": 3, "level": 1, "nextAt": 10},
+            "streak15": 2, "maxSeen": 9,
+        }})
+        self.assertEqual(out["growth"]["maxSeen"], 9)
+        self.assertNotIn("secret", json.dumps(out, ensure_ascii=False))
 
     def test_detail_optout(self):
         orig = ra.RELAY_DETAIL

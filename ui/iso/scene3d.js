@@ -441,7 +441,7 @@ export class IsoScene {
   /** Share the actual seat assignment with desktop/PWA labels without mutating core worlds. */
   prepareWorld(world) {
     if (world === this._preparedWorld || world === this._sourceWorld) return this._preparedWorld;
-    this.maxSeen = this.growth.observe(world.agents);
+    this.maxSeen = this.growth.observe(world.agents, world.growth?.maxSeen);
     const level = world.growth?.office?.level;
     const tier = tierFor({ agents: world.agents, maxSeen: this.maxSeen, officeLevel: level, cap: this.tierCap });
     const key = `${tier}:${level == null ? "legacy" : JSON.stringify(decorationsFor(level))}`;

@@ -230,6 +230,39 @@ class PageFallbackTest(unittest.TestCase):
         self.assertIn("ui/boot.html", page)   # R52: 旧UI削除に追随
 
 
+
+class CrewPeakTest(unittest.TestCase):
+    """R97: オフィスの広さ（机の数）を決める「同時に居た最大人数」を Mac が覚える。
+
+    ブラウザの保存領域にしか無かったとき、別のブラウザで開く・領域が消えるだけで机が消え、
+    動いている物が壊れたように見えた（本人の報告「机がだいぶ無くなっている」）。
+    """
+
+    def setUp(self):
+        self.home = Path(tempfile.mkdtemp())
+        (self.home / ".claude").mkdir(parents=True, exist_ok=True)
+
+    def _office(self, name="office_server_peak"):
+        os.environ["OFFICE_HOME"] = str(self.home)
+        return _load(name, ROOT / "server" / "office_server.py")
+
+    def tearDown(self):
+        os.environ.pop("OFFICE_HOME", None)
+
+    def test_peak_only_grows_and_survives_restart(self):
+        o = self._office()
+        self.assertEqual(o.observed_peak(3), 3)
+        self.assertEqual(o.observed_peak(9), 9)
+        self.assertEqual(o.observed_peak(1), 9, "閉じただけで机が減ってはいけない")
+        # プロセスを作り直しても覚えている（ファイルに落ちている＝不変条件 #9）
+        again = self._office("office_server_peak2")
+        self.assertEqual(again.observed_peak(0), 9)
+
+    def test_peak_survives_broken_file(self):
+        o = self._office()
+        (self.home / ".claude" / "office_peak.json").write_text("{壊れた", encoding="utf-8")
+        self.assertEqual(o.observed_peak(4), 4)
+
 if __name__ == "__main__":
     unittest.main()
 

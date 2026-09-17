@@ -237,3 +237,18 @@ test("every tier builds deterministic static batches with one mesh per material 
   assert.equal(new Set(counts.map((c) => c.batches)).size, 1, "furniture is merged across all tiers");
   console.log("Static geometry counts (not GPU drawCalls):", JSON.stringify(counts));
 });
+
+test("Mac が覚えている peak も畳み込む（別ブラウザ・保存領域の消失で部屋が縮まない）", () => {
+  // R97: 机の数はティア＝「同時に居た最大人数」で決まる。これがブラウザ側にしか無かったため、
+  // 別のブラウザで開いただけで机が消え、動いている物が壊れたように見えた（本人の報告）。
+  const store = new Map();
+  const storage = { getItem: (k) => (store.has(k) ? store.get(k) : null),
+                    setItem: (k, v) => store.set(k, v) };
+  const fresh = createGrowth({ isolated: false, storage: () => storage });
+  // 保存領域が空でも、サーバーの記録（9）で M ティアのままになる
+  assert.equal(fresh.observe([{ id: "a" }, { id: "b" }], 9), 9);
+  // サーバーの記録より今の人数が多ければ、そちらが勝つ
+  assert.equal(fresh.observe(new Array(12).fill({ id: "x" }), 9), 12);
+  // 記録は増える方向にしか動かない（閉じただけで縮まない）
+  assert.equal(fresh.observe([{ id: "a" }], 0), 12);
+});

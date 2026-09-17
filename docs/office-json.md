@@ -68,6 +68,12 @@ Codex は `~/.codex/state_5.sqlite` と `~/.codex/thread_history_1.sqlite` の�
 
 ## `growth`
 
+> R97: `growth.maxSeen` は「**同時に居たセッション数の最大値**」で、オフィスの広さ（机の数＝ティア
+> S≦8 / M≦12 / L≦18 / XL）を決める。Mac が `~/.claude/office_peak.json` に覚える（**増える方向にしか動かない**）。
+> 以前はブラウザの localStorage にしか無く、別のブラウザで開く・保存領域が消えるだけで机が消え、
+> 壊れたように見えた。中継にも載せる（スマホも別ブラウザ＝同じ理由で縮むため・載るのは整数ひとつ）。
+
+
 | フィールド | ローカル | 中継 |
 |---|---|---|
 | `byProject[projectId]` | `{xp, level, breakdown}` | `{xp, level}` |

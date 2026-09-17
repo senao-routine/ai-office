@@ -108,6 +108,11 @@ OC_OUTBOX = _HOME / ".claude" / "office_oc_outbox"
 # <session>.reply.json = こちらからの回答（office_server / relay_agent が書き、フックが取る）
 APPROVALS = _HOME / ".claude" / "office_approvals"
 DEVICES_FILE = _HOME / ".claude" / "office_devices.json"   # P3: スマホ端末台帳(600・secret平文)
+# R97: 「同時に何人居たか」の最大値。オフィスの広さ（机の数＝ティア）はこれで決まる。
+# これまで**ブラウザの localStorage にしか無かった**ので、別のブラウザで開く・保存領域が消える
+# といったことで部屋が縮んで見えた（本人の報告「机がだいぶ無くなっている」）。
+# 不変条件 #9「office_json に載せる状態は必ずファイルに落とす」に従ってここに持つ。
+PEAK_FILE = _HOME / ".claude" / "office_peak.json"
 PORT = 4780
 SHOW_WINDOW = int(os.environ.get("OFFICE_SHOW_WINDOW", 3 * 3600))  # 3時間以内に動いたセッションを「出勤中」として表示（R23.5退勤早期化・verify.shカナリア/works watchdogの窓と同期）
 # R79: inbox の指示の寿命。表示窓と同じにして「画面に出ているのに届かない」を作らない。
@@ -1270,6 +1275,35 @@ def load_history():
         return []
 
 
+def observed_peak(current):
+    """同時に居たセッション数の最大値を更新して返す（増えたときだけ書く）。
+
+    オフィスの広さはこの値で決まる（S≦8 / M≦12 / L≦18 / XL）。**増える方向にしか動かさない**:
+    セッションを閉じるたびに机が消えると、動いている物が壊れたように見える。
+    """
+    try:
+        cur = int(current)
+    except (TypeError, ValueError):
+        cur = 0
+    cur = max(0, cur)
+    peak = 0
+    try:
+        data = json.loads(PEAK_FILE.read_text(encoding="utf-8"))
+        peak = int(data.get("maxSeen") or 0)
+    except (OSError, UnicodeError, json.JSONDecodeError, TypeError, ValueError):
+        peak = 0
+    if cur <= peak:
+        return peak
+    try:
+        PEAK_FILE.parent.mkdir(parents=True, exist_ok=True)
+        tmp = PEAK_FILE.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps({"maxSeen": cur}), encoding="utf-8")
+        os.replace(tmp, PEAK_FILE)
+    except OSError:
+        return max(peak, cur)      # 書けなくても、この周の値は返す（画面は縮まない）
+    return cur
+
+
 def events_wired():
     """R90-D5: イベント記録 hook（hooks/office-event.sh）が ~/.claude/settings.json に配線済みか。
     Stop に1つでも office-event.sh の entry があれば true（17 イベント全部の検査は install.sh の仕事）。
@@ -1753,6 +1787,8 @@ def scan_office():
         growth = office_timeline.growth_json(_HOME, now)
     except Exception:
         growth = office_timeline.growth_from_events([])
+    if isinstance(growth, dict):
+        growth["maxSeen"] = observed_peak(len(employees))
 
     return {
         # R90-D12: スキーマ版。docs/office-json.md が正本（v2 = sources/events/growth を持つ形）。

@@ -12,10 +12,12 @@ export function createGrowth({ isolated = frozen, storage = () => globalThis.loc
   };
   read();
   return {
-    observe(agents) {
+    observe(agents, serverPeak = 0) {
       read(); // Include a larger peak published by another tab.
       const before = maxSeen;
-      maxSeen = maxSeenFor({ agents, maxSeen });
+      // R97: Mac 側が覚えている peak も畳み込む。これが無いと、別のブラウザで開いた・保存領域が
+      // 消えた、というだけで机が消えて「壊れた」ように見える（本人の報告）。
+      maxSeen = maxSeenFor({ agents, maxSeen: maxSeenFor({ maxSeen, agents: serverPeak }) });
       if (!isolated && maxSeen > before) {
         try { storage()?.setItem(KEY, JSON.stringify({ maxSeen })); }
         catch { /* quota/private mode: the office still grows for this session */ }
