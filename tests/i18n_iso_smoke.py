@@ -104,7 +104,7 @@ def main():
             # R90: PWA の**原本**（ui/pwa/*）も見る。relay/src/worker.js と app_html.js は
             # 生成物なので、原本を直さないと次の生成で戻る。実際に app.js の aria-label へ
             # 「メンバー」が入り、本番のスマホまで出ていた（2026-09-08 の監査で発覚）。
-            sources = [pathlib.Path("ui/iso/strings.js"), pathlib.Path("relay/src/worker.js"),
+            sources = [pathlib.Path("ui/hud/strings.js"), pathlib.Path("relay/src/worker.js"),
                        pathlib.Path("ui/pwa/app.js"), pathlib.Path("ui/pwa/app.html")]
             leaks = []
             for src in sources:

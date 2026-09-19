@@ -1,4 +1,6 @@
-/* R93-V1': ラベンダー・グラスロフト。2カラムのHUD。
+/* R98-W1: HUD の CSS（旧 ui/iso/style.css）。接頭は .hud＝iso（3D）と pixel（フロア帯×台帳）が共用する。
+   3 カラム・3D 固有の則（.shell/.side/.rail/.stage/.labels/.lbl）も当面ここに置く（分割は cascade を変えるので W2 で golden 付きで行う）。
+   R93-V1': ラベンダー・グラスロフト。2カラムのHUD。
    CSS keyframeは禁止。余白4px単位・5段の型・影は2段。 */
 /* HUD_TOKENS_BEGIN (generated: ui/hud-tokens.css) */
 /* HUDの共通正本。docs/art-direction.md §7。両画面への展開はgen_pwa_modules.py。 */
@@ -52,7 +54,7 @@
   --iso-radius: var(--radius);
   --iso-shadow: var(--shadow);
 }
-.ui-iso {
+.hud {
   width: 100%;
   height: 100dvh;
   font-size: 14px; line-height: 1.45;
@@ -60,7 +62,7 @@
   color: var(--iso-ink);
   font-family: "Hiragino Kaku Gothic ProN", "Noto Sans JP", system-ui, sans-serif;
 }
-.ui-iso .shell {
+.hud .shell {
   display: grid;
   grid-template-columns: 232px minmax(0, 1fr) 296px;
   gap: 16px;
@@ -68,36 +70,36 @@
   padding: 16px;
   box-sizing: border-box; overflow: hidden; position: relative;
 }
-.ui-iso.offline .stage { filter: grayscale(.7); }
+.hud.offline .stage { filter: grayscale(.7); }
 
 /* オフラインバナー: 凍結データを「今」と誤読させない（グレースケールだけでは弱い） */
-.ui-iso .offbar {
+.hud .offbar {
   position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 30;
   background: var(--iso-alert); color: var(--iso-on-accent);
   font-size: 12.5px; font-weight: 700; letter-spacing: .02em;
   padding: 8px 16px; border-radius: 10px;
   box-shadow: var(--iso-shadow);
 }
-.ui-iso .offbar[hidden] { display: none; }
+.hud .offbar[hidden] { display: none; }
 
 /* 📮 配達未設定バナー（ヘッダー直下・hook配線が済むまで） */
-.ui-iso .setupbar {
+.hud .setupbar {
   margin-top: 8px; padding: 8px 16px; border-radius: 10px;
   background: var(--iso-warn-chip); border: 1px solid var(--iso-warn);
   font-size: 12.5px; color: var(--iso-ink); line-height: 1.45;
 }
 
 /* 空オフィスの案内カード（部署ボード・次の一歩を必ず示す） */
-.ui-iso .onboard { display: flex; flex-direction: column; gap: 8px; padding: 4px 4px; }
-.ui-iso .onboard b { font-size: 12.5px; }
-.ui-iso .onboard p { margin: 0; font-size: 12.5px; color: var(--iso-ink-soft); line-height: 1.45; }
-.ui-iso .onboard .odemo {
+.hud .onboard { display: flex; flex-direction: column; gap: 8px; padding: 4px 4px; }
+.hud .onboard b { font-size: 12.5px; }
+.hud .onboard p { margin: 0; font-size: 12.5px; color: var(--iso-ink-soft); line-height: 1.45; }
+.hud .onboard .odemo {
   font-size: 12.5px; font-weight: 700; color: var(--iso-accent);
   text-decoration: underline; text-underline-offset: 3px;
 }
 
 /* ── ガラスカードの共通則 ───────────────────────────────────── */
-.ui-iso .card, .ui-iso .side, .ui-iso .rail {
+.hud .card, .hud .side, .hud .rail {
   background: var(--iso-glass);
   border: 1px solid var(--iso-line);
   -webkit-backdrop-filter: blur(14px) saturate(150%);
@@ -105,132 +107,132 @@
   border-radius: var(--iso-radius);
   box-shadow: var(--iso-shadow);
 }
-.ui-iso .cardtitle {
+.hud .cardtitle {
   display: block; font-size: 12.5px; font-weight: 800; letter-spacing: .02em;
   color: var(--iso-ink); margin-bottom: 8px;
 }
 
 /* ── 左サイド ────────────────────────────────────────────────── */
-.ui-iso .side {
+.hud .side {
   padding: 16px 16px;
   display: flex; flex-direction: column; gap: 16px;
   min-height: 0; overflow: hidden;   /* 子のはみ出しはゲージの内部スクロールで吸収する */
 }
-.ui-iso .brand { display: flex; align-items: center; gap: 8px; }
-.ui-iso .brand .mark {
+.hud .brand { display: flex; align-items: center; gap: 8px; }
+.hud .brand .mark {
   width: 40px; height: 40px; border-radius: 10px; flex: none;
   display: grid; place-items: center;
   background: var(--iso-accent-chip); font-size: 18px;
   box-shadow: var(--iso-shadow);
 }
-.ui-iso .brand .txt { display: flex; flex-direction: column; min-width: 0; }
-.ui-iso .brand .txt b { font-size: 14px; font-weight: 800; letter-spacing: .01em; }
-.ui-iso .brand .txt i {
+.hud .brand .txt { display: flex; flex-direction: column; min-width: 0; }
+.hud .brand .txt b { font-size: 14px; font-weight: 800; letter-spacing: .01em; }
+.hud .brand .txt i {
   font-style: normal; font-size: 11px; color: var(--iso-ink-soft);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
-.ui-iso .zones { display: flex; flex-direction: column; gap: 4px; }
-.ui-iso .zrow {
+.hud .zones { display: flex; flex-direction: column; gap: 4px; }
+.hud .zrow {
   display: flex; align-items: center; gap: 8px;
   padding: 8px 8px; border-radius: 10px; font-size: 12.5px;
 }
-.ui-iso .zrow:hover { background: var(--iso-accent-chip); }
-.ui-iso .zrow .zdot { width: 8px; height: 8px; border-radius: 10px; flex: none; background: var(--iso-rest); }
-.ui-iso .zrow.z-desk .zdot { background: var(--iso-ok); }
-.ui-iso .zrow.z-meeting .zdot { background: var(--iso-accent); }
-.ui-iso .zrow.z-queue .zdot { background: var(--iso-alert); }
-.ui-iso .zrow.z-lounge .zdot { background: var(--iso-rest); }
-.ui-iso .zrow.z-external .zdot { background: var(--iso-accent-2); }
-.ui-iso .zrow .zlabel { flex: 1; color: var(--iso-ink); }
-.ui-iso .zrow .zcount {
+.hud .zrow:hover { background: var(--iso-accent-chip); }
+.hud .zrow .zdot { width: 8px; height: 8px; border-radius: 10px; flex: none; background: var(--iso-rest); }
+.hud .zrow.z-desk .zdot { background: var(--iso-ok); }
+.hud .zrow.z-meeting .zdot { background: var(--iso-accent); }
+.hud .zrow.z-queue .zdot { background: var(--iso-alert); }
+.hud .zrow.z-lounge .zdot { background: var(--iso-rest); }
+.hud .zrow.z-external .zdot { background: var(--iso-accent-2); }
+.hud .zrow .zlabel { flex: 1; color: var(--iso-ink); }
+.hud .zrow .zcount {
   font-size: 12.5px; font-weight: 800; color: var(--iso-ink-soft);
   background: var(--iso-accent-chip); border-radius: 10px;
   min-width: 24px; text-align: center; padding: 4px 8px;
 }
 
-.ui-iso .spacer { flex: 1; }
+.hud .spacer { flex: 1; }
 /* ── 経費ゲージ（枠線つき2カード＝「クレジット%」と「¥」を混ぜない） ──
    R55.1: 中身が増えても下の管理ボタンを画面外へ押し出さない＝ゲージ側が内部スクロール
    （実際にR55で⚡等が見切れた。回帰ピン= ui_ops_smoke のサイドバー収まり検査） */
-.ui-iso .gauges {
+.hud .gauges {
   display: flex; flex-direction: column; gap: 8px;
   min-height: 0; overflow-y: auto; flex: 0 1 auto;
 }
-.ui-iso .gauges[hidden] { display: none; }   /* 明示displayはhidden属性に勝つ（1敗） */
-.ui-iso .gcard {
+.hud .gauges[hidden] { display: none; }   /* 明示displayはhidden属性に勝つ（1敗） */
+.hud .gcard {
   border: 1px solid var(--iso-hairline); border-radius: 10px;
   background: var(--iso-glass-solid); padding: 8px 12px;
   display: flex; flex-direction: column; gap: 8px;
 }
-.ui-iso .gcard[hidden] { display: none; }
-.ui-iso .gbody { display: flex; flex-direction: column; gap: 8px; }
-.ui-iso .gtitle { font-size: 11px; font-weight: 800; letter-spacing: .05em; color: var(--iso-ink-soft); }
-.ui-iso .grow { display: flex; flex-direction: column; gap: 4px; }
-.ui-iso .ghead { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-size: 11px; }
-.ui-iso .ghead span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ui-iso .ghead b { flex: none; white-space: nowrap; }
-.ui-iso .ghead span { color: var(--iso-ink); }
-.ui-iso .ghead b { font-weight: 800; color: var(--iso-ink-soft); }
-.ui-iso .ghead .gwarn, .ui-iso .ghead b.gwarn { color: var(--iso-alert); }
-.ui-iso .gfixed { border-top: 1px solid var(--iso-hairline); padding-top: 8px; margin-top: 4px; }
-.ui-iso .gbar {
+.hud .gcard[hidden] { display: none; }
+.hud .gbody { display: flex; flex-direction: column; gap: 8px; }
+.hud .gtitle { font-size: 11px; font-weight: 800; letter-spacing: .05em; color: var(--iso-ink-soft); }
+.hud .grow { display: flex; flex-direction: column; gap: 4px; }
+.hud .ghead { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-size: 11px; }
+.hud .ghead span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hud .ghead b { flex: none; white-space: nowrap; }
+.hud .ghead span { color: var(--iso-ink); }
+.hud .ghead b { font-weight: 800; color: var(--iso-ink-soft); }
+.hud .ghead .gwarn, .hud .ghead b.gwarn { color: var(--iso-alert); }
+.hud .gfixed { border-top: 1px solid var(--iso-hairline); padding-top: 8px; margin-top: 4px; }
+.hud .gbar {
   height: 7px; border-radius: 10px; background: var(--iso-accent-chip); overflow: hidden;
 }
-.ui-iso .gfill { display: block; height: 100%; border-radius: 10px; background: var(--iso-accent); }
-.ui-iso .gfill.warn { background: var(--iso-warn); }
+.hud .gfill { display: block; height: 100%; border-radius: 10px; background: var(--iso-accent); }
+.hud .gfill.warn { background: var(--iso-warn); }
 
 /* R55: 旧Codexバー式のプロバイダブロック（planチップ・%大表示・太バー・窓/リセット残） */
-.ui-iso .gprov {
+.hud .gprov {
   display: flex; flex-direction: column; gap: 4px;
   padding: 8px 0; border-top: 1px solid var(--iso-hairline);
 }
-.ui-iso .gprov:first-child { border-top: 0; padding-top: 4px; }
-.ui-iso .gprovhead { display: flex; align-items: baseline; gap: 8px; }
-.ui-iso .gname { font-size: 12.5px; font-weight: 800; color: var(--iso-ink); white-space: nowrap; }
-.ui-iso .gplan {
+.hud .gprov:first-child { border-top: 0; padding-top: 4px; }
+.hud .gprovhead { display: flex; align-items: baseline; gap: 8px; }
+.hud .gname { font-size: 12.5px; font-weight: 800; color: var(--iso-ink); white-space: nowrap; }
+.hud .gplan {
   font-size: 11px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase;
   color: var(--iso-accent); background: var(--iso-accent-chip);
   border-radius: 10px; padding: 4px 8px; white-space: nowrap;
 }
-.ui-iso .gacctline { display: flex; }
-.ui-iso .gpct { margin-left: auto; font-size: 14px; font-weight: 800; color: var(--iso-ink); }
-.ui-iso .gpct.gwarn { color: var(--iso-alert); }
-.ui-iso .gbar.big { height: 10px; background: var(--iso-accent-chip); }
-.ui-iso .gsub { font-size: 11px; color: var(--iso-ink-soft); }
-.ui-iso .gsub.gok { color: var(--iso-ok); font-weight: 700; }
+.hud .gacctline { display: flex; }
+.hud .gpct { margin-left: auto; font-size: 14px; font-weight: 800; color: var(--iso-ink); }
+.hud .gpct.gwarn { color: var(--iso-alert); }
+.hud .gbar.big { height: 10px; background: var(--iso-accent-chip); }
+.hud .gsub { font-size: 11px; color: var(--iso-ink-soft); }
+.hud .gsub.gok { color: var(--iso-ok); font-weight: 700; }
 
 /* R57: アカウント別表示（チップ=ログイン中・淡色バー=別アカウントの前回確認値） */
-.ui-iso .gacct {
+.hud .gacct {
   font-size: 11px; font-weight: 700; color: var(--iso-ink-soft);
   background: var(--iso-hairline); border-radius: 10px; padding: 4px 8px;
   max-width: 92px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.ui-iso .gbar.pale { opacity: .45; }
-.ui-iso .gacctrow { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--iso-ink-soft); }
-.ui-iso .gacctrow .gadot { width: 6px; height: 6px; border-radius: 10px; background: var(--iso-rest); flex: none; }
-.ui-iso .gacctrow.on .gadot { background: var(--iso-ok); }
-.ui-iso .gacctrow .galab { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ui-iso .gacctrow b { font-weight: 700; color: var(--iso-ink); }
-.ui-iso .admin { display: flex; flex-direction: column; gap: 8px; flex: none; }
-.ui-iso .abtn {
+.hud .gbar.pale { opacity: .45; }
+.hud .gacctrow { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--iso-ink-soft); }
+.hud .gacctrow .gadot { width: 6px; height: 6px; border-radius: 10px; background: var(--iso-rest); flex: none; }
+.hud .gacctrow.on .gadot { background: var(--iso-ok); }
+.hud .gacctrow .galab { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hud .gacctrow b { font-weight: 700; color: var(--iso-ink); }
+.hud .admin { display: flex; flex-direction: column; gap: 8px; flex: none; }
+.hud .abtn {
   font: inherit; font-size: 12.5px; font-weight: 700; text-align: left;
   color: var(--iso-ink); background: var(--iso-glass-solid);
   border: 1px solid var(--iso-hairline); border-radius: 10px;
   padding: 12px 12px; cursor: pointer;
 }
-.ui-iso .abtn:hover { background: var(--iso-glass-solid); border-color: var(--iso-accent); }
+.hud .abtn:hover { background: var(--iso-glass-solid); border-color: var(--iso-accent); }
 
 /* ── モーダル（管理フロー用・紙色の面） ─────────────────────────── */
-.ui-iso .modalwrap {
+.hud .modalwrap {
   position: absolute; inset: 0; z-index: 9;
   background: rgba(46,45,44,.14);
   display: grid; place-items: center;
   opacity: 0; transition: opacity 120ms ease-out;   /* R67: 開きフェード（frozenは.no-animで無効） */
 }
-.ui-iso .modalwrap.show { opacity: 1; }
-.ui-iso .modalwrap[hidden] { display: none; }
-.ui-iso .modal {
+.hud .modalwrap.show { opacity: 1; }
+.hud .modalwrap[hidden] { display: none; }
+.hud .modal {
   /* R67: 中身が縦に伸びても切断しない（⚡の🔑下部に到達不能だった実バグ） */
   max-height: calc(100% - 40px); overflow-y: auto;
   width: min(420px, calc(100% - 60px));
@@ -241,109 +243,109 @@
   box-shadow: var(--iso-shadow);
   display: flex; flex-direction: column; gap: 12px;
 }
-.ui-iso .mtitle { font-size: 14px; font-weight: 800; }
-.ui-iso .mnote { font-size: 12.5px; color: var(--iso-ink-soft); line-height: 1.45; margin: 0; }
-.ui-iso .mnote.merr { color: var(--iso-alert); font-weight: 700; }
-.ui-iso .mpath {
+.hud .mtitle { font-size: 14px; font-weight: 800; }
+.hud .mnote { font-size: 12.5px; color: var(--iso-ink-soft); line-height: 1.45; margin: 0; }
+.hud .mnote.merr { color: var(--iso-alert); font-weight: 700; }
+.hud .mpath {
   font-size: 11px; font-family: inherit;
   background: var(--iso-accent-chip); border-radius: 10px; padding: 8px 8px;
   margin: 0; word-break: break-all;
 }
-.ui-iso .minput {
+.hud .minput {
   font: inherit; font-size: 12.5px; color: var(--iso-ink);
   border: 1px solid var(--iso-hairline); border-radius: 10px;
   padding: 8px 12px; outline: none; background: var(--iso-glass-solid);
 }
-.ui-iso .minput:focus { border-color: var(--iso-accent); }
-.ui-iso .mopt { font-size: 12.5px; color: var(--iso-ink); display: flex; gap: 8px; align-items: center; }
-.ui-iso .mgo {
+.hud .minput:focus { border-color: var(--iso-accent); }
+.hud .mopt { font-size: 12.5px; color: var(--iso-ink); display: flex; gap: 8px; align-items: center; }
+.hud .mgo {
   font: inherit; font-size: 12.5px; font-weight: 800; color: var(--iso-on-accent);
   background: var(--iso-accent); border: 0; border-radius: 10px;
   padding: 12px; cursor: pointer;
 }
-.ui-iso .mgo:hover { filter: brightness(1.07); }
-.ui-iso .mgo:disabled { opacity: .5; cursor: default; }
-.ui-iso .mbuy {
+.hud .mgo:hover { filter: brightness(1.07); }
+.hud .mgo:disabled { opacity: .5; cursor: default; }
+.hud .mbuy {
   display: block; font-size: 12.5px; font-weight: 700;
   color: var(--iso-accent); text-decoration: underline;
   text-underline-offset: 3px; margin: 4px 0;
 }
-.ui-iso .mqr { width: 240px; height: 240px; align-self: center; border-radius: 10px; background: #fff; }
-.ui-iso .msub { font-size: 12.5px; font-weight: 800; }
-.ui-iso .mdevices { display: flex; flex-direction: column; gap: 8px; }
-.ui-iso .mdev {
+.hud .mqr { width: 240px; height: 240px; align-self: center; border-radius: 10px; background: #fff; }
+.hud .msub { font-size: 12.5px; font-weight: 800; }
+.hud .mdevices { display: flex; flex-direction: column; gap: 8px; }
+.hud .mdev {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
   font-size: 12.5px; border-top: 1px solid var(--iso-hairline); padding-top: 8px;
 }
-.ui-iso .mres { border-top: 1px solid var(--iso-hairline); padding-top: 8px; }
+.hud .mres { border-top: 1px solid var(--iso-hairline); padding-top: 8px; }
 
 /* 💳 台帳の編集（⚡リソースモーダル内・R50提案3で旧UIから移植） */
-.ui-iso .mled { border-top: 1px solid var(--iso-hairline); padding-top: 8px;
+.hud .mled { border-top: 1px solid var(--iso-hairline); padding-top: 8px;
   display: flex; flex-direction: column; gap: 8px; }
-.ui-iso .mledlist { display: flex; flex-direction: column; gap: 4px; }
-.ui-iso .mledrow { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
-.ui-iso .mledrow .mledname { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ui-iso .mledrow b { flex: none; font-size: 12.5px; }
-.ui-iso .mledkind { flex: none; font-size: 11px; font-style: normal; color: var(--iso-ink-soft); }
-.ui-iso .mledel {
+.hud .mledlist { display: flex; flex-direction: column; gap: 4px; }
+.hud .mledrow { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
+.hud .mledrow .mledname { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hud .mledrow b { flex: none; font-size: 12.5px; }
+.hud .mledkind { flex: none; font-size: 11px; font-style: normal; color: var(--iso-ink-soft); }
+.hud .mledel {
   flex: none; font: inherit; font-size: 11px; font-weight: 700;
   background: transparent; color: var(--iso-alert); border: 1px solid var(--iso-alert);
   border-radius: 10px; padding: 4px 8px; cursor: pointer;
 }
-.ui-iso .mledel:hover { background: var(--iso-alert-chip); }
-.ui-iso .mledel:disabled { opacity: .5; cursor: wait; }
-.ui-iso .mledform { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.ui-iso .mledin {
+.hud .mledel:hover { background: var(--iso-alert-chip); }
+.hud .mledel:disabled { opacity: .5; cursor: wait; }
+.hud .mledform { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.hud .mledin {
   font: inherit; font-size: 12.5px; padding: 8px 8px;
   border: 1px solid var(--iso-hairline); border-radius: 10px; background: var(--iso-glass-solid);
 }
-.ui-iso .mledname-in { flex: 1 1 100%; }
-.ui-iso .mledamt { width: 7em; }
-.ui-iso .mledrenew { width: 7.5em; }
-.ui-iso .mledform .mgo { width: auto; padding: 8px 16px; margin: 0; }
-.ui-iso .mreshead { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
-.ui-iso .mreshead b { font-size: 12.5px; }
-.ui-iso .mressub { font-size: 11px; color: var(--iso-ink-soft); text-align: right; }
-.ui-iso .mtextarea {
+.hud .mledname-in { flex: 1 1 100%; }
+.hud .mledamt { width: 7em; }
+.hud .mledrenew { width: 7.5em; }
+.hud .mledform .mgo { width: auto; padding: 8px 16px; margin: 0; }
+.hud .mreshead { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.hud .mreshead b { font-size: 12.5px; }
+.hud .mressub { font-size: 11px; color: var(--iso-ink-soft); text-align: right; }
+.hud .mtextarea {
   font: inherit; font-size: 11px; font-family: inherit;
   color: var(--iso-ink); border: 1px solid var(--iso-hairline); border-radius: 10px;
   padding: 8px 12px; outline: none; background: var(--iso-glass-solid); resize: vertical;
 }
-.ui-iso .mtextarea:focus { border-color: var(--iso-accent); }
-.ui-iso .mpick {
+.hud .mtextarea:focus { border-color: var(--iso-accent); }
+.hud .mpick {
   display: flex; align-items: center; gap: 8px; text-align: left;
   font: inherit; font-size: 12.5px; color: var(--iso-ink);
   background: var(--iso-glass-solid); border: 1px solid var(--iso-hairline);
   border-radius: 10px; padding: 8px 12px; cursor: pointer;
 }
-.ui-iso .mpick:hover { background: var(--iso-glass-solid); border-color: var(--iso-accent); }
-.ui-iso .mpick b { flex: none; }
-.ui-iso .mpick span {
+.hud .mpick:hover { background: var(--iso-glass-solid); border-color: var(--iso-accent); }
+.hud .mpick b { flex: none; }
+.hud .mpick span {
   min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   color: var(--iso-ink-soft); font-size: 11px;
 }
-.ui-iso .sq-ish { width: 8px; height: 8px; border-radius: 10px; flex: none; background: var(--iso-rest); }
-.ui-iso .sq-ish.st-working { background: var(--iso-ok); }
-.ui-iso .sq-ish.st-waiting { background: var(--iso-warn); }
-.ui-iso .mrevoke {
+.hud .sq-ish { width: 8px; height: 8px; border-radius: 10px; flex: none; background: var(--iso-rest); }
+.hud .sq-ish.st-working { background: var(--iso-ok); }
+.hud .sq-ish.st-waiting { background: var(--iso-warn); }
+.hud .mrevoke {
   font: inherit; font-size: 11px; font-weight: 700; color: var(--iso-alert);
   background: var(--iso-alert-chip); border: 1px solid var(--iso-alert);
   border-radius: 10px; padding: 4px 8px; cursor: pointer;
 }
 
 /* ── 中央 ────────────────────────────────────────────────────── */
-.ui-iso .main {
+.hud .main {
   min-width: 0; min-height: 0;
   display: flex; flex-direction: column; gap: 16px;
 }
-.ui-iso .head {
+.hud .head {
   display: flex; align-items: center; gap: 8px; min-width: 0; height: auto; min-height: 40px;
   flex: none; padding: 4px 0; white-space: nowrap;
 }
-.ui-iso .head h1 { font-size: 18px; font-weight: 800; letter-spacing: .01em; margin: 0; }
-.ui-iso .head .sub { flex: none; font-size: 12.5px; color: var(--iso-ink); margin: 0; }
+.hud .head h1 { font-size: 18px; font-weight: 800; letter-spacing: .01em; margin: 0; }
+.hud .head .sub { flex: none; font-size: 12.5px; color: var(--iso-ink); margin: 0; }
 
-.ui-iso .stage {
+.hud .stage {
   flex: 1; min-height: 0; position: relative; overflow: hidden;
   border-radius: var(--iso-radius);
   background: var(--iso-stage-bg);
@@ -351,11 +353,11 @@
 
   box-shadow: var(--iso-shadow);
 }
-.ui-iso .viewport { position: absolute; inset: 0; }
-.ui-iso .viewport canvas { display: block; width: 100%; height: 100%; }
+.hud .viewport { position: absolute; inset: 0; }
+.hud .viewport canvas { display: block; width: 100%; height: 100%; }
 /* 背景は紙色の平面。HUDから3Dへ色やビネットを重ねない。 */
-.ui-iso .labels { position: absolute; inset: 0; pointer-events: none; }
-.ui-iso .island-label {
+.hud .labels { position: absolute; inset: 0; pointer-events: none; }
+.hud .island-label {
   position: absolute; transform: translate(-50%, -50%); max-width: 108px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   padding: 2px 5px; border-radius: 2px; background: #ead6b5e8;
@@ -364,138 +366,138 @@
 }
 
 /* 下段=「最近の指示」1枚の行（R95: ステージの外へ戻す）。3列では stage は幅律速（848px）なので、この行が高さを取っても diorama は1pxも痩せない（848×716 と 848×812 で同じ 984×667px・実測は R95）。旧「狭い」FB は 2列・1092px 幅で高さ律速だったときの話。 */
-.ui-iso .bottom {
+.hud .bottom {
   flex: none; display: grid; grid-template-columns: 1fr;
 }
-.ui-iso .bottom .card {
+.hud .bottom .card {
   padding: 12px 16px; min-width: 0; max-height: 156px; overflow: hidden;
 }
 
-.ui-iso .donutcard { display: grid; grid-template-columns: auto 1fr; column-gap: 16px; }
-.ui-iso .donutcard .cardtitle { grid-column: 1 / -1; }
-.ui-iso .donutwrap { position: relative; width: 96px; height: 96px; }
-.ui-iso .donutwrap svg { width: 96px; height: 96px; display: block; }
-.ui-iso .donutmid {
+.hud .donutcard { display: grid; grid-template-columns: auto 1fr; column-gap: 16px; }
+.hud .donutcard .cardtitle { grid-column: 1 / -1; }
+.hud .donutwrap { position: relative; width: 96px; height: 96px; }
+.hud .donutwrap svg { width: 96px; height: 96px; display: block; }
+.hud .donutmid {
   position: absolute; inset: 0; display: grid; place-items: center;
   font-size: 24px; font-weight: 800; color: var(--iso-ink);
 }
-.ui-iso .legend { display: flex; flex-direction: column; gap: 8px; align-self: center; }
-.ui-iso .lrow { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
-.ui-iso .lrow .ldot { width: 9px; height: 9px; border-radius: 10px; flex: none; }
-.ui-iso .lrow span { flex: 1; color: var(--iso-ink-soft); }
-.ui-iso .lrow b { font-weight: 800; }
+.hud .legend { display: flex; flex-direction: column; gap: 8px; align-self: center; }
+.hud .lrow { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
+.hud .lrow .ldot { width: 9px; height: 9px; border-radius: 10px; flex: none; }
+.hud .lrow span { flex: 1; color: var(--iso-ink-soft); }
+.hud .lrow b { font-weight: 800; }
 
-.ui-iso .side .donutcard {
+.hud .side .donutcard {
   flex: none; padding: 12px; column-gap: 12px;
   background: var(--iso-glass-solid); border: 1px solid var(--iso-hairline);
   border-radius: var(--radius-sm); box-shadow: none;
   -webkit-backdrop-filter: none; backdrop-filter: none;
 }
-.ui-iso .side .donutwrap, .ui-iso .side .donutwrap svg { width: 80px; height: 80px; }
-.ui-iso .side .donutmid { font-size: 20px; }
-.ui-iso .donutwrap[hidden], .ui-iso .legend[hidden], .ui-iso .todaycard[hidden] { display: none; }
+.hud .side .donutwrap, .hud .side .donutwrap svg { width: 80px; height: 80px; }
+.hud .side .donutmid { font-size: 20px; }
+.hud .donutwrap[hidden], .hud .legend[hidden], .hud .todaycard[hidden] { display: none; }
 
-.ui-iso .hist { display: flex; flex-direction: column; gap: 8px; }
-.ui-iso .hrow {
+.hud .hist { display: flex; flex-direction: column; gap: 8px; }
+.hud .hrow {
   display: flex; align-items: baseline; gap: 8px; font-size: 12.5px;
   border-bottom: 1px solid var(--iso-hairline); padding-bottom: 8px;
 }
-.ui-iso .hrow:last-child { border-bottom: 0; padding-bottom: 0; }
-.ui-iso .hrow b { flex: none; font-weight: 800; max-width: 9em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ui-iso .hrow span {
+.hud .hrow:last-child { border-bottom: 0; padding-bottom: 0; }
+.hud .hrow b { flex: none; font-weight: 800; max-width: 9em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hud .hrow span {
   flex: 1; min-width: 0; color: var(--iso-ink-soft);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.ui-iso .hrow .hp {
+.hud .hrow .hp {
   flex: none; font-style: normal; font-size: 11px; font-weight: 800;
   border-radius: 10px; padding: 4px 8px;
 }
-.ui-iso .hrow .hp.dstate-live { background: var(--iso-accent-chip); color: var(--iso-accent); }
-.ui-iso .hrow .hp.dstate-pending { background: var(--iso-warn-chip); color: var(--iso-warn); }
-.ui-iso .hempty { font-size: 12.5px; color: var(--iso-ink-soft); }
-.ui-iso .hrow .hago { font-size: 11px; font-style: normal; color: var(--iso-ink-soft); flex: none; }
-.ui-iso .aage { font-size: 11px; font-style: normal; color: var(--iso-ink-soft); }
-.ui-iso .hresend.arm {
+.hud .hrow .hp.dstate-live { background: var(--iso-accent-chip); color: var(--iso-accent); }
+.hud .hrow .hp.dstate-pending { background: var(--iso-warn-chip); color: var(--iso-warn); }
+.hud .hempty { font-size: 12.5px; color: var(--iso-ink-soft); }
+.hud .hrow .hago { font-size: 11px; font-style: normal; color: var(--iso-ink-soft); flex: none; }
+.hud .aage { font-size: 11px; font-style: normal; color: var(--iso-ink-soft); }
+.hud .hresend.arm {
   width: auto; padding: 0 8px; font-size: 11px; font-weight: 800;
   background: var(--iso-accent-chip); color: var(--iso-accent);
 }
-.ui-iso .hresend {
+.hud .hresend {
   flex: none; font: inherit; font-size: 12.5px; color: var(--iso-accent);
   background: transparent; border: 1px solid var(--iso-accent);
   border-radius: 10px; padding: 4px 8px; cursor: pointer;
 }
-.ui-iso .hresend:hover { background: var(--iso-accent-chip); }
+.hud .hresend:hover { background: var(--iso-accent-chip); }
 /* エージェント行のタスク進捗ゲージ（動きが見える化＝ユーザーFB） */
-.ui-iso .aprog { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
-.ui-iso .abar { flex: 1; height: 5px; border-radius: 10px; background: var(--iso-accent-chip); overflow: hidden; }
-.ui-iso .afill { display: block; height: 100%; border-radius: 10px; background: var(--iso-accent); }
-.ui-iso .apct { font-size: 11px; font-weight: 800; color: var(--iso-ink-soft); }
+.hud .aprog { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.hud .abar { flex: 1; height: 5px; border-radius: 10px; background: var(--iso-accent-chip); overflow: hidden; }
+.hud .afill { display: block; height: 100%; border-radius: 10px; background: var(--iso-accent); }
+.hud .apct { font-size: 11px; font-weight: 800; color: var(--iso-ink-soft); }
 
 /* ── 右の部署ボード ─────────────────────────────────────────────────── */
-.ui-iso .rail {
+.hud .rail {
   min-height: 0; overflow: hidden; padding: 16px; display: flex; flex-direction: column; gap: 16px;
 }
-.ui-iso .rail .card { padding: 0; border: 0; border-radius: 0; box-shadow: none; background: transparent; -webkit-backdrop-filter: none; backdrop-filter: none; }
-.ui-iso .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.ui-iso .tile {
+.hud .rail .card { padding: 0; border: 0; border-radius: 0; box-shadow: none; background: transparent; -webkit-backdrop-filter: none; backdrop-filter: none; }
+.hud .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.hud .tile {
   background: var(--iso-glass-solid); border: 1px solid var(--iso-hairline);
   border-radius: 10px; padding: 12px 12px;
   display: flex; flex-direction: column; gap: 4px;
 }
-.ui-iso .tile b { font-size: 18px; font-weight: 800; line-height: 1.45; }
-.ui-iso .tile span { font-size: 11px; color: var(--iso-ink-soft); }
-.ui-iso .tile.t-meet b { color: var(--iso-accent); }
-.ui-iso .tile.t-attn b { color: var(--iso-alert); }
-.ui-iso .tile.t-done b { color: var(--iso-accent); }
+.hud .tile b { font-size: 18px; font-weight: 800; line-height: 1.45; }
+.hud .tile span { font-size: 11px; color: var(--iso-ink-soft); }
+.hud .tile.t-meet b { color: var(--iso-accent); }
+.hud .tile.t-attn b { color: var(--iso-alert); }
+.hud .tile.t-done b { color: var(--iso-accent); }
 
-.ui-iso .agentscard { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.ui-iso .agents { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
-.ui-iso .arow {
+.hud .agentscard { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.hud .agents { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+.hud .arow {
   background: var(--iso-glass-solid); border: 1px solid var(--iso-hairline);
   border-radius: 10px; padding: 8px 12px; cursor: pointer;
 }
-.ui-iso .arow:hover { background: var(--iso-glass-solid); }
-.ui-iso .arow.sel { outline: 2px solid var(--iso-accent); outline-offset: -1px; }
+.hud .arow:hover { background: var(--iso-glass-solid); }
+.hud .arow.sel { outline: 2px solid var(--iso-accent); outline-offset: -1px; }
 
 /* ×N集約の内訳（シート内・宛先切替） */
-.ui-iso .crewlist { display: flex; flex-direction: column; gap: 4px; }
-.ui-iso .crewrow {
+.hud .crewlist { display: flex; flex-direction: column; gap: 4px; }
+.hud .crewrow {
   display: flex; align-items: center; gap: 8px; text-align: left;
   font: inherit; font-size: 11px; padding: 4px 8px; cursor: pointer;
   background: var(--iso-glass-solid); border: 1px solid var(--iso-hairline);
   border-radius: 10px;
 }
-.ui-iso .crewrow:hover { background: var(--iso-glass-solid); }
-.ui-iso .crewrow.sel { outline: 2px solid var(--iso-accent); outline-offset: -1px; }
-.ui-iso .crewrow span:first-child { flex: 1; }
-.ui-iso .crewage { flex: none; font-size: 11px; color: var(--iso-ink-soft); }
-.ui-iso .crewmark { flex: none; font-size: 11px; }
-.ui-iso .sheettarget {
+.hud .crewrow:hover { background: var(--iso-glass-solid); }
+.hud .crewrow.sel { outline: 2px solid var(--iso-accent); outline-offset: -1px; }
+.hud .crewrow span:first-child { flex: 1; }
+.hud .crewage { flex: none; font-size: 11px; color: var(--iso-ink-soft); }
+.hud .crewmark { flex: none; font-size: 11px; }
+.hud .sheettarget {
   margin: 0; font-size: 11px; font-weight: 700; color: var(--iso-accent);
 }
-.ui-iso .sheettarget[hidden] { display: none; }
-.ui-iso .arowhead { display: flex; align-items: center; gap: 8px; }
-.ui-iso .adot { width: 8px; height: 8px; border-radius: 10px; flex: none; background: var(--iso-rest); }
-.ui-iso .arow.st-working .adot { background: var(--iso-ok); }
-.ui-iso .arow.st-waiting .adot { background: var(--iso-warn); }
-.ui-iso .arow.zone-queue .adot { background: var(--iso-alert); }
-.ui-iso .arow.zone-external .adot { background: var(--iso-accent-2); }
-.ui-iso .aname {
+.hud .sheettarget[hidden] { display: none; }
+.hud .arowhead { display: flex; align-items: center; gap: 8px; }
+.hud .adot { width: 8px; height: 8px; border-radius: 10px; flex: none; background: var(--iso-rest); }
+.hud .arow.st-working .adot { background: var(--iso-ok); }
+.hud .arow.st-waiting .adot { background: var(--iso-warn); }
+.hud .arow.zone-queue .adot { background: var(--iso-alert); }
+.hud .arow.zone-external .adot { background: var(--iso-accent-2); }
+.hud .aname {
   font-size: 12.5px; font-weight: 800; min-width: 0;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.ui-iso .acrew {
+.hud .acrew {
   flex: none; margin-left: auto; font-size: 11px; font-weight: 800;
   background: var(--iso-accent); color: var(--iso-on-accent); border-radius: 10px; padding: 4px 8px;
 }
-.ui-iso .aact {
+.hud .aact {
   margin-top: 4px; font-size: 11px; color: var(--iso-ink-soft);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.ui-iso .arow.zone-queue .aact { color: var(--iso-alert); font-weight: 700; }
+.hud .arow.zone-queue .aact { color: var(--iso-alert); font-weight: 700; }
 
 /* ── 足元の小さな名前チップ（作業内容はシートで見る＝オフィスを隠さない） ── */
-.ui-iso .lbl {
+.hud .lbl {
   position: absolute; transform: translateX(-50%);
   display: flex; align-items: center; gap: 4px;
   background: var(--iso-glass-solid);
@@ -504,32 +506,32 @@
   box-shadow: var(--iso-shadow);
   pointer-events: auto; cursor: pointer;
 }
-.ui-iso .lbl:hover { background: var(--iso-glass-solid); }
-.ui-iso .lbl b { font-size: 11px; font-weight: 700; color: var(--iso-ink); max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
+.hud .lbl:hover { background: var(--iso-glass-solid); }
+.hud .lbl b { font-size: 11px; font-weight: 700; color: var(--iso-ink); max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
 /* R80-A17: 足元チップの先頭をスマホと同じモノグラム（1文字＋状態リング）にする。
    Mac↔スマホで同じ記号を使うことで「チップのE＝あのロボ」の対応が両画面で通じる。 */
-.ui-iso .lbl .mono {
+.hud .lbl .mono {
   width: 20px; height: 20px; border-radius: 10px; flex: none;
   display: inline-flex; align-items: center; justify-content: center;
   font-style: normal; font-size: 11px; font-weight: 800; line-height: 1.45;
   color: var(--iso-ink); background: var(--iso-glass-solid);
   border: 1px solid var(--iso-rest); box-sizing: border-box;
 }
-.ui-iso .lbl.st-working .mono { border-color: var(--iso-ok); }
-.ui-iso .lbl.st-waiting .mono { border-color: var(--iso-warn); }
-.ui-iso .lbl.zone-queue .mono { border-color: var(--iso-alert); }
-.ui-iso .lbl.zone-external .mono { border-color: var(--iso-accent-2); }
-.ui-iso .lbl.attn { border-color: var(--iso-alert); background: var(--iso-alert-chip); }
-.ui-iso .lbl.attn b { color: var(--iso-alert); }
+.hud .lbl.st-working .mono { border-color: var(--iso-ok); }
+.hud .lbl.st-waiting .mono { border-color: var(--iso-warn); }
+.hud .lbl.zone-queue .mono { border-color: var(--iso-alert); }
+.hud .lbl.zone-external .mono { border-color: var(--iso-accent-2); }
+.hud .lbl.attn { border-color: var(--iso-alert); background: var(--iso-alert-chip); }
+.hud .lbl.attn b { color: var(--iso-alert); }
 /* R53.2: 指示を受け取って動き出した直後の数秒ハイライト（keyframe不使用＝golden安全） */
-.ui-iso .lbl.wake {
+.hud .lbl.wake {
   border-color: var(--iso-ok); background: var(--iso-accent-chip);
   box-shadow: var(--iso-shadow);
 }
 /* 承認まちが飢餓閾値(15分)を超えた行は時間を強調（待たせている自覚を促す） */
-.ui-iso .aact.starve { color: var(--iso-alert); font-weight: 700; }
-.ui-iso .lbl.sel { outline: 2px solid var(--iso-accent); outline-offset: 1px; }
-.ui-iso .lbl.hov { outline: 2px solid var(--iso-accent); outline-offset: 1px; }
+.hud .aact.starve { color: var(--iso-alert); font-weight: 700; }
+.hud .lbl.sel { outline: 2px solid var(--iso-accent); outline-offset: 1px; }
+.hud .lbl.hov { outline: 2px solid var(--iso-accent); outline-offset: 1px; }
 
 /* ❗トレイ: 待たせている人が居るときだけ出る（平時は完全に消える） */
 #attn.tray {
@@ -561,10 +563,10 @@
 #attn.tray .traynext:hover { background: var(--iso-glass-solid); border-color: var(--iso-alert); }
 
 /* 📨 投函済み・未配達チップ（エージェント行） */
-.ui-iso .apend { font-size: 11px; opacity: .9; }
+.hud .apend { font-size: 11px; opacity: .9; }
 
 /* ── エージェント詳細シート（行/チップのタップが操作の基点・永続DOM） ── */
-.ui-iso .sheet {
+.hud .sheet {
   /* R91: 380px は会話を読むには狭かった（本人指摘）。ステージ幅に追随させ、
      ⤢ で「もっと広く」も選べる。3D を完全に覆わない上限を持たせる。 */
   position: absolute; top: 16px; right: 16px; bottom: 16px;
@@ -580,339 +582,339 @@
   border-radius: 14px; padding: 16px;
   box-shadow: var(--iso-shadow);
 }
-.ui-iso .sheet.show { opacity: 1; transform: none; }
-.ui-iso .sheet.wide { width: min(calc(100% - 32px), 1040px); }
-.ui-iso .sheetwide.on { color: var(--iso-accent); }
-.ui-iso .sheet[hidden] { display: none; }
-.ui-iso .sheethead { display: flex; align-items: center; justify-content: space-between; }
-.ui-iso .sheethead b { font-size: 14px; font-weight: 800; }
-.ui-iso .sheettools { display: flex; gap: 4px; }
-.ui-iso .sheetsnd { font: inherit; font-size: 12.5px; background: transparent; border: 0; cursor: pointer; padding: 4px; }
-.ui-iso .sheetterm { font: inherit; font-size: 12.5px; background: transparent; border: 0; cursor: pointer; padding: 4px; }
-.ui-iso .sheetclose {
+.hud .sheet.show { opacity: 1; transform: none; }
+.hud .sheet.wide { width: min(calc(100% - 32px), 1040px); }
+.hud .sheetwide.on { color: var(--iso-accent); }
+.hud .sheet[hidden] { display: none; }
+.hud .sheethead { display: flex; align-items: center; justify-content: space-between; }
+.hud .sheethead b { font-size: 14px; font-weight: 800; }
+.hud .sheettools { display: flex; gap: 4px; }
+.hud .sheetsnd { font: inherit; font-size: 12.5px; background: transparent; border: 0; cursor: pointer; padding: 4px; }
+.hud .sheetterm { font: inherit; font-size: 12.5px; background: transparent; border: 0; cursor: pointer; padding: 4px; }
+.hud .sheetclose {
   font: inherit; font-size: 12.5px; color: var(--iso-ink-soft);
   background: transparent; border: 0; cursor: pointer; padding: 4px;
 }
-.ui-iso .sheetact { font-size: 12.5px; color: var(--iso-ink-soft); margin: 0; }
+.hud .sheetact { font-size: 12.5px; color: var(--iso-ink-soft); margin: 0; }
 /* R86-C: overflow-y:auto は overflow-x を visible→auto へ格上げする（CSS Overflow仕様）。
    放置すると本文がはみ出した瞬間に**横スクロールコンテナ**になり、トラックパッドの横スワイプで
    シートの中身が丸ごと横滑りする（実測352px＝ユーザーFB「クリックしたら幅が崩れる」の正体）。
    はみ出し自体は下の overflow-wrap で潰すが、ここは将来セクションを増やしたときの最後の砦。 */
 /* R86-C: min-height:0 だけだと定型ボードに押されて本文が113pxまで潰れる（実測）。
    本文の下限を確保し、押し出しは定型ボード側（max-height:40%）に吸わせる。 */
-.ui-iso .sheetbody { flex: 1 1 auto; min-height: 200px; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; gap: 8px; }
+.hud .sheetbody { flex: 1 1 auto; min-height: 200px; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; gap: 8px; }
 /* R86-C: 分割不能な連続文字（絶対パス・URL・sha256・snake_case名）を必ず折り返す。
    Chromium は "-" では改行機会を作るが "/" "_" "." では作らない＝パスとハッシュが素通しで
    はみ出す（実測: .wv 216px は約35文字、.sheetline 268px は約50文字で崩れ始める）。 */
-.ui-iso .sheetline,
-.ui-iso .workgrid .wv,
-.ui-iso .sheetq b,
-.ui-iso .sheetact,
-.ui-iso .dlgnote { overflow-wrap: break-word; }
-.ui-iso .sheetq {
+.hud .sheetline,
+.hud .workgrid .wv,
+.hud .sheetq b,
+.hud .sheetact,
+.hud .dlgnote { overflow-wrap: break-word; }
+.hud .sheetq {
   background: var(--iso-alert-chip); color: var(--iso-ink);
   border: 1px solid var(--iso-alert);
   border-radius: 10px; padding: 8px 12px;
   display: flex; flex-direction: column; gap: 8px;
 }
-.ui-iso .sheetq b { font-size: 12.5px; color: var(--iso-alert); }
-.ui-iso .sheetopt {
+.hud .sheetq b { font-size: 12.5px; color: var(--iso-alert); }
+.hud .sheetopt {
   font: inherit; font-size: 12.5px; font-weight: 700; text-align: left;
   background: var(--iso-glass-solid); color: var(--iso-ink);
   border: 1px solid var(--iso-line);
   border-radius: 10px; padding: 8px 8px; cursor: pointer;
 }
-.ui-iso .sheetopt:hover { background: var(--iso-glass-solid); }
-.ui-iso .devmeta { color: var(--iso-ink-soft); font-size: 11px; margin-left: 8px; }
+.hud .sheetopt:hover { background: var(--iso-glass-solid); }
+.hud .devmeta { color: var(--iso-ink-soft); font-size: 11px; margin-left: 8px; }
 /* R86-H: 「いま実際に聞かれている」事実（推測の❗と区別できるように控えめな地の文で） */
-.ui-iso .askfact {
+.hud .askfact {
   font-size: 11px; line-height: 1.45; color: var(--iso-ink); opacity: .92;
   overflow-wrap: break-word; word-break: break-word;
 }
 /* 実行の許可は意味色（--iso-ok=承認）。文章の返信ボタンと取り違えないようにする */
-.ui-iso .sheetopt.allowbtn {
+.hud .sheetopt.allowbtn {
   background: var(--iso-ok); color: var(--iso-glass-solid); border-color: transparent;
 }
-.ui-iso .sheetopt.allowbtn:hover { background: var(--iso-ok); filter: brightness(1.06); }
-.ui-iso .sheetsub { font-size: 11px; font-weight: 800; color: var(--iso-ink-soft); margin-top: 4px; }
-.ui-iso .sheetline { font-size: 11px; color: var(--iso-ink); line-height: 1.45; }
-.ui-iso .sheetline.feed { color: var(--iso-ink-soft); }
+.hud .sheetopt.allowbtn:hover { background: var(--iso-ok); filter: brightness(1.06); }
+.hud .sheetsub { font-size: 11px; font-weight: 800; color: var(--iso-ink-soft); margin-top: 4px; }
+.hud .sheetline { font-size: 11px; color: var(--iso-ink); line-height: 1.45; }
+.hud .sheetline.feed { color: var(--iso-ink-soft); }
 
 /* R54-D: シート本文のグループカード（ラベル列＋内容列の整列・hairline枠のみ） */
-.ui-iso .sheetsec {
+.hud .sheetsec {
   border: 1px solid var(--iso-hairline); border-radius: 10px;
   background: var(--iso-glass-solid); padding: 8px 8px;
   display: flex; flex-direction: column; gap: 8px;
 }
-.ui-iso .sheetsec-head {
+.hud .sheetsec-head {
   display: flex; align-items: center; gap: 8px;
   font-size: 11px; font-weight: 800; letter-spacing: .04em; color: var(--iso-ink-soft);
 }
-.ui-iso .seccount {
+.hud .seccount {
   font-style: normal; font-size: 11px; font-weight: 800; color: var(--iso-ink-soft);
   background: var(--iso-accent-chip); border-radius: 10px; padding: 4px 8px;
 }
-.ui-iso .workgrid {
+.hud .workgrid {
   display: grid; grid-template-columns: 44px minmax(0, 1fr);
   column-gap: 8px; row-gap: 4px; align-items: baseline;
 }
-.ui-iso .workgrid .wl {
+.hud .workgrid .wl {
   font-style: normal; font-size: 11px; font-weight: 800;
   color: var(--iso-ink-soft); white-space: nowrap;
 }
-.ui-iso .workgrid .wv { font-size: 11px; line-height: 1.45; color: var(--iso-ink); }
-.ui-iso .workgrid .wv.strong { font-weight: 800; }
-.ui-iso .feedlist {
+.hud .workgrid .wv { font-size: 11px; line-height: 1.45; color: var(--iso-ink); }
+.hud .workgrid .wv.strong { font-weight: 800; }
+.hud .feedlist {
   max-height: 132px; overflow-y: auto;
   display: flex; flex-direction: column; gap: 4px;
 }
-.ui-iso .feedline.say { color: var(--iso-accent); }
+.hud .feedline.say { color: var(--iso-accent); }
 /* R86-B: 💬 セッションのやり取り（オンデマンド・独立スクロール・user右/ai左） */
 /* R86-C: 190px固定は「12件出しても実際に見えるのは1.5件」（実測 可視率12〜38%）＝
    ユーザーFB「量が少ない」の実体。画面高に追随させ、足りなければ ⤢全画面 へ逃がす。 */
-.ui-iso .dlglist {
+.hud .dlglist {
   display: flex; flex-direction: column; gap: 8px;
   /* R86-C: min-height を置くと会話0件でも空箱が最上段を占め、下の 📋/🕑/内訳 がフォールド外へ
      押し出される（実測）。高さは中身なりに、上限だけ抑える。長文は ⤢全画面 で読む。 */
   max-height: 32vh; overflow-y: auto; overflow-x: hidden; padding: 4px;
 }
-.ui-iso .dlgmsg {
+.hud .dlgmsg {
   max-width: 88%; padding: 8px 8px; border-radius: 10px;
   font-size: 11px; line-height: 1.45; white-space: pre-wrap; word-break: break-word;
 }
-.ui-iso .dlgmsg.user {
+.hud .dlgmsg.user {
   align-self: flex-end; color: var(--iso-ink);
   background: var(--iso-accent-chip); border: 1px solid var(--iso-accent);
 }
-.ui-iso .dlgmsg.ai {
+.hud .dlgmsg.ai {
   align-self: flex-start; color: var(--iso-ink);
   background: var(--iso-glass-solid); border: 1px solid var(--iso-hairline);
 }
-.ui-iso .dlgnote { font-size: 11px; color: var(--iso-ink-soft); padding: 4px 4px; }
+.hud .dlgnote { font-size: 11px; color: var(--iso-ink-soft); padding: 4px 4px; }
 /* R86-D: 受信待機が切れている相手への但し書き（嘘をつかない・でも送信は止めない） */
-.ui-iso .dlgnote.listenoff {
+.hud .dlgnote.listenoff {
   background: var(--iso-warn-chip); border: 1px solid var(--iso-warn);
   border-radius: 10px; padding: 8px 8px; line-height: 1.45; color: var(--iso-ink);
   overflow-wrap: break-word;
 }
-.ui-iso .arow .amute { font-size: 11px; opacity: .85; }
-.ui-iso .arow .amute[hidden] { display: none; }
+.hud .arow .amute { font-size: 11px; opacity: .85; }
+.hud .arow .amute[hidden] { display: none; }
 /* R86-C: 「もっと見る」「全画面」は**見出し行**に置く（リスト内だと最新へのピン留めで
    可視域の外へ流れて一生押せない＝実測 -706px）。margin-left:auto で右寄せ。 */
-.ui-iso .dlgmore, .ui-iso .dlgexpand {
+.hud .dlgmore, .hud .dlgexpand {
   flex: none; font: inherit; font-size: 11px; font-weight: 800; letter-spacing: 0;
   color: var(--iso-accent); background: var(--iso-accent-chip);
   border: 1px solid var(--iso-accent); border-radius: 10px;
   padding: 4px 8px; cursor: pointer; white-space: nowrap;
 }
-.ui-iso .dlgexpand { margin-left: auto; }
+.hud .dlgexpand { margin-left: auto; }
 /* R86-C: 会話の見出し（＝もっと見る/全画面の置き場）は本文をスクロールしても貼り付く。
    sheetbody がスクロールコンテナなので sticky が効く。 */
-.ui-iso .dlghead {
+.hud .dlghead {
   position: sticky; top: -2px; z-index: 2;
   background: var(--iso-glass-solid); padding: 4px 0;
 }
-.ui-iso .dlgmore:hover, .ui-iso .dlgexpand:hover { background: var(--iso-accent-chip); }
-.ui-iso .dlgmore:disabled { opacity: .55; cursor: default; }
-.ui-iso .dlgend {
+.hud .dlgmore:hover, .hud .dlgexpand:hover { background: var(--iso-accent-chip); }
+.hud .dlgmore:disabled { opacity: .55; cursor: default; }
+.hud .dlgend {
   margin-left: auto; font-style: normal; font-size: 11px; font-weight: 700;
   color: var(--iso-ink-soft); white-space: nowrap;
 }
 /* ⤢全画面で読む（モーダル再利用） */
-.ui-iso .dlgfull {
+.hud .dlgfull {
   display: flex; flex-direction: column; gap: 8px;
   max-height: 68vh; overflow-y: auto; overflow-x: hidden; padding: 4px;
 }
-.ui-iso .dlgfull .dlgmsg { max-width: 80%; font-size: 12.5px; }
+.hud .dlgfull .dlgmsg { max-width: 80%; font-size: 12.5px; }
 
 /* R54-E: 定型ボード（compose直上に常設＝本文がスクロールしても動かない返信の一箇所） */
 /* R86-C: ❗回答ボタン＋QUICK4種＋ユーザー定型が積み上がると **283px** を占め、
    シート本文が113pxまで潰れて会話も仕事もほぼ読めなくなる（実測）。ここを上限で抑え、
    溢れたら定型ボード側をスクロールさせる＝「本文が読める」を優先する。 */
 /* min-height が無いと低い画面(vh≤640)で dock が 0px に潰れ、❗回答ボタンが到達不能になる（実測）。 */
-.ui-iso .quickdock { flex: 0 1 auto; min-height: 92px; max-height: 40%; overflow-y: auto; overflow-x: hidden; }
-.ui-iso .quickdock:empty { display: none; }
-.ui-iso .quickboard {
+.hud .quickdock { flex: 0 1 auto; min-height: 92px; max-height: 40%; overflow-y: auto; overflow-x: hidden; }
+.hud .quickdock:empty { display: none; }
+.hud .quickboard {
   border: 1px solid var(--iso-accent); border-radius: 10px;
   background: var(--iso-glass); padding: 8px 8px;
   display: flex; flex-direction: column; gap: 8px;
 }
-.ui-iso .qb-head {
+.hud .qb-head {
   font-size: 11px; font-weight: 800; letter-spacing: .04em; color: var(--iso-accent);
 }
-.ui-iso .qb-answers { display: flex; flex-direction: column; gap: 4px; }
-.ui-iso .qb-answers .sheetopt { min-height: 34px; }
-.ui-iso .sheetquick { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.ui-iso .qchip {
+.hud .qb-answers { display: flex; flex-direction: column; gap: 4px; }
+.hud .qb-answers .sheetopt { min-height: 34px; }
+.hud .sheetquick { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.hud .qchip {
   display: flex; align-items: center; gap: 8px; min-height: 36px;
   font: inherit; font-size: 11px; font-weight: 700; text-align: left;
   background: var(--iso-glass-solid); color: var(--iso-accent);
   border: 1px solid var(--iso-accent); border-radius: 10px;
   padding: 4px 8px; cursor: pointer; overflow: hidden;
 }
-.ui-iso .qchip:hover {
+.hud .qchip:hover {
   background: var(--iso-glass-solid); border-color: var(--iso-accent);
   box-shadow: var(--iso-shadow);
 }
-.ui-iso .qchip .qicon { font-style: normal; font-size: 12.5px; flex: none; }
-.ui-iso .qchip span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ui-iso .compose {
+.hud .qchip .qicon { font-style: normal; font-size: 12.5px; flex: none; }
+.hud .qchip span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hud .compose {
   display: flex; align-items: center;
   border-top: 1px solid var(--iso-hairline); padding-top: 8px;
 }
-.ui-iso .compose input {
+.hud .compose input {
   flex: 1; min-width: 0; font: inherit; font-size: 12.5px; color: var(--iso-ink);
   background: var(--iso-glass-solid); border: 1px solid var(--iso-hairline); border-radius: 10px;
   padding: 8px 12px; outline: none;
 }
-.ui-iso .compose input:focus { border-color: var(--iso-accent); }
-.ui-iso .compose input::placeholder { color: var(--iso-ink-soft); }
+.hud .compose input:focus { border-color: var(--iso-accent); }
+.hud .compose input::placeholder { color: var(--iso-ink-soft); }
 
 /* ── 送信結果トースト ─────────────────────────────────────────── */
 /* R67: トーストは直近2件の縦スタック（#toast=透明コンテナ・.tmsg=従来の見た目） */
-.ui-iso .toast {
+.hud .toast {
   position: absolute; left: 50%; bottom: 180px; transform: translateX(-50%);
   z-index: 8; display: flex; flex-direction: column; gap: 8px; align-items: center;
 }
-.ui-iso .toast .tmsg {
+.hud .toast .tmsg {
   font-size: 12.5px; font-weight: 700; color: var(--iso-on-accent);
   background: var(--iso-accent); border-radius: 10px; padding: 8px 16px;
   box-shadow: var(--iso-shadow); white-space: nowrap;
   opacity: 0; transform: translateY(6px);
   transition: opacity 120ms ease-out, transform 120ms ease-out;
 }
-.ui-iso .toast .tmsg.show { opacity: 1; transform: none; }
-.ui-iso .toast .tmsg.err { color: #fff; background: var(--iso-alert); box-shadow: var(--iso-shadow); }
-.ui-iso .toast[hidden] { display: none; }
+.hud .toast .tmsg.show { opacity: 1; transform: none; }
+.hud .toast .tmsg.err { color: #fff; background: var(--iso-alert); box-shadow: var(--iso-shadow); }
+.hud .toast[hidden] { display: none; }
 
 /* R54-F: 🔑 アカウント連携（⚡モーダル内・旧UIの連携設定を移植） */
-.ui-iso .mkeys { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+.hud .mkeys { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
 /* R66: 方式別グループ（🅰自動/🅱APIキー）＝「どう繋ぐか」を構造で見せる */
-.ui-iso .mkeygrp { display: flex; flex-direction: column; gap: 8px; }
-.ui-iso .mkeygrp + .mkeygrp { margin-top: 8px; }
-.ui-iso .mkeygrph { font-size: 11px; font-weight: 800; color: var(--iso-ink); }
-.ui-iso .mkeygrpsub { margin: 0; font-size: 11px; color: var(--iso-ink-soft); line-height: 1.45; }
-.ui-iso .mkeyauto {
+.hud .mkeygrp { display: flex; flex-direction: column; gap: 8px; }
+.hud .mkeygrp + .mkeygrp { margin-top: 8px; }
+.hud .mkeygrph { font-size: 11px; font-weight: 800; color: var(--iso-ink); }
+.hud .mkeygrpsub { margin: 0; font-size: 11px; color: var(--iso-ink-soft); line-height: 1.45; }
+.hud .mkeyauto {
   font-size: 11px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase;
   color: var(--iso-ok); background: var(--iso-accent-chip);
   border-radius: 10px; padding: 4px 8px; white-space: nowrap;
 }
-.ui-iso .mkeymask {
+.hud .mkeymask {
   font-style: normal; font-size: 11px; color: var(--iso-ink-soft);
   font-family: inherit;
 }
-.ui-iso .mkeyrow {
+.hud .mkeyrow {
   display: flex; flex-direction: column; gap: 4px;
   border: 1px solid var(--iso-hairline); border-radius: 10px;
   background: var(--iso-glass-solid); padding: 8px 8px;
 }
-.ui-iso .mkeyhead { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.ui-iso .mkeyhead .mkeybtn { margin-left: auto; }
-.ui-iso .mkeydot {
+.hud .mkeyhead { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.hud .mkeyhead .mkeybtn { margin-left: auto; }
+.hud .mkeydot {
   width: 8px; height: 8px; border-radius: 10px; flex: none;
   background: var(--iso-rest); font-style: normal;
 }
-.ui-iso .mkeydot.on { background: var(--iso-ok); }
-.ui-iso .mkeyname { font-size: 12.5px; font-weight: 700; color: var(--iso-ink); }
-.ui-iso .mkeyhint {
+.hud .mkeydot.on { background: var(--iso-ok); }
+.hud .mkeyname { font-size: 12.5px; font-weight: 700; color: var(--iso-ink); }
+.hud .mkeyhint {
   font-style: normal; font-size: 11px; color: var(--iso-ink-soft);
   padding-left: 16px; line-height: 1.45;   /* R66: ガイドは2行目（ドット分だけ字下げ） */
 }
-.ui-iso .mkeybtn {
+.hud .mkeybtn {
   font: inherit; font-size: 11px; font-weight: 700; color: var(--iso-accent);
   background: var(--iso-accent-chip); border: 1px solid var(--iso-accent);
   border-radius: 10px; padding: 4px 8px; cursor: pointer;
 }
-.ui-iso .mkeybtn:hover { background: var(--iso-accent-chip); }
-.ui-iso .mkeyrevoke {
+.hud .mkeybtn:hover { background: var(--iso-accent-chip); }
+.hud .mkeyrevoke {
   font: inherit; font-size: 11px; color: var(--iso-alert); background: transparent;
   border: 0; cursor: pointer; padding: 4px 4px; text-decoration: underline;
   text-underline-offset: 2px; white-space: nowrap;
 }
-.ui-iso .mkeyrevoke:disabled { opacity: .5; cursor: default; }
-.ui-iso .mkeyform { display: flex; gap: 8px; width: 100%; }
-.ui-iso .mkeyin {
+.hud .mkeyrevoke:disabled { opacity: .5; cursor: default; }
+.hud .mkeyform { display: flex; gap: 8px; width: 100%; }
+.hud .mkeyin {
   flex: 1; min-width: 0; font: inherit; font-size: 12.5px;
   border: 1px solid var(--iso-hairline); border-radius: 10px; padding: 8px 8px;
 }
-.ui-iso .mkeyin:focus { border-color: var(--iso-accent); outline: none; }
-.ui-iso .mkeysave {
+.hud .mkeyin:focus { border-color: var(--iso-accent); outline: none; }
+.hud .mkeysave {
   font: inherit; font-size: 11px; font-weight: 700; color: var(--iso-on-accent);
   background: var(--iso-accent); border: 0; border-radius: 10px;
   padding: 8px 12px; cursor: pointer;
 }
-.ui-iso .mkeysave:disabled { opacity: .5; }
+.hud .mkeysave:disabled { opacity: .5; }
 
 /* R54: クレジットゲージはクリックで⚡（連携・台帳）へ */
-.ui-iso .gauges { cursor: default; }
+.hud .gauges { cursor: default; }
 
 /* R63: 🔌 APIプロバイダ統合コスト（⚡モーダル内セクション＋サイドバー注記） */
-.ui-iso .mapis { display: flex; flex-direction: column; gap: 8px; }
-.ui-iso .mapi {
+.hud .mapis { display: flex; flex-direction: column; gap: 8px; }
+.hud .mapi {
   display: flex; flex-direction: column; gap: 4px;
   padding: 8px 8px; border: 1px solid var(--iso-hairline); border-radius: 10px;
   background: var(--iso-glass-solid);
 }
-.ui-iso .mapibudget { display: flex; gap: 8px; align-items: center; }
-.ui-iso .mapibudget .mnum { flex: 1; min-width: 0; }
-.ui-iso .mgo.mgosm { padding: 8px 12px; font-size: 11px; flex: none; }
-.ui-iso .gsub.gnolimit { color: var(--iso-warn); font-weight: 700; }
+.hud .mapibudget { display: flex; gap: 8px; align-items: center; }
+.hud .mapibudget .mnum { flex: 1; min-width: 0; }
+.hud .mgo.mgosm { padding: 8px 12px; font-size: 11px; flex: none; }
+.hud .gsub.gnolimit { color: var(--iso-warn); font-weight: 700; }
 /* R72: 課金方式の見出し（定額サブスク／APIキー従量）。装飾バーは使わず
    hairline と字間で段差を作る（AI臭い色付きアクセントバー禁止の方針） */
-.ui-iso .gbillhead {
+.hud .gbillhead {
   margin: 8px 0 4px; padding-top: 8px; font-size: 11px; font-weight: 800;
   letter-spacing: .06em; color: var(--iso-ink-soft);
   border-top: 1px solid var(--iso-hairline);
 }
-.ui-iso .gbillhead:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+.hud .gbillhead:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
 
 /* ── R67: マイクロインタラクション基盤 ─────────────────────────────
    掟の運用: hover/active限定の transition は golden とビット一致（監査で実証）。
    入場系（.show/.fresh 等の状態変化）は ?t=固定時に .no-anim が全て殺す＝golden安全 */
-.ui-iso.no-anim *, .ui-iso.no-anim *::before, .ui-iso.no-anim *::after {
+.hud.no-anim *, .hud.no-anim *::before, .hud.no-anim *::after {
   transition: none !important;
 }
-.ui-iso .abtn, .ui-iso .mgo, .ui-iso .qchip, .ui-iso .sheetopt, .ui-iso .crewrow,
-.ui-iso .hresend, .ui-iso #attn .kbd, .ui-iso .arow, .ui-iso .lbl, .ui-iso .mpick,
-.ui-iso .mkeybtn, .ui-iso .sheetsnd, .ui-iso .sheetterm, .ui-iso .sheetclose {
+.hud .abtn, .hud .mgo, .hud .qchip, .hud .sheetopt, .hud .crewrow,
+.hud .hresend, .hud #attn .kbd, .hud .arow, .hud .lbl, .hud .mpick,
+.hud .mkeybtn, .hud .sheetsnd, .hud .sheetterm, .hud .sheetclose {
   transition: background 120ms ease-out, border-color 120ms ease-out, box-shadow 120ms ease-out,
     transform 120ms ease-out, filter 120ms ease-out;
 }
-.ui-iso .abtn:active, .ui-iso .mgo:active, .ui-iso .qchip:active, .ui-iso .sheetopt:active,
-.ui-iso .crewrow:active, .ui-iso .hresend:active, .ui-iso .mpick:active,
-.ui-iso .mkeybtn:active {
+.hud .abtn:active, .hud .mgo:active, .hud .qchip:active, .hud .sheetopt:active,
+.hud .crewrow:active, .hud .hresend:active, .hud .mpick:active,
+.hud .mkeybtn:active {
   transform: translateY(1px);
 }
 /* 送信中はボタンを薄く（sendingUi が disabled を付ける） */
-.ui-iso #quickdock button:disabled, .ui-iso #attn button:disabled { opacity: .55; cursor: default; }
-.ui-iso #composeinput:disabled { opacity: .6; }
+.hud #quickdock button:disabled, .hud #attn button:disabled { opacity: .55; cursor: default; }
+.hud #composeinput:disabled { opacity: .6; }
 /* 差分更新で変化した行の一瞬のハイライト（frozenでは.no-animで無効） */
-.ui-iso .arow { transition: background 120ms ease-out; }
-.ui-iso .arow.fresh { background: var(--iso-accent-chip); }
+.hud .arow { transition: background 120ms ease-out; }
+.hud .arow.fresh { background: var(--iso-accent-chip); }
 /* 進捗バーの伸びを滑らかに */
-.ui-iso .afill { transition: width 120ms ease-out; }
-.ui-iso .gfill { transition: width 120ms ease-out; }
+.hud .afill { transition: width 120ms ease-out; }
+.hud .gfill { transition: width 120ms ease-out; }
 /* ヘッダーの鮮度表示（frozenでは非表示） */
-.ui-iso .freshness {
+.hud .freshness {
   font-style: normal; font-size: 11px; color: var(--iso-ink-soft); opacity: .75;
 }
-.ui-iso .freshness[hidden] { display: none; }
+.hud .freshness[hidden] { display: none; }
 /* 履歴「ほか N 件」注記 */
-.ui-iso .hmore { font-size: 11px; color: var(--iso-ink-soft); padding: 4px 4px; }
+.hud .hmore { font-size: 11px; color: var(--iso-ink-soft); padding: 4px 4px; }
 
 /* R69: 低い画面（1280x800等）でシート本文が定型ボード+内訳に押し潰される実測
    （sheetbody可視域118px）への対応＝本文の最低可視域を確保し周辺をcompact化 */
 @media (max-height: 840px) {
-  .ui-iso .sheetbody { min-height: 200px; }
-  .ui-iso .sheetquick { grid-template-columns: 1fr; }          /* QUICKを1列に */
-  .ui-iso .qchip { min-height: 30px; padding: 4px 8px; }
-  .ui-iso .crewlist { max-height: 84px; overflow-y: auto; }    /* 内訳は独立スクロール */
-  .ui-iso .dlglist { max-height: 26vh; }                       /* R86-C: 低い画面では会話を控えめに */
+  .hud .sheetbody { min-height: 200px; }
+  .hud .sheetquick { grid-template-columns: 1fr; }          /* QUICKを1列に */
+  .hud .qchip { min-height: 30px; padding: 4px 8px; }
+  .hud .crewlist { max-height: 84px; overflow-y: auto; }    /* 内訳は独立スクロール */
+  .hud .dlglist { max-height: 26vh; }                       /* R86-C: 低い画面では会話を控えめに */
 }
 
 /* 暗色クロームは寒色の「夜の紙」。3Dステージの色は共通のまま。
    :rootで解決済みの別名トークンも、上書き先の面・アクセントへ結び直す。 */
-.ui-iso.th-dark {
+.hud.th-dark {
   color-scheme: dark;
   --iso-bg: #12111e;
   --iso-glass: rgba(28,26,46,.78);
@@ -932,12 +934,12 @@
   --iso-alert-chip: #46233a;
 }
 /* ⚙設定のセグメント選択状態（ライト/ダーク共通） */
-.ui-iso .mkeybtn.on {
+.hud .mkeybtn.on {
   background: var(--iso-accent); color: var(--iso-on-accent); border-color: var(--iso-accent);
 }
 
 /* R80-B6: 3D不可時のステージ内お知らせ（操作面は左の部署ボードで生きている） */
-.ui-iso .no3d {
+.hud .no3d {
   position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
   margin: auto; max-width: 460px; height: fit-content; padding: 16px 24px;
   background: var(--iso-glass-solid);
@@ -946,35 +948,35 @@
 }
 
 /* R80: 購入の下に置く「お知らせを受け取る」導線（買わない人を袋小路にしない） */
-.ui-iso .mlink { display: block; margin-top: 8px; color: var(--iso-accent); text-decoration: none; }
-.ui-iso .mlink:hover { text-decoration: underline; }
+.hud .mlink { display: block; margin-top: 8px; color: var(--iso-accent); text-decoration: none; }
+.hud .mlink:hover { text-decoration: underline; }
 
 /* R80-A21: 配達未設定バナー＝製品の前提条件なので、読めてコピーできる形にする */
-.ui-iso .setupbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.ui-iso .setupbar .sb-cmd {
+.hud .setupbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.hud .setupbar .sb-cmd {
   font-family: inherit; font-size: 11px;
   background: var(--iso-glass-solid); border: 1px solid var(--iso-line);
   border-radius: 10px; padding: 4px 8px;
 }
-.ui-iso .setupbar .sb-copy {
+.hud .setupbar .sb-copy {
   font-size: 11px; font-weight: 700; padding: 4px 8px; min-height: 24px;
   border: 1px solid var(--iso-line); border-radius: 10px; background: var(--iso-glass-solid);
   color: var(--iso-ink-soft); cursor: pointer;
 }
-.ui-iso .setupbar .sb-copy:hover { border-color: var(--iso-accent); color: var(--iso-accent); }
+.hud .setupbar .sb-copy:hover { border-color: var(--iso-accent); color: var(--iso-accent); }
 
 /* R80-A8: モーダルの閉じるボタン（背景クリックとEscだけでは「閉じ方が見えない」） */
-.ui-iso .modalclose {
+.hud .modalclose {
   position: absolute; top: 18px; right: 18px; width: 32px; height: 32px;
   display: flex; align-items: center; justify-content: center;
   border: 1px solid var(--iso-line); border-radius: 10px;
   background: var(--iso-glass-solid); color: var(--iso-ink-soft);
   font-size: 14px; line-height: 1.45; cursor: pointer;
 }
-.ui-iso .modalclose:hover { color: var(--iso-ink); border-color: var(--iso-accent); }
+.hud .modalclose:hover { color: var(--iso-ink); border-color: var(--iso-accent); }
 
 /* R80-A20: 空オフィスのとき、中央ステージにも次の一歩を置く */
-.ui-iso .stagehint {
+.hud .stagehint {
   position: absolute; left: 50%; top: 46%; transform: translate(-50%, -50%);
   max-width: 380px; padding: 16px 16px; text-align: center;
   background: var(--iso-glass-solid);
@@ -997,41 +999,41 @@
 .tpladdrow { margin-top: 8px; }
 
 /* R86-I: タスクが無いときの「今日のオフィス」（ドーナツの代わり＝死んだ面積を作らない） */
-.ui-iso .todaycard { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 8px; padding: 4px 4px 0; }
-.ui-iso .todaycard .trow { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
-.ui-iso .todaycard .ticon { font-style: normal; }
-.ui-iso .todaycard .tlabel { flex: 1; color: var(--iso-ink-soft); }
-.ui-iso .todaycard .tval { font-size: 12.5px; font-weight: 800; color: var(--iso-ink); }
-.ui-iso .todaycard .tnote { margin-top: 4px; font-size: 11px; color: var(--iso-ink-soft); }
+.hud .todaycard { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 8px; padding: 4px 4px 0; }
+.hud .todaycard .trow { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
+.hud .todaycard .ticon { font-style: normal; }
+.hud .todaycard .tlabel { flex: 1; color: var(--iso-ink-soft); }
+.hud .todaycard .tval { font-size: 12.5px; font-weight: 800; color: var(--iso-ink); }
+.hud .todaycard .tnote { margin-top: 4px; font-size: 11px; color: var(--iso-ink-soft); }
 
 /* ヘッダーはゲージを折り返せる。コストの元DOMは380pxの詳細面で全項目を参照できる。 */
-.ui-iso *, .ui-iso *::before, .ui-iso *::after { box-sizing: border-box; }
-.ui-iso .usage[hidden] { display: none; }
-.ui-iso .usage { min-width: 100px; flex: 1; }
-.ui-iso #usage-summary {
+.hud *, .hud *::before, .hud *::after { box-sizing: border-box; }
+.hud .usage[hidden] { display: none; }
+.hud .usage { min-width: 100px; flex: 1; }
+.hud #usage-summary {
   display: flex; align-items: center; gap: 16px; width: 100%; padding: 0; border: 0;
   background: transparent; text-align: left; font: inherit; cursor: pointer;
   color: var(--iso-ink-soft); font-size: 12.5px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.ui-iso #usage-summary::before { content: "|"; margin-right: 0; color: var(--iso-ink-muted); flex: none; }
-.ui-iso #usage-summary { flex-wrap: wrap; row-gap: 4px; }
+.hud #usage-summary::before { content: "|"; margin-right: 0; color: var(--iso-ink-muted); flex: none; }
+.hud #usage-summary { flex-wrap: wrap; row-gap: 4px; }
 /* R91: ヘッダー常設の実ゲージ。開かなくても「どれだけ減ったか」が見える。 */
-.ui-iso .gpin { display: flex; align-items: center; gap: 8px; min-width: 0; flex: none; }
-.ui-iso .gplab {
+.hud .gpin { display: flex; align-items: center; gap: 8px; min-width: 0; flex: none; }
+.hud .gplab {
   max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   color: var(--iso-ink-soft);
 }
-.ui-iso .gpbar {
+.hud .gpbar {
   width: 64px; height: 4px; flex: none; border-radius: 10px; overflow: hidden;
   background: var(--iso-accent-chip);
 }
-.ui-iso .gpfill { display: block; height: 100%; background: var(--iso-accent); }
-.ui-iso .gpfill.warn { background: var(--iso-warn); }
-.ui-iso .gppct { flex: none; font-size: 12.5px; font-weight: 800; color: var(--iso-ink); }
-.ui-iso .gppct.warn { color: var(--iso-warn); }
-.ui-iso #usage-summary:focus-visible { outline: 1px solid var(--iso-accent); border-radius: 10px; }
-.ui-iso .usage .gauges {
+.hud .gpfill { display: block; height: 100%; background: var(--iso-accent); }
+.hud .gpfill.warn { background: var(--iso-warn); }
+.hud .gppct { flex: none; font-size: 12.5px; font-weight: 800; color: var(--iso-ink); }
+.hud .gppct.warn { color: var(--iso-warn); }
+.hud #usage-summary:focus-visible { outline: 1px solid var(--iso-accent); border-radius: 10px; }
+.hud .usage .gauges {
   position: absolute; top: 64px; right: 16px; z-index: 10;
   width: 380px; max-width: calc(100vw - 32px); max-height: calc(100dvh - 80px);
   padding: 16px; background: var(--iso-glass); border: 1px solid var(--iso-hairline);
@@ -1039,314 +1041,314 @@
   opacity: 0; transform: translateX(100%); clip-path: inset(50%); pointer-events: none;
   transition: opacity 120ms ease-out, transform 120ms ease-out;
 }
-.ui-iso .usage.open .gauges { opacity: 1; transform: none; clip-path: none; pointer-events: auto; }
-.ui-iso .freshness { flex: none; }
-.ui-iso .department { flex: none; min-width: 0; }
-.ui-iso .department + .department { border-top: 1px solid var(--iso-hairline); padding-top: 8px; }
-.ui-iso .department-head { display: flex; align-items: center; gap: 4px; padding: 4px 0; }
-.ui-iso .department-name { flex: 1; min-width: 0; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ui-iso .department-state, .ui-iso .department-count { flex: none; font-size: 11px; color: var(--iso-ink-soft); }
-.ui-iso .department.st-attention .department-state { color: var(--iso-alert); }
-.ui-iso .department.st-working .department-state { color: var(--iso-accent); }
-.ui-iso .department.st-waiting .department-state { color: var(--iso-warn); }
-.ui-iso .vendors { display: flex; gap: 4px; }
-.ui-iso .vendor-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--iso-rest); border: 1px solid var(--iso-hairline); }
-.ui-iso .vendor-claude { background: #c4a47c; }
-.ui-iso .vendor-codex { background: #787676; }
-.ui-iso .vendor-openclaw { background: var(--iso-alert); }
-.ui-iso .department-sessions { padding-left: 8px; }
-.ui-iso .arow {
+.hud .usage.open .gauges { opacity: 1; transform: none; clip-path: none; pointer-events: auto; }
+.hud .freshness { flex: none; }
+.hud .department { flex: none; min-width: 0; }
+.hud .department + .department { border-top: 1px solid var(--iso-hairline); padding-top: 8px; }
+.hud .department-head { display: flex; align-items: center; gap: 4px; padding: 4px 0; }
+.hud .department-name { flex: 1; min-width: 0; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hud .department-state, .hud .department-count { flex: none; font-size: 11px; color: var(--iso-ink-soft); }
+.hud .department.st-attention .department-state { color: var(--iso-alert); }
+.hud .department.st-working .department-state { color: var(--iso-accent); }
+.hud .department.st-waiting .department-state { color: var(--iso-warn); }
+.hud .vendors { display: flex; gap: 4px; }
+.hud .vendor-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--iso-rest); border: 1px solid var(--iso-hairline); }
+.hud .vendor-claude { background: #c4a47c; }
+.hud .vendor-codex { background: #787676; }
+.hud .vendor-openclaw { background: var(--iso-alert); }
+.hud .department-sessions { padding-left: 8px; }
+.hud .arow {
   display: grid; grid-template-columns: minmax(44px, .9fr) minmax(32px, 1fr) auto auto;
   align-items: center; gap: 4px; padding: 4px; min-height: 32px;
   background: transparent; border: 1px solid transparent; border-radius: 10px;
 }
-.ui-iso .arow.sel, .ui-iso .arow:focus-visible { border-color: var(--iso-accent); outline: none; background: var(--iso-accent-chip); }
-.ui-iso .arowhead { grid-column: 1; grid-row: 1; min-width: 0; gap: 4px; }
-.ui-iso .arow .aname { font-size: 11px; font-weight: 700; }
-.ui-iso .arow .adot { width: 4px; height: 4px; }
-.ui-iso .arow .aact { grid-column: 2; grid-row: 1; margin: 0; min-width: 0; }
-.ui-iso .arow .atext { font-size: 11px; }
-.ui-iso .arow .aage, .ui-iso .arow .alevel { font-size: 11px; white-space: nowrap; }
-.ui-iso .arow .aage { grid-column: 3; grid-row: 1; }
-.ui-iso .arow .alevel { grid-column: 4; grid-row: 1; }
+.hud .arow.sel, .hud .arow:focus-visible { border-color: var(--iso-accent); outline: none; background: var(--iso-accent-chip); }
+.hud .arowhead { grid-column: 1; grid-row: 1; min-width: 0; gap: 4px; }
+.hud .arow .aname { font-size: 11px; font-weight: 700; }
+.hud .arow .adot { width: 4px; height: 4px; }
+.hud .arow .aact { grid-column: 2; grid-row: 1; margin: 0; min-width: 0; }
+.hud .arow .atext { font-size: 11px; }
+.hud .arow .aage, .hud .arow .alevel { font-size: 11px; white-space: nowrap; }
+.hud .arow .aage { grid-column: 3; grid-row: 1; }
+.hud .arow .alevel { grid-column: 4; grid-row: 1; }
 /* 進捗ノードも維持し、値のある行だけ同じ1行内に置く。 */
-.ui-iso .arow .aprog { grid-column: 2; grid-row: 1; align-self: end; margin: 0; height: 2px; }
-.ui-iso .arow .abar { height: 2px; }
-.ui-iso .arow .apct { position: absolute; clip-path: inset(50%); width: 1px; height: 1px; overflow: hidden; }
-.ui-iso .arow .acrew[hidden], .ui-iso .arow .apend[hidden], .ui-iso .arow .aprog[hidden] { display: none; }
-.ui-iso .aage, .ui-iso .alevel, .ui-iso .gpct, .ui-iso .zcount, .ui-iso .tval, .ui-iso .apct {
+.hud .arow .aprog { grid-column: 2; grid-row: 1; align-self: end; margin: 0; height: 2px; }
+.hud .arow .abar { height: 2px; }
+.hud .arow .apct { position: absolute; clip-path: inset(50%); width: 1px; height: 1px; overflow: hidden; }
+.hud .arow .acrew[hidden], .hud .arow .apend[hidden], .hud .arow .aprog[hidden] { display: none; }
+.hud .aage, .hud .alevel, .hud .gpct, .hud .zcount, .hud .tval, .hud .apct {
   font-family: ui-monospace, monospace; font-variant-numeric: tabular-nums;
 }
-.ui-iso .brand .txt { flex: 1; }
-.ui-iso .abtn { padding: 8px 12px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ui-iso .setupbar { margin-top: 0; }
+.hud .brand .txt { flex: 1; }
+.hud .abtn { padding: 8px 12px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hud .setupbar { margin-top: 0; }
 /* R90-U4: added only by the live HUD; frozen captures retain their existing DOM. */
-.ui-iso #btn-hire { color: var(--iso-accent); background: var(--iso-accent-chip); }
-.ui-iso .hire-form { display: grid; gap: 16px; }
-.ui-iso .hire-step { min-width: 0; margin: 0; padding: 12px; border: 1px solid var(--iso-line); border-radius: 10px; }
-.ui-iso .hire-step legend { padding: 0 4px; font-size: 14px; font-weight: 700; }
-.ui-iso .hire-step .minput { width: 100%; box-sizing: border-box; }
-.ui-iso .hire-step .mopt { margin-bottom: 0; }
-.ui-iso .hire-step input[type="checkbox"] { accent-color: var(--iso-accent); }
-.ui-iso .hire-command { display: block; padding: 8px; color: var(--iso-ink); background: var(--paper-2); border-radius: 10px; }
-.ui-iso .hire-command[hidden] { display: none; }
-.ui-iso .hire-form button:disabled { opacity: .55; cursor: default; }
-.ui-iso .arrival-badge { flex: none; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--iso-accent); }
-.ui-iso .arowhead .arrival-badge { max-width: 96px; }
-.ui-iso .setup-checklist { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; width: 100%; }
-.ui-iso .setup-complete { border-color: var(--iso-line); background: var(--paper); }
-.ui-iso .setup-complete .setup-checklist span { color: var(--iso-accent); }
-.ui-iso .boss-onboarding {
+.hud #btn-hire { color: var(--iso-accent); background: var(--iso-accent-chip); }
+.hud .hire-form { display: grid; gap: 16px; }
+.hud .hire-step { min-width: 0; margin: 0; padding: 12px; border: 1px solid var(--iso-line); border-radius: 10px; }
+.hud .hire-step legend { padding: 0 4px; font-size: 14px; font-weight: 700; }
+.hud .hire-step .minput { width: 100%; box-sizing: border-box; }
+.hud .hire-step .mopt { margin-bottom: 0; }
+.hud .hire-step input[type="checkbox"] { accent-color: var(--iso-accent); }
+.hud .hire-command { display: block; padding: 8px; color: var(--iso-ink); background: var(--paper-2); border-radius: 10px; }
+.hud .hire-command[hidden] { display: none; }
+.hud .hire-form button:disabled { opacity: .55; cursor: default; }
+.hud .arrival-badge { flex: none; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--iso-accent); }
+.hud .arowhead .arrival-badge { max-width: 96px; }
+.hud .setup-checklist { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; width: 100%; }
+.hud .setup-complete { border-color: var(--iso-line); background: var(--paper); }
+.hud .setup-complete .setup-checklist span { color: var(--iso-accent); }
+.hud .boss-onboarding {
   position: absolute; z-index: 9; transform: translateX(-50%); max-width: calc(100% - 16px);
   padding: 12px 16px; border: 1px solid var(--iso-line); border-radius: 14px;
   background: var(--paper); box-shadow: var(--iso-shadow); color: var(--iso-ink);
   font: inherit; font-size: 12.5px; line-height: 1.45; cursor: pointer;
 }
-.ui-iso .boss-onboarding[hidden] { display: none; }
-.ui-iso .boss-onboarding::after {
+.hud .boss-onboarding[hidden] { display: none; }
+.hud .boss-onboarding::after {
   content: ""; position: absolute; bottom: -8px; left: calc(50% - 8px);
   border-width: 8px 8px 0; border-style: solid; border-color: var(--paper) transparent transparent;
 }
-.ui-iso .no3d-panel { flex-direction: column; gap: 12px; }
-.ui-iso.list-mode .shell { grid-template-columns: 232px minmax(0, 1fr) minmax(320px, 1fr); }
-.ui-iso.list-mode #viewport, .ui-iso.list-mode #labels, .ui-iso.list-mode #project-labels { visibility: hidden; }
-.ui-iso.list-mode .arow { min-height: 44px; }
-.ui-iso.list-mode #agents:focus { outline: 1px solid var(--iso-accent); outline-offset: 4px; }
-.ui-iso .trow .ticon:empty { width: 0; }
+.hud .no3d-panel { flex-direction: column; gap: 12px; }
+.hud.list-mode .shell { grid-template-columns: 232px minmax(0, 1fr) minmax(320px, 1fr); }
+.hud.list-mode #viewport, .hud.list-mode #labels, .hud.list-mode #project-labels { visibility: hidden; }
+.hud.list-mode .arow { min-height: 44px; }
+.hud.list-mode #agents:focus { outline: 1px solid var(--iso-accent); outline-offset: 4px; }
+.hud .trow .ticon:empty { width: 0; }
 @media (max-width: 1279px) {
-  .ui-iso .shell { grid-template-columns: 220px minmax(0, 1fr) 260px; gap: 12px; padding: 12px; }
+  .hud .shell { grid-template-columns: 220px minmax(0, 1fr) 260px; gap: 12px; padding: 12px; }
 }
 @media (max-width: 1100px) {
-  .ui-iso .shell { grid-template-columns: 200px minmax(0, 1fr) 240px; }
-  .ui-iso .head { overflow-x: auto; }
-  .ui-iso .usage { flex: 0 0 240px; }
-  .ui-iso .bottom .card { padding: 12px; }
-  .ui-iso .hrow { gap: 4px; }
+  .hud .shell { grid-template-columns: 200px minmax(0, 1fr) 240px; }
+  .hud .head { overflow-x: auto; }
+  .hud .usage { flex: 0 0 240px; }
+  .hud .bottom .card { padding: 12px; }
+  .hud .hrow { gap: 4px; }
 }
 
 /* R90-U3: these nodes/classes are never installed when the clock is frozen. */
-.ui-iso .digest-strip {
+.hud .digest-strip {
   flex: none; min-height: 40px; padding: 8px 12px; text-align: left;
   font: inherit; font-size: 12.5px; line-height: 1.45; color: var(--iso-ink); cursor: pointer;
   background: var(--iso-glass); border: 1px solid var(--iso-line); border-radius: 10px;
 }
-.ui-iso .digest-strip:disabled { color: var(--iso-ink-soft); cursor: default; }
-.ui-iso .digest-card {
+.hud .digest-strip:disabled { color: var(--iso-ink-soft); cursor: default; }
+.hud .digest-card {
   position: absolute; z-index: 45; top: 88px; left: 50%; transform: translateX(-50%);
   width: min(440px, calc(100% - 32px)); max-height: calc(100% - 104px); overflow-y: auto;
   box-sizing: border-box; padding: 16px; background: var(--iso-glass);
   border: 1px solid var(--iso-line); border-radius: 14px; box-shadow: var(--iso-shadow);
   color: var(--iso-ink); font-size: 14px; line-height: 1.45;
 }
-.ui-iso .digest-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.ui-iso .digest-card p { margin: 12px 0; }
-.ui-iso .digest-answers { display: flex; flex-wrap: wrap; gap: 8px; }
-.ui-iso .digest-card button, .ui-iso .replay-controls button {
+.hud .digest-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.hud .digest-card p { margin: 12px 0; }
+.hud .digest-answers { display: flex; flex-wrap: wrap; gap: 8px; }
+.hud .digest-card button, .hud .replay-controls button {
   min-height: 36px; padding: 8px; font: inherit; color: var(--iso-ink);
   background: var(--iso-bg); border: 1px solid var(--iso-line); border-radius: 10px; cursor: pointer;
 }
-.ui-iso .digest-card button:disabled, .ui-iso .replay-controls button:disabled { opacity: .6; cursor: default; }
-.ui-iso .digest-card .digest-details { margin-top: 12px; background: var(--iso-accent-chip); color: var(--iso-accent); }
-.ui-iso .replay-controls {
+.hud .digest-card button:disabled, .hud .replay-controls button:disabled { opacity: .6; cursor: default; }
+.hud .digest-card .digest-details { margin-top: 12px; background: var(--iso-accent-chip); color: var(--iso-accent); }
+.hud .replay-controls {
   position: absolute; top: 16px; left: 50%; transform: translateX(-50%); z-index: 45;
   display: flex; align-items: center; gap: 12px; padding: 8px 12px;
   background: var(--iso-glass); border: 1px solid var(--iso-line); border-radius: 14px;
   box-shadow: var(--iso-shadow); font-size: 12.5px; white-space: nowrap;
 }
-.ui-iso .replay-progress, .ui-iso .label-level { font-family: ui-monospace, monospace; font-variant-numeric: tabular-nums; }
-.ui-iso .label-level { font-size: 11px; white-space: nowrap; color: var(--iso-accent); }
-.ui-iso .growth-level { white-space: nowrap; color: var(--iso-accent); }
-.ui-iso .growth-details { padding: 8px; border: 1px solid var(--iso-line); border-radius: 10px; font-size: 12.5px; }
-.ui-iso .growth-details summary { cursor: pointer; color: var(--iso-accent); }
-.ui-iso .growth-details p { margin: 8px 0 0; white-space: pre-line; overflow-wrap: anywhere; }
-.ui-iso .replay-active .bottom, .ui-iso .replay-active #attn { visibility: hidden; }
-.ui-iso .digest-strip[hidden], .ui-iso .digest-card[hidden], .ui-iso .replay-controls[hidden] { display: none; }
+.hud .replay-progress, .hud .label-level { font-family: ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+.hud .label-level { font-size: 11px; white-space: nowrap; color: var(--iso-accent); }
+.hud .growth-level { white-space: nowrap; color: var(--iso-accent); }
+.hud .growth-details { padding: 8px; border: 1px solid var(--iso-line); border-radius: 10px; font-size: 12.5px; }
+.hud .growth-details summary { cursor: pointer; color: var(--iso-accent); }
+.hud .growth-details p { margin: 8px 0 0; white-space: pre-line; overflow-wrap: anywhere; }
+.hud .replay-active .bottom, .hud .replay-active #attn { visibility: hidden; }
+.hud .digest-strip[hidden], .hud .digest-card[hidden], .hud .replay-controls[hidden] { display: none; }
 
 /* R90-U5: opt-in broadcast canvas. Every existing HUD node keeps its ID. */
 html.iso-stream, html.iso-stream body { background: transparent; }
-.ui-iso.stream-mode { display: grid !important; place-items: center; background: transparent; }
-.ui-iso.stream-mode .shell { display: block; padding: 0; background: transparent; }
-.ui-iso.stream-mode .main { width: 100%; height: 100%; padding: 0; }
-.ui-iso.stream-mode #stage {
+.hud.stream-mode { display: grid !important; place-items: center; background: transparent; }
+.hud.stream-mode .shell { display: block; padding: 0; background: transparent; }
+.hud.stream-mode .main { width: 100%; height: 100%; padding: 0; }
+.hud.stream-mode #stage {
   width: 100%; height: 100%; border: 0; border-radius: 0; box-shadow: none;
   background: transparent; filter: none;
 }
-.ui-iso.stream-mode .shell > :not(.main),
-.ui-iso.stream-mode .main > :not(#stage),
-.ui-iso.stream-mode #stage > :not(#viewport):not(#labels):not(#stream-subtitle):not(#stream-attention),
-.ui-iso.stream-mode #viewport > :not(canvas) { display: none !important; }
-.ui-iso.stream-mode #labels { pointer-events: none; }
-.ui-iso.stream-mode .lbl { pointer-events: none; }
-.ui-iso.stream-mode #stream-subtitle {
+.hud.stream-mode .shell > :not(.main),
+.hud.stream-mode .main > :not(#stage),
+.hud.stream-mode #stage > :not(#viewport):not(#labels):not(#stream-subtitle):not(#stream-attention),
+.hud.stream-mode #viewport > :not(canvas) { display: none !important; }
+.hud.stream-mode #labels { pointer-events: none; }
+.hud.stream-mode .lbl { pointer-events: none; }
+.hud.stream-mode #stream-subtitle {
   position: absolute; bottom: 16px; left: 16px; right: 16px; z-index: 40;
   padding: 12px 16px; border-radius: var(--radius-sm);
   color: var(--ink); background: var(--paper); border: 1px solid var(--line);
   font-size: clamp(14px, 2.1vw, 24px); font-weight: 700;
   overflow: hidden; white-space: nowrap; text-overflow: ellipsis; pointer-events: none;
 }
-.ui-iso.stream-mode #stream-attention {
+.hud.stream-mode #stream-attention {
   position: absolute; top: 16px; right: 16px; z-index: 40;
   padding: 8px 12px; border-radius: var(--radius-sm);
   color: var(--alert); background: var(--paper); border: 1px solid var(--line);
   font-size: 24px; font-weight: 800; pointer-events: none;
 }
-.ui-iso.stream-large .lbl { font-size: 18px; max-width: 260px; padding: 8px 12px; }
-.ui-iso.stream-large .lbl b { font-size: 18px; max-width: 220px; }
-.ui-iso.stream-large .lbl .mono { width: 28px; height: 28px; font-size: 18px; }
+.hud.stream-large .lbl { font-size: 18px; max-width: 260px; padding: 8px 12px; }
+.hud.stream-large .lbl b { font-size: 18px; max-width: 220px; }
+.hud.stream-large .lbl .mono { width: 28px; height: 28px; font-size: 18px; }
 
 /* R90: 13体以上では名前を出すのは意味のある相手だけ（選択・❗・📨・ホバー）。
    残りはバッジ1文字＋状態リングだけにして、名札の団子を防ぐ。全文は title で読める。 */
-.ui-iso .lbl:not(.nm) b,
-.ui-iso .lbl:not(.nm) .label-level { display: none; }
-.ui-iso .lbl:not(.nm) { padding: 2px; }
+.hud .lbl:not(.nm) b,
+.hud .lbl:not(.nm) .label-level { display: none; }
+.hud .lbl:not(.nm) { padding: 2px; }
 
 /* On-demand customization uses the existing direction C chrome. */
-.ui-iso .accessory-choices { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0; }
-.ui-iso .accessory-choices.tight { margin: 0; }
+.hud .accessory-choices { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0; }
+.hud .accessory-choices.tight { margin: 0; }
 /* R91: 殻の色。チップ自身が色見本＝ラベルを読まずに選べる。 */
-.ui-iso .color-choices { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; }
-.ui-iso .swatch {
+.hud .color-choices { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; }
+.hud .swatch {
   width: 28px; height: 28px; padding: 0; border-radius: 10px; cursor: pointer;
   background: var(--sw, var(--iso-glass-solid));
   border: 1px solid var(--iso-hairline);
 }
-.ui-iso .swatch.swatch-none {
+.hud .swatch.swatch-none {
   background: var(--iso-glass-solid);
   background-image: linear-gradient(135deg, transparent 46%, var(--iso-ink-muted) 46%,
     var(--iso-ink-muted) 54%, transparent 54%);
 }
-.ui-iso .swatch.on { border-color: var(--iso-accent); box-shadow: 0 0 0 2px var(--iso-accent-chip); }
-.ui-iso .swatch:disabled { opacity: .5; cursor: default; }
-.ui-iso .sound-consent { pointer-events: auto; z-index: 30; }
-.ui-iso .sound-consent .tmsg { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.hud .swatch.on { border-color: var(--iso-accent); box-shadow: 0 0 0 2px var(--iso-accent-chip); }
+.hud .swatch:disabled { opacity: .5; cursor: default; }
+.hud .sound-consent { pointer-events: auto; z-index: 30; }
+.hud .sound-consent .tmsg { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 
-.ui-iso #btn-run[hidden] { display: none; }
+.hud #btn-run[hidden] { display: none; }
 
-.ui-iso .reply-choice { display: flex; flex-wrap: wrap; align-items: stretch; min-width: 0; gap: 4px; }
-.ui-iso .reply-choice > button { flex: 1; min-width: 0; }
-.ui-iso .reply-menu { flex: none; }
-.ui-iso .reply-menu[open] { flex-basis: 100%; }
-.ui-iso .reply-menu > summary { cursor: pointer; list-style: none; padding: 8px; color: var(--iso-ink-soft); }
-.ui-iso .reply-save { display: block; width: 100%; padding: 8px 12px;
+.hud .reply-choice { display: flex; flex-wrap: wrap; align-items: stretch; min-width: 0; gap: 4px; }
+.hud .reply-choice > button { flex: 1; min-width: 0; }
+.hud .reply-menu { flex: none; }
+.hud .reply-menu[open] { flex-basis: 100%; }
+.hud .reply-menu > summary { cursor: pointer; list-style: none; padding: 8px; color: var(--iso-ink-soft); }
+.hud .reply-save { display: block; width: 100%; padding: 8px 12px;
   white-space: normal; color: var(--iso-ink); background: var(--iso-glass-solid);
   border: 1px solid var(--iso-line); border-radius: 10px; cursor: pointer; }
-.ui-iso .tpl-existing { margin-bottom: 12px; color: var(--iso-ink-soft); }
-.ui-iso .tpl-existing > summary { cursor: pointer; padding: 8px 0; }
+.hud .tpl-existing { margin-bottom: 12px; color: var(--iso-ink-soft); }
+.hud .tpl-existing > summary { cursor: pointer; padding: 8px 0; }
 
 /* R96: 状態の語彙と部品は配達面すべてで共有する。 */
-.ui-iso .dstate {
+.hud .dstate {
   display: inline-flex; align-items: center; gap: 4px; max-width: 100%; min-width: 0;
   padding: 2px 6px; border-radius: 8px; font-size: 11px; font-style: normal;
   color: var(--iso-accent); background: var(--iso-accent-chip); vertical-align: middle;
 }
-.ui-iso .dstate-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ui-iso .dstate-saved, .ui-iso .dstate-pending, .ui-iso .dstate-sending {
+.hud .dstate-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hud .dstate-saved, .hud .dstate-pending, .hud .dstate-sending {
   color: var(--iso-ink); background: var(--iso-warn-chip);
 }
-.ui-iso .dstate-stalled, .ui-iso .dstate-offline { color: var(--iso-alert); background: var(--iso-alert-chip); }
-.ui-iso .dstate [hidden], .ui-iso .dstate[hidden], .ui-iso #btn-hire[hidden], .ui-iso #viewreset[hidden] { display: none; }
-.ui-iso .arow > .dstate { grid-column: 1 / -1; justify-self: start; }
-.ui-iso .sheetact { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
-.ui-iso .sheetgloss { flex: 1 1 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ui-iso .qb-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.ui-iso .qb-edit { font: inherit; font-size: 11px; border: 0; padding: 4px; background: transparent; color: var(--iso-accent); cursor: pointer; }
-.ui-iso .compose { flex-wrap: wrap; }
-.ui-iso .compose .dstate { flex: none; }
-.ui-iso .zrow { width: 100%; border: 0; background: transparent; text-align: left; font-family: inherit; cursor: pointer; }
-.ui-iso .zrow.on { background: var(--iso-accent-chip); outline: 1px solid var(--iso-accent); outline-offset: -1px; }
-.ui-iso .hmore { align-self: flex-start; font-family: inherit; border: 0; border-radius: 8px; background: transparent; cursor: pointer; }
-.ui-iso .hmore:hover { color: var(--iso-accent); background: var(--iso-accent-chip); }
-.ui-iso .bottom .histcard.expanded { max-height: min(40vh, 420px); overflow-y: auto; }
-.ui-iso .histhead { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; }
-.ui-iso .histhead .cardtitle { margin: 0; }
-.ui-iso .histcard.expanded .histhead { position: sticky; top: 0; background: var(--iso-glass-solid); }
-.ui-iso .hmore[hidden] { display: none; }
-.ui-iso #btn-help { margin-left: auto; flex: none; padding: 4px 8px; }
-.ui-iso .head .sub { min-width: 0; max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
-.ui-iso #viewreset { position: absolute; right: 16px; bottom: 16px; background: var(--iso-glass-solid); }
-.ui-iso .run-form { display: grid; gap: 12px; }
-.ui-iso .run-field { display: grid; gap: 4px; font-size: 12.5px; }
-.ui-iso .run-field .minput { margin: 0; }
-.ui-iso .run-advanced { margin-top: 16px; }
-.ui-iso .run-advanced summary { cursor: pointer; padding: 8px 0; color: var(--iso-ink-soft); }
-.ui-iso #gauges-more { flex: none; white-space: normal; }
+.hud .dstate-stalled, .hud .dstate-offline { color: var(--iso-alert); background: var(--iso-alert-chip); }
+.hud .dstate [hidden], .hud .dstate[hidden], .hud #btn-hire[hidden], .hud #viewreset[hidden] { display: none; }
+.hud .arow > .dstate { grid-column: 1 / -1; justify-self: start; }
+.hud .sheetact { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.hud .sheetgloss { flex: 1 1 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hud .qb-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.hud .qb-edit { font: inherit; font-size: 11px; border: 0; padding: 4px; background: transparent; color: var(--iso-accent); cursor: pointer; }
+.hud .compose { flex-wrap: wrap; }
+.hud .compose .dstate { flex: none; }
+.hud .zrow { width: 100%; border: 0; background: transparent; text-align: left; font-family: inherit; cursor: pointer; }
+.hud .zrow.on { background: var(--iso-accent-chip); outline: 1px solid var(--iso-accent); outline-offset: -1px; }
+.hud .hmore { align-self: flex-start; font-family: inherit; border: 0; border-radius: 8px; background: transparent; cursor: pointer; }
+.hud .hmore:hover { color: var(--iso-accent); background: var(--iso-accent-chip); }
+.hud .bottom .histcard.expanded { max-height: min(40vh, 420px); overflow-y: auto; }
+.hud .histhead { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; }
+.hud .histhead .cardtitle { margin: 0; }
+.hud .histcard.expanded .histhead { position: sticky; top: 0; background: var(--iso-glass-solid); }
+.hud .hmore[hidden] { display: none; }
+.hud #btn-help { margin-left: auto; flex: none; padding: 4px 8px; }
+.hud .head .sub { min-width: 0; max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
+.hud #viewreset { position: absolute; right: 16px; bottom: 16px; background: var(--iso-glass-solid); }
+.hud .run-form { display: grid; gap: 12px; }
+.hud .run-field { display: grid; gap: 4px; font-size: 12.5px; }
+.hud .run-field .minput { margin: 0; }
+.hud .run-advanced { margin-top: 16px; }
+.hud .run-advanced summary { cursor: pointer; padding: 8px 0; color: var(--iso-ink-soft); }
+.hud #gauges-more { flex: none; white-space: normal; }
 
 /* シートの左に回答面を残す。狭幅とワイド表示は内容高で上下に並べる。 */
-.ui-iso .sheet-open #attn, .ui-iso .sheet-open #viewreset {
+.hud .sheet-open #attn, .hud .sheet-open #viewreset {
   right: calc(clamp(480px, 58%, 720px) + 24px);
 }
-.ui-iso .sheet-open #attn { flex-wrap: wrap; white-space: normal; overflow-y: auto; max-height: calc(100% - 32px); }
-.ui-iso .sheet-open #attn > b, .ui-iso .sheet-open #attn > span:not(.dstate),
-.ui-iso .sheet-open #attn > .trayans, .ui-iso .sheet-open #attn > .traylock { flex: 1 1 100%; min-width: 0; }
-.ui-iso #attn .dstate, .ui-iso #attn .dstate span { flex: none; min-width: 0; font-size: 11px; }
-.ui-iso #attn .dstate-label { flex: 0 1 auto; }
-.ui-iso #attn .traylock { font-style: normal; font-size: 11px; color: var(--iso-ink-soft); }
-.ui-iso #attn .trayprev { border-color: var(--iso-alert); }
-.ui-iso .sheet-open:has(.sheet.wide) #stage { display: grid; grid-template-rows: auto minmax(0, 1fr); }
-.ui-iso .sheet-open:has(.sheet.wide) #attn {
+.hud .sheet-open #attn { flex-wrap: wrap; white-space: normal; overflow-y: auto; max-height: calc(100% - 32px); }
+.hud .sheet-open #attn > b, .hud .sheet-open #attn > span:not(.dstate),
+.hud .sheet-open #attn > .trayans, .hud .sheet-open #attn > .traylock { flex: 1 1 100%; min-width: 0; }
+.hud #attn .dstate, .hud #attn .dstate span { flex: none; min-width: 0; font-size: 11px; }
+.hud #attn .dstate-label { flex: 0 1 auto; }
+.hud #attn .traylock { font-style: normal; font-size: 11px; color: var(--iso-ink-soft); }
+.hud #attn .trayprev { border-color: var(--iso-alert); }
+.hud .sheet-open:has(.sheet.wide) #stage { display: grid; grid-template-rows: auto minmax(0, 1fr); }
+.hud .sheet-open:has(.sheet.wide) #attn {
   position: relative; top: auto; left: auto; right: auto; margin: 16px 16px 8px; max-height: 28vh;
 }
-.ui-iso .sheet-open .sheet.wide {
+.hud .sheet-open .sheet.wide {
   position: relative; top: auto; right: auto; bottom: auto; grid-row: 2; min-height: 0;
   width: auto; max-width: none; margin: 0 16px 16px;
 }
-.ui-iso .sheet-open:has(.sheet.wide):has(#attn[hidden]) .sheet { grid-row: 1 / -1; margin-top: 16px; }
-.ui-iso .rail-toggle { display: none; }
+.hud .sheet-open:has(.sheet.wide):has(#attn[hidden]) .sheet { grid-row: 1 / -1; margin-top: 16px; }
+.hud .rail-toggle { display: none; }
 @media (max-width: 1279px) {
-  .ui-iso .sheet-open #stage { display: grid; grid-template-rows: auto minmax(0, 1fr); }
-  .ui-iso .sheet-open #attn {
+  .hud .sheet-open #stage { display: grid; grid-template-rows: auto minmax(0, 1fr); }
+  .hud .sheet-open #attn {
     position: relative; top: auto; left: auto; right: auto; margin: 12px 12px 8px; max-height: 26vh;
   }
-  .ui-iso .sheet-open .sheet {
+  .hud .sheet-open .sheet {
     position: relative; top: auto; right: auto; bottom: auto; grid-row: 2; min-height: 0;
     width: auto; max-width: none; margin: 0 12px 12px;
   }
-  .ui-iso .sheet-open:has(#attn[hidden]) .sheet { grid-row: 1 / -1; margin-top: 12px; }
-  .ui-iso .sheet-open #viewreset { right: 16px; }
+  .hud .sheet-open:has(#attn[hidden]) .sheet { grid-row: 1 / -1; margin-top: 12px; }
+  .hud .sheet-open #viewreset { right: 16px; }
 }
 @media (max-width: 1024px) {
-  .ui-iso .shell, .ui-iso.list-mode .shell { grid-template-columns: 200px minmax(0, 1fr); }
-  .ui-iso .head { overflow: visible; flex-wrap: wrap; }
-  .ui-iso .usage { flex: 1 1 160px; }
-  .ui-iso .rail { display: none; }
-  .ui-iso .rail-toggle {
+  .hud .shell, .hud.list-mode .shell { grid-template-columns: 200px minmax(0, 1fr); }
+  .hud .head { overflow: visible; flex-wrap: wrap; }
+  .hud .usage { flex: 1 1 160px; }
+  .hud .rail { display: none; }
+  .hud .rail-toggle {
     display: block; position: absolute; top: 88px; right: 12px; writing-mode: vertical-rl;
     padding: 12px 8px; border: 1px solid var(--iso-line); border-radius: 10px;
     background: var(--iso-glass-solid); color: var(--iso-ink); font: inherit; font-size: 12.5px; cursor: pointer;
   }
-  .ui-iso .rail-open .rail {
+  .hud .rail-open .rail {
     display: flex; position: absolute; right: 48px; top: 64px; bottom: 12px;
     width: min(320px, calc(100% - 64px)); background: var(--iso-glass-solid);
   }
 
 }
 @media (max-width: 820px) {
-  .ui-iso { overflow-y: auto; }
-  .ui-iso .shell, .ui-iso.list-mode .shell { grid-template-columns: minmax(0, 1fr); height: auto; min-height: 100%; }
-  .ui-iso .side { flex-direction: row; flex-wrap: wrap; gap: 8px; padding: 8px; overflow: visible; }
-  .ui-iso .side .spacer { display: none; }
-  .ui-iso .brand { flex: 1 1 160px; }
-  .ui-iso .zones { flex: 1 1 100%; flex-direction: row; flex-wrap: wrap; }
-  .ui-iso .zrow { flex: 1 1 100px; width: auto; padding: 4px; }
-  .ui-iso .side .donutcard { flex: 1 1 180px; }
-  .ui-iso .admin { flex: 1 1 100%; display: flex; flex-direction: row; overflow-x: auto; gap: 4px; }
-  .ui-iso .admin .abtn { flex: none; }
-  .ui-iso .stage { min-height: 65vh; }
-  .ui-iso .sheet-open #stage { height: 75vh; flex: none; }
-  .ui-iso #attn.tray { flex-wrap: wrap; white-space: normal; }
-  .ui-iso .rail-toggle { position: fixed; top: 50%; }
-  .ui-iso .rail-open .rail { position: fixed; top: 16px; }
+  .hud { overflow-y: auto; }
+  .hud .shell, .hud.list-mode .shell { grid-template-columns: minmax(0, 1fr); height: auto; min-height: 100%; }
+  .hud .side { flex-direction: row; flex-wrap: wrap; gap: 8px; padding: 8px; overflow: visible; }
+  .hud .side .spacer { display: none; }
+  .hud .brand { flex: 1 1 160px; }
+  .hud .zones { flex: 1 1 100%; flex-direction: row; flex-wrap: wrap; }
+  .hud .zrow { flex: 1 1 100px; width: auto; padding: 4px; }
+  .hud .side .donutcard { flex: 1 1 180px; }
+  .hud .admin { flex: 1 1 100%; display: flex; flex-direction: row; overflow-x: auto; gap: 4px; }
+  .hud .admin .abtn { flex: none; }
+  .hud .stage { min-height: 65vh; }
+  .hud .sheet-open #stage { height: 75vh; flex: none; }
+  .hud #attn.tray { flex-wrap: wrap; white-space: normal; }
+  .hud .rail-toggle { position: fixed; top: 50%; }
+  .hud .rail-open .rail { position: fixed; top: 16px; }
 }
 
-.ui-iso .dstate:has(.dstate-hint) { flex-wrap: wrap; }
-.ui-iso .dstate-hint { flex: 1 1 100%; min-width: 0; font-size: 11px; white-space: normal; line-height: 1.45; }
-.ui-iso #attn .trayhead { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; min-width: 0; }
-.ui-iso #attn.tray { flex-wrap: wrap; white-space: normal; }
+.hud .dstate:has(.dstate-hint) { flex-wrap: wrap; }
+.hud .dstate-hint { flex: 1 1 100%; min-width: 0; font-size: 11px; white-space: normal; line-height: 1.45; }
+.hud #attn .trayhead { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; min-width: 0; }
+.hud #attn.tray { flex-wrap: wrap; white-space: normal; }
 /* 質問文は行を折り返して幅を取る（min-width:0 だと細い列で文の途中で折れる＝実レンダで確認）。 */
-.ui-iso #attn.tray > span { flex: 1 1 18em; min-width: 12em; white-space: normal; overflow: visible; text-overflow: clip; }
+.hud #attn.tray > span { flex: 1 1 18em; min-width: 12em; white-space: normal; overflow: visible; text-overflow: clip; }
 
 /* HUD_LAYERS_BEGIN (generated: ui/hud/layers.js) */
-.ui-iso {
+.hud {
   --z-tray: 5;
   --z-sheet: 7;
   --z-toast: 8;
@@ -1357,13 +1359,13 @@ html.iso-stream, html.iso-stream body { background: transparent; }
   --z-stream: 40;
   --z-digest: 45;
 }
-.ui-iso #attn.tray, .ui-iso #viewreset { z-index: 5; }
-.ui-iso .sheet, .ui-iso .rail-open .rail { z-index: 7; }
-.ui-iso .toast, .ui-iso .rail-toggle { z-index: 8; }
-.ui-iso .boss-onboarding { z-index: 9; }
-.ui-iso .modalwrap { z-index: 9; }
-.ui-iso .offbar { z-index: 30; }
-.ui-iso .sound-consent { z-index: 30; }
-.ui-iso #stream-subtitle, .ui-iso #stream-attention { z-index: 40; }
-.ui-iso .digest-card, .ui-iso .replay-controls { z-index: 45; }
+.hud #attn.tray, .hud #viewreset { z-index: 5; }
+.hud .sheet, .hud .rail-open .rail { z-index: 7; }
+.hud .toast, .hud .rail-toggle { z-index: 8; }
+.hud .boss-onboarding { z-index: 9; }
+.hud .modalwrap { z-index: 9; }
+.hud .offbar { z-index: 30; }
+.hud .sound-consent { z-index: 30; }
+.hud #stream-subtitle, .hud #stream-attention { z-index: 40; }
+.hud .digest-card, .hud .replay-controls { z-index: 45; }
 /* HUD_LAYERS_END */

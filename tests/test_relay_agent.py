@@ -365,6 +365,17 @@ class RelayAgentTest(unittest.TestCase):
         self.assertEqual(e["minions"], 2)
         self.assertEqual(e["skills"], ["x-post", "video-edit"])
 
+    def test_redact_drops_evidence_r98(self):
+        """R98: 証拠列 evidence は allowlist 外＝中継（スマホ）には載らない（新フィールドは既定で非搬送の不変条件）。"""
+        snap = {"employees": [{"session": "s1", "state": "working",
+                               "evidence": {"kind": "committed", "ago": 41}}],
+                "roster": [{"projectId": "p1", "session": "s1", "state": "working",
+                            "evidence": {"kind": "failed", "ago": 3}, "sessions": [{"session": "s1", "state": "working"}]}]}
+        out = ra._redact_office_for_relay(snap)
+        self.assertNotIn("evidence", out["employees"][0])
+        self.assertNotIn("evidence", out["roster"][0])
+        self.assertIn("evidence", ra._LOCAL_ONLY_ENTRY)
+
     def test_redact_scrubs_paths_and_urls_in_feed(self):
         """S3: feed の動作ログ行にもパス縮約・URLホスト化・切り詰めが掛かる
         （target と同じ値が feed にも入る自己矛盾＝中継への本文/パス漏れを塞ぐ）。"""
@@ -1093,7 +1104,9 @@ class AllowlistRedactionTest(unittest.TestCase):
         worker = (ROOT / "relay" / "src" / "worker.js").read_text(encoding="utf-8")
         reads = set(re.findall(r"\bp\.([a-zA-Z]+)\b", world)) | set(re.findall(r"\be\.([a-zA-Z]+)\b", worker))
         reads = {r for r in reads if r not in ignore and r[0].islower()}
-        missing = sorted(reads - set(ra._ALLOW_ENTRY))
+        # R98: ローカル専用と宣言したフィールド（_LOCAL_ONLY_ENTRY）は allowlist に無くてよい（宣言は必須）
+        self.assertFalse(set(ra._LOCAL_ONLY_ENTRY) & set(ra._ALLOW_ENTRY), "ローカル専用と allowlist の両方にある")
+        missing = sorted(reads - set(ra._ALLOW_ENTRY) - set(ra._LOCAL_ONLY_ENTRY))
         self.assertEqual(missing, [], f"UI/PWA が読むのに allowlist に無い: {missing}")
 
 

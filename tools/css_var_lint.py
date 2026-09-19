@@ -23,9 +23,21 @@ USE = re.compile(r"var\(\s*(--[A-Za-z0-9_-]+)\s*(,?)")
 DEF = re.compile(r"(--[A-Za-z0-9_-]+)\s*:")
 
 
+# R98: 様式の CSS は共通の ui/hud/hud.css の**上に重ねて**読まれる（pixel/style.css → hud.css の
+# --iso-* を使う）。ファイル先頭の `/* css-vars-from: ui/hud/hud.css */` で重ね先を宣言すると、
+# その定義も「定義済み」に数える（宣言が無ければ従来どおりファイル単体で見る）。
+FROM = re.compile(r"css-vars-from:\s*([^*\n]+)")
+
+
 def check(path):
     css = path.read_text(encoding="utf-8")
     defined = set(DEF.findall(css))
+    for spec in FROM.findall(css[:600]):
+        for rel in spec.split(","):
+            base = ROOT / rel.strip()
+            if not base.is_file():
+                raise SystemExit(f"✗ {path.relative_to(ROOT)} の css-vars-from が無い: {rel.strip()}")
+            defined |= set(DEF.findall(base.read_text(encoding="utf-8")))
     bad = {}
     for line_no, line in enumerate(css.splitlines(), 1):
         for name, fallback in USE.findall(line):

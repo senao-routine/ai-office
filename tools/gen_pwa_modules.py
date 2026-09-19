@@ -7,7 +7,7 @@
 `/ui/...` の**同じパス**で返す必要がある（import 指定子を書き換えないための条件）。
 
 生成物: relay/src/modules_data.js / app_html.js（git追跡必須）。
-ui/hud-tokens.css の共通トークンを ui/iso/style.css と ui/pwa/app.css にも展開する。
+ui/hud-tokens.css の共通トークンを ui/hud/hud.css と ui/pwa/app.css にも展開する。
 使い方:
     python3 tools/gen_pwa_modules.py           # 生成
     python3 tools/gen_pwa_modules.py --check   # ui/ との一致（ドリフト検知・verify用）
@@ -23,21 +23,21 @@ ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "relay" / "src" / "modules_data.js"
 APP_OUT = ROOT / "relay" / "src" / "app_html.js"
 HUD_SOURCE = ROOT / "ui" / "hud-tokens.css"
-HUD_TARGETS = [ROOT / "ui" / "iso" / "style.css", ROOT / "ui" / "pwa" / "app.css"]
+HUD_TARGETS = [ROOT / "ui" / "hud" / "hud.css", ROOT / "ui" / "pwa" / "app.css"]
 HUD_BEGIN = "/* HUD_TOKENS_BEGIN (generated: ui/hud-tokens.css) */"
 HUD_END = "/* HUD_TOKENS_END */"
 LAYERS_BEGIN = "/* HUD_LAYERS_BEGIN (generated: ui/hud/layers.js) */"
 LAYERS_END = "/* HUD_LAYERS_END */"
 LAYER_SELECTORS = {
-    "tray": ".ui-iso #attn.tray, .ui-iso #viewreset",
-    "sheet": ".ui-iso .sheet, .ui-iso .rail-open .rail",
-    "toast": ".ui-iso .toast, .ui-iso .rail-toggle",
-    "boss": ".ui-iso .boss-onboarding",
-    "modal": ".ui-iso .modalwrap",
-    "offbar": ".ui-iso .offbar",
-    "consent": ".ui-iso .sound-consent",
-    "stream": ".ui-iso #stream-subtitle, .ui-iso #stream-attention",
-    "digest": ".ui-iso .digest-card, .ui-iso .replay-controls",
+    "tray": ".hud #attn.tray, .hud #viewreset",
+    "sheet": ".hud .sheet, .hud .rail-open .rail",
+    "toast": ".hud .toast, .hud .rail-toggle",
+    "boss": ".hud .boss-onboarding",
+    "modal": ".hud .modalwrap",
+    "offbar": ".hud .offbar",
+    "consent": ".hud .sound-consent",
+    "stream": ".hud #stream-subtitle, .hud #stream-attention",
+    "digest": ".hud .digest-card, .hud .replay-controls",
 }
 
 # 入口＝3Dシーンとワールド構築。ここから import を辿って閉包を作る
@@ -175,7 +175,7 @@ def render_hud_css():
         if end <= begin:
             raise SystemExit(f"✗ {path.relative_to(ROOT)} の HUD_TOKENS マーカー順が不正")
         outputs[path] = css[:begin] + block + css[end:]
-    path = ROOT / "ui" / "iso" / "style.css"
+    path = ROOT / "ui" / "hud" / "hud.css"
     outputs[path] = render_layers_css(outputs[path])
     return outputs
 
@@ -189,7 +189,7 @@ def render_layers_css(css):
     values = dict(re.findall(r"(\w+):\s*(\d+)", match.group(1)))
     if values.keys() != LAYER_SELECTORS.keys():
         raise SystemExit("✗ layers.js と CSS 層の登録が不一致")
-    lines = [LAYERS_BEGIN, ".ui-iso {"]
+    lines = [LAYERS_BEGIN, ".hud {"]
     lines.extend(f"  --z-{key}: {value};" for key, value in values.items())
     lines.append("}")
     lines.extend(f"{LAYER_SELECTORS[key]} {{ z-index: {value}; }}" for key, value in values.items())

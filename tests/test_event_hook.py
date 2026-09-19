@@ -75,6 +75,180 @@ class EventHookTest(unittest.TestCase):
                              "tool_name": "Bash", "tool_input": {"command": "ls -la"}})
         self.assertEqual(json.loads(lines(self.home)[1])["kind"], "")
 
+    def test_bash_test_runners_are_classified_without_command_text(self):
+        """R98: 台帳の証拠列の元データ。テスト系は kind="test" の**分類だけ**（本文は書かない）。
+        2 つの嘘を構造的に避ける（別モデルレビュー）:
+          ① 名前に触れただけ（cat / echo / grep・引用の中・ヒアドキュメントの本文）は実行ではない
+          ② 終了コードがテストのものでない形（`| tail`・`|| true`・`; echo`）は証拠にしない
+        分からないときは何も言わない（台帳は「—」）＝失敗を成功で上書きしない。"""
+        cases = [
+            # 実際に走らせた＝終了コードがランナー自身のもの
+            ("bash verify.sh", "test"),
+            ("bash verify.sh > /tmp/log 2>&1", "test"),
+            ("cd /w && python3 -m pytest tests -q", "test"),
+            ("npm test -- --grep 'secret token'", "test"),
+            ("node --test tests/hud_ids.test.mjs", "test"),
+            ("cargo test --release", "test"),
+            ("bash dev.sh --check", "test"),
+            ("NO_COLOR=1 npx vitest run", "test"),
+            ("uv run pytest -q", "test"),
+            ("(cd w && pytest)", "test"),
+            ("./verify.sh", "test"),
+            # ★名前に触れただけ（実行していない）
+            ("cat verify.sh", ""),
+            ("echo pytest", ""),
+            ("git diff -- verify.sh", ""),
+            ("grep -n pytest tests/test_x.py", ""),
+            ("bash dev.sh --shot", ""),
+            ("rm -rf node_modules/jest", ""),
+            ("echo test && ls testdata", ""),
+            ("printf '%s' 'steps; pytest tests'", ""),           # 引用の中は実行ではない
+            ("python3 - <<'PY'\nimport x  # pytest tests\nPY", ""),  # ヒアドキュメントの本文も
+            ("echo 'bash verify.sh' >> notes.md", ""),
+            # ★走らせたが**終了コードがテストのものでない**＝証拠にしない（失敗を成功で上書きしない）
+            ("pytest -q | tail -3", ""),
+            ("bash verify.sh 2>&1 | tail -20", ""),
+            ("pytest || true", ""),
+            ("pytest -q; echo done", ""),
+            ("pytest &", ""),                                    # 待たない＝終了コードはテストのものでない
+            ("pytest -q & wait", ""),
+            ("pytest <<'IN'\ndata\nIN\necho done", ""),          # ヒアドキュメントの後ろに続く
+            ("echo $(true; pytest)", ""),                        # 置換の中＝全体の終了コードは echo のもの
+            ("echo `pytest -q`", ""),
+            ("FOO=$(date +%s) bash verify.sh", ""),              # 置換が混じったら保守的に分類しない
+            # git も同じ安全判定を通る（名前に触れただけ・終了コードが別物なら分類しない）
+            ("git commit -m 'run pytest later'", "git:commit"),
+            ("pytest -q && git commit -am wip", "git:commit"),
+            ("git -C /w commit -m x", "git:commit"),
+            ("git push origin master", "git:push"),
+            ("echo 'git commit'", ""),
+            ("git commit -am wip || true", ""),
+            ("git commit -am wip | tee log", ""),
+            ("cat .git/COMMIT_EDITMSG", ""),
+            ("echo done # retry later; pytest -q", ""),         # コメントの中は実行ではない
+            ("git commit -am wip && git push", "git:push"),      # 終了コードは最後のもの
+            # 走らせていない形（版表示・ヘルプ・収集のみ）と、引用の中のオプション
+            ("pytest --version", ""),
+            ("pytest --collect-only tests", ""),
+            ("npm test --help", ""),
+            ("node -e 'console.log(1) // --test'", ""),
+            ("node --test tests/a.mjs", "test"),
+            ("cargo test --no-run", ""),                         # ビルドだけ
+            ("make test -n", ""),                                # 何をするか表示するだけ
+            ("TEST_CMD='npx vitest run'", ""),                    # 代入だけ＝実行していない
+            ("CMD=\"bash verify.sh\"", ""),
+            ("node app.js --test", ""),                          # スクリプトの引数であって node のオプションではない
+            ("node --eval='console.log(42)' -- --test", ""),
+            ("npx jest --showConfig", ""),
+            ("node --test --watch tests/", "test"),
+            ("git -C /repo commit --dry-run", ""),               # コミットしていない
+            ("git --version", ""),
+            ("if [ ! -d tests ]; then exit 0; fi; python3 -m unittest", ""),  # 到達したとは限らない
+            ("for f in a b; do pytest $f; done", ""),
+            # 10 巡目の対策が行き過ぎて普通の実行を落としていた（引数の "." ・値の引用）
+            ("pytest .", "test"),
+            ("python3 -m unittest discover -s .", "test"),
+            ("git -C . commit -m wip", "git:commit"),
+            ("PYTEST_ADDOPTS=\"-q\" pytest", "test"),
+            ("cat <(printf x; pytest)", ""),                     # プロセス置換
+            ("pytest --setup-plan", ""),
+            ("go test -list Test", ""),
+            ("make test -t", ""), ("make test -sn", ""),          # レシピを実行しない
+            ("exec true; python3 -m unittest", ""),               # exec で置き換わる
+            ("set -n; python3 -m unittest", ""),                  # シェルオプションで実行されない
+            ("set -e; false; pytest", ""),
+            ("source env.sh; pytest", ""),                        # 許可リストに無い先行コマンド
+            ("ulimit -n 999; pytest", ""),
+            ("trap 'x' EXIT; pytest", ""),
+            ("echo start; pytest -q", "test"),                    # 支度だけの先行は許す
+            ("cd /w; python3 -m unittest", "test"),
+            ("exec true && pytest", ""),                         # 走らずに 0 で終わる
+            ("set -n && pytest", ""),
+            ("go test -list=Test", ""),                          # 値つきの非実行オプション
+            ("npx jest --showConfig=true", ""),
+            ("git add -A && git commit -m x", "git:commit"),
+            ("command exec true && python3 -m unittest", ""),     # 前置きで実体を隠しても見抜く
+            ("sudo exec true; pytest", ""),
+            ("! pytest", ""),
+            ("! (echo begin && python3 -m unittest x)", ""),      # 否定は終了コードを反転させる
+            ("npx vitest list --filesOnly", ""),                  # 一覧を出すだけ
+            ('PYTEST_ADDOPTS="--collect-only" pytest', ""),        # 環境変数に忍ばせた非実行
+            ("MAKEFLAGS=-n make test", ""),
+            ("make test -i", ""),                                 # 失敗しても 0 を返す
+            ('PYTEST_ADDOPTS="-q" pytest', "test"),                # 普通の実行は拾う
+            ("NO_COLOR=1 FORCE_COLOR=0 pytest -q", "test"),
+            ("export MAKEFLAGS=-i; make test", ""),                # 先行 export の効果も見る
+            ("export FOO=1; make test", "test"),
+            ("git -C . commit --short", ""),                       # git の暗黙 dry-run
+            ("git commit --porcelain", ""),
+            ('export MAKEFLAGS="-i -s"; make test', ""),           # 値に空白があっても見る
+            ("builtin exit 0 && python3 -m unittest", ""),        # 読めない先行は通さない
+            ("go test -c ./...", ""),                             # ビルドだけ
+            ("go test ./...", "test"),
+            ("npm test --if-present", ""),                        # スクリプトが無ければ何もしない
+            ("pytest --cache-show", ""), ("npx jest --clearCache", ""),
+            ('python3 -m unittest "$(printf %s --help)"', ""),     # 二重引用符の中の置換
+            ('bash verify.sh "a b"', "test"),                      # ただの引数は普通に拾う
+            ("pytest() (false)", ""),                             # 関数定義は実行ではない
+            ("go test -c=true ./...", ""),                        # 値つきのコンパイル専用
+            ("pytest -o addopts=--collect-only", ""),             # 設定で収集だけにする
+            ("pytest -o addopts=-q", "test"),
+            ("pytest --collectonly", ""),                         # 綴り違いの収集専用
+            ("git --html-path commit", ""),                       # 表示して終わる
+            ("git --exec-path", ""),
+        ]
+        for i, (cmd, want) in enumerate(cases):
+            run_hook(self.home, {"session_id": f"sess-evt-{i:04d}", "hook_event_name": "PostToolUse", "cwd": "/w",
+                                 "tool_name": "Bash", "tool_input": {"command": cmd}})
+        recs = [json.loads(ln) for ln in lines(self.home)]
+        self.assertEqual([r["kind"] for r in recs], [want for _, want in cases])
+        joined = "\n".join(lines(self.home))
+        for secret in ("secret token", "--grep", "tests/hud_ids", "--release", "node_modules"):
+            self.assertNotIn(secret, joined)
+
+    def test_short_circuit_failure_is_not_attributed(self):
+        """R98: `false && pytest` は pytest が走っていないのに全体は失敗する＝「テストの失敗」ではない。
+        短絡（&&）が在る形は**終了 0 で、かつ先行が読める形のときだけ**最後のコマンドへ帰属できる
+        （`builtin exit 0 && pytest` のように読めない先行は 0 でも走っていない・別モデルレビュー）。"""
+        for i, (ev, cmd, want) in enumerate([
+            ("PostToolUse", "false && pytest -q", ""),            # 先行 `false` は読めない＝通さない
+            ("PostToolUse", "cd /w && pytest -q", "test"),        # 読める支度なら 0 で走って成功
+            ("PostToolUseFailure", "false && pytest -q", ""),     # 失敗は誰の失敗か分からない
+            ("PostToolUseFailure", "pytest -q", "test"),          # 単独なら失敗もテストのもの
+            ("PostToolUseFailure", "cd /w; pytest -q", "test"),   # ; は短絡しない
+            ("PostToolUseFailure", "cd /nonexistent && pytest", ""),  # cd が失敗しても同じ形
+        ]):
+            run_hook(self.home, {"session_id": f"sess-sc-{i:04d}", "hook_event_name": ev, "cwd": "/w",
+                                 "tool_name": "Bash", "tool_input": {"command": cmd}})
+        self.assertEqual([json.loads(ln)["kind"] for ln in lines(self.home)],
+                         ["", "test", "", "test", "test", ""])
+
+    def test_background_by_response_is_not_evidence(self):
+        """R98: Bash が途中でバックグラウンドへ移ると入力に印が無く、**応答に id** が返る。
+        まだ終わっていない＝証拠にしない（別モデルレビュー）。"""
+        for i, (response, want) in enumerate([
+            ({"backgroundTaskId": "bg1"}, ""), ({"taskId": "t1"}, ""),
+            ({"stdout": "ok"}, "test"), ({}, "test"),
+        ]):
+            run_hook(self.home, {"session_id": f"sess-bgr-{i:04d}", "hook_event_name": "PostToolUse",
+                                 "cwd": "/w", "tool_name": "Bash",
+                                 "tool_input": {"command": "bash verify.sh"}, "tool_response": response})
+        self.assertEqual([json.loads(ln)["kind"] for ln in lines(self.home)], ["", "", "test", "test"])
+
+    def test_background_bash_is_not_evidence(self):
+        """R98: `run_in_background` は**起動しただけ**で PostToolUse が返る＝終了コードを知らない。
+        テストも git commit も分類しない（台帳は「—」＝失敗を成功で上書きしない・別モデルレビュー）。"""
+        for i, (payload, want) in enumerate([
+            ({"command": "bash verify.sh", "run_in_background": True}, ""),
+            ({"command": "git commit -am wip", "run_in_background": True}, ""),
+            ({"command": "bash verify.sh", "run_in_background": False}, "test"),
+            ({"command": "bash verify.sh"}, "test"),
+        ]):
+            run_hook(self.home, {"session_id": f"sess-bg-{i:04d}", "hook_event_name": "PostToolUse",
+                                 "cwd": "/w", "tool_name": "Bash", "tool_input": payload})
+        self.assertEqual([json.loads(ln)["kind"] for ln in lines(self.home)],
+                         ["", "", "test", "test"])
+
     def test_prompt_records_length_only(self):
         run_hook(self.home, {"session_id": "sess-evt-0003", "hook_event_name": "UserPromptSubmit",
                              "cwd": "/w", "prompt_text": "この本文は絶対に記録しない " * 3})

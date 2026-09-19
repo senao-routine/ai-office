@@ -7,7 +7,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). The version you are running is printed
 by `python3 server/office_version.py` and returned by `GET /api/office` as `app.version`.
 
-## [Unreleased]
+## [2.1.0] — 2026-09-19
 
 ### Fixed
 
@@ -25,6 +25,15 @@ by `python3 server/office_version.py` and returned by `GET /api/office` as `app.
 
 ### Added
 
+- **A second view: the ledger** (`?ui=pixel`, experimental). One row per project, thirty pixels
+  tall, so twenty projects and forty sessions fit on one screen; a ❗ opens its session rows and
+  sits at the top, and the number keys answer it exactly as they do in the 3D office. Switch
+  between the two views in ⚙ settings. The 3D office stays the default and is unchanged.
+- **An evidence column in the ledger.** Each row says whether that session actually landed a
+  commit or passed a test in the last 24 hours, taken from what the event hook recorded rather
+  than from what the session says about itself. A row with no record reads "—" and explains why,
+  and a command whose exit status does not belong to the test — piped into `tail`, followed by
+  `|| true`, run in the background — is never counted as evidence.
 - Issue templates, a security policy and a support pointer, so there is somewhere to go when
   something breaks.
 
@@ -58,5 +67,6 @@ The office became a place rather than a diagram.
   nodding and hopping — are back.
 - Updating one UI file no longer makes every phone re-download the whole bundle (about 1 MB).
 
-[Unreleased]: https://github.com/senao-routine/ai-office/compare/v2.0.0...HEAD
+[Unreleased]: https://github.com/senao-routine/ai-office/compare/v2.1.0...HEAD
+[2.1.0]: https://github.com/senao-routine/ai-office/releases/tag/v2.1.0
 [2.0.0]: https://github.com/senao-routine/ai-office/releases/tag/v2.0.0

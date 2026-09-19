@@ -1,4 +1,4 @@
-# R85-0/R86-C: ui/iso/strings.js の ja/en 番人。
+# R85-0/R86-C: ui/hud/strings.js の ja/en 番人（R98-W1 で ui/iso から移設）。
 # ①キー集合の一致: tpl_* 9キーが en にだけ追加され、既定言語 ja で T() が生キー名を返して
 #   画面に "tpl_add" 等が出た（i18nカナリアは en 側しか見ないため検出不能だった）。
 # ②en の値に日本語が混じっていないこと: i18n_iso_smoke はシートを一度も開かないので、
@@ -12,7 +12,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-STRINGS = ROOT / "ui" / "iso" / "strings.js"
+STRINGS = ROOT / "ui" / "hud" / "strings.js"   # R98-W1: 移設
 CJK = re.compile(r"[぀-ヿ一-鿿]")     # ひらがな・カタカナ・漢字
 
 

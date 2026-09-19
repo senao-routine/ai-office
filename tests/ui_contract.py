@@ -23,7 +23,7 @@ import time
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 WORLDS = ROOT / "tests" / "fixtures" / "world"
-STYLES = ("iso",)   # R90-S1: 方向Cを iso 1本に統合
+STYLES = ("iso", "pixel")   # R98-W1: pixel を追加＝両様式で dumpWorld が同値であること
 
 
 def free_port():

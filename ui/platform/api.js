@@ -214,15 +214,21 @@ export function poll(fetcher, onData, onOffline, intervalMs = 3000) {
     if (running) { pending = true; return; }
     clearTimeout(timer);
     running = true;
+    // R98: コールバック（onData / onOffline）の例外は「通信の失敗」ではない。同じ catch に落とすと
+    // 描画のバグが「サーバーに繋がらない」に化ける（台帳の証拠列で実際に踏んだ）。
+    // かつ**例外でポーリングを止めない**＝次回の予約は必ず finally で行う（別モデルレビュー）。
+    const safely = (label, fn) => {
+      try { fn(); } catch (err) { console.error(`[poll] ${label} failed`, err); }
+    };
     try {
       const data = await fetcher(ac.signal);
       if (stopped) return;
       fails = 0;
-      onOffline?.(false);
-      onData(data);
+      safely("onOffline", () => onOffline?.(false));
+      safely("onData", () => onData(data));
     } catch (err) {
-      if (stopped || err.name === "AbortError") return;
-      if (++fails >= 2) onOffline?.(true, err);
+      if (stopped || err?.name === "AbortError") return;
+      if (++fails >= 2) safely("onOffline", () => onOffline?.(true, err));
     } finally {
       running = false;
       if (!stopped) {

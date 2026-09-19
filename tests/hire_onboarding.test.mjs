@@ -5,7 +5,7 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createArrivals } from "../ui/platform/arrivals.js";
 import { hireSession, projectIdForPath } from "../ui/platform/api.js";
-import { T, setLang, dictKeys, dictStrings } from "../ui/iso/strings.js";
+import { T, setLang, dictKeys, dictStrings } from "../ui/hud/strings.js";
 
 const root = new URL("../", import.meta.url);
 async function hud(name, fixed = false) {

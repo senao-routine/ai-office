@@ -126,6 +126,7 @@ Codex は `~/.codex/state_5.sqlite` と `~/.codex/thread_history_1.sqlite` の�
 | `title` | 既定で通す | `/rename` の表示名。`OFFICE_RELAY_TITLES=0` で空文字 |
 | `detail` | 既定で通す、200字 | Claude bg の一行要約。`OFFICE_RELAY_DETAIL=0` で空文字 |
 | `lastSaid` `target` `lastOrder` `cwd` `branch` | キーだけ残し空文字 | 本文・パス等 |
+| `evidence` | 除去（allowlist 外） | R98: 直近 24h の hook 記録から `{kind: committed\|tested\|failed, ago}`（`office_timeline.evidence_for`）。記録が無ければキーごと無し。Codex/OpenClaw は hook が無いので常に無し。本文は持たない |
 | `bg` `pid` `tokens` `homeCwd` `evSeq` その他 | 除去 | allowlist 外はローカル専用 |
 
 ## 変更手順

@@ -53,6 +53,12 @@ def main():
             page.wait_for_timeout(400)
             dump = page.evaluate("window.__office.dumpWorld()")
             stats = page.evaluate("window.__office.stats && window.__office.stats()") or {}
+            # R98: 台帳（?ui=pixel）も同梱されている＝⚙「画面」で切り替えた人が空振りしない
+            page.goto(f"http://127.0.0.1:{port}/?ui=pixel")
+            page.wait_for_function("window.__office && window.__office.ready", timeout=60000)
+            page.wait_for_timeout(300)
+            px = page.evaluate("() => ({ style: window.__office.style,"
+                               "  rows: document.querySelectorAll('#agents .pxrow').length })")
             browser.close()
     finally:
         srv.shutdown()
@@ -62,6 +68,11 @@ def main():
         print(f"  ✓ 静的デモ: サーバー無しで {agents} 体が出勤（drawCalls {stats.get('drawCalls')}）")
     else:
         print(f"  ✗ 静的デモの出勤が少なすぎる: {agents} 体")
+        ng += 1
+    if px.get("style") == "pixel" and px.get("rows", 0) >= 6:
+        print(f"  ✓ 静的デモ: 台帳（?ui=pixel）も {px['rows']} 行で立つ")
+    else:
+        print(f"  ✗ 静的デモの台帳が立たない: {px}")
         ng += 1
     if api_hits:
         print(f"  ✗ 静的デモが /api/ を叩いている（ホスト先には存在しない）: {api_hits[:3]}")

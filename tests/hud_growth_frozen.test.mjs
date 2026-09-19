@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { T, setLang, dictKeys, dictStrings } from "../ui/iso/strings.js";
+import { T, setLang, dictKeys, dictStrings } from "../ui/hud/strings.js";
 import { absenceDays, localDayStart } from "../ui/platform/clock.js";
 
 // Load browser absolute imports without a browser, dependencies or files on disk.

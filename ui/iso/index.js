@@ -4,9 +4,8 @@
 // 全ての数値は world（実データ）から。参考画像にある FUNDS 等の
 // 実データが無い数値は出さない（嘘のメトリクス禁止＝プラン確定事項）。
 import {
-  STARVE_MIN, activityGloss, agoStr, buildWorld, labelDensityMax, summarizeWorld, tidyActivity,
+  STARVE_MIN, activityGloss, agoStr, buildWorld, labelDensityMax, summarizeWorld,
 } from "/ui/core/world.js";
-import { events, getOffice, poll } from "/ui/platform/api.js";
 import { frozen, loop, now } from "/ui/platform/clock.js";
 import { createArrivals } from "/ui/platform/arrivals.js";
 import { installProbe } from "/ui/platform/probe.js";
@@ -26,17 +25,16 @@ import { init as initCustomize } from "/ui/hud/customize.js";
 import { init as initHire } from "/ui/hud/hire.js";
 import { init as initFirstRun } from "/ui/hud/firstrun.js";
 import { initStream, privateBadge, privateStatus, streamOptions, streamSettings } from "/ui/hud/stream.js";
+// R98-W1: 様式非依存の部分は ui/hud へ移した（shell=文言・ピン・ヘルプ／board=2階層と共通クローム／
+// session=ポーリング・オフライン・深リンク・デモ）。ここに残るのは 3D と 3 カラムの固有部だけ。
+import { applyStaticStrings, el, initHelp, initUsage, paintArrivalBadge } from "/ui/hud/shell.js";
+import { ZONES, attnKeyFor, departmentBoard, renderChrome, renderHistory, zoneLabel } from "/ui/hud/board.js";
+import { init as initSession } from "/ui/hud/session.js";
 import { IsoScene } from "./scene3d.js";
 import { DEFAULT_SPEC } from "/ui/core/layout_specs.js";
 import { T, lang, setLang } from "./strings.js";
 
 export const STYLE = STYLES.ISO;
-
-const ZONES = ["desk", "meeting", "queue", "lounge", "external"];
-const zoneLabel = (z) => (ZONES.includes(z) ? T(`zone_${z}`) : "");
-
-/** ❗の内容キー。質問文が変われば別の❗として扱う（回答済み楽観表示の解除判定に使う）。 */
-const attnKeyFor = (a) => (a?.question ? `q:${a.question}` : `approval:${a?.session || ""}`);
 
 /**
  * 🎬デモモード（?demo=1）: /ui/demo/world.json を1回だけ読み、投函は行わない。
@@ -54,7 +52,8 @@ export async function mount(root) {
   root.replaceChildren();
   // R67: ?t=固定（回帰スクショ）では全 transition を無効化＝入場フェード込みでも
   // golden ビット一致（監査で実証済みの方式）。通常時だけ動きが付く
-  root.className = frozen ? "ui-iso no-anim" : "ui-iso";
+  // R98-W1: HUD の CSS は .hud 接頭（ui/hud/hud.css・両様式共用）。ui-iso は 3D 固有の印として残す
+  root.className = frozen ? "hud ui-iso no-anim" : "hud ui-iso";
 
   const shell = document.createElement("div");
   shell.className = "shell";
@@ -157,67 +156,15 @@ export async function mount(root) {
   const stream = streamOptions(location.search);
   shell._stream = stream;
   const broadcast = initStream({ root, shell, options: stream, T });
-  applyStaticStrings(shell);
+  applyStaticStrings(shell, T);
 
   const css = document.createElement("link");
   css.rel = "stylesheet";
-  css.href = "/ui/iso/style.css";
+  css.href = "/ui/hud/hud.css";
   await new Promise((res) => { css.onload = res; css.onerror = res; document.head.append(css); });
 
-  // コストDOMを変えずに、実際に描かれた値だけをヘッダーへ要約する。
-  // クリックで全データを開ける。推定ペースはラベルごと残し、実測%と区別する。
-  const usage = shell.querySelector(".usage");
-  const gaugesEl = shell.querySelector("#gauges");
-  const usageSummary = shell.querySelector("#usage-summary");
-  const setUsageOpen = (open) => {
-    usage.classList.toggle("open", open);
-    usageSummary.setAttribute("aria-expanded", String(open));
-    gaugesEl.inert = !open;
-  };
-  setUsageOpen(false);
-  usageSummary.addEventListener("click", () => setUsageOpen(!usage.classList.contains("open")));
-  shell.addEventListener("click", (e) => {
-    if (!usage.contains(e.target)) setUsageOpen(false);
-  });
-  // R91: ヘッダーは「テキストの要約」から「実際のゲージ」へ。ドロワーを開かなくても
-  // 残枠の減り方が常に見える（本人要望）。値は gauges.js が描いたのと同じ実測 pin＝
-  // DOMを読み直して要約する旧実装（表示が変わると壊れる）をやめる。
-  const summaryEl = shell.querySelector("#usage-summary");
-  const paintPins = (pins) => {
-    summaryEl.replaceChildren();
-    if (!pins.length) {
-      summaryEl.textContent = T("gauge_credits");
-      summaryEl.title = T("gauge_credits");
-      usage.hidden = gaugesEl.hidden;
-      return;
-    }
-    const words = [];
-    let prevWho = null;
-    for (const p of pins) {
-      // 同じプロバイダが続くときは名前を繰り返さない（"Claude Code 5時間枠 / 週間枠"）
-      const short = p.who && p.who === prevWho && p.window ? p.window : (p.label || p.who || "");
-      prevWho = p.who || null;
-      const chip = el("span", "gpin");
-      const bar = el("span", "gpbar");
-      const fill = el("i", p.warn ? "gpfill warn" : "gpfill");
-      fill.style.width = `${Math.max(2, Math.round(p.pct))}%`;
-      bar.append(fill);
-      chip.append(el("span", "gplab", short), bar,
-        el("b", p.warn ? "gppct warn" : "gppct", `${Math.round(p.pct)}%`));
-      summaryEl.append(chip);
-      words.push(`${p.label || p.who} ${Math.round(p.pct)}%`);
-    }
-    summaryEl.title = words.join(" · ");
-    usage.hidden = gaugesEl.hidden;
-  };
-  paintPins([]);
-  shell.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && usage.classList.contains("open")) {
-      setUsageOpen(false);
-      shell.querySelector("#usage-summary").focus();
-      e.stopPropagation();
-    }
-  }, true);
+  // ヘッダーの枠ゲージ（ピン）と、その開閉。R98-W1 で ui/hud/shell.js へ
+  const { paintPins } = initUsage({ shell, T });
 
   // R80-B6: WebGLが使えない環境（古いGPU・仮想マシン・リモートデスクトップ・ドライバ拒否）で
   // 以前は `new IsoScene()` の例外が mount() ごと落ち、boot.html が英語の行き止まりを出していた。
@@ -268,13 +215,13 @@ export async function mount(root) {
     if (!frozen && Math.floor(t) !== arrivalTick) {
       arrivalTick = Math.floor(t);
       for (const row of shell.querySelectorAll(".arow")) {
-        paintArrivalBadge(row.querySelector(".arowhead"), arrivals.label(row.dataset.session));
+        paintArrivalBadge(row.querySelector(".arowhead"), arrivals.label(row.dataset.session), T);
       }
     }
     digest?.afterDraw?.();
     // R67: 「今更新された」の可視化。frozen では非表示＝golden 撮り直し不要
-    if (!frozen && lastDataMono !== null) {
-      const s = Math.max(0, Math.round(t - lastDataMono));
+    const s = frozen ? null : session.dataAge(t);
+    if (s !== null) {
       if (s !== freshShown) {
         freshShown = s;
         freshEl.textContent = T("updated_ago", s);
@@ -287,15 +234,15 @@ export async function mount(root) {
     built = buildWorld(office);
     arrivals.update(office);
     // 言語は office_json の lang が正本（サーバー設定に追随）。変わったら静的文言も貼り直す
-    if (built.lang !== lang()) { setLang(built.lang); applyStaticStrings(shell); }
-    lastDataMono = now();
+    if (built.lang !== lang()) { setLang(built.lang); applyStaticStrings(shell, T); }
+    session.markData();
     delivery.update(built);
     customize.update(built);
-    hud.board = departmentBoard(office, built);
+    hud.board = departmentBoard(office, built, T);
     gauges.start();   // 初回データ到着後に起動
     render(shell, built, hud);
     firstrun.update(built);
-    if (!hashApplied) { hashApplied = true; openAttentionHash(); }
+    session.applyHashOnce();
     growth.update();
     sheet.refreshGrowth();
     digest?.update();
@@ -305,7 +252,6 @@ export async function mount(root) {
   };
 
   // HUD は mount ごとのインスタンス。最新の world と再描画を明示的に渡す。
-  let lastDataMono = null;
   const getWorld = () => built;
   const repaint = () => { if (built) render(shell, built, hud); };
   const common = { shell, T, getWorld, render: repaint };
@@ -328,16 +274,6 @@ export async function mount(root) {
   const { openCompose, jumpTerminal } = sheet;
   const tray = initTray({ ...common, el, attnKeyFor, delivery, sheet, modals, DEMO });
   const hud = { tray, sheet, board: [] };
-  let hashApplied = false;
-  const openAttentionHash = () => {
-    if (frozen || DEMO || stream.enabled || !built) return;
-    const match = /^#attn=(.+)$/.exec(location.hash);
-    if (!match) return;
-    let session;
-    try { session = decodeURIComponent(match[1]); } catch { return; }
-    tray.focusSession(session);
-  };
-  window.addEventListener("hashchange", openAttentionHash);
   const setRailOpen = (open) => {
     shell.classList.toggle("rail-open", open);
     shell.querySelector("#rail-toggle").setAttribute("aria-expanded", String(open));
@@ -357,17 +293,10 @@ export async function mount(root) {
     repaint();
     shell.querySelector(".hmore")?.focus();
   });
-  const openHelp = () => {
-    // ダイジェスト（留守中のまとめ）が前面のときは開かない＝ヘルプの裏でダイジェストの数字キーが生き続けて誤送信する（別モデルレビュー）。
-    if (stream.enabled || shell.classList.contains("replay-active")
-      || shell.querySelector("#digest-card")?.hidden === false) return;
-    modal.replaceChildren(mEl("b", "mtitle", T("help_title")),
-      mEl("b", "msubtitle", T("help_keys_title")), mEl("p", "mnote", T("help_keys")),
-      mEl("b", "msubtitle", T("help_urls_title")), mEl("p", "mnote", T("help_urls")));
-    modal.dataset.kind = "help";
-    openModal();
-  };
-  shell.querySelector("#btn-help").addEventListener("click", openHelp);
+  const openHelp = initHelp({ shell, T, modals,
+    // ダイジェスト（留守中のまとめ）／リプレイ／配信が前面のときは開かない
+    blocked: () => stream.enabled || shell.classList.contains("replay-active")
+      || shell.querySelector("#digest-card")?.hidden === false });
   const onHudKey = (e) => {
     if (e.target.closest?.("input, textarea, select, [contenteditable=true]")) return;
     if (e.key === "?" && !e.metaKey && !e.ctrlKey && !e.altKey) { e.preventDefault(); openHelp(); }
@@ -515,7 +444,7 @@ export async function mount(root) {
     shell._fx.hoverId = id || null;
   });
   const customize = initCustomize({ shell, T, scene, DEMO, stream, modals,
-    refresh: () => stop.refresh?.(), showToast: delivery.showToast });
+    refresh: () => session.refresh(), showToast: delivery.showToast });
   const admin = initAdmin({
     demo: DEMO,
     // R97-C: デモはポーリングしない＝言語を切り替えたら、その場で現在の world を貼り直す必要がある。
@@ -523,59 +452,25 @@ export async function mount(root) {
     // 選んだ言語が即座に戻る（別モデルレビューで再現）。選択中の言語を被せてから貼る。
     reapplyWorld: () => { if (world) apply({ ...world, lang: lang() }); },
     ...common, root, lang, setLang, modals, billingOf, fmtTok,
-    showToast: delivery.showToast, applyStaticStrings: () => applyStaticStrings(shell),
+    showToast: delivery.showToast, applyStaticStrings: () => applyStaticStrings(shell, T),
     renderCustomizationSettings: customize.renderSettings,
     renderStreamSettings: () => streamSettings({ modal, mEl, T, showToast: delivery.showToast, replay: digest }),
   });
   const hire = initHire({ ...common, lang, DEMO: DEMO || stream.enabled, modals, arrivals,
-    refresh: () => stop.refresh?.(), showToast: delivery.showToast });
+    refresh: () => session.refresh(), showToast: delivery.showToast });
   const hireButton = shell.querySelector("#btn-hire");
   if (hireButton) hireButton.title = hireButton.textContent;
   // 描画側（paintLabels）が読む演出状態。純粋なworldに混ぜない。
   shell._fx = { wakeActive: delivery.wakeActive, stalled: delivery.isStalled, hoverId: null };
 
-  // オフライン表示は .ui-iso ルート（root）に付ける（CSS は .ui-iso.offline を見る。
-  // shell に付けるとセレクタが永遠にマッチしない＝実際にサイレント故障していた）
-  const offBar = shell.querySelector("#offbar");
-  const stop = DEMO ? (() => {}) : poll(
-    getOffice, apply,
-    (offline) => {
-      root.classList.toggle("offline", Boolean(offline));
-      if (offline) {
-        const age = lastDataMono === null ? null : Math.max(0, Math.round(now() - lastDataMono));
-        offBar.textContent = age === null
-          ? T("off_noconn")
-          : T("off_stale", age < 90 ? T("ago_sec", age) : T("ago_min", Math.round(age / 60)));
-      }
-      offBar.hidden = !offline;
-      repaint();
-      sheet.refreshGrowth();
-    },
-    frozen ? 1e9 : 3000,          // 固定時刻のときはポーリングしない（スクショが揺れる）
-  );
-  const stopEvents = frozen || DEMO ? (() => {}) : events(
-    () => stop.refresh(),
-    () => stop.setInterval(3000),
-    () => {
-      stop.setInterval(15000);
-      stop.refresh();             // 接続・再接続時も最新のスナップショットを取得する。
-    },
-  );
+  // データの取り方（ポーリング・SSE・オフライン表示・#attn= 深リンク・🎬デモ）は ui/hud/session.js
+  const session = initSession({ root, shell, T, DEMO, apply, tray, getWorld: () => world,
+    blocked: () => stream.enabled,
+    onOffline: () => { repaint(); sheet.refreshGrowth(); } });
 
   const gauges = initGauges({ ...common, lang, onPins: paintPins, demo: DEMO });
 
-  if (DEMO) {
-    // 🎬デモ: 同梱worldを1回だけ読む（ポーリングしない・実セッション不要）。
-    // 読めなければライブを1回だけ取得して静かにフォールバック。
-    // ※ apply が参照する HUD 初期化より後に置くこと（初回描画のTDZを防ぐ）
-    try {
-      const res = await fetch("/ui/demo/world.json", { headers: { "X-Office-Local": "1" } });
-      if (res.ok) apply(await res.json());
-    } catch { /* fallthrough */ }
-    if (world === null) {
-      try { apply(await getOffice()); } catch { /* オフラインでも空画面のまま起動 */ }
-    }
-  }
+  if (DEMO) await session.loadDemo();
 
   // 描画ループ。frozen のときは1フレームだけ描いて止まる＝スクショが必ず同じ絵になる。
   const stopLoop = loop(draw);
@@ -588,7 +483,7 @@ export async function mount(root) {
     dumpWorld: () => summarizeWorld(world),
     inject: apply,                          // apply が描画まで済ませる
     stats: () => scene.stats(),             // drawCalls 等の性能ゲート用
-    pollMs: () => stop.intervalMs ?? null,
+    pollMs: () => session.intervalMs(),
     debug: {
       // テストのクリック照準（座標の暗算をしない掟）。契約外＝ui_contract は比較しない
       agentPoint: (id) => scene.projectAgent(id),
@@ -600,9 +495,8 @@ export async function mount(root) {
     },
   });
   return () => {
-    stopEvents(); stop(); stopLoop(); uninstall();
+    session.dispose(); stopLoop(); uninstall();
     window.removeEventListener("resize", onResize);
-    window.removeEventListener("hashchange", openAttentionHash);
     window.removeEventListener("keydown", onHudKey, true);
     broadcast.dispose();
     hire.dispose(); firstrun.dispose(); customize.dispose();
@@ -683,7 +577,7 @@ function paintLabels(shell, scene, w) {
       chip.dataset.w = "";                                    // テキスト変化＝寸法キャッシュ無効化
     }
     if (!frozen) {
-      if (paintArrivalBadge(chip, arrival)) chip.dataset.w = "";
+      if (paintArrivalBadge(chip, arrival, T)) chip.dataset.w = "";
       const value = stream?.enabled || shell.classList.contains("replay-active") ? null : shell._growth?.label(a);
       let level = chip.querySelector(".label-level");
       if (value && !level) {
@@ -769,93 +663,24 @@ function paintProjectSigns(shell, scene, world) {
   for (const node of old.values()) node.remove();
 }
 
-function el(tag, cls, text) {
-  const n = document.createElement(tag);
-  if (cls) n.className = cls;
-  if (text !== undefined) n.textContent = text;
-  return n;
-}
-
-function paintArrivalBadge(host, arrival) {
-  let badge = host.querySelector(".arrival-badge");
-  const text = [arrival?.isNew ? T("hire_new_badge") : "",
-    arrival?.slug ? T("hire_branch_badge", arrival.slug) : ""].filter(Boolean).join(" ");
-  if (!text) { if (badge) { badge.remove(); return true; } return false; }
-  if (!badge) { badge = el("span", "arrival-badge"); host.append(badge); }
-  badge.title = text;
-  if (badge.textContent === text) return false;
-  badge.textContent = text;
-  return true;
-}
-
-/** 言語で変わる静的クローム（テンプレート直書きだった部分）。mount と言語切替時に貼る。 */
-function applyStaticStrings(shell) {
-  shell.querySelector("#gtitle-credits").textContent = T("gauge_credits");
-  shell.querySelector("#gtitle-money").textContent = T("gauge_money");
-  shell.querySelector("#btn-newproj").textContent = T("btn_newproj");
-  const hireButton = shell.querySelector("#btn-hire");
-  if (hireButton) hireButton.textContent = T("btn_hire");
-  shell.querySelector("#btn-launch").textContent = T("btn_launch");
-  shell.querySelector("#btn-pair").textContent = T("btn_pair");
-  shell.querySelector("#btn-run").textContent = T("btn_run");
-  shell.querySelector("#btn-res").textContent = T("btn_res");
-  shell.querySelector("#btn-settings").textContent = T("btn_settings");
-  for (const b of shell.querySelectorAll(".admin .abtn")) b.title = b.textContent;
-  shell.querySelector("#greet").textContent = T("office_fallback");
-  shell.querySelector("#sub").textContent = T("loading");
-  shell.querySelector("#sheetsnd").title = T("snd_title");
-  shell.querySelector("#sheetterm").title = T("term_title");
-  // R91: 追加した2つも同じ経路で貼り直す（init で1度だけ付けると言語切替で置き去りになる）
-  for (const [id, key] of [["#sheetarch", "avatar_customize"], ["#sheetwide", "sheet_wide"]]) {
-    const b = shell.querySelector(id);
-    if (!b) continue;
-    b.title = T(key);
-    b.setAttribute("aria-label", T(key));
-  }
-  shell.querySelector("#composeinput").placeholder = T("compose_ph");
-  // R80-B6: 3D不可の案内は mount 時（＝office_json の lang 到着前）に作られるので、
-  // 言語が確定したここで必ず貼り直す（旧: 日本語UIに英語の案内が出ていた）
-  const no3d = shell.querySelector("#no3d");
-  if (no3d) no3d.textContent = T("no3d");
-  const no3dList = shell.querySelector("#no3d-list");
-  if (no3dList) no3dList.textContent = T("no3d_list");
-  shell.querySelector("#title-tasks").textContent = T("card_tasks");
-  shell.querySelector("#title-hist").textContent = T("card_hist");
-  shell.querySelector("#title-agents").textContent = T("board_title");
-  const gaugesMore = shell.querySelector("#gauges-more");
-  if (gaugesMore) gaugesMore.textContent = T("gauges_more");
-  shell.querySelector("#rail-toggle").textContent = T("rail_list");
-  shell.querySelector("#btn-help").title = T("help_title");
-  shell.querySelector("#btn-help").setAttribute("aria-label", T("help_title"));
-  shell.querySelector("#viewreset").textContent = T("view_reset");
-}
-
+/** 3 カラム固有の描画（ゾーン概況・右レールの部署→セッション・下段）。共通部は ui/hud/board.js。 */
 function render(shell, w, { tray, sheet, board }) {
   const z = w.counts;
-  // Missing recipe metadata is unknown (older servers/fixtures), not a confirmed empty list.
-  const runButton = shell.querySelector("#btn-run");
-  runButton.hidden = false;
-  runButton.textContent = T(Array.isArray(w.actions?.recipes) && w.actions.recipes.length === 0 ? "btn_run_empty" : "btn_run");
-  runButton.title = runButton.textContent;
-  shell._traySel = tray.render(w);           // 足元チップの強調用（paintLabels が読む）
+  renderChrome(shell, w, T, tray);           // ▶文言・❗トレイ（shell._traySel は paintLabels が読む）・オフィス名
 
-  // ── 左: ブランド＋ゾーン概況 ─────────────────────────────────
-  shell.querySelector("#brandoffice").textContent = w.officeName || T("office_fallback");
+  // ── 左: ゾーン概況 ─────────────────────────────────────────
   const zones = shell.querySelector("#zones");
   zones.replaceChildren();
   for (const key of ZONES) {
     const row = el("button", `zrow z-${key}${shell._zoneFilter === key ? " on" : ""}`);
     row.type = "button"; row.dataset.zone = key;
     row.setAttribute("aria-pressed", String(shell._zoneFilter === key));
-    row.append(el("i", "zdot"), el("span", "zlabel", zoneLabel(key)),
+    row.append(el("i", "zdot"), el("span", "zlabel", zoneLabel(T, key)),
       el("b", "zcount", String(z[key] ?? 0)));
     zones.append(row);
   }
 
-  // ── 中央: 挨拶＋❗トレイ ─────────────────────────────────────
-  shell.querySelector("#sub").textContent = w.officeName || T("office_fallback");
-
-  // ── 左: 部署→セッション。既存行を再利用し、クリック中のdetachを避ける ──
+  // ── 右: 部署→セッション。既存行を再利用し、クリック中のdetachを避ける ──
   const agents = shell.querySelector("#agents");
   const selectedId = sheet.selectedId();
   const oldGroups = new Map([...agents.querySelectorAll(".department")]
@@ -930,7 +755,7 @@ function render(shell, w, { tray, sheet, board }) {
       row.dataset.session = a.session;
       row.dataset.project = a.id;
       row.dataset.zone = a.zone;
-      if (!frozen) paintArrivalBadge(row.querySelector(".arowhead"), shell._arrivals?.label(a.session));
+      if (!frozen) paintArrivalBadge(row.querySelector(".arowhead"), shell._arrivals?.label(a.session), T);
       const cls = `arow st-${a.state} zone-${a.zone}${a.id === selectedId ? " sel" : ""}`;
       if (row.className.replace(" fresh", "") !== cls) row.className = cls;
       let changed = setText(row.querySelector(".aname"), a.name || "?");
@@ -942,7 +767,7 @@ function render(shell, w, { tray, sheet, board }) {
       }
       row.querySelector(".acrew").hidden = true; // 件数は親のプロジェクト行へ集約
       paintDeliveryChip(row.querySelector(".dstate"), { T, agent: a, aliases: true, quietLive: true,
-        offline: shell.closest(".ui-iso").classList.contains("offline"),
+        offline: Boolean(shell.closest(".offline")),
         stalled: shell._fx?.stalled?.(a.session) });
       const act = row.querySelector(".aact");
       act.className = "aact" + (a.attention && a.approvalMin >= STARVE_MIN ? " starve" : "");
@@ -971,69 +796,14 @@ function render(shell, w, { tray, sheet, board }) {
   // （実測: どのセッションもタスク管理ツールを使っておらず常に 0/0/0 だった）。
   // 空のときは実データで作った「今日のオフィス」に差し替える＝死んだ面積を作らない。
   renderBottomLeft(shell, w);
-  const hist = shell.querySelector("#hist");
-  hist.replaceChildren();
   // R67: 4件目は全解像度でカード高さから完全にはみ出て不可視だった（実測）＝
   // 見える3件＋「他N件」注記に正直化
   const expanded = shell.querySelector(".histcard").classList.contains("expanded");
-  const histItems = (w.history || []).slice(0, expanded ? 12 : 3);
-  for (const h of histItems) {
-    const row = el("div", "hrow");
-    const resend = el("button", "hresend", "↻");
-    resend.type = "button";
-    resend.title = T("resend_title");
-    resend.dataset.session = h.session || "";
-    resend.dataset.text = h.text || "";
-    resend.dataset.disp = h.disp || "";
-    row.append(el("b", "", h.disp || ""),
-      el("span", "", h.text || ""));
-    if (w.generatedAt && h.ts) {
-      row.append(el("i", "hago", agoStr(w.generatedAt - h.ts, w.lang)));
-    }
-    const status = deliveryChip({ T, state: h.pending ? "pending" : "live" });
-    status.classList.add("hp");
-    row.append(status, resend);
-    hist.append(row);
-  }
+  renderHistory(shell, w, T, { limit: expanded ? 12 : 3 });
   const more = shell.querySelector(".hmore");
   more.hidden = (w.history || []).length <= 3;
   more.textContent = T(expanded ? "hist_less" : "hist_more", (w.history || []).length - 3);
   more.setAttribute("aria-expanded", String(expanded));
-  if (!hist.children.length) hist.append(el("div", "hempty", T("hist_empty")));
-}
-
-/** 受信済みの本文・ベンダー・成長値をHUD専用の2階層へ。core/3Dのworldは変更しない。 */
-function departmentBoard(office, w) {
-  const raw = new Map((office.roster || []).map((p) => [p.projectId || p.session, p]));
-  const employees = new Map((office.employees || []).map((p) => [p.session, p]));
-  const groups = new Map();
-  for (const a of w.agents) {
-    const p = raw.get(a.id) || employees.get(a.session) || {};
-    const name = p.name || p.dept || a.dept || a.name;
-    const key = a.external ? a.id : p.cwd || name || a.id;
-    if (!groups.has(key)) groups.set(key, { key, name, sessions: [] });
-    const members = a.sessions.length ? a.sessions : [{ session: a.session }];
-    members.forEach((brief, i) => {
-      const lead = brief.session === a.session;
-      const member = employees.get(brief.session) || {};
-      const data = { ...(lead ? p : {}), ...brief, ...member };
-      const model = buildWorld({ employees: [data] }).agents[0];
-      const vendor = String(data.vendor || p.vendor || (a.external ? "openclaw" : "claude")).toLowerCase();
-      const detail = data.detail || data.bg?.detail || model.question
-        || (model.attention ? T("approval_min", model.approvalMin) : "")
-        || activityGloss(model, w.lang) || zoneLabel(model.zone);
-      // detailは40 Unicode文字。カテゴリ由来の絵文字を箇条書きの印にしない。
-      const plainDetail = String(detail).replace(/^[\p{Extended_Pictographic}\uFE0F\s]+/u, "");
-      const level = data.level ?? office.growth?.byProject?.[a.id]?.level;
-      groups.get(key).sessions.push({ ...model, id: a.id, session: brief.session,
-        name: data.title || member.name || brief.name
-          || (members.length === 1 ? a.name : T("board_session", i + 1)),
-        vendor: ["claude", "codex", "openclaw"].includes(vendor) ? vendor : "other",
-        detail: tidyActivity(plainDetail, 40),
-        level: typeof level === "number" && Number.isFinite(level) ? level : null });
-    });
-  }
-  return [...groups.values()];
 }
 
 /** 左下カード: タスクがあればドーナツ、無ければ「今日のオフィス」。 */

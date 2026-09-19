@@ -207,7 +207,7 @@ v2 のまま（PCF・2048²・`shadow.intensity .55`・contentBox フィット�
 セージ・オーク・墨・テラコッタの範囲に収める（原色は使わない）。該当なしのロボには何も付けない（嘘の帽子を作らない）。
 
 
-## 7. HUD トークン（`ui/hud-tokens.css` が正本 → `ui/iso/style.css` と `ui/pwa/app.css` に展開）
+## 7. HUD トークン（`ui/hud-tokens.css` が正本 → `ui/hud/hud.css` と `ui/pwa/app.css` に展開）
 
 | トークン | 値 |
 |---|---|

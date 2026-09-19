@@ -91,8 +91,8 @@ if command -v node >/dev/null 2>&1; then
   #   巻き込まないため。足したらこの行に足す。
   node --test tests/sound.test.mjs tests/hire_onboarding.test.mjs tests/hud_growth_frozen.test.mjs \
     tests/iso_acts.mjs tests/iso_floor_ao.mjs tests/iso_growth.test.mjs tests/rigbot.test.mjs tests/stream.test.mjs \
-    tests/dialog_seal_kat.mjs tests/iso_no_fake_glow.test.mjs \
-    || ng "R90 presentation の node テスト（音・雇う・成長・所作・床AO・ティア・配信・封書KAT・fake glow 非復活）"
+    tests/dialog_seal_kat.mjs tests/iso_no_fake_glow.test.mjs tests/hud_ids.test.mjs tests/hud_board_replay.test.mjs \
+    || ng "R90 presentation の node テスト（音・雇う・成長・所作・床AO・ティア・配信・封書KAT・fake glow 非復活・HUD の DOM 契約）"
   UIJS_NG=0
   for F in $(find ui -name '*.js' -not -path 'ui/vendor/*' 2>/dev/null); do
     node --check "$F" >/dev/null 2>&1 || { echo "    構文エラー: $F"; UIJS_NG=1; }
@@ -164,6 +164,13 @@ echo "▶ 3b PWA同梱物 (modules_data.js / app_html.js が ui/ と一致・git
 # 生成物 relay/src/modules_data.js は worker.js が static import する＝未生成/未追跡だと
 # クリーンclone/CIで wrangler deploy が丸ごと失敗し既存relay全ルートが落ちる。
 # R77: PWAの3Dシーン用ESM同梱物も同じ掟（未生成/未追跡ならクリーンcloneのdeployが死ぬ）
+# R98-W2: フロア帯のドット絵（文字グリッド）の番人。まだセルが無い間は「検査するものが無い」で通る。
+PXOUT="$(python3 tools/px_lint.py 2>&1)"
+if [ $? = 0 ]; then
+  echo "$PXOUT" | sed 's/^/  /'
+else
+  echo "$PXOUT" | sed 's/^/  /'; ng "R98 ドット絵 lint（16×24・色数・枠・42セル・PNG禁止）"
+fi
 if python3 tools/gen_pwa_modules.py --check >/dev/null 2>&1; then
   ok "modules_data.js / app_html.js が ui/ と一致 (PWA 3Dシーン・シェル)"
 else
@@ -593,6 +600,7 @@ elif [ -x "$VENV_PY" ] && "$VENV_PY" -c 'import playwright' >/dev/null 2>&1 \
   run_ui "R50 UI契約テスト" "$VENV_PY" tests/ui_contract.py
   # R50 P6: 操作系（❗回答/コンポーズが office_inbox へ実投函されるか＝配達経路入口の機械証明）
   run_ui "R50 操作系スモーク" "$VENV_PY" tests/ui_ops_smoke.py
+  run_ui "R98 台帳（pixel）スモーク" "$VENV_PY" tests/pixel_smoke.py
   # R50: 管理フロー（➕新プロジェクト=config反映+起動マーカー / 📱ペアリング=台帳発行+失効）
   run_ui "R50 管理フロースモーク" "$VENV_PY" tests/ui_admin_smoke.py
   # R50提案2b: 初回体験（空オフィス導線・hook未設定バナー・?demo=1同梱world+投函ブロック）
@@ -621,6 +629,10 @@ elif [ -x "$VENV_PY" ] && "$VENV_PY" -c 'import playwright' >/dev/null 2>&1 \
   # 名札の密集が回帰しても気づけない（本番で実際に踏んだ）。
   "$VENV_PY" tools/ui_shot.py --style iso --world xl22 --name xl22 --check | sed 's/^/  /'
   [ "${PIPESTATUS[0]}" = "0" ] || ng "R90 XLティア(22体)ビジュアル回帰失敗 (exit ${PIPESTATUS[0]})"
+  # R98-W1: 第 2 の様式 pixel（フロア帯 × 台帳）。iso と同じ fixture・別 golden＝HUD 分離の両側を見張る。
+  # ★パイプの直後に PIPESTATUS を見る（間に別のパイプを挟むと前の門が消える＝別モデルレビューで実際に踏んだ）
+  "$VENV_PY" tools/ui_shot.py --style pixel --check | sed 's/^/  /'
+  [ "${PIPESTATUS[0]}" = "0" ] || ng "R98 台帳(pixel)ビジュアル回帰失敗 (exit ${PIPESTATUS[0]})"
   # R90: 方向Cの参照画像で較正した3D品質ゲート（docs/art-direction.md）。
   # R93-M1'（2026-09-14）: 常設ゲートを glass（G1 ラベンダー・グラスロフト）へ。c は retired（tools/style_score.py）。
   "$VENV_PY" tools/style_score.py --profile glass tests/artifacts/ui_iso_scene.png | sed 's/^/  /'

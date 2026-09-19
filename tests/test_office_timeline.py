@@ -127,6 +127,33 @@ class OfficeTimelineTest(unittest.TestCase):
         for private in ("PRIVATE_SUBJECT", "PRIVATE_BODY", "PRIVATE_PATH", "tsub"):
             self.assertNotIn(private, dumped)
 
+    def test_evidence_for_last_24h_committed_tested_failed_and_cache(self):
+        """R98: 台帳の証拠列。セッションごとの**最後の**証拠（committed/tested/failed）だけ・24h 窓・
+        PreToolUse は数えない・記録の無い sid はキーごと無し・5 秒キャッシュ・壊れていても空 dict。"""
+        t = self.timeline
+        self.append(self.hook(ts=self.now - 3 * 86400, sid="old", tool="Bash", kind="git:commit"),
+                    self.hook("PreToolUse", ts=self.now - 100, sid="pre", tool="Bash", kind="git:commit"),
+                    self.hook(ts=self.now - 90, sid="a", tool="Bash", kind="test"),
+                    self.hook(ts=self.now - 60, sid="a", tool="Bash", kind="git:commit"),
+                    self.hook(ts=self.now - 50, sid="b", tool="Bash", kind="git:commit"),
+                    self.hook("PostToolUseFailure", ts=self.now - 40, sid="b", tool="Bash", kind="test", ok=False),
+                    self.hook(ts=self.now - 30, sid="c", tool="Bash", kind="test"),
+                    self.hook(ts=self.now - 20, sid="d", tool="Bash", kind=""))
+        t.start(self.home)
+        # hook 行は seq を持つ（sid ごとの合成 hire 行は seq 無し＝数えない）
+        self.wait_for(lambda: self.query("SELECT COUNT(*) FROM events WHERE seq IS NOT NULL")[0][0] == 8)
+        out = t.evidence_for(self.home, ["a", "b", "c", "d", "old", "pre", "nobody"], self.now)
+        self.assertEqual({k: v["kind"] for k, v in out.items()}, {"a": "committed", "b": "failed", "c": "tested"})
+        self.assertEqual(out["a"]["ago"], 60)
+        self.assertEqual(set(out["a"]), {"kind", "ago"})          # 本文・tool 名・パスは持たない
+        # 5 秒キャッシュ: 新しい行が来ても TTL 内は前の答え・TTL を過ぎたら更新
+        self.append(self.hook(ts=self.now - 5, sid="c", tool="Bash", kind="git:commit"))
+        self.wait_for(lambda: self.query("SELECT COUNT(*) FROM events WHERE seq IS NOT NULL")[0][0] == 9)
+        self.assertEqual(t.evidence_for(self.home, ["c"], self.now + 1)["c"]["kind"], "tested")
+        self.assertEqual(t.evidence_for(self.home, ["c"], self.now + 6)["c"]["kind"], "committed")
+        # 読めない DB でも落ちない
+        self.assertEqual(t.evidence_for(self.home / "missing", ["a"], self.now + 20), {})
+
     def test_state_spans_codex_turn_diff_disappearance_and_reappearance(self):
         self.timeline.start(self.home)
         a = self.employee()

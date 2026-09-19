@@ -6,7 +6,7 @@ import { inertOthers } from "/ui/hud/layers.js";
 
 /** Unread summary and a separate, disposable playback world. Live polling stays live. */
 export function init({ shell, T, getWorld, tray, showToast, beforeOpen, restore, canvas,
-  enabled = true, DEMO = false }) {
+  enabled = true, DEMO = false, host = null, replay: replayEnabled = true }) {
   // Structural golden guard: not even listeners, timers, requests or hidden UI are installed.
   if (frozen || DEMO || !enabled) return { update() {}, frame: () => null, canRecord: () => false, close() {}, dispose() {} };
   const el = (tag, cls, text) => {
@@ -16,7 +16,9 @@ export function init({ shell, T, getWorld, tray, showToast, beforeOpen, restore,
     if (tag === "button") node.type = "button";
     return node;
   };
-  const stage = shell.querySelector("#stage");
+  // R98: カードと再生コントロールの置き場。既定は 3D ステージ。pixel は帯（#stage）を畳んでいるので
+  // 台帳の面（.pxbody）を渡す＝見えない場所に出して inertOthers で全部を止める事故（別モデルレビュー high）を防ぐ。
+  const stage = host || shell.querySelector("#stage");
   const strip = el("button", "digest-strip"); strip.id = "digest-strip"; strip.hidden = true;
   const card = el("aside", "digest-card"); card.id = "digest-card"; card.hidden = true;
   card.setAttribute("role", "dialog"); card.setAttribute("aria-labelledby", "digest-title");
@@ -101,6 +103,7 @@ export function init({ shell, T, getWorld, tray, showToast, beforeOpen, restore,
     lines[2].textContent = T("digest_working", summary.working);
     details.textContent = T(busy ? "loading" : "digest_details");
     details.disabled = busy;
+    details.hidden = !replayEnabled;     // R98: 描画ループが frame() を消費しない様式では開始操作を出さない
     if (!busy) actions = tray.first();
     const key = JSON.stringify(actions.map((a) => [a.session, a.attnKey, a.label]));
     if (key !== actionKey) {
@@ -170,7 +173,7 @@ export function init({ shell, T, getWorld, tray, showToast, beforeOpen, restore,
     closeAll(); showToast(T("replay_record_failed"), false);
   };
   const startReplay = async (save = false) => {
-    if (busy || replay || (!save && !summary) || (save && !webmType(canvas))) return;
+    if (!replayEnabled || busy || replay || (!save && !summary) || (save && !webmType(canvas))) return;
     busy = true; saving = save; paint();
     const ticket = ++version;
     request?.abort(); request = new AbortController();
@@ -257,7 +260,8 @@ export function init({ shell, T, getWorld, tray, showToast, beforeOpen, restore,
       if (!replay) return null;
       advance(t);
       const frame = replayFrame(replay, elapsed);
-      return { world: frame.world, t: origin + frame.elapsed };
+      // eventSids = この再生でイベントが在ったセッション（台帳が補完してよい相手の判定に使う）
+      return { world: frame.world, t: origin + frame.elapsed, eventSids: replay.sids };
     },
     dispose() {
       recording?.cancel(); recording = null;

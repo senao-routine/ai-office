@@ -1,0 +1,141 @@
+/* css-vars-from: ui/hud/hud.css */
+/* R98-W1: 様式 pixel（フロア帯 × 台帳）。HUD の共通則は ui/hud/hud.css（.hud 接頭）＝ここは台帳と配置だけ。
+   8px グリッド・行 30px・tabular-nums。色は hud.css の --iso-* エイリアス（ダークもそこで切り替わる）。
+   canvas には文字を描かない。keyframe は使わない（golden の決定論）。 */
+.ui-pixel { background: var(--iso-bg); }
+.ui-pixel .pxshell {
+  display: flex; flex-direction: column; gap: 8px;
+  width: 100%; height: 100%; padding: 8px 16px 8px; box-sizing: border-box; overflow: hidden;
+}
+/* ── ヘッダー（40px）: ブランド・人数・枠ゲージのピン・管理 7 ボタン・? ── */
+.ui-pixel .pxhead { display: flex; align-items: center; gap: 12px; height: 40px; flex: none; min-width: 0; }
+.ui-pixel .brand .txt b { font-size: 13px; }
+.ui-pixel .brand .txt i { font-size: 11px; }
+.ui-pixel .pxcounts { font-size: 11px; color: var(--iso-ink-soft); white-space: nowrap; flex: none; }
+.ui-pixel .usage { position: relative; display: flex; justify-content: center; min-width: 0; }
+/* 枠ゲージのピンは 3 本以上（本番: Claude 5h・週・Codex 週）でも 1 段（40px）に収める。
+   hud.css は wrap（3D の広いヘッダー向け）＝台帳では縦に積まれて上へ溢れた（本番実測 2026-09-18）。 */
+.ui-pixel #usage-summary { flex-wrap: nowrap; gap: 10px; }
+.ui-pixel .gpin { flex: 0 1 auto; gap: 6px; }
+.ui-pixel .gplab { max-width: 9em; font-size: 11px; }
+.ui-pixel .gpbar { width: 44px; }
+.ui-pixel .gppct { font-size: 11px; }
+.ui-pixel .admin { flex-direction: row; gap: 4px; }
+.ui-pixel .abtn { padding: 4px 8px; font-size: 11px; border-radius: 8px; white-space: nowrap; }
+/* 管理 7 ボタンは 28×28 のアイコン（文言は DOM に残す＝title と読み上げはそのまま・id も不変＝ui_admin_smoke が通る）。
+   幅を .usage に返す＝枠ゲージ 4 本のラベルが「Cl… 5…」に潰れない（本番実測 2026-09-18）。 */
+.ui-pixel .admin .abtn { width: 28px; height: 28px; padding: 0; font-size: 0; line-height: 28px; text-align: center; }
+.ui-pixel .admin .abtn::before { content: attr(data-glyph); font-size: 13px; }
+.ui-pixel .pxrow .evd.evd-committed, .ui-pixel .pxrow .evd.evd-tested { color: var(--iso-accent); }
+.ui-pixel .pxrow .evd.evd-failed { color: var(--iso-alert); font-weight: 800; }
+.ui-pixel #btn-help { width: 28px; padding: 4px 0; text-align: center; }
+/* ── 本体 ── */
+.ui-pixel .main { flex: 1; min-height: 0; gap: 8px; }
+.ui-pixel .pxstage { flex: none; height: 216px; border-radius: var(--radius-sm); background: var(--iso-stage-bg);
+  border: 1px solid var(--iso-line); overflow: hidden; position: relative; }
+.ui-pixel .pxstage[hidden] { display: none; }
+.ui-pixel .pxstage .viewport { position: absolute; inset: 0; }
+.ui-pixel .pxstage canvas { image-rendering: pixelated; display: block; }
+.ui-pixel .offbar { position: static; transform: none; flex: none; align-self: center; }
+/* ❗帯は帯の下の独立行（ステージに浮かせない） */
+.ui-pixel #attn.tray { position: static; flex: none; box-shadow: none; }
+.ui-pixel .pxbody { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.ui-pixel .pxtable {
+  flex: 1; min-height: 0; display: flex; flex-direction: column;
+  border: 1px solid var(--iso-hairline); border-radius: var(--radius-sm);
+  background: var(--iso-glass-solid); overflow: hidden;
+}
+.ui-pixel .pxhrow, .ui-pixel .pxrow {
+  display: grid; grid-template-columns: 40px 190px 140px 92px minmax(0, 1fr) 124px 76px 56px;
+  align-items: center; column-gap: 8px; padding: 0 8px; box-sizing: border-box;
+  font-variant-numeric: tabular-nums;
+}
+.ui-pixel .pxhrow { height: 24px; flex: none; font-size: 11px; font-weight: 700; color: var(--iso-ink-soft);
+  border-bottom: 1px solid var(--iso-hairline); }
+.ui-pixel .pxsort { font: inherit; color: inherit; background: transparent; border: 0; padding: 0; text-align: left; cursor: pointer; }
+.ui-pixel .pxsort.on { color: var(--iso-accent); }
+.ui-pixel .pxsort.on::after { content: " ▾"; }
+.ui-pixel #agents { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; }
+.ui-pixel .pxrow { height: 30px; font-size: 12.5px; border-bottom: 1px solid var(--iso-hairline); cursor: pointer; outline: none; }
+.ui-pixel .pxrow:hover, .ui-pixel .pxrow:focus-visible { background: var(--iso-bg); }
+.ui-pixel .pxrow.sel { background: var(--iso-accent-chip); }
+.ui-pixel .pxrow.attn { background: color-mix(in srgb, var(--iso-alert-chip) 40%, transparent); }
+.ui-pixel .pxrow.attn.sel { background: var(--iso-alert-chip); }
+.ui-pixel .pxrow > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ui-pixel .pxrow.sub { font-size: 12px; color: var(--iso-ink-soft); }
+.ui-pixel .pxrow.sub .pname { visibility: hidden; }
+.ui-pixel .pxrow.sub .c-mono { padding-left: 16px; }
+.ui-pixel .pxrow .c-mono { display: flex; align-items: center; }
+.ui-pixel .pxrow .mono {
+  width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; flex: none;
+  font-style: normal; font-size: 11px; font-weight: 800; color: var(--iso-ink);
+  background: var(--iso-bg); box-shadow: inset 0 0 0 2px var(--iso-rest);
+}
+.ui-pixel .pxrow .mono.st-working { box-shadow: inset 0 0 0 2px var(--iso-accent); }
+.ui-pixel .pxrow .mono.st-waiting { box-shadow: inset 0 0 0 2px var(--iso-warn); }
+.ui-pixel .pxrow .mono.st-attention { box-shadow: inset 0 0 0 2px var(--iso-alert); color: var(--iso-alert); }
+.ui-pixel .pxrow .pname { font-weight: 800; }
+.ui-pixel .pxrow .pvendors { margin-left: 4px; }
+.ui-pixel .pxvendor { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-left: 3px; vertical-align: 1px; }
+.ui-pixel .pxvendor.vendor-claude { background: var(--iso-accent); }
+.ui-pixel .pxvendor.vendor-codex { background: var(--iso-accent-2); }
+.ui-pixel .pxvendor.vendor-openclaw { background: var(--iso-alert); }
+.ui-pixel .pxvendor.vendor-other { background: var(--iso-rest); }
+.ui-pixel .pxrow .scount { margin-left: 4px; font-weight: 800; color: var(--iso-ink-soft); }
+.ui-pixel .pxrow .c-state { display: flex; align-items: center; gap: 4px; }
+.ui-pixel .pxrow .c-state .dstate { flex: none; }
+.ui-pixel .pxrow.attn .stext { color: var(--iso-alert); font-weight: 800; }
+.ui-pixel .pxrow .c-detail.starve .dtext { color: var(--iso-alert); }
+.ui-pixel .pxrow .evd { color: var(--iso-ink-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+.ui-pixel .pxrow .aprog { display: flex; align-items: center; gap: 4px; }
+.ui-pixel .pxrow .aprog .abar { flex: 1; height: 4px; }
+.ui-pixel .pxrow .aprog.empty .abar { visibility: hidden; }
+.ui-pixel .pxrow .apct { font-size: 11px; color: var(--iso-ink-soft); }
+.ui-pixel .pxrow .age { font-style: normal; font-size: 11px; color: var(--iso-ink-soft); text-align: right; }
+.ui-pixel .pxrow .arrival-badge { margin-left: 4px; }
+.ui-pixel .pxempty { padding: 16px; font-size: 12.5px; color: var(--iso-ink-soft); }
+/* 初回体験の案内カード（hud/firstrun.js が #agents に差す）は表の中で普通のカードとして出す */
+.ui-pixel #agents .onboard { padding: 12px; }
+/* シートは台帳の上に右から。帯（W2）は覆わない＝pxbody の中に置く */
+.ui-pixel .sheet { top: 0; right: 0; bottom: 0; width: clamp(420px, 32%, 520px); }
+/* hud.css の 3D 用 sheet-open 則（#stage を grid に／≤1024 でシートを relative に縦積み／wide で grid-row）は
+   台帳に当てない。畳んだ帯が空の 216px で現れ、シートが表の下に落ちる（別モデルレビュー）。 */
+.ui-pixel #stage[hidden], .ui-pixel .sheet-open #stage[hidden], .ui-pixel .sheet-open:has(.sheet.wide) #stage[hidden] { display: none; }
+.ui-pixel .sheet-open .sheet, .ui-pixel .sheet-open .sheet.wide,
+.ui-pixel .sheet-open:has(.sheet.wide):has(#attn[hidden]) .sheet, .ui-pixel .sheet-open:has(#attn[hidden]) .sheet {
+  position: absolute; top: 0; right: 0; bottom: 0; grid-row: auto; margin-top: 0; max-height: none;
+}
+.ui-pixel .sheet-open .sheet { width: clamp(420px, 32%, 520px); }
+.ui-pixel .sheet-open .sheet.wide { width: min(calc(100% - 16px), 1040px); }
+/* ダイジェスト（留守中のまとめ）は台帳の面（.pxbody）に出す＝index.js が host を渡す */
+.ui-pixel .pxbody > .digest-card { top: 24px; }
+.ui-pixel .toast { bottom: 24px; }
+/* ── 下段（32px）: 最近の指示 3 件 ＋ 今日の実数 ── */
+.ui-pixel .pxfoot { flex: none; display: flex; align-items: center; gap: 16px; min-height: 32px;
+  padding-top: 4px; border-top: 1px solid var(--iso-hairline); font-size: 12px; }
+.ui-pixel .pxhist { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; }
+.ui-pixel .pxhist .cardtitle { flex: none; margin: 0; font-size: 11px; }
+.ui-pixel .pxfoot .hist { flex-direction: row; gap: 12px; min-width: 0; flex: 1; }
+.ui-pixel .pxfoot .hrow { border: 0; padding: 0; flex: 1; min-width: 0; max-width: 33%; font-size: 12px; }
+/* ↻ 再送は 1 打目で .arm が付く＝display:none だと 1 打目が当たらず永久に押せない（実測）。
+   下段は狭いので、普段は小さく畳んでおき、arm のときだけ文言つきで出す。 */
+.ui-pixel .pxfoot .hresend { padding: 0 4px; font-size: 11px; border-color: transparent; }
+.ui-pixel .pxfoot .hresend:hover { border-color: var(--iso-accent); }
+.ui-pixel .pxfoot .hresend.arm { border-color: var(--iso-accent); }
+.ui-pixel .pxtoday { flex: none; color: var(--iso-ink-soft); white-space: nowrap; }
+/* ── 形状 ── */
+@media (max-width: 1279px) {
+  .ui-pixel .pxhrow, .ui-pixel .pxrow { grid-template-columns: 36px 150px 110px 80px minmax(0, 1fr) 116px 60px 48px; }
+}
+@media (max-width: 1024px) {
+  .ui-pixel .pxhrow, .ui-pixel .pxrow { grid-template-columns: 36px 150px 110px 80px minmax(0, 1fr) 48px; }
+  /* 非表示は表示側（.ui-pixel .pxrow .aprog 等）と同じ詳細度で書く＝負けると 7 セルが 6 列に流れて経過が次段へ落ちる */
+  .ui-pixel .pxhrow .c-evd, .ui-pixel .pxhrow .c-prog, .ui-pixel .pxrow .c-evd, .ui-pixel .pxrow .c-prog { display: none; }
+  .ui-pixel .sheet { width: min(100%, 460px); }
+}
+@media (max-width: 720px) {
+  .ui-pixel .pxhrow, .ui-pixel .pxrow { grid-template-columns: 32px minmax(0, 1fr) 72px 40px; }
+  .ui-pixel .pxhrow .c-session, .ui-pixel .pxhrow .c-detail, .ui-pixel .pxrow .c-session, .ui-pixel .pxrow .c-detail,
+  .ui-pixel .pxcounts, .ui-pixel .pxfoot .hist { display: none; }
+  .ui-pixel .pxrow { height: 44px; }
+}

@@ -60,9 +60,14 @@ export function buildWorld(office) {
     minions: Number(p.minions) || 0,
     age: Number(p.age) || 0,
     external: p.external || null,
+    // R98: ベンダー（claude / codex / openclaw / other）。リプレイの世界にも要る＝ここで正規化する。
+    vendor: vendorOf(p),
     sessions: Array.isArray(p.sessions) ? p.sessions : [],
     feed: Array.isArray(p.feed) ? p.feed : [],
     work: p.work || null,
+    // R98: 証拠（直近 24h の hook 記録・server の evidence_for）。無ければ null＝台帳は「—」。
+    evidence: (p.evidence && typeof p.evidence === "object" && typeof p.evidence.kind === "string")
+      ? { kind: p.evidence.kind, ago: Math.max(0, Number(p.evidence.ago) || 0) } : null,
   }));
   for (const a of agents) a.arch = archetypeFor(a);   // R80.7: 職業アーキタイプ
   // R86-I: 識別記号は「名前の頭」でなく「区別がつく末尾」から作る（同一プロジェクトの
@@ -122,6 +127,26 @@ function fromEmployee(e) {
  * - 閉じられていない開き括弧以降（サーバー側の文字数切りで途切れた断片）をカット
  * - max 文字で省略（既定60）
  */
+/**
+ * ベンダー名を 4 語に正規化する（claude / codex / openclaw / other）。
+ * 未搬送なら external の有無で決める（外部連携＝OpenClaw・それ以外は Claude）。
+ */
+const VENDORS = ["claude", "codex", "openclaw"];
+
+export function vendorOf(p) {
+  const direct = String(p?.vendor || "").toLowerCase();
+  if (VENDORS.includes(direct)) return direct;
+  // 旧来の見分け方も残す（scene3d が使っていた順）＝ここで既定値を返すと 3D が Codex を
+  // Claude として描いてしまう（別モデルレビュー）。
+  const brief = Array.isArray(p?.sessions)
+    ? p.sessions.find((s) => s && s.session === p.session) : null;
+  const fromBrief = String(brief?.vendor || p?.source || p?.external?.provider || "").toLowerCase();
+  if (VENDORS.includes(fromBrief)) return fromBrief;
+  if (p?.external) return "openclaw";
+  if (typeof p?.session === "string" && p.session.startsWith("cx-")) return "codex";
+  return direct ? "other" : "claude";
+}
+
 export function tidyActivity(s, max = 60) {
   let t = String(s ?? "").replace(/[`*]+/g, "");
   // 見出し/引用のマークダウン記号（実データで「指示待ち # 🎬 …」が出た＝R54自己レビュー）

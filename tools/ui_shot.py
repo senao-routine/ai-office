@@ -34,7 +34,7 @@ GOLDEN = ROOT / "tests" / "visual" / "golden"
 WORLD_FIXTURES = ROOT / "tests" / "fixtures" / "world"
 
 # R90-S1: 方向Cの見た目を iso 1本に統合。
-STYLES = ("iso",)
+STYLES = ("iso", "pixel")   # R98-W1: 第 2 の様式（フロア帯 × 台帳）
 VIEWPORT = {"width": 1440, "height": 900}
 # 回帰テストは必ずこのバックエンドで撮る（実測: 2回実行でスクショhashが完全一致）
 SWIFTSHADER = ["--use-gl=swiftshader", "--disable-gpu"]
@@ -149,7 +149,7 @@ def _shoot_once(style, t, seed, world, out, gpu=False, entry="/", query="", view
             # 品質採点（tools/style_score.py）は3Dステージだけを見る。
             # フルページには白いクロームが入り、空き床率と輝度が実態より悪く出るため。
             stage = page.query_selector("#stage")
-            if stage:
+            if stage and stage.is_visible():        # R98: pixel の W1 は帯（#stage）を畳んでいる
                 ARTIFACTS.mkdir(parents=True, exist_ok=True)
                 stage.screenshot(path=str(ARTIFACTS / f"ui_{name}_stage.png"))
             # 品質採点は3Dキャンバスだけを透過付きで撮る。

@@ -10,7 +10,10 @@ The office is a daylight Scandinavian interior: oak floors, white walls, large w
 
 ![AI Office demo](docs/demo.gif)
 
-> Try it with no sessions running: <http://localhost:4780/?demo=1>
+> **Try it in your browser — nothing to install: <https://ai-office-demo.routinelabo-senao.workers.dev>**
+> ([the ledger view](https://ai-office-demo.routinelabo-senao.workers.dev/?ui=pixel) · static files only, no server of mine, no account)
+>
+> With AI Office running locally and no sessions live: <http://localhost:4780/?demo=1>
 
 ## What it is for
 
@@ -41,6 +44,15 @@ day's work, across more than one vendor, at a glance.
 - **Phone PWA and Web Push** — the same 3D renderer at `quality:"mobile"` (no bloom pass: screens glow by emissive brightness only), QR pairing and signed replies. Push notifications bring questions to your attention.
 - **Cost gauges, notifications and reports** — quota/spend views remain available alongside desktop notifications and daily summaries.
 - **MCP** — `office_status`, `office_instruct` and `office_digest` let agents inspect the office, send instructions and read a digest.
+
+### Two views of the same office
+
+The 3D office is the default. A second view — **the ledger** (`?ui=pixel`, experimental) — shows one row per
+project at thirty pixels tall, so twenty projects and forty sessions fit on one screen. A ❗ opens its session
+rows and moves to the top, the number keys answer it exactly as they do in 3D, and an evidence column says
+whether that session actually landed a commit or passed a test in the last 24 hours. Switch between the two in
+⚙ settings; the choice is remembered per browser. Everything else — the answer queue, sheets, templates, hiring,
+gauges — is the same code in both views.
 
 ### How answers arrive
 

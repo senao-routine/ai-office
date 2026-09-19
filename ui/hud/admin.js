@@ -1,4 +1,5 @@
 // 新プロジェクト・起動・ペアリング・レシピ・設定・リソースの管理画面。
+import { STYLES, resolveStyle, switchStyle } from "/ui/platform/style.js";
 import {
   budgetApply, fxApply, getKeysStatus, getRecipes, getStatusBoard, getTemplates,
   launchProject, newProject, pairList, pairNew, pairRevoke, pickProjectFolder, setDialogRelay,
@@ -801,6 +802,9 @@ export function init({ root, shell, T, lang, setLang, getWorld, applyStaticStrin
         applyTheme(v);
         renderSettings();                                  // 選択状態を描き直す
       });
+    // R98: 様式（3D オフィス／台帳）。localStorage を正にして再読み込み（?ui= は消す）
+    seg(T("set_style"), [[STYLES.ISO, T("set_style_iso")], [STYLES.PIXEL, T("set_style_pixel")]],
+      resolveStyle(), (v) => { if (v !== resolveStyle()) switchStyle(v); });
     // 🌐 サーバーの lang を切り替える（office_json.lang が正本＝PWA/通知の言語も揃う）
     seg(T("set_lang"), [["ja", "日本語"], ["en", "English"]], lang(), async (v) => {
       try {

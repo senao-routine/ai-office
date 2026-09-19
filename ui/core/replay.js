@@ -114,7 +114,10 @@ export function createReplay(world, events, { since = 0, until = since } = {}) {
     agents.set(a.id, a);
     frames.push({ ts: e.ts, world: snapshot(base, agents, e.ts) });
   }
-  return { since: start, until: end, frames, eventCount: rows.length, duration: REPLAY_SECONDS };
+  // R98: この再生で**イベントが在った**セッション。台帳側が「イベントが無いから変わっていない」と
+  // 補える相手を見分けるのに要る（途中で始まったセッションを最初から居たことにしない）。
+  return { since: start, until: end, frames, eventCount: rows.length, duration: REPLAY_SECONDS,
+    sids: new Set(rows.map((e) => e.sid)) };
 }
 
 /** Elapsed seconds are supplied by the caller, so pause and backward seeks agree. */

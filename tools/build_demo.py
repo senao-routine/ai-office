@@ -28,16 +28,18 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "dist" / "demo-site"
-ENTRY = "/ui/iso/index.js"          # boot.html が `/ui/${style}/index.js` で読む先（style=iso）
+# boot.html が `/ui/${style}/index.js` で読む先。R98: pixel（台帳）も同梱＝⚙「画面」で切り替えても起動する
+# （片方だけ同梱すると、選んだ様式が localStorage に残って再読み込みでも起動できない＝別モデルレビュー）。
+ENTRIES = ["/ui/iso/index.js", "/ui/pixel/index.js"]
 EXTRA_DIRS = ["ui/iso/tex", "ui/vendor/three"]      # import では辿れない（URL 直読み・相対 import）
-EXTRA_FILES = ["ui/iso/style.css", "ui/demo/world.json", "ui/boot.html"]
+EXTRA_FILES = ["ui/hud/hud.css", "ui/pixel/style.css", "ui/demo/world.json", "ui/boot.html"]
 _ABS = re.compile(r'from\s*"(/ui/[^"]+)"')
 _REL = re.compile(r'from\s*"(\./[^"]+)"')
 
 
 def collect():
     """入口から import を辿って {url: 本文} を作る（PWA のスタブ差し替えはしない＝実物を配る）。"""
-    seen, stack = {}, [ENTRY]
+    seen, stack = {}, list(ENTRIES)
     while stack:
         url = stack.pop()
         if url in seen:

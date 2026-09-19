@@ -1800,6 +1800,17 @@ def scan_office():
     except Exception:
         pass
 
+    # R98: 証拠列（台帳の「証拠」）。直近 24h の hook 記録から committed/tested/failed を付ける。
+    # 中継の allowlist には載せない（既定で非搬送）。失敗しても office_json は落とさない。
+    try:
+        evidence = office_timeline.evidence_for(_HOME, [e.get("session", "") for e in employees], now)
+        for e in employees:
+            hit = evidence.get(e.get("session", ""))
+            if hit:
+                e["evidence"] = hit
+    except Exception:
+        pass
+
     try:
         growth = office_timeline.growth_json(_HOME, now)
     except Exception:

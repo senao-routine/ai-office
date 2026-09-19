@@ -12,6 +12,30 @@ const { PostProcess } = await import("../ui/iso/post.js");
 const THREE = await import("../ui/vendor/three/three.module.min.js");
 const { broadcastURL, initStream, streamOptions } = await import("../ui/hud/stream.js");
 const { recordWebM, webmType } = await import("../ui/platform/webm.js");
+const { STYLE_KEY, persistStyle, resolveStyle } = await import("../ui/platform/style.js");
+
+test("R98: 配信 URL は保存値も ?ui= も無視して iso（台帳は匿名化を実装していない）", () => {
+  assert.equal(resolveStyle("?ui=pixel"), "pixel");
+  assert.equal(resolveStyle("?ui=pixel&stream=1"), "iso");
+  assert.equal(resolveStyle("?stream=1&privacy=1"), "iso");
+  assert.equal(resolveStyle("?stream=0&ui=pixel"), "pixel");
+});
+
+test("R98: 配信 URL で起動しても普段の表示設定（台帳）を上書きしない・保存不可は false", () => {
+  const store = new Map([[STYLE_KEY, "pixel"]]);
+  globalThis.localStorage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) };
+  try {
+    assert.equal(persistStyle("iso", "?stream=1&privacy=1"), false);
+    assert.equal(store.get(STYLE_KEY), "pixel");            // 配信で開いても台帳のまま
+    assert.equal(resolveStyle("?t=1"), "pixel");
+    assert.equal(persistStyle("iso", "?t=1"), true);
+    assert.equal(store.get(STYLE_KEY), "iso");
+    globalThis.localStorage = { getItem: () => null, setItem() { throw new Error("private mode"); } };
+    assert.equal(persistStyle("pixel", "?t=1"), false);     // switchStyle はこのとき ?ui= を付けて再読み込みする
+  } finally {
+    delete globalThis.localStorage;
+  }
+});
 
 const frame = (scene) => [scene.camera.left, scene.camera.right, scene.camera.top, scene.camera.bottom];
 function scene(aspect) {

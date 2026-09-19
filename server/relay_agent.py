@@ -541,6 +541,10 @@ _ALLOW_ENTRY = frozenset({
     "lastSaid", "target", "lastOrder", "cwd", "branch",      # 互換（空文字化）
 })
 _ALLOW_SESSION = frozenset({"session", "state", "age", "attention", "minions", "pending", "vendor"})
+# R98: UI が読むが**意図して中継に載せない**フィールド（Mac の画面だけの情報）。
+# test_allowlist_covers_ui_and_pwa_field_reads は「UI が読むのに allowlist に無い」を止める番人なので、
+# ローカル専用はここに宣言して番人に伝える（黙って allowlist を広げない・黙って番人を弱めない）。
+_LOCAL_ONLY_ENTRY = frozenset({"evidence"})   # 台帳の証拠列 {kind, ago}＝スマホは描かない
 _ALLOW_TOP = frozenset({
     "officeName", "employees", "roster", "history", "today", "generatedAt", "setup",
     "actions", "relay", "res", "templates", "launchable", "lang", "avatarMode", "counts", "tasks",

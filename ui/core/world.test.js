@@ -5,7 +5,7 @@ import { test } from "node:test";
 import {
   DESK_SLOTS, activityGloss, activityText, agoStr, assignMeetingRooms, assignRestSpots, assignSeats, attentionQueue, buildWorld, isMuted,
   countByZone, deliveryTransitions, needsAttention, stableIndex, summarizeWorld, tidyActivity,
-  assignLabels, stalledSends, topAttention, triageSort, zoneOf,
+  assignLabels, stalledSends, topAttention, triageSort, vendorOf, zoneOf,
   answerOutcome, deliveryState, labelDensityMax, ANSWER_SLOW_SEC, ANSWER_UNCONFIRMED_SEC,
 } from "./world.js";
 
@@ -193,6 +193,37 @@ test("buildWorld: roster[] が無ければ employees[] から作る（後方互�
   });
   assert.equal(w.agents.length, 2);
   assert.equal(w.agents[0].crew, 1);
+});
+
+test("vendorOf: 4 語に正規化・未搬送は external で決める（R98）", () => {
+  assert.equal(vendorOf({ vendor: "Codex" }), "codex");
+  assert.equal(vendorOf({ vendor: "OpenClaw" }), "openclaw");
+  assert.equal(vendorOf({ vendor: "gemini" }), "other");
+  assert.equal(vendorOf({}), "claude");
+  assert.equal(vendorOf({ external: { site: "mini" } }), "openclaw");
+  assert.equal(vendorOf(null), "claude");
+  // 旧来の見分け方も残す（これが無いと 3D が Codex を Claude として描く・別モデルレビュー）
+  assert.equal(vendorOf({ session: "cx-123" }), "codex");
+  assert.equal(vendorOf({ session: "s1", sessions: [{ session: "s1", vendor: "codex" }] }), "codex");
+  assert.equal(vendorOf({ source: "openclaw" }), "openclaw");
+  assert.equal(vendorOf({ vendor: "codex", session: "s1" }), "codex");   // 明示が最優先
+  // buildWorld の agent も持つ（リプレイの世界でベンダーが消えない）
+  const w = buildWorld({ employees: [{ session: "s1", dept: "a", vendor: "codex" }] });
+  assert.equal(w.agents[0].vendor, "codex");
+});
+
+test("buildWorld: evidence は {kind, ago} だけ・無ければ null（R98）", () => {
+  const w = buildWorld({ employees: [
+    { session: "s1", dept: "a", evidence: { kind: "committed", ago: 41, cmd: "git commit -m secret" } },
+    { session: "s2", dept: "b", evidence: { ago: 5 } },
+    { session: "s3", dept: "c" },
+    { session: "s4", dept: "d", evidence: { kind: "failed", ago: -3 } },
+  ] });
+  const by = Object.fromEntries(w.agents.map((a) => [a.session, a.evidence]));
+  assert.deepEqual(by.s1, { kind: "committed", ago: 41 });
+  assert.equal(by.s2, null);
+  assert.equal(by.s3, null);
+  assert.deepEqual(by.s4, { kind: "failed", ago: 0 });
 });
 
 test("buildWorld: 壊れた入力でも落ちない", () => {

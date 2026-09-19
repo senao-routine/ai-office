@@ -679,6 +679,50 @@ def _reader(home):
     return db
 
 
+_EVIDENCE_LOCK = threading.Lock()
+_EVIDENCE_CACHE = {}          # home → (at, {sid: (kind, ts)})
+EVIDENCE_WINDOW = 24 * 3600
+EVIDENCE_TTL = 5.0
+
+
+def evidence_for(home, sids, now):
+    """R98: 直近 24 時間の hook 記録から、セッションごとの**最後の証拠**を返す。
+
+    値は committed（git commit が通った）／tested（テスト系コマンドが通った）／failed（どちらかが失敗）。
+    「通った」の根拠は hook が記録した終了コード。**終了コードがランナー自身のものでない形**
+    （`pytest | tail`・`pytest || true`）は hook 側で分類しない＝ここには来ない（分からないときは何も言わない）。
+    24h に記録が無いセッションはキーごと無し（UI は「—」）。本文は一切持たない（kind と ok と ts だけ）。
+    1 クエリ・5 秒キャッシュ＝office_json のポーリング（3 秒）ごとに SQLite を叩かない。
+    失敗はすべて空 dict（office_json を落とさない）。"""
+    try:
+        now = _time(now)
+        key = str(Path(home).resolve())
+        with _EVIDENCE_LOCK:
+            cached = _EVIDENCE_CACHE.get(key)
+            if cached is None or not 0 <= now - cached[0] < EVIDENCE_TTL:
+                last = {}
+                with closing(_reader(home)) as db:
+                    rows = db.execute("""SELECT sid, kind, ok, ts FROM events
+                        WHERE ts > ? AND kind IN ('git:commit', 'test')
+                          AND ev IN ('PostToolUse', 'PostToolUseFailure')
+                        ORDER BY ts, id""", (now - EVIDENCE_WINDOW,))
+                    for row in rows:
+                        kind = "failed" if not row["ok"] else ("committed" if row["kind"] == "git:commit" else "tested")
+                        last[row["sid"]] = (kind, row["ts"])
+                cached = (now, last)
+                if len(_EVIDENCE_CACHE) >= 8:
+                    _EVIDENCE_CACHE.pop(next(iter(_EVIDENCE_CACHE)))
+                _EVIDENCE_CACHE[key] = cached
+        out = {}
+        for sid in sids:
+            hit = cached[1].get(sid)
+            if hit:
+                out[sid] = {"kind": hit[0], "ago": int(max(0, now - hit[1]))}
+        return out
+    except Exception:
+        return {}
+
+
 def timeline_json(home, since=0, sid="", limit=200):
     """Newest `limit` events after an epoch timestamp, in chronological order."""
     since = _time(since)
