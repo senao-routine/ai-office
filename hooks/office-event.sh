@@ -253,8 +253,8 @@ if tool == "Bash" and not background:
             j = 0
             while j < len(seg):
                 tok = seg[j][0]
-                if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=\S*", tok):
-                    j += 1; continue
+                if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", tok, re.S):
+                    j += 1; continue        # 値に空白があっても代入（1 トークンなので実行と混ざらない）
                 base = tok.rsplit("/", 1)[-1]
                 if base in LEAD_SKIP:
                     j += 1
@@ -287,12 +287,13 @@ if tool == "Bash" and not background:
             for tok, _q in seg:
                 if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", tok, re.S):
                     lead_env.append(tok)                     # 値に空白があっても見る
+        # 代入だけのセグメント（head が空）は変数を置くだけ＝実行の結果に影響しない支度
         heads = [_head_token(seg) for seg in segs[:-1]]
-        lead_safe = all(h in SAFE_LEAD for h in heads)
+        lead_safe = all(h == "" or h in SAFE_LEAD for h in heads)
         # 到達保証の例外は「先行が全部わかっている支度」のときだけ。`builtin exit 0 && pytest` の
         # ように**読めない先行**は通さない（別モデルレビュー）。
         proven = (had_and and not had_semi and ok_now
-                  and all(h in SAFE_LEAD or h in KNOWN_RUNNERS for h in heads))
+                  and all(h == "" or h in SAFE_LEAD or h in KNOWN_RUNNERS for h in heads))
         if len(segs) > 1 and not (lead_safe or proven):
             segs = []
         # `&&` が在る失敗は**誰の失敗か分からない**（`cd /なし && pytest` は pytest を走らせずに失敗）
@@ -313,7 +314,7 @@ if tool == "Bash" and not background:
                 if name in ("MAKEFLAGS", "GNUMAKEFLAGS") and any(
                         re.fullmatch(r"-?[A-Za-z]+", x) and set("ntqi") & set(x.lstrip("-")) for x in parts):
                     env_no_run = True
-            while i < len(toks) and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=\S*", toks[i][0]):
+            while i < len(toks) and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", toks[i][0], re.S):
                 # `PYTEST_ADDOPTS="--collect-only" pytest`・`MAKEFLAGS=-n make test` のように、
                 # 環境変数側へ非実行オプションを渡す形もある（別モデルレビュー）
                 name, _, value = toks[i][0].partition("=")

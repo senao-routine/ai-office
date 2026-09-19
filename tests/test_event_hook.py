@@ -196,6 +196,14 @@ class EventHookTest(unittest.TestCase):
             ("pytest --collectonly", ""),                         # 綴り違いの収集専用
             ("git --html-path commit", ""),                       # 表示して終わる
             ("git --exec-path", ""),
+            # ★実機で踏んだ取りこぼし（2026-09-20・ドッグフーディング）:
+            #   このプロジェクトで最も多い形（パスを変数に置いてから走らせる）が 1 件も拾えていなかった
+            ('ROOT="/Users/x/develop/20260714 - ai-office"; cd "$ROOT"; bash dev.sh --check', "test"),
+            ('ROOT="/no-space"; cd "$ROOT"; bash verify.sh', "test"),
+            ('LOG="/tmp/a b.log"; bash verify.sh > "$LOG" 2>&1', "test"),
+            ('ROOT="/w"; cd "$ROOT"; git commit -am wip', "git:commit"),
+            ('ROOT="/w"; cat verify.sh', ""),
+            ('TEST_CMD="npx vitest run"; echo x', ""),
         ]
         for i, (cmd, want) in enumerate(cases):
             run_hook(self.home, {"session_id": f"sess-evt-{i:04d}", "hook_event_name": "PostToolUse", "cwd": "/w",
