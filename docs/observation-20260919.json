@@ -1,0 +1,24 @@
+{
+  "始点": "2026-09-19",
+  "終点": "2026-10-03",
+  "公開したもの": {
+    "デモ": "https://ai-office-demo.routinelabo-senao.workers.dev",
+    "Release": "https://github.com/senao-routine/ai-office/releases/tag/v2.1.0",
+    "LP": "https://routinelabo-lp.routinelabo-senao.workers.dev"
+  },
+  "基準線": {
+    "star": 1,
+    "release_downloads": 0,
+    "topics": 11,
+    "homepage": "設定済み"
+  },
+  "見るもの": [
+    "star の増分",
+    "Release の zip/tar.gz のダウンロード数",
+    "デモの訪問（Cloudflare のダッシュボード）",
+    "LP のメール登録（wrangler kv key list --binding SUBS --remote）",
+    "?ui=pixel への言及",
+    "本人の常用率（3D でなく台帳で ❗に答えた日数）"
+  ],
+  "判断（プラン §8）": "訪問 <100 = チャネルの失敗 ／ ≥100 かつ star <10 = 絵か設計の失敗 ／ 両方満たす = 既定を決める"
+}
