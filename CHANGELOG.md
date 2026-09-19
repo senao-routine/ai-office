@@ -37,7 +37,9 @@ by `python3 server/office_version.py` and returned by `GET /api/office` as `app.
 - Issue templates, a security policy and a support pointer, so there is somewhere to go when
   something breaks.
 
-## [2.0.0] — 2026-09-16
+## 2.0.0 — 2026-09-16
+
+*Released before this project cut tagged releases, so there is no `v2.0.0` tag to link to.*
 
 The office became a place rather than a diagram.
 
@@ -69,4 +71,3 @@ The office became a place rather than a diagram.
 
 [Unreleased]: https://github.com/senao-routine/ai-office/compare/v2.1.0...HEAD
 [2.1.0]: https://github.com/senao-routine/ai-office/releases/tag/v2.1.0
-[2.0.0]: https://github.com/senao-routine/ai-office/releases/tag/v2.0.0
