@@ -34,4 +34,11 @@ EXCLUDES=(
   "docs/tripo-ledger.md"
   "tools/tripo_gen.py"           # Tripo API（有料）を叩く開発専用ツール。作業用の個人パスも入っている
   ".tripo"                       # 直近の Tripo タスク id（開発の副産物）
+  # R98-W4: 観察の台帳と、その自動記録。内部の作業台帳＝受け取った人には意味が無い。
+  # ★このファイル自体は公開物に残る。落とす中身の要約をここに書くと、除外した意味が消える
+  #（別モデルレビューで実測）。理由は一般論にとどめる。
+  "docs/observation-20260919.json"
+  "tools/observe.py"
+  "tools/observe_install.sh"
+  "tests/test_observe.py"
 )
