@@ -59,7 +59,14 @@ if [ "$MODE" = "--demo" ]; then
       # 消したはずの一時ディレクトリを**作り直す**（＝「何も残さない」が破れる・別モデルレビュー）。
       # set -m で独立したプロセスグループにしてあるので、グループごと止める。
       kill -TERM "-$DEMO_PID" 2>/dev/null || kill "$DEMO_PID" 2>/dev/null
+      # TERM で終わらない子が居ると `wait` が返らず、Ctrl-C を送った側の待ち時間切れで
+      # 親だけ殺され、**サーバーが孤児のままポートを掴み続ける**（負荷の高い Mac で実際に起きた）。
+      # 3 秒だけ待って、それでも居たらグループごと落とす番人を付ける。
+      ( sleep 3; kill -KILL "-$DEMO_PID" 2>/dev/null || kill -KILL "$DEMO_PID" 2>/dev/null ) &
+      DEMO_WD=$!
       wait "$DEMO_PID" 2>/dev/null
+      kill "$DEMO_WD" 2>/dev/null
+      wait "$DEMO_WD" 2>/dev/null
       DEMO_PID=""
     fi
     rm -rf "$DEMO_HOME"

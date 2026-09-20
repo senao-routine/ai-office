@@ -90,9 +90,15 @@ class SetupCliTest(unittest.TestCase):
                 proc.wait(timeout=15)
             except subprocess.TimeoutExpired:
                 os.killpg(proc.pid, signal.SIGKILL)
-            time.sleep(2.0)
-            held = subprocess.run(["lsof", "-ti", f"tcp:{port}", "-sTCP:LISTEN"],
-                                  capture_output=True, text=True).stdout.strip()
+            # 2 秒固定で見ると、負荷の高い Mac では「まだ落ちている途中」を失敗と読む。
+            # 空くまで待つ（上限 20 秒）＝「Ctrl-C で必ず止まる」の主張は変えずに、揺れだけ消す。
+            held = "x"
+            for _ in range(40):
+                held = subprocess.run(["lsof", "-ti", f"tcp:{port}", "-sTCP:LISTEN"],
+                                      capture_output=True, text=True).stdout.strip()
+                if not held:
+                    break
+                time.sleep(0.5)
             self.assertEqual(held, "", "Ctrl-C のあともデモのサーバーが残っている")
             # 「何も残さない」の実測: この実行で作った一時領域が消えていること。
             # PID だけ止めると `claude`（セッション検出）が孤児になり、消したはずの領域を作り直す。

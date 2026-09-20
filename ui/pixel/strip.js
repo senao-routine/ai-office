@@ -102,9 +102,12 @@ function paintDesks(ctx, desks, s) {
 /**
  * 帯を作る。`ui/pixel/index.js` が mount で 1 回呼び、draw(world, board, t) を毎フレーム呼ぶ。
  * host: #viewport ／ frozen: UI クロックが止まっているか（golden・E2E の `?t=`）。
+ *   真偽値のほか**関数**も渡せる。`debug.step()` で 1 コマずつ時計を送っているあいだは
+ *   時計が進むので補間を効かせたい（クリップに歩行が写らなくなる）＝そこを呼び側が切り替える。
  * 時刻は**注入**する（clock.js を import しない＝ui-2d.md の掟）。
  */
 export function init({ host, frozen = false }) {
+  const isFrozen = typeof frozen === "function" ? frozen : () => Boolean(frozen);
   const canvas = document.createElement("canvas");
   canvas.width = STRIP.min;
   canvas.height = STRIP.height;
@@ -179,7 +182,7 @@ export function init({ host, frozen = false }) {
         // 部屋の幅が変わったときも**止まっている人は**その場へ＝伸びた部屋に家具が付いていくのは
         // 「移動」ではない。ただし**歩いている最中は止めない**（2px のリサイズで目的地へ瞬間移動
         // していた＝これも別モデルレビューで実測）。歩いている人は新しい目的地へ歩き続ける。
-        if (frozen || (resized && parked)) {
+        if (isFrozen() || (resized && parked)) {
           m = { fx: a0.x, fy: a0.y, tx: a0.x, ty: a0.y, t0: time, facing: a0.facing };
           motion.set(a0.session, m);
         } else if (resized) {

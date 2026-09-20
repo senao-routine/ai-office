@@ -3,7 +3,7 @@
 // 操作系（❗トレイ・シート・送信・管理・ゲージ・雇う・初回体験・ダイジェスト）は ui/hud を iso と共有する。
 // 3D は持たない＝scene は「何もしないシーン」。数値は全部 world（実データ）から。
 import { buildWorld, summarizeWorld } from "/ui/core/world.js";
-import { frozen, loop, now } from "/ui/platform/clock.js";
+import { frozen, loop, now, setTime } from "/ui/platform/clock.js";
 import { createArrivals } from "/ui/platform/arrivals.js";
 import { installProbe } from "/ui/platform/probe.js";
 import { STYLES } from "/ui/platform/style.js";
@@ -166,7 +166,9 @@ export async function mount(root) {
       else openCompose(a);
     },
   });
-  const strip = initStrip({ host: shell.querySelector("#viewport"), frozen });
+  // `debug.step()` で時計を手送りしているあいだは「止まっている」扱いをやめる（歩行を写すため）
+  let stepping = false;
+  const strip = initStrip({ host: shell.querySelector("#viewport"), frozen: () => frozen && !stepping });
   const scene = nullScene(table, strip);
   // 行 ↔ 帯の対応（行に乗せると帯の足元が光る）
   shell.querySelector("#agents").addEventListener("mouseover", (e) => {
@@ -222,7 +224,10 @@ export async function mount(root) {
     pollMs: () => session.intervalMs(),
     debug: { agentPoint: (id) => table.point(id), rows: () => table.rows(),
       // 帯の中のロボの位置（スモークが「移動先へ瞬間移動していない」を測る照準）
-      bandPoint: (id) => strip.point(id) },
+      bandPoint: (id) => strip.point(id),
+      // 固定時刻のまま 1 コマずつ進める（tools/demo_clip.py が毎回同じ動画を撮るための唯一の入口）。
+      // frozen では `clock.loop` が 1 回しか描かないので、時刻を送ってから自分で描き直す。
+      step: (seconds) => { stepping = true; setTime(seconds); draw(now()); } },
   });
   return () => {
     session.dispose(); stopLoop(); uninstall();
