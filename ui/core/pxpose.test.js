@@ -77,11 +77,12 @@ test("deskPitch: 何プロジェクトでも帯からはみ出さない（16..24
   assert.equal(deskPitch(-3).pitch, 24);
 });
 
-test("pxScale: 整数倍だけ（1..3）", () => {
-  assert.equal(pxScale(1440), 3);
-  assert.equal(pxScale(1000), 2);
-  assert.equal(pxScale(480), 1);
-  assert.equal(pxScale(300), 1);
+test("pxScale: 整数倍だけ（1..2）・部屋の最小幅 400 が入る最大の倍率", () => {
+  assert.equal(pxScale(1406), 2);          // 1440 の帯（既定画面）
+  assert.equal(pxScale(800), 2);           // iPad 縦 834 → ここが ×1 に落ちるとロボが実寸で読めない
+  assert.equal(pxScale(856), 2);           // 折りたたみ 890
+  assert.equal(pxScale(356), 1);           // スマホ 390（CSS がこの幅では帯ごと隠す）
+  assert.equal(pxScale(400), 1);
   assert.equal(pxScale(NaN), 1);
-  assert.equal(pxScale(5000), 3);
+  assert.equal(pxScale(5000), 2);          // 上限 2（×3 にすると帯が 216px になり行が 2 本消える）
 });

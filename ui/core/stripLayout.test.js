@@ -1,7 +1,7 @@
 // R98-W2: 帯の間取り（純関数）。「何人居ても帯からはみ出さない」「同じ入力なら同じ配置」を固定する。
 import test from "node:test";
 import assert from "node:assert/strict";
-import { STRIP, stripLayout, stripRoom } from "./stripLayout.js";
+import { STRIP, stripAnchors, stripLayout, stripRoom } from "./stripLayout.js";
 import { pxpose } from "./pxpose.js";
 import { buildWorld } from "./world.js";
 
@@ -12,14 +12,17 @@ const officeOf = (n, over = () => ({})) => ({
 });
 const boardOf = (world) => world.agents.map((a) => ({ key: a.id, name: a.name, sessions: [a] }));
 
-test("stripLayout: 22 プロジェクトでも机が帯の中に収まる", () => {
+test("stripLayout: 22 プロジェクトでも机が帯の中に収まる（どの幅でも）", () => {
   const w = buildWorld(officeOf(22));
-  const { desks, pitch } = stripLayout(w, boardOf(w));
-  assert.ok(pitch >= 16 && pitch <= 24, `pitch=${pitch}`);
-  for (const d of desks) {
-    assert.ok(d.x >= STRIP.desks.x, `机が左へはみ出す: ${d.x}`);
-    assert.ok(d.x + STRIP.robot.w <= STRIP.desks.x + STRIP.desks.w + STRIP.robot.w,
-      `机が右へはみ出す: ${d.x}`);
+  for (const width of [STRIP.min, STRIP.width, 428, 703]) {
+    const A = stripAnchors(width);
+    const { desks, pitch } = stripLayout(w, boardOf(w), width);
+    assert.ok(pitch >= 16 && pitch <= 24, `pitch=${pitch} width=${width}`);
+    for (const d of desks) {
+      assert.ok(d.x >= A.desks.x, `机が左へはみ出す: ${d.x} (${width})`);
+      assert.ok(d.x + STRIP.robot.w <= A.desks.x + A.desks.w + STRIP.robot.w,
+        `机が右へはみ出す: ${d.x} (${width})`);
+    }
   }
 });
 
@@ -51,7 +54,7 @@ test("stripLayout: ❗は受付の列へ立ち、こちらを向く", () => {
   const attn = actors.filter((a) => a.attention);
   assert.equal(attn.length, 1);
   assert.equal(attn[0].zone, "queue");
-  assert.ok(attn[0].x < STRIP.desks.x, "受付の側に居ない");
+  assert.ok(attn[0].x < stripAnchors().desks.x, "受付の側に居ない");
   assert.equal(attn[0].facing, -1);
 });
 
@@ -63,15 +66,20 @@ test("stripLayout: 机にあぶれた分は帯に出さない（表には出る�
   assert.ok(desks.length < 40);
 });
 
-test("stripRoom: 動かない部分は常に同じ・帯の中", () => {
-  const room = stripRoom();
-  assert.deepEqual(room, stripRoom());
-  for (const [name, r] of Object.entries(room)) {
-    const list = Array.isArray(r) ? r : [r];
-    for (const box of list) {
-      assert.ok(box.x >= 0 && box.x + box.w <= STRIP.width, `${name} が横にはみ出す`);
-      assert.ok(box.y >= 0 && box.y + box.h <= STRIP.height, `${name} が縦にはみ出す`);
+test("stripRoom: 動かない部分は常に同じ・帯の中（どの幅でも）", () => {
+  for (const width of [STRIP.min, STRIP.width, 428, 703, 990]) {
+    const room = stripRoom(width);
+    assert.deepEqual(room, stripRoom(width));
+    for (const [name, r] of Object.entries(room)) {
+      if (name === "width") continue;
+      const list = Array.isArray(r) ? r : [r];
+      for (const box of list) {
+        assert.ok(box.x >= 0 && box.x + box.w <= width, `${name} が横にはみ出す (${width})`);
+        assert.ok(box.y >= 0 && box.y + box.h <= STRIP.height, `${name} が縦にはみ出す (${width})`);
+      }
     }
+    // 棚は会議室に食い込まない（奥列が重なると「壊れた絵」になる）
+    for (const sh of room.shelves) assert.ok(sh.x + sh.w <= room.meeting.x, `棚が会議室に重なる (${width})`);
   }
 });
 

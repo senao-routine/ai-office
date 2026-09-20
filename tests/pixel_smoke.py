@@ -11,8 +11,10 @@
   3. 行クリック → #sheet が同じセッションで開く・シートがヘッダーと❗帯を覆わない
   4. __office.debug.agentPoint(id) の座標クリック → その行が .sel
   4b. ホバー: プロジェクト行は全員・セッション行はその 1 体だけ帯が光る
-  5. 形状 3 つ（1440×900 / 1280×800 / 1024×768）で scrollWidth ≤ innerWidth かつ行数不変
+  5. 形状 6 つ（1440/1280/1024/834×1112/890×626/390×844）で横スクロール無し・行数不変・
+     帯は切れずに全部入るか、スマホでは畳まれている
   5b. 1024px・⤢ でもシートは表の上だけに重なり、帯は覆われない（3D 用 sheet-open 則を当てない）
+  5b'. 390px・⤢ でも帯は畳まれたまま
   5c. 帯は論理幅×72 の整数倍・pixelated・実際に人が居る
   5d. canvas に文字を描かない（fillText を throw に差し替えても mount が通る）
   5e. 帯の移動は歩く（瞬間移動しない・奥列へは縦も動く）・窓幅の変化は移動に化けない（live ページ）
@@ -39,7 +41,10 @@ from ui_shot import SWIFTSHADER, VIEWPORT, free_port, start_server  # noqa: E402
 
 WORLD = ROOT / "tests" / "fixtures" / "world" / "basic.json"
 INBOX = ROOT / ".ui_shot_home" / ".claude" / "office_inbox"
-SHAPES = [(1440, 900), (1280, 800), (1024, 768)]
+# 形状 6 つ。後ろ 3 つはプラン W3 の対象（iPad 縦・折りたたみ展開・スマホ）。
+# スマホは帯を畳む（部屋の最小幅 400 が入らず右端が切れる＝休憩中の人が「居ない」ように見える）。
+SHAPES = [(1440, 900), (1280, 800), (1024, 768), (834, 1112), (890, 626), (390, 844)]
+BAND_HIDDEN_BELOW = 480
 
 
 def wait_file(path, timeout=6.0):
@@ -192,11 +197,23 @@ def main():
                     "    sw: document.documentElement.scrollWidth, iw: window.innerWidth,"
                     "    head: vis(document.querySelector('.pxhrow')),"
                     "    cells: [...new Set(rows.map(vis))],"
-                    "    tall: rows.filter(r => r.getBoundingClientRect().height > 45).length }; }")
+                    "    tall: rows.filter(r => r.getBoundingClientRect().height > 45).length,"
+                    "    band: (() => { const st = document.querySelector('#stage');"
+                    "      return st && getComputedStyle(st).display !== 'none'"
+                    "        ? Math.round(st.getBoundingClientRect().width) : 0; })(),"
+                    "    canvas: (() => { const c = document.querySelector('#stage canvas');"
+                    "      return c && c.offsetParent ? c.width : 0; })(),"
+                    "    room: (window.__office.stats() || {}).logicalW,"
+                    "    scale: (window.__office.stats() || {}).scale }; }")
+                # 帯は「畳む」か「切れずに全部入る」のどちらか。中途半端に切れると、右端の
+                # ラウンジとサーバーが見えず**休憩中の人が居ないように見える**＝帯が嘘をつく。
+                band_ok = (m["band"] == 0) if w <= BAND_HIDDEN_BELOW else (
+                    m["band"] > 0 and m["canvas"] <= m["band"] and m["room"] >= 400)
                 # 見えるセル数が見出しと同じ＝列が次の段へ流れていない（別モデルレビュー: 詳細度で非表示が負けていた）
                 if (m["rows"] == projects and m["sw"] <= m["iw"] and m["cells"] == [m["head"]]
-                        and m["tall"] == 0):
-                    print(f"  ✓ {w}×{h}: 行 {m['rows']}・列 {m['head']}・横スクロール無し")
+                        and m["tall"] == 0 and band_ok):
+                    band = "帯なし" if m["band"] == 0 else f"帯 論理{m['room']}×{m['scale']}"
+                    print(f"  ✓ {w}×{h}: 行 {m['rows']}・列 {m['head']}・{band}・横スクロール無し")
                 else:
                     print(f"  ✗ {w}×{h}: {m}")
                     ng += 1
@@ -223,6 +240,25 @@ def main():
                 print(f"  ✓ 1024px・⤢ でもシートは表の上だけに重なり、帯（{lay['bandH']}px）は覆われない")
             else:
                 print(f"  ✗ 3D 用の sheet-open 則が台帳に当たっている: {lay}")
+                ng += 1
+            page.click("#sheetwide")
+            page.keyboard.press("Escape")
+            # (5b') スマホ幅では ⤢ でも帯は戻らない。`:has(.sheet.wide)` の則は詳細度が高いので、
+            #       同じ形で打ち消さないと 390px に 400 論理の部屋が出て右端が切れる（別モデルレビュー）。
+            page.set_viewport_size({"width": 390, "height": 844})
+            page.wait_for_timeout(200)
+            page.click(f'#agents .pxrow.proj[data-project="{target_id}"]')
+            page.wait_for_selector("#sheet:not([hidden])", timeout=3000)
+            page.click("#sheetwide")
+            page.wait_for_timeout(200)
+            phone = page.evaluate(
+                "() => ({ band: getComputedStyle(document.querySelector('#stage')).display,"
+                "  wide: document.querySelector('#sheet').classList.contains('wide'),"
+                "  sw: document.documentElement.scrollWidth, iw: window.innerWidth })")
+            if phone["band"] == "none" and phone["wide"] and phone["sw"] <= phone["iw"]:
+                print("  ✓ 390px・⤢ でも帯は畳まれたまま（右端が切れた部屋を出さない）")
+            else:
+                print(f"  ✗ スマホ幅で帯が戻っている: {phone}")
                 ng += 1
             page.click("#sheetwide")
             page.keyboard.press("Escape")
@@ -433,6 +469,44 @@ def main():
                 print(f"  ✗ 会議室へ移れていない: {mid_up} {top_up}")
                 ng += 1
 
+            # 歩いている最中のリサイズで**目的地へ飛ばない**（部屋の伸縮と移動を混ぜない・同レビュー）
+            again = world_with(question="もう一度どうぞ", approvalMin=2,
+                               attention=True, state="waiting", minions=0)
+            live_body[0] = json.dumps(again, ensure_ascii=False)   # ポーリングが巻き戻さないように
+            live.evaluate("(w) => window.__office.inject(w)", again)
+            live.wait_for_function("() => (window.__office.stats() || {}).walking >= 1", timeout=8000)
+            live.wait_for_timeout(200)
+            before_rs = live.evaluate(
+                "(id) => ({ p: window.__office.debug.bandPoint(id),"
+                "  w: (window.__office.stats() || {}).walking })", target_id)
+            live.set_viewport_size({"width": 1438, "height": VIEWPORT["height"]})
+            live.wait_for_timeout(200)
+            after_rs = live.evaluate(
+                "(id) => ({ p: window.__office.debug.bandPoint(id),"
+                "  w: (window.__office.stats() || {}).walking })", target_id)
+            if (before_rs["p"] and after_rs["p"] and before_rs["w"] >= 1 and after_rs["w"] >= 1
+                    and abs(after_rs["p"]["left"] - before_rs["p"]["left"]) < 120):
+                print("  ✓ 歩いている最中に窓の幅が変わっても、目的地へ飛ばずに歩き続ける")
+            else:
+                print(f"  ✗ リサイズで歩行が打ち切られた: {before_rs} → {after_rs}")
+                ng += 1
+            # 倍率ごと変わる幅（1438 → 834）でも、歩いている人が canvas の外へ消えない
+            live.set_viewport_size({"width": 834, "height": 1112})
+            live.wait_for_timeout(200)
+            narrow = live.evaluate(
+                "(id) => { const p = window.__office.debug.bandPoint(id);"
+                "  const c = document.querySelector('#stage canvas').getBoundingClientRect();"
+                "  return { inside: p ? (p.left >= c.left - 1 && p.left <= c.right + 1) : null,"
+                "    left: p && Math.round(p.left), c0: Math.round(c.left), c1: Math.round(c.right),"
+                "    room: (window.__office.stats() || {}).logicalW }; }", target_id)
+            if narrow["inside"]:
+                print(f"  ✓ 倍率の変わる幅（→834）でも歩いている人が帯の中に居る（論理 {narrow['room']}）")
+            else:
+                print(f"  ✗ 歩いている人が canvas の外へ消えた: {narrow}")
+                ng += 1
+            live.set_viewport_size(VIEWPORT)
+            live.wait_for_function("() => (window.__office.stats() || {}).walking === 0", timeout=15000)
+
             # 窓の幅が変わっただけで歩き出さない（中央寄せの ox を移動に混ぜない・別モデルレビュー medium）
             live.set_viewport_size({"width": 1246, "height": VIEWPORT["height"]})
             live.wait_for_timeout(300)
@@ -530,7 +604,7 @@ def main():
     if ng:
         print(f"✗ pixel スモーク: {ng} 件")
         return 1
-    print("✓ pixel スモーク: 台帳・❗→inbox・シート・照準・形状 3 つ・ヘルプ・エラー 0")
+    print("✓ pixel スモーク: 台帳・❗→inbox・シート・照準・形状 6 つ・帯（歩行/再生/ホバー）・エラー 0")
     return 0
 
 

@@ -637,6 +637,12 @@ elif [ -x "$VENV_PY" ] && "$VENV_PY" -c 'import playwright' >/dev/null 2>&1 \
   # 机あふれ・重なり・ベンダーの描き分けが回帰しても気づけない（iso の xl22 と同じ理由）。
   "$VENV_PY" tools/ui_shot.py --style pixel --world xl22 --name pixel_xl22 --check | sed 's/^/  /'
   [ "${PIPESTATUS[0]}" = "0" ] || ng "R98 帯(22体)ビジュアル回帰失敗 (exit ${PIPESTATUS[0]})"
+  # R98-W3: iPad 縦（834×1112）。狭い画面では部屋が縮んで倍率を保つ＝ここが ×1 に落ちると
+  # ロボが 16×24 の実寸になり「何をしているか」が読めない（形状の門は pixel_smoke と二本立て）。
+  # この 1 枚だけ差分が 0.000% にならない（見出し「AIオフィス」の 1 文字の輪郭が 7px 揺れる＝
+  # この幅での字送りの丸め。帯そのものはビット一致）。閾値 0.5% に対して 0.002% なので見張りは効く。
+  "$VENV_PY" tools/ui_shot.py --style pixel --world xl22 --viewport 834x1112 --name pixel_834x1112 --check | sed 's/^/  /'
+  [ "${PIPESTATUS[0]}" = "0" ] || ng "R98 帯(iPad 縦)ビジュアル回帰失敗 (exit ${PIPESTATUS[0]})"
   # R90: 方向Cの参照画像で較正した3D品質ゲート（docs/art-direction.md）。
   # R93-M1'（2026-09-14）: 常設ゲートを glass（G1 ラベンダー・グラスロフト）へ。c は retired（tools/style_score.py）。
   "$VENV_PY" tools/style_score.py --profile glass tests/artifacts/ui_iso_scene.png | sed 's/^/  /'

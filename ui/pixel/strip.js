@@ -37,58 +37,53 @@ function blit(ctx, rows, x, y, s, { shell, tint }) {
   }
 }
 
-/** 動かない部分（壁・窓・床・受付・会議室・サーバー・ラウンジ）。毎フレーム同じ。 */
-function paintRoom(ctx, s, ox, full) {
-  const room = stripRoom();
-  const box = (r, color) => { ctx.fillStyle = color; ctx.fillRect((ox + r.x) * s, r.y * s, r.w * s, r.h * s); };
-  // 地（壁・床・窓）は**画面幅いっぱい**に伸ばす＝部屋が続いて見える。什器と人だけ中央の論理 480 に置く。
+/** 動かない部分（壁・窓・床・受付・会議室・サーバー・ラウンジ）。部屋は帯の幅いっぱい。 */
+function paintRoom(ctx, s, room) {
+  const w = room.width;
+  const box = (r, color) => { ctx.fillStyle = color; ctx.fillRect(r.x * s, r.y * s, r.w * s, r.h * s); };
   ctx.fillStyle = ROOM.wall;
-  ctx.fillRect(0, 0, full * s, STRIP.front.y * s);
+  ctx.fillRect(0, 0, w * s, STRIP.front.y * s);
   ctx.fillStyle = ROOM.floor;
-  ctx.fillRect(0, STRIP.front.y * s, full * s, (STRIP.height - STRIP.front.y) * s);
+  ctx.fillRect(0, STRIP.front.y * s, w * s, (STRIP.height - STRIP.front.y) * s);
   ctx.fillStyle = ROOM.wallLine;
-  ctx.fillRect(0, STRIP.wall.y * s, full * s, STRIP.wall.h * s);
-  for (let x = 20 - ox; x < full; x += 116) {              // 窓は画面端まで等間隔で並べる
-    if (x + 84 < 0) continue;
+  ctx.fillRect(0, STRIP.wall.y * s, w * s, STRIP.wall.h * s);
+  for (const win of room.windows) {                       // 窓は帯の端まで等間隔で並ぶ
     ctx.fillStyle = ROOM.screen;
-    ctx.fillRect(x * s, 1 * s, 84 * s, 5 * s);
+    box(win, ROOM.screen);
     ctx.fillStyle = ROOM.deskEdge;
-    ctx.fillRect(x * s, 6 * s, 84 * s, s);
+    ctx.fillRect(win.x * s, (win.y + win.h) * s, win.w * s, s);
   }
-  ctx.fillStyle = ROOM.deskEdge;
-  ctx.fillRect(0, STRIP.wall.h * s, full * s, s);
+  box(room.windowSill, ROOM.deskEdge);
   // 奥列の什器（棚・植物）＝空白を「部屋」にする
   for (const sh of room.shelves) {
     box(sh, ROOM.desk);
     ctx.fillStyle = ROOM.deskEdge;
-    for (let i = 0; i < 3; i += 1) ctx.fillRect((ox + sh.x) * s, (sh.y + 5 + i * 6) * s, sh.w * s, s);
-    ctx.fillRect((ox + sh.x) * s, sh.y * s, sh.w * s, s);
+    for (let i = 0; i < 3; i += 1) ctx.fillRect(sh.x * s, (sh.y + 5 + i * 6) * s, sh.w * s, s);
+    ctx.fillRect(sh.x * s, sh.y * s, sh.w * s, s);
   }
   for (const pl of room.plants) {
     ctx.fillStyle = PALETTE.B;                            // 葉（ティール寄りの緑）
-    ctx.fillRect((ox + pl.x) * s, pl.y * s, pl.w * s, (pl.h - 4) * s);
+    ctx.fillRect(pl.x * s, pl.y * s, pl.w * s, (pl.h - 4) * s);
     ctx.fillStyle = ROOM.desk;                            // 白い鉢
-    ctx.fillRect((ox + pl.x + 1) * s, (pl.y + pl.h - 4) * s, (pl.w - 2) * s, 4 * s);
+    ctx.fillRect((pl.x + 1) * s, (pl.y + pl.h - 4) * s, (pl.w - 2) * s, 4 * s);
   }
   box(room.meeting, ROOM.glass);
   ctx.fillStyle = ROOM.glassRail;                         // 会議室の卓（ガラス箱の中）
-  ctx.fillRect((ox + room.meeting.x + 8) * s, (room.meeting.y + room.meeting.h - 8) * s,
+  ctx.fillRect((room.meeting.x + 8) * s, (room.meeting.y + room.meeting.h - 8) * s,
     (room.meeting.w - 16) * s, 2 * s);
   box(room.server, ROOM.server);
   ctx.fillStyle = ROOM.lamp;                              // サーバーの LED（位置固定＝ちらつかない）
-  for (let i = 0; i < 4; i += 1) ctx.fillRect((ox + room.server.x + 2) * s, (room.server.y + 4 + i * 7) * s, s, s);
-  ctx.fillStyle = ROOM.deskEdge;
-  ctx.fillRect(0, STRIP.front.y * s, full * s, s);        // 床の境目も端まで
+  for (let i = 0; i < 4; i += 1) ctx.fillRect((room.server.x + 2) * s, (room.server.y + 4 + i * 7) * s, s, s);
+  box(room.floorLine, ROOM.deskEdge);                     // 床の境目
   box(room.reception, ROOM.desk);                         // 受付カウンター
   ctx.fillStyle = ROOM.deskEdge;
-  ctx.fillRect((ox + room.reception.x) * s, room.reception.y * s, room.reception.w * s, s);
+  ctx.fillRect(room.reception.x * s, room.reception.y * s, room.reception.w * s, s);
   box(room.lounge, ROOM.rug);                             // ラウンジのラグ
 }
 
 /** 机（1 プロジェクト 1 台）。ロボの足元に天板と小口を置く。 */
-function paintDesks(ctx, desks, s, ox) {
-  for (const d0 of desks) {
-    const d = { ...d0, x: d0.x + ox };
+function paintDesks(ctx, desks, s) {
+  for (const d of desks) {
     const w = STRIP.robot.w + 2;
     ctx.fillStyle = ROOM.desk;                      // 天板
     ctx.fillRect(d.x * s, (d.y + 15) * s, w * s, 2 * s);
@@ -111,18 +106,18 @@ function paintDesks(ctx, desks, s, ox) {
  */
 export function init({ host, frozen = false }) {
   const canvas = document.createElement("canvas");
-  canvas.width = STRIP.width;
+  canvas.width = STRIP.min;
   canvas.height = STRIP.height;
   host.append(canvas);
   const ctx = canvas.getContext("2d");
   let scale = 0;
   let hover = null;         // { project, session } ／ セッション行なら session が入る
 
-  let logicalW = STRIP.width;
+  let logicalW = STRIP.min;
   const resize = () => {
     const hostW = host.clientWidth || STRIP.width;
     const s = pxScale(hostW);
-    const lw = Math.max(STRIP.width, Math.floor(hostW / s));   // 画面幅いっぱいの論理幅
+    const lw = Math.max(STRIP.min, Math.floor(hostW / s));     // 画面幅いっぱいの論理幅
     if (s === scale && lw === logicalW) return s;
     scale = s; logicalW = lw;
     canvas.width = lw * s;
@@ -135,8 +130,8 @@ export function init({ host, frozen = false }) {
 
   // 移動は**注入された時刻 t** で進める（Date.now は書かない＝ui-2d.md の掟）。
   // 目的地が変わった瞬間に「いま居る場所」から線を引き直す＝瞬間移動しない。
-  // 持つのは**部屋の座標**（中央寄せの ox を含めない）。ox を混ぜると、窓の幅が変わっただけで
-  // 全員が「歩いて追いかける」（別モデルレビュー medium で実測）。
+  // 部屋は**帯の幅いっぱい**に伸びるので、中央寄せのオフセットは無い（以前は 480 固定の部屋を
+  // 中央に置いていて、その ox を移動状態に混ぜたせいで「窓幅を変えると全員が歩き出す」を踏んだ）。
   // 奥列（会議室）へは y も一緒に動く＝机から会議室へ飛び上がらない。
   const WALK_SPEED = 96;                    // 論理 px/秒（机から受付まで約 3 秒）
   const motion = new Map();                 // session → { fx, fy, tx, ty, t0, facing }
@@ -151,15 +146,21 @@ export function init({ host, frozen = false }) {
   let walking = 0;          // いま歩いている人数（スモークが「瞬間移動していない」を見る）
   let hovered = 0;          // いま光っている人数（セッション行なら 1 人だけ）
   let lastT = 0;            // 最後に**描いた時刻**（再生を止めたら帯も止まることの照準）
+  let lastW = 0;            // 最後に描いた論理幅（変わったフレームは歩かせない）
+  let lastArgs = null;      // 最後に描いた材料（窓の大きさが変わったとき描き直すため）
   const draw = (world, board, t) => {
     const s = resize();
     const time = Number.isFinite(t) ? t : 0;
     lastT = time;
-    const ox = Math.floor((logicalW - STRIP.width) / 2);        // 什器と人を中央へ（描くときだけ足す）
-    const { desks, actors: raw } = stripLayout(world, board);
+    lastArgs = [world, board, t];
+    const prevW = lastW;
+    const resized = logicalW !== prevW;
+    const widthRatio = prevW > 0 ? logicalW / prevW : 1;   // 部屋が縮んだら歩いている人も一緒に縮める
+    lastW = logicalW;
+    const { desks, actors: raw } = stripLayout(world, board, logicalW);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    paintRoom(ctx, s, ox, logicalW);
-    paintDesks(ctx, desks, s, ox);
+    paintRoom(ctx, s, stripRoom(logicalW));
+    paintDesks(ctx, desks, s);
     const live = new Set();
     const drawn = [];
     walking = 0;
@@ -167,25 +168,36 @@ export function init({ host, frozen = false }) {
     for (const a0 of raw) {
       live.add(a0.session);
       let m = motion.get(a0.session);
-      // 固定時刻（golden・E2E の `?t=`）では補間しない。時計が進まないので、配置が変わると
-      // 旧位置で歩行姿勢のまま永久に止まる（別モデルレビューが inject で実測）。
-      if (frozen) {
-        m = { fx: a0.x, fy: a0.y, tx: a0.x, ty: a0.y, t0: time, facing: a0.facing };
-        motion.set(a0.session, m);
-      } else if (!m) {
+      if (!m) {
         m = { fx: a0.x, fy: a0.y, tx: a0.x, ty: a0.y, t0: time, facing: a0.facing };  // 初登場は歩かせない
         motion.set(a0.session, m);
-      } else if (m.tx !== a0.x || m.ty !== a0.y) {
+      } else {
         const here = posOf(m, time);
-        m = { fx: here.x, fy: here.y, tx: a0.x, ty: a0.y, t0: time,
-              facing: a0.x >= here.x ? 1 : -1 };
-        motion.set(a0.session, m);
+        const parked = here.x === m.tx && here.y === m.ty;
+        // 固定時刻（golden・E2E の `?t=`）では補間しない。時計が進まないので、配置が変わると
+        // 旧位置で歩行姿勢のまま永久に止まる（別モデルレビューが inject で実測）。
+        // 部屋の幅が変わったときも**止まっている人は**その場へ＝伸びた部屋に家具が付いていくのは
+        // 「移動」ではない。ただし**歩いている最中は止めない**（2px のリサイズで目的地へ瞬間移動
+        // していた＝これも別モデルレビューで実測）。歩いている人は新しい目的地へ歩き続ける。
+        if (frozen || (resized && parked)) {
+          m = { fx: a0.x, fy: a0.y, tx: a0.x, ty: a0.y, t0: time, facing: a0.facing };
+          motion.set(a0.session, m);
+        } else if (resized) {
+          // 歩いている最中に部屋の幅が変わった。位置は**旧い幅の座標**なので、比で新しい部屋へ
+          // 移してから歩き直す（そのまま残すと、狭くなった canvas の外へ消える＝別モデルレビューで実測）。
+          const hx = Math.min(logicalW - STRIP.robot.w, Math.max(0, here.x * widthRatio));
+          m = { fx: hx, fy: here.y, tx: a0.x, ty: a0.y, t0: time, facing: a0.x >= hx ? 1 : -1 };
+          motion.set(a0.session, m);
+        } else if (m.tx !== a0.x || m.ty !== a0.y) {
+          m = { fx: here.x, fy: here.y, tx: a0.x, ty: a0.y, t0: time,
+                facing: a0.x >= here.x ? 1 : -1 };
+          motion.set(a0.session, m);
+        }
       }
       const pos = posOf(m, time);
       const moving = pos.x !== m.tx || pos.y !== m.ty;
       if (moving) walking += 1;
-      // ドットは整数位置にしか置かない。ox は**ここで**足す（移動状態には入れない）
-      const a = { ...a0, x: Math.round(pos.x) + ox, y: Math.round(pos.y) };
+      const a = { ...a0, x: Math.round(pos.x), y: Math.round(pos.y) };   // ドットは整数位置だけ
       drawn.push(a);
       const facing = moving ? m.facing : a0.facing;
       // 歩行の位相は**進んだ距離**で決める（経過秒で回すと歩幅と速度が合わない・R97-G の教訓）
@@ -226,6 +238,11 @@ export function init({ host, frozen = false }) {
     last = new Map(drawn.map((a) => [a.session, a]));
   };
 
+  // 窓の大きさが変わったら描き直す。固定時刻のページは `clock.loop` が 1 回しか描かないので、
+  // これが無いと canvas が前の幅のまま残り、狭い画面で**部屋の右端が切れる**（golden が嘘をつく）。
+  const onResize = () => { if (lastArgs) draw(...lastArgs); };
+  window.addEventListener("resize", onResize);
+
   return {
     draw,
     resize,
@@ -242,6 +259,6 @@ export function init({ host, frozen = false }) {
       const r = canvas.getBoundingClientRect();
       return { left: r.left + (a.x + STRIP.robot.w / 2) * scale, top: r.top + (a.y + 4) * scale };
     },
-    dispose: () => canvas.remove(),
+    dispose: () => { window.removeEventListener("resize", onResize); canvas.remove(); },
   };
 }

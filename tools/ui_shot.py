@@ -156,7 +156,9 @@ def _shoot_once(style, t, seed, world, out, gpu=False, entry="/", query="", view
             # ステージ背景（CSSグラデーション）まで写すと、明るい背景が
             # 「空き床」として数えられ、床の色を参考画像に寄せるほど悪化する（実測で踏んだ）。
             canvas = page.query_selector("#viewport canvas")
-            if canvas:
+            # R98-W3: スマホ幅（≤480）では帯ごと畳む。存在だけで判定すると、見えない要素に
+            # screenshot() を呼んで可視待ちが 30 秒 ×3 タイムアウトする（別モデルレビューで実測）。
+            if canvas and canvas.is_visible():
                 # 採点用は「3Dの中身だけ」を透過PNGで撮る。
                 # ステージのCSSグラデーションが写ると、その明るい面が
                 # 「明るい一様面」として数えられ、シーンをどう直しても数値が動かない

@@ -146,3 +146,11 @@
   .ui-pixel .pxcounts, .ui-pixel .pxfoot .hist { display: none; }
   .ui-pixel .pxrow { height: 44px; }
 }
+/* スマホ（≤480）は帯を畳む。部屋の最小幅 400 が入らないと右端（ラウンジ・サーバー）が切れ、
+   休憩中の人が「居ない」ように見える＝帯の仕事（どこに居るか）が嘘になる。表は全部残る。 */
+@media (max-width: 480px) {
+  /* ⤢（.sheet.wide）の則は :has() ぶん詳細度が高い＝同じ形で書かないと帯が戻る（別モデルレビュー）。 */
+  .ui-pixel #stage,
+  .ui-pixel .sheet-open #stage,
+  .ui-pixel .sheet-open:has(.sheet.wide) #stage { display: none; }
+}

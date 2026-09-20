@@ -93,10 +93,15 @@ export function deskPitch(projects, width = 360, min = 16, max = 24) {
 
 /**
  * 帯の拡大率（整数倍のみ＝ドットが滲まない）。
+ *
+ * **部屋の最小幅（400）が収まる最大の倍率**を選ぶ。幅で割る数を 480（基準幅）にすると、
+ * iPad 縦（帯の幅 800）が ×1 に落ちてロボが 16×24 の実寸になり「何をしているか」が読めない。
+ * 上限を 2 にしているのは、1440 を ×3 にすると帯が 216px になり行が 2 本消えるから
+ * （本人が見ている画面を勝手に変えない）。部屋は可変幅なので、余った幅は部屋が使う。
  * @param {number} cssWidth 帯の CSS 幅
- * @param {number} logical 論理幅（既定 480）
+ * @param {number} room 部屋の最小論理幅
  */
-export function pxScale(cssWidth, logical = 480, max = 3) {
+export function pxScale(cssWidth, room = 400, max = 2) {
   const w = Number.isFinite(cssWidth) && cssWidth > 0 ? cssWidth : 0;
-  return Math.min(max, Math.max(1, Math.floor(w / logical)));
+  return Math.min(max, Math.max(1, Math.floor(w / room)));
 }
