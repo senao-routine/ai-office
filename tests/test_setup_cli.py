@@ -55,8 +55,10 @@ class SetupCliTest(unittest.TestCase):
         tmpdir = Path(tempfile.mkdtemp())
         proc = subprocess.Popen(["bash", str(SETUP), "--demo"], stdout=subprocess.PIPE,
                                 stderr=subprocess.STDOUT, text=True, cwd=str(ROOT),
+                                # AIOFFICE_NO_OPEN= 750 件の途中でブラウザの窓を開かない
+                                # （本番の挙動は setup.sh 側の既定＝切り離して open する）
                                 env={**os.environ, "HOME": str(home), "OFFICE_HOME": str(home),
-                                     "TMPDIR": str(tmpdir)},
+                                     "TMPDIR": str(tmpdir), "AIOFFICE_NO_OPEN": "1"},
                                 start_new_session=True)
         url, out = None, ""
         try:

@@ -18,6 +18,7 @@
   5c. 帯は論理幅×72 の整数倍・pixelated・実際に人が居る
   5d. canvas に文字を描かない（fillText を throw に差し替えても mount が通る）
   5e. 帯の移動は歩く（瞬間移動しない・奥列へは縦も動く）・窓幅の変化は移動に化けない（live ページ）
+  5f. 新しい結果が着いた瞬間だけ ✓ を出す（初見・見始める前の結果・証拠の一時欠落・再生では祝わない）
   6. ? でヘルプが開く
   6b. 固定時刻（?t=）では補間しない＝注入した配置がその場で描かれる
   7. 留守中ダイジェストのカードは台帳の面（.pxbody）に置かれる（live ページ・構造のみ）
@@ -469,6 +470,58 @@ def main():
                 print(f"  ✗ 会議室へ移れていない: {mid_up} {top_up}")
                 ng += 1
 
+            # (5f) 帯の 6 番目の仕事「留守中の成果」= 新しい結果が着いた瞬間だけ 8 秒 ✓ を出す。
+            #      開いた瞬間に全員が万歳しては意味が消えるので、**初めて見た証拠では祝わない**。
+            before_done = live.evaluate("() => (window.__office.stats() || {}).cheering")
+            # **居場所は変えない**（動かすと歩行のコマが勝って ✓ が出ない＝pxpose の優先順）
+            stay = dict(minions=2, state="working", attention=False, question="", approvalMin=0)
+            # 見始める前に起きた結果では祝わない。最初の取得が失敗して証拠が欠けたあと、
+            # **1 時間前の commit** が戻ってきただけで万歳すると、それは嘘になる（別モデルレビュー）。
+            old_win = world_with(**stay, evidence={"kind": "committed", "ago": 3600})
+            live_body[0] = json.dumps(old_win, ensure_ascii=False)
+            live.evaluate("(w) => window.__office.inject(w)", old_win)
+            live.wait_for_timeout(300)
+            stale_cheer = live.evaluate("() => (window.__office.stats() || {}).cheering")
+            if stale_cheer == 0:
+                print("  ✓ 見始める前に起きた結果（1 時間前の commit）では祝わない")
+            else:
+                print(f"  ✗ 古い結果で祝っている: cheering={stale_cheer}")
+                ng += 1
+            fresh = world_with(**stay, evidence={"kind": "committed", "ago": 0})
+            live_body[0] = json.dumps(fresh, ensure_ascii=False)
+            live.evaluate("(w) => window.__office.inject(w)", fresh)
+            live.wait_for_timeout(300)
+            after_done = live.evaluate("() => (window.__office.stats() || {}).cheering")
+            same = world_with(**stay, evidence={"kind": "committed", "ago": 30})  # 同じ出来事が古くなるだけ
+            live_body[0] = json.dumps(same, ensure_ascii=False)
+            live.evaluate("(w) => window.__office.inject(w)", same)
+            live.wait_for_timeout(300)
+            still = live.evaluate("() => (window.__office.stats() || {}).cheering")
+            if before_done == 0 and after_done >= 1 and still >= 1:
+                print(f"  ✓ 新しい結果が着くと ✓ を出す（{before_done} → {after_done} 体・8 秒つづく）")
+            else:
+                print(f"  ✗ ✓ の出方が違う: 前 {before_done} / 直後 {after_done} / 30 秒後 {still}")
+                ng += 1
+            # 証拠が**一時的に欠けて**も、最後に見た成功を忘れない。忘れると、同じ古い結果が
+            # 戻ってきた瞬間に「初めて見た」扱いで ✓ が出る（evidence_for は読み取り失敗で空を返す）。
+            live.wait_for_function("() => (window.__office.stats() || {}).cheering === 0", timeout=15000)
+            gone = world_with(**stay, evidence=None)
+            live_body[0] = json.dumps(gone, ensure_ascii=False)
+            live.evaluate("(w) => window.__office.inject(w)", gone)
+            live.wait_for_timeout(300)
+            live_body[0] = json.dumps(same, ensure_ascii=False)          # 同じ古い結果が戻ってくる
+            live.evaluate("(w) => window.__office.inject(w)", same)
+            live.wait_for_timeout(300)
+            again_cheer = live.evaluate("() => (window.__office.stats() || {}).cheering")
+            if again_cheer == 0:
+                print("  ✓ 証拠が一時的に欠けても、同じ結果の復帰では祝わない")
+            else:
+                print(f"  ✗ 証拠の欠落を「新着」と読んでいる: cheering={again_cheer}")
+                ng += 1
+            live_body[0] = payload
+            live.evaluate("(w) => window.__office.inject(w)", world)
+            live.wait_for_timeout(250)
+
             # 歩いている最中のリサイズで**目的地へ飛ばない**（部屋の伸縮と移動を混ぜない・同レビュー）
             again = world_with(question="もう一度どうぞ", approvalMin=2,
                                attention=True, state="waiting", minions=0)
@@ -575,8 +628,24 @@ def main():
                 print(f"  ✗ 再生を止めても帯が動いている: 帯 {band_t0[0]}→{band_t1[0]} live {band_t0[1]}→{band_t1[1]}")
                 ng += 1
             rp.click("#replay-pause")
+            # 再生中は ✓ を出さない（証拠と進捗は過去には出さない掟）。さらに、**再生のフレームを
+            # live の結果追跡に混ぜない**＝混ぜると再生を閉じた瞬間、古い結果で全員が万歳する
+            # （再生のフレームは evidence を持たないので「無かったこと」になる・別モデルレビュー）。
+            cheer_replay = rp.evaluate("() => (window.__office.stats() || {}).cheering")
+            tracked_replay = rp.evaluate("() => (window.__office.stats() || {}).tracked")
             rp.click("#replay-controls .digest-close")
             rp.wait_for_function("() => !document.querySelector('.pxshell').classList.contains('replay-active')", timeout=5000)
+            rp.wait_for_timeout(600)
+            cheer_back = rp.evaluate("() => (window.__office.stats() || {}).cheering")
+            tracked_back = rp.evaluate("() => (window.__office.stats() || {}).tracked")
+            # 再生の配置には「開始前のセッション」が居ない。そこで追跡を消すと、live へ戻ったとき
+            # 初登場扱いになり**本物の新着が祝われない**（別モデルレビュー）。数が減らないことで見る。
+            if cheer_replay == 0 and cheer_back == 0 and tracked_back >= tracked_replay > 0:
+                print(f"  ✓ 再生中は ✓ を出さず、追跡も消さない（{tracked_replay} → {tracked_back} 人）")
+            else:
+                print(f"  ✗ 再生が ✓ の判定を汚している: 再生中 {cheer_replay}/{tracked_replay}"
+                      f" 復帰後 {cheer_back}/{tracked_back}")
+                ng += 1
             state_live = rp.evaluate(probe_state, [tgt_s, attn_s])
             # 再生中の行は**過去の世界**から作る（live の roster で state が戻らない・別モデルレビュー）。
             # 制作本部(works) は live では休憩・再生では Bash 実行で作業。❗は Stop で消える。

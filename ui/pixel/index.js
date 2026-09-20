@@ -87,7 +87,7 @@ export async function mount(root) {
     // live の t を渡すと、再生を止めても帯だけ歩き・点滅し続ける（別モデルレビュー medium）。
     strip.draw(frame ? frame.world : built,
       frame ? boardFromWorld(frame.world, T, replayKeys || liveKeys(), frame.eventSids) : hud.board,
-      frame?.t ?? t);
+      frame?.t ?? t, { replay: Boolean(frame) });
     firstrun.paint(t);
     const s = frozen ? null : session.dataAge(t);
     if (s !== null && s !== freshShown) {

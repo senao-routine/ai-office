@@ -97,7 +97,13 @@ if [ "$MODE" = "--demo" ]; then
   say "  ✅ ${URL}"
   say ""
   say "  自分のセッションを出勤させるときは、同じ場所で bash setup.sh を実行してください。"
-  command -v open >/dev/null 2>&1 && open "$URL" 2>/dev/null || true
+  # ブラウザは**切り離して**開く。前面で `open` を待つと、その間 bash はトラップを実行できず、
+  # 起動直後の Ctrl-C が「ブラウザが開き終わるまで効かない」。負荷の高い Mac では `open` が
+  # 十数秒かかり、待ちきれずに親を強制終了した側から見ると**サーバーが消えずに残る**（実測）。
+  # AIOFFICE_NO_OPEN=1 でブラウザを開かない（テストが 750 件の途中で窓を開かないため）。
+  if [ "${AIOFFICE_NO_OPEN:-}" != "1" ] && command -v open >/dev/null 2>&1; then
+    ( open "$URL" >/dev/null 2>&1 & ) || true
+  fi
   wait "$DEMO_PID"
   exit 0
 fi

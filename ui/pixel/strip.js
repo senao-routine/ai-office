@@ -138,6 +138,25 @@ export function init({ host, frozen = false }) {
   // 奥列（会議室）へは y も一緒に動く＝机から会議室へ飛び上がらない。
   const WALK_SPEED = 96;                    // 論理 px/秒（机から受付まで約 3 秒）
   const motion = new Map();                 // session → { fx, fy, tx, ty, t0, facing }
+  // 帯の 6 番目の仕事「留守中の成果」。**新しい結果が着いた瞬間だけ** 8 秒祝う。
+  //
+  // 難しいのは「新しい出来事か」を、揺れのある `(generatedAt, ago)` の組から決めるところ。
+  // 出来事の時刻は `generatedAt - ago` で出す（**描画の時刻で引いてはいけない**＝ago は次の
+  // データ取得まで動かないのに描画は毎フレーム走るので、起きた時刻が毎フレーム前へずれる）。
+  // `ago` の大小で見てもいけない（ポーリング 3 秒＋サーバー側 5 秒キャッシュなので、別の
+  // 出来事なのに ago が増えて届く）。どちらも別モデルレビューで実測した。
+  //
+  // 覚えるのは 2 つだけ: since（このセッションを見始めた時刻）と bestAt（いちばん新しい成功の時刻）。
+  //   祝う = 成功が在り、かつ bestAt より 2 秒以上新しく、かつ **since 以降**に起きたこと。
+  //   since を見るのは、最初の取得が失敗したあとに**24 時間前の成功**が戻ってきたときに
+  //   「新着」と読まないため。bestAt は成功が一時的に欠けても**上書きしない**（同じ理由）。
+  // 2 秒の許容は「同じ出来事の揺れ」と「2 秒以内に続いた別の成功」を区別できない＝**後者を捨てる**
+  // 側に倒した意図的な取引。帯は件数を数える道具ではなく「何か片付いた」を伝える道具なので、
+  // 同じ commit を二度祝う方が嘘に近い。数えたい人には表の証拠列がある。
+  const DONE_SECONDS = 8;                   // ✓ を出しておく長さ
+  const NEW_RESULT_SEC = 2;                 // 揺れの許容（ポーリングの粒度ぶん）
+  const seenResult = new Map();             // session → { since, bestAt }
+  const doneUntil = new Map();              // session → 秒
   const posOf = (m, time) => {
     const dist = Math.hypot(m.tx - m.fx, m.ty - m.fy);
     if (dist === 0 || time < m.t0) return { x: m.tx, y: m.ty };   // 時刻が戻った（再生の巻き戻し）＝その場へ
@@ -148,14 +167,21 @@ export function init({ host, frozen = false }) {
   let last = null;          // 直前に**描いた**配置（点の取得と stats に使う）
   let walking = 0;          // いま歩いている人数（スモークが「瞬間移動していない」を見る）
   let hovered = 0;          // いま光っている人数（セッション行なら 1 人だけ）
+  let cheering = 0;         // いま ✓ を出している人数
   let lastT = 0;            // 最後に**描いた時刻**（再生を止めたら帯も止まることの照準）
   let lastW = 0;            // 最後に描いた論理幅（変わったフレームは歩かせない）
   let lastArgs = null;      // 最後に描いた材料（窓の大きさが変わったとき描き直すため）
-  const draw = (world, board, t) => {
+  // replay: 過去の再生中。**live の結果追跡に混ぜない**（再生のフレームは evidence を持たないので、
+  // そのまま記録すると「無かったことになり」、live へ戻った瞬間に古い結果で ✓ が出る＝別モデルレビュー）。
+  // 過去の面に ✓ 自体を出さないのも掟どおり（証拠と進捗は過去には出さない・.claude/rules/ui-2d.md）。
+  const draw = (world, board, t, { replay = false } = {}) => {
     const s = resize();
     const time = Number.isFinite(t) ? t : 0;
+    // 証拠の「起きた時刻」は**スナップショットの時刻**から引く（描画の時刻ではない）。
+    // generatedAt が無い相手（古い server）では 0 になり、実質「ago が減ったら新着」に落ちる。
+    const snapAt = Number(world?.generatedAt) || 0;
     lastT = time;
-    lastArgs = [world, board, t];
+    lastArgs = [world, board, t, { replay }];   // 窓の大きさが変わったときも同じ条件で描き直す
     const prevW = lastW;
     const resized = logicalW !== prevW;
     const widthRatio = prevW > 0 ? logicalW / prevW : 1;   // 部屋が縮んだら歩いている人も一緒に縮める
@@ -168,6 +194,7 @@ export function init({ host, frozen = false }) {
     const drawn = [];
     walking = 0;
     hovered = 0;
+    cheering = 0;
     for (const a0 of raw) {
       live.add(a0.session);
       let m = motion.get(a0.session);
@@ -197,6 +224,22 @@ export function init({ host, frozen = false }) {
           motion.set(a0.session, m);
         }
       }
+      // 新しい結果（commit / test）が着いたか。失敗は祝わない。
+      const ev = a0.evidence && (a0.evidence.kind === "committed" || a0.evidence.kind === "tested")
+        ? { at: snapAt - a0.evidence.ago } : null;
+      if (!isFrozen() && !replay) {
+        let rec = seenResult.get(a0.session);
+        if (!rec) {
+          // 初めて見たセッション＝記録するだけ（画面を開いた瞬間に全員が万歳すると意味が消える）
+          rec = { since: snapAt, bestAt: ev ? ev.at : -Infinity };
+          seenResult.set(a0.session, rec);
+        } else if (ev) {
+          if (ev.at > rec.bestAt + NEW_RESULT_SEC && ev.at >= rec.since) {
+            doneUntil.set(a0.session, time + DONE_SECONDS);
+          }
+          if (ev.at > rec.bestAt) rec.bestAt = ev.at;
+        }
+      }
       const pos = posOf(m, time);
       const moving = pos.x !== m.tx || pos.y !== m.ty;
       if (moving) walking += 1;
@@ -205,7 +248,8 @@ export function init({ host, frozen = false }) {
       const facing = moving ? m.facing : a0.facing;
       // 歩行の位相は**進んだ距離**で決める（経過秒で回すと歩幅と速度が合わない・R97-G の教訓）
       const walkPhase = moving ? (Math.hypot(pos.x - m.fx, pos.y - m.fy) % 16) / 16 : undefined;
-      const pose = pxpose(a, time, { walkPhase, facing });
+      const pose = pxpose(a, time, { walkPhase, facing,
+        doneUntil: replay ? undefined : doneUntil.get(a0.session) });
       const sheet = SHEETS[vendorCell(a.vendor)] || CLAUDE;
       const rows = sheet[pose.cell] || sheet[CELLS[0]];
       const shell = shellOf(a.vendor);
@@ -225,6 +269,16 @@ export function init({ host, frozen = false }) {
         ctx.fillRect((a.x + 7) * s, (a.y - 6) * s, 2 * s, 4 * s);
         ctx.fillRect((a.x + 7) * s, (a.y - 1) * s, 2 * s, s);
       }
+      // 結果が着いた人は頭の上に ✓（文字ではなく 5 つの矩形＝❗の棒と同じ描き方）
+      if (pose.kind === "done") {
+        cheering += 1;
+        ctx.fillStyle = PALETTE.B;
+        ctx.fillRect((a.x + 5) * s, (a.y - 4) * s, s, s);
+        ctx.fillRect((a.x + 6) * s, (a.y - 3) * s, s, s);
+        ctx.fillRect((a.x + 7) * s, (a.y - 4) * s, s, s);
+        ctx.fillRect((a.x + 8) * s, (a.y - 5) * s, s, s);
+        ctx.fillRect((a.x + 9) * s, (a.y - 6) * s, s, s);
+      }
       // ホバー中の相手は足元に線を引く（行 ↔ 帯の対応）。**canvas の中**＝足元の 1px に重ねる。
       // セッション行は**その 1 体だけ**、プロジェクト行は**グループの全員**。
       // board は内訳の全員に同じ id を振り（＝id ではセッションを分けられない）、逆に
@@ -238,6 +292,13 @@ export function init({ host, frozen = false }) {
       }
     }
     for (const key of [...motion.keys()]) if (!live.has(key)) motion.delete(key);   // 退勤した分を捨てる
+    // 退勤した分を忘れるのは **live のときだけ**。再生の配置には「開始前のセッション」が居ないので、
+    // 再生中に消すと、live へ戻ったとき初登場扱いになって本物の新着が祝われない（別モデルレビュー）。
+    if (!replay) {
+      for (const key of [...seenResult.keys()]) {
+        if (!live.has(key)) { seenResult.delete(key); doneUntil.delete(key); }
+      }
+    }
     last = new Map(drawn.map((a) => [a.session, a]));
   };
 
@@ -254,8 +315,8 @@ export function init({ host, frozen = false }) {
       hover = v && (v.session || v.key) ? v : null;
     },
     /** テストの照準・性能ゲート用 */
-    stats: () => ({ drawCalls: 1, materials: 0, scale, logicalW, walking, hovered, t: lastT,
-      actors: last ? last.size : 0 }),
+    stats: () => ({ drawCalls: 1, materials: 0, scale, logicalW, walking, hovered, cheering, t: lastT,
+      tracked: seenResult.size, actors: last ? last.size : 0 }),
     point: (id) => {
       const a = last && [...last.values()].find((x) => x.id === id);
       if (!a) return null;

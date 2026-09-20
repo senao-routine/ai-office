@@ -128,6 +128,8 @@ export function stripLayout(world, board = [], width = STRIP.width) {
         // コマを決めるのは pxpose だが、材料（本人の状態）はここが運ぶ。
         // これを落とすと働いている人も待っている人も同じ idle の絵になる（別モデルレビューで実測）。
         state: a.state, kind: a.kind,
+        // 証拠（直近 24h の hook 記録）。帯は「新しい結果が着いた瞬間」だけを ✓ で祝う。
+        evidence: a.evidence || null,
       });
     }
   }
