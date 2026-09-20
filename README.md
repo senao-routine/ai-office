@@ -54,6 +54,13 @@ whether that session actually landed a commit or passed a test in the last 24 ho
 ⚙ settings; the choice is remembered per browser. Everything else — the answer queue, sheets, templates, hiring,
 gauges — is the same code in both views.
 
+Above the table sits a **floor band**: a side-on pixel room drawn at an integer scale, one desk per project. It
+answers six things and nothing else — who is alive, where they are, who is calling you, which vendor each robot
+is, what just changed (a robot walks to the reception desk when a ❗ comes up), and what landed while you were
+away. It draws no text at all; the table does the words. Hovering a row lights that robot's feet. The room
+stretches to the width of the window, and on phones it folds away rather than showing a room with its right
+edge cut off. The art is not image files: every frame is a character grid in the source, so it diffs like code.
+
 ### How answers arrive
 
 Claude Code instructions use the Stop-hook inbox at the end of a turn. A session stopped on a permission prompt cannot reach that hook, so the **PermissionRequest hook** publishes the pending request and returns your answer as its decision.

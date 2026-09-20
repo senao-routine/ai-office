@@ -10,7 +10,8 @@
     "star": 1,
     "release_downloads": 0,
     "topics": 11,
-    "homepage": "設定済み"
+    "homepage": "設定済み",
+    "fork": "3（2026-09-20 に気づいて追記。基準線を取った 9/19 時点の値は不明＝増分は 9/20 からしか言えない）"
   },
   "見るもの": [
     "star の増分",
@@ -18,7 +19,27 @@
     "デモの訪問（Cloudflare のダッシュボード）",
     "LP のメール登録（wrangler kv key list --binding SUBS --remote）",
     "?ui=pixel への言及",
-    "本人の常用率（3D でなく台帳で ❗に答えた日数）"
+    "本人の常用率（3D でなく台帳で ❗に答えた日数）",
+    "fork の増分（star より先に動くことがある）"
   ],
-  "判断（プラン §8）": "訪問 <100 = チャネルの失敗 ／ ≥100 かつ star <10 = 絵か設計の失敗 ／ 両方満たす = 既定を決める"
+  "判断（プラン §8）": "訪問 <100 = チャネルの失敗 ／ ≥100 かつ star <10 = 絵か設計の失敗 ／ 両方満たす = 既定を決める",
+  "記録": [
+    {
+      "日": "2026-09-20",
+      "star": 1,
+      "fork": 3,
+      "watch": 0,
+      "release_downloads": 0,
+      "github_views_14d": {
+        "count": 30,
+        "uniques": 18
+      },
+      "メモ": "公開 2 日目。star は動かず、fork が 3。GitHub の traffic は 14 日の移動窓なので 公開前の日も入っている＝この 30/18 を「公開の成果」と読んではいけない。デモの訪問と LP の登録は未取得（Cloudflare のダッシュボードと wrangler kv が要る）。この日にフロア帯（R98-W2/W3）を出したので、以後の数字は「表だけ」ではなく「帯つき」の反応。"
+    }
+  ],
+  "取り方": {
+    "GitHub": "gh api repos/senao-routine/ai-office --jq '{star: .stargazers_count, forks: .forks_count}' ／ traffic/views ／ releases",
+    "デモ": "Cloudflare ダッシュボード（Workers → ai-office-demo → Metrics）",
+    "LP": "wrangler kv key list --binding SUBS --remote"
+  }
 }
