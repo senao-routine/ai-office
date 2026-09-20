@@ -24,6 +24,7 @@ import { init as initSession } from "/ui/hud/session.js";
 import { T, lang, setLang } from "/ui/hud/strings.js";
 import { applyPixelStrings, template } from "./shell.js";
 import { init as initTable } from "./table.js";
+import { init as initStrip } from "./strip.js";
 
 export const STYLE = STYLES.PIXEL;
 
@@ -33,11 +34,11 @@ const DEMO = new URLSearchParams(
     && document.querySelector('meta[name="office-demo"]')?.getAttribute("content") === "1");
 
 /** 3D を持たない様式の scene（hud の部品が要求する契約だけ満たす） */
-const nullScene = (table) => ({
-  ready: () => true, update() {}, resize() {}, dispose() {},
+const nullScene = (table, strip) => ({
+  ready: () => true, update() {}, resize: () => strip?.resize(), dispose() {},
   pickAgent: () => null, projectAgent: () => null, project: () => null, projectBoss: () => null,
   labelAnchorFor: () => null, focusOn() {}, focusOff() {},
-  stats: () => ({ drawCalls: 0, materials: 0, robots: 0, rows: table.rows() }),
+  stats: () => ({ ...(strip?.stats() || { drawCalls: 0, materials: 0 }), rows: table.rows() }),
 });
 
 export async function mount(root) {
@@ -82,6 +83,11 @@ export async function mount(root) {
       replayWorld = null; replayKeys = null;
       table.render(built);
     }
+    // 帯は毎フレーム。再生中は過去の世界を、**再生の時計**で描く（iso の `frame?.t ?? t` と同じ）。
+    // live の t を渡すと、再生を止めても帯だけ歩き・点滅し続ける（別モデルレビュー medium）。
+    strip.draw(frame ? frame.world : built,
+      frame ? boardFromWorld(frame.world, T, replayKeys || liveKeys(), frame.eventSids) : hud.board,
+      frame?.t ?? t);
     firstrun.paint(t);
     const s = frozen ? null : session.dataAge(t);
     if (s !== null && s !== freshShown) {
@@ -160,7 +166,18 @@ export async function mount(root) {
       else openCompose(a);
     },
   });
-  const scene = nullScene(table);
+  const strip = initStrip({ host: shell.querySelector("#viewport"), frozen });
+  const scene = nullScene(table, strip);
+  // 行 ↔ 帯の対応（行に乗せると帯の足元が光る）
+  shell.querySelector("#agents").addEventListener("mouseover", (e) => {
+    const row = e.target.closest?.(".pxrow");
+    // プロジェクト行は**グループ**の全員・セッション行は自分 1 体だけを光らせる
+    const proj = row?.classList.contains("proj");
+    strip.setHover(row
+      ? { key: proj ? row.dataset.group : null, session: proj ? null : row.dataset.session }
+      : null);
+  });
+  shell.querySelector("#agents").addEventListener("mouseleave", () => strip.setHover(null));
   const firstrun = initFirstRun({ shell, T, scene, DEMO, enabled: true });
   const openHelp = initHelp({ shell, T, modals,
     // 再生中とダイジェスト前面では開かない（ヘルプの裏で数字キーが生き、Escape も取り合う）
@@ -203,12 +220,14 @@ export async function mount(root) {
     inject: apply,
     stats: () => scene.stats(),
     pollMs: () => session.intervalMs(),
-    debug: { agentPoint: (id) => table.point(id), rows: () => table.rows() },
+    debug: { agentPoint: (id) => table.point(id), rows: () => table.rows(),
+      // 帯の中のロボの位置（スモークが「移動先へ瞬間移動していない」を測る照準）
+      bandPoint: (id) => strip.point(id) },
   });
   return () => {
     session.dispose(); stopLoop(); uninstall();
     window.removeEventListener("keydown", onHudKey, true);
-    hire.dispose(); firstrun.dispose();
+    strip.dispose(); hire.dispose(); firstrun.dispose();
     digest.dispose(); tray.dispose(); sheet.dispose(); delivery.dispose(); gauges.dispose();
     document.title = "AI Office";
   };

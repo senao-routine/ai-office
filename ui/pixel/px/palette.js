@@ -42,6 +42,8 @@ export const ROOM = Object.freeze({
   screen: "#dfe9ff",
   server: "#3a3f66",
   lamp: "#ffd9a0",
+  rug: "#c8cdf2",
+  glassRail: "#9a9ab4",
 });
 
 export function shellOf(vendor) {

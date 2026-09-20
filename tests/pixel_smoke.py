@@ -10,13 +10,18 @@
   2. ❗の行が index 0（class attn）・#attn トレイが見える・「1」→ inbox 投函
   3. 行クリック → #sheet が同じセッションで開く・シートがヘッダーと❗帯を覆わない
   4. __office.debug.agentPoint(id) の座標クリック → その行が .sel
+  4b. ホバー: プロジェクト行は全員・セッション行はその 1 体だけ帯が光る
   5. 形状 3 つ（1440×900 / 1280×800 / 1024×768）で scrollWidth ≤ innerWidth かつ行数不変
-  5b. 1024px・⤢ でもシートは表の上に重なり、畳んだ帯（#stage）は現れない（3D 用 sheet-open 則を当てない）
+  5b. 1024px・⤢ でもシートは表の上だけに重なり、帯は覆われない（3D 用 sheet-open 則を当てない）
+  5c. 帯は論理幅×72 の整数倍・pixelated・実際に人が居る
+  5d. canvas に文字を描かない（fillText を throw に差し替えても mount が通る）
+  5e. 帯の移動は歩く（瞬間移動しない・奥列へは縦も動く）・窓幅の変化は移動に化けない（live ページ）
   6. ? でヘルプが開く
+  6b. 固定時刻（?t=）では補間しない＝注入した配置がその場で描かれる
   7. 留守中ダイジェストのカードは台帳の面（.pxbody）に置かれる（live ページ・構造のみ）
   8. 管理 7 ボタンはアイコン（≤32px）・title に文言
   9. 証拠列: committed / tested / failed（fixture）・記録の無い行は — ＋理由の title
-  10. リプレイが台帳で進み、行が**過去の状態**になる（live の値で上書きしない）・終わると live に戻る
+  10. リプレイが台帳で進み、行が**過去の状態**になる（live の値で上書きしない）・止めると帯も止まる・終わると live に戻る
   11. console.error / pageerror = 0
 W2 で足す: 帯の canvas（fillText を throw に差し替えて mount が通る）・行↔帯ホバー・data-pose・無変化 poll の DOM 書き込み上限。
 
@@ -56,6 +61,30 @@ def main():
     attn_session = roster["議事録アプリ"]        # 質問持ち（トレイの最優先）
     target = next(p for p in world["roster"] if p["disp"] == "制作本部(works)")
     target_id = target.get("projectId") or target["session"]
+    multi = next(p for p in world["roster"] if len(p.get("sessions") or []) > 1)
+    multi_id = multi.get("projectId") or multi["session"]      # 内訳を持つプロジェクト（ホバーの検査用）
+
+    def world_with(**fields):
+        """target のプロジェクトだけ状態を差し替えた office_json を作る。
+
+        行は roster → sessions[] → employees の順に重ねて組まれる（ui/hud/board.js）。
+        employees が最後に勝つので、**3 箇所とも**書かないと注入が効かない（実測で踏んだ）。
+        """
+        doc = json.loads(payload)
+        sids = set()
+        for entry in doc["roster"]:
+            if entry.get("projectId") != target_id and entry.get("session") != target_id:
+                continue
+            entry.update(fields)
+            sids.add(entry.get("session"))
+            for sub in entry.get("sessions", []):
+                sub.update(fields)
+                sids.add(sub.get("session"))
+        for emp in doc.get("employees", []):
+            if emp.get("session") in sids:
+                emp.update(fields)
+        return doc
+
 
     shutil.rmtree(INBOX, ignore_errors=True)
     port = free_port()
@@ -173,8 +202,8 @@ def main():
                     ng += 1
             page.set_viewport_size({"width": VIEWPORT["width"], "height": VIEWPORT["height"]})
 
-            # (5b) 別モデルレビュー: hud.css の 3D 用 sheet-open 則（≤1024 でシートを relative に縦積み・
-            #      wide で #stage を grid に）が台帳に当たると、畳んだ帯が空で現れシートが表の下に落ちる。
+            # (5b) hud.css の 3D 用 sheet-open 則（≤1024 でシートを relative に縦積み・wide で #stage を
+            #      grid に）が台帳に当たると、帯が潰れてシートが表の下に落ちる。
             page.set_viewport_size({"width": 1024, "height": 768})
             page.click(f'#agents .pxrow.proj[data-project="{target_id}"]')
             page.wait_for_selector("#sheet:not([hidden])", timeout=3000)
@@ -183,19 +212,35 @@ def main():
             lay = page.evaluate(
                 "() => { const s = document.querySelector('#sheet'); const st = document.querySelector('#stage');"
                 "  const tbl = document.querySelector('.pxtable').getBoundingClientRect();"
-                "  const r = s.getBoundingClientRect();"
+                "  const band = st.getBoundingClientRect(); const r = s.getBoundingClientRect();"
                 "  return { pos: getComputedStyle(s).position, stage: getComputedStyle(st).display,"
                 "    wide: s.classList.contains('wide'), overTable: r.top < tbl.bottom && r.bottom > tbl.top,"
+                "    overBand: r.top < band.bottom, bandH: Math.round(band.height),"
                 "    sw: document.documentElement.scrollWidth, iw: window.innerWidth }; }")
-            if (lay["pos"] == "absolute" and lay["stage"] == "none" and lay["wide"]
-                    and lay["overTable"] and lay["sw"] <= lay["iw"]):
-                print("  ✓ 1024px・⤢ でもシートは表の上に重なり、畳んだ帯は出ない")
+            if (lay["pos"] == "absolute" and lay["stage"] == "block" and lay["wide"]
+                    and lay["overTable"] and not lay["overBand"] and lay["bandH"] > 0
+                    and lay["sw"] <= lay["iw"]):
+                print(f"  ✓ 1024px・⤢ でもシートは表の上だけに重なり、帯（{lay['bandH']}px）は覆われない")
             else:
                 print(f"  ✗ 3D 用の sheet-open 則が台帳に当たっている: {lay}")
                 ng += 1
             page.click("#sheetwide")
             page.keyboard.press("Escape")
             page.set_viewport_size({"width": VIEWPORT["width"], "height": VIEWPORT["height"]})
+
+            # (5c) 帯: 論理 72 の整数倍で、canvas に**文字を描いていない**（掟の機械証明）
+            band = page.evaluate(
+                "() => { const c = document.querySelector('#stage canvas');"
+                "  const st = window.__office.stats() || {};"
+                "  return { w: c.width, h: c.height, scale: st.scale, logicalW: st.logicalW,"
+                "    actors: st.actors, draw: st.drawCalls, css: getComputedStyle(c).imageRendering }; }")
+            if (band["h"] == 72 * band["scale"] and band["w"] == band["logicalW"] * band["scale"]
+                    and band["scale"] in (1, 2, 3) and band["actors"] > 0
+                    and band["css"] == "pixelated"):
+                print(f"  ✓ 帯: 論理 {band['logicalW']}×72 の ×{band['scale']}・{band['actors']} 体・pixelated")
+            else:
+                print(f"  ✗ 帯の寸法か倍率が違う: {band}")
+                ng += 1
 
             # (6) ? → ヘルプ
             page.keyboard.press("?")
@@ -208,12 +253,58 @@ def main():
                 ng += 1
             page.keyboard.press("Escape")
 
+            # (6b) 固定時刻（`?t=`）では補間しない＝注入した配置が**その場で**描かれる。
+            #      時計が進まない以上、補間すると旧位置で歩行姿勢のまま永久に止まる
+            #      （別モデルレビュー medium・golden と E2E がそこを踏む）。
+            frozen_from = page.evaluate("(id) => window.__office.debug.bandPoint(id)", target_id)
+            page.evaluate("(w) => window.__office.inject(w)",
+                          world_with(question="これで進めていいですか？", approvalMin=4,
+                                     attention=True, state="waiting"))
+            page.wait_for_timeout(250)
+            frozen_to = page.evaluate(
+                "(id) => ({ p: window.__office.debug.bandPoint(id),"
+                "  walking: (window.__office.stats() || {}).walking })", target_id)
+            if (frozen_from and frozen_to["p"] and frozen_to["walking"] == 0
+                    and frozen_from["left"] - frozen_to["p"]["left"] > 100):
+                print(f"  ✓ 固定時刻では注入した配置がその場で描かれる"
+                      f"（{frozen_from['left']:.0f} → {frozen_to['p']['left']:.0f}px・歩行 0）")
+            else:
+                print(f"  ✗ 固定時刻で帯が止まったまま: {frozen_from} → {frozen_to}")
+                ng += 1
+            page.evaluate("(w) => window.__office.inject(w)", world)
+
+            # (5d) canvas に**文字を描かない**掟の機械証明: fillText / strokeText を throw に
+            #      差し替えたページでも mount が通り、帯が描けること。
+            text_page = browser.new_page(viewport=VIEWPORT, device_scale_factor=1)
+            text_errs = []
+            text_page.on("pageerror", lambda e: text_errs.append(str(e)))
+            text_page.add_init_script(
+                "for (const m of ['fillText', 'strokeText']) {"
+                "  CanvasRenderingContext2D.prototype[m] = function () {"
+                "    throw new Error('帯の canvas に文字を描いてはいけない: ' + m); }; }")
+            text_page.route("**/api/office*", lambda route: route.fulfill(
+                status=200, content_type="application/json; charset=utf-8", body=payload))
+            text_page.route("**/api/status_board*", lambda route: route.fulfill(
+                status=200, content_type="application/json; charset=utf-8", body=sb_payload))
+            text_page.goto(f"http://127.0.0.1:{port}/?ui=pixel&t=3.2&seed=11")
+            text_page.wait_for_function("window.__office && window.__office.ready", timeout=30000)
+            text_page.wait_for_timeout(400)
+            drew = text_page.evaluate("() => (window.__office.stats() || {}).actors || 0")
+            if drew > 0 and not text_errs:
+                print(f"  ✓ canvas に文字を描いていない（fillText を throw にしても {drew} 体が描けた）")
+            else:
+                print(f"  ✗ canvas に文字を描いている: {text_errs[:2]} actors={drew}")
+                ng += 1
+            text_page.close()
+
             # (7) 留守中ダイジェストの置き場（frozen では作られないので live ページで構造だけ見る）:
             #     pixel は #stage を畳んでいる＝そこに出すと inertOthers で台帳ごと操作不能（別モデルレビュー high）。
             live = browser.new_page(viewport=VIEWPORT, device_scale_factor=1)
             live.on("pageerror", lambda e: errors.append(f"pageerror(live): {e}"))
+            # 本文は差し替え可能にする（(5e) で世界を動かしたあと、ポーリングが元へ巻き戻さないように）
+            live_body = [payload]
             live.route("**/api/office*", lambda route: route.fulfill(
-                status=200, content_type="application/json; charset=utf-8", body=payload))
+                status=200, content_type="application/json; charset=utf-8", body=live_body[0]))
             live.route("**/api/status_board*", lambda route: route.fulfill(
                 status=200, content_type="application/json; charset=utf-8", body=sb_payload))
             live.route("**/api/digest*", lambda route: route.fulfill(
@@ -253,6 +344,106 @@ def main():
             else:
                 print(f"  ✗ 証拠列が違う: {evd}")
                 ng += 1
+            # (4b) 行 ↔ 帯のホバー: プロジェクト行は全員・**セッション行はその 1 体だけ**光る
+            #      （board は内訳の全員に同じ project id を振るので、id で引くと行と対応しない）。
+            #      固定時刻のページは loop が 1 回しか描かない（clock.loop）ので live で見る。
+            live.click(f'#agents .pxrow.proj[data-project="{multi_id}"]')       # 選択で内訳が開く
+            live.wait_for_selector(f'#agents .pxrow.sub[data-project="{multi_id}"]', timeout=3000)
+            live.hover(f'#agents .pxrow.proj[data-project="{multi_id}"]')
+            live.wait_for_timeout(200)
+            hov_proj = live.evaluate("() => (window.__office.stats() || {}).hovered")
+            live.hover(f'#agents .pxrow.sub[data-project="{multi_id}"]')
+            live.wait_for_timeout(200)
+            hov_sess = live.evaluate("() => (window.__office.stats() || {}).hovered")
+            if hov_proj > 1 and hov_sess == 1:
+                print(f"  ✓ ホバー: プロジェクト行は {hov_proj} 体・セッション行は 1 体だけ光る")
+            else:
+                print(f"  ✗ ホバーが行と対応していない: プロジェクト {hov_proj} / セッション {hov_sess}")
+                ng += 1
+            live.mouse.move(2, 2)
+            live.keyboard.press("Escape")       # 選択を戻す（内訳は畳む）
+            live.wait_for_timeout(150)
+            # 既定の avatarMode=session では、同じフォルダの 2 セッションは**別々の id** を持ち
+            # departmentBoard が cwd でまとめる。代表の id で引くと本人しか光らない（同レビュー）。
+            shared = json.loads(payload)
+            cwd = next(p["cwd"] for p in shared["roster"] if p["disp"] == "制作本部(works)")
+            for entry in shared["roster"]:
+                if entry["disp"] == "ブログ編集部":
+                    entry["cwd"] = cwd                      # 同じフォルダの 2 本目にする
+            live_body[0] = json.dumps(shared, ensure_ascii=False)
+            live.evaluate("(w) => window.__office.inject(w)", shared)
+            live.wait_for_timeout(250)
+            live.hover(f'#agents .pxrow.proj[data-group="{cwd}"]')   # 行はグループ（cwd）で引く
+            live.wait_for_timeout(200)
+            hov_group = live.evaluate("() => (window.__office.stats() || {}).hovered")
+            if hov_group == 2:
+                print("  ✓ ホバー: 同じフォルダの別セッションも一緒に光る（id でなくグループで引く）")
+            else:
+                print(f"  ✗ グループのホバーが代表だけ: hovered={hov_group}")
+                ng += 1
+            live.mouse.move(2, 2)
+            live_body[0] = payload
+            live.evaluate("(w) => window.__office.inject(w)", world)
+            live.wait_for_timeout(250)
+
+            # (5e) 帯の移動: 目的地へ**瞬間移動しない**（別モデルレビュー medium・2026-09-20）。
+            #      指摘まで、配置が変わった瞬間に着いてしまい歩行コマは 1 フレームだけ出ていた
+            #      ＝同じ world・同じ t の連続描画で絵が変わる（決定論も崩れる）。
+            #      ラウンジに居る「制作本部(works)」に質問を持たせて受付へ呼ぶ＝帯を横断させる。
+            start = live.evaluate("(id) => window.__office.debug.bandPoint(id)", target_id)
+            moved = world_with(question="これで進めていいですか？", approvalMin=4,
+                               attention=True, state="waiting")   # fixture は attention を明示 False で固定
+            live_body[0] = json.dumps(moved, ensure_ascii=False)
+            live.evaluate("(w) => window.__office.inject(w)", moved)
+            live.wait_for_timeout(400)
+            mid = live.evaluate(
+                "(id) => ({ p: window.__office.debug.bandPoint(id),"
+                "  walking: (window.__office.stats() || {}).walking })", target_id)
+            live.wait_for_function(
+                "() => (window.__office.stats() || {}).walking === 0", timeout=15000)
+            end_pt = live.evaluate("(id) => window.__office.debug.bandPoint(id)", target_id)
+            if start and mid["p"] and end_pt:
+                travel = start["left"] - end_pt["left"]          # ラウンジ（右）→ 受付（左）
+                sofar = start["left"] - mid["p"]["left"]
+                if (travel > 100 and mid["walking"] >= 1 and 0 < sofar < travel * 0.6):
+                    print(f"  ✓ 帯は歩いて移動する（400ms で {sofar/travel:.0%}・着地まで {travel:.0f}px）")
+                else:
+                    print(f"  ✗ 帯が瞬間移動している: 進んだ {sofar:.0f} / 全体 {travel:.0f}"
+                          f" walking={mid['walking']}")
+                    ng += 1
+            else:
+                print(f"  ✗ bandPoint が取れない: {start} {mid} {end_pt}")
+                ng += 1
+            # 奥列（会議室）へ移るときは**縦も一緒に動く**（y を補間しないと 30px 飛ぶ・同レビュー medium）
+            # minions>0 かつ working ＝ 会議室（ui/core/world.js の zoneOf）
+            up = world_with(minions=2, state="working", attention=False, question="", approvalMin=0)
+            live_body[0] = json.dumps(up, ensure_ascii=False)
+            live.evaluate("(w) => window.__office.inject(w)", up)
+            live.wait_for_timeout(400)
+            mid_up = live.evaluate("(id) => window.__office.debug.bandPoint(id)", target_id)
+            live.wait_for_function("() => (window.__office.stats() || {}).walking === 0", timeout=15000)
+            top_up = live.evaluate("(id) => window.__office.debug.bandPoint(id)", target_id)
+            if mid_up and top_up and end_pt["top"] > top_up["top"]:
+                if end_pt["top"] > mid_up["top"] > top_up["top"]:
+                    print(f"  ✓ 会議室へは縦も一緒に動く（{end_pt['top']:.0f} → {mid_up['top']:.0f} → {top_up['top']:.0f}px）")
+                else:
+                    print(f"  ✗ 縦が飛んでいる: {end_pt['top']} → {mid_up['top']} → {top_up['top']}")
+                    ng += 1
+            else:
+                print(f"  ✗ 会議室へ移れていない: {mid_up} {top_up}")
+                ng += 1
+
+            # 窓の幅が変わっただけで歩き出さない（中央寄せの ox を移動に混ぜない・別モデルレビュー medium）
+            live.set_viewport_size({"width": 1246, "height": VIEWPORT["height"]})
+            live.wait_for_timeout(300)
+            moved_by_resize = live.evaluate("() => (window.__office.stats() || {}).walking")
+            if moved_by_resize == 0:
+                print("  ✓ 窓の幅を変えても誰も歩き出さない（帯の中央寄せは移動ではない）")
+            else:
+                print(f"  ✗ リサイズが移動に化けている: walking={moved_by_resize}")
+                ng += 1
+            live.set_viewport_size(VIEWPORT)
+            live_body[0] = payload
             live.close()
 
             # (10) リプレイ（留守中のまとめ → 過去の再生）が**台帳で進む**（別モデルレビュー: W1 は接続していなかった）
@@ -298,6 +489,18 @@ def main():
                            "    st: r?.dataset.state, attn: a?.classList.contains('attn'),"
                            "    rows: document.querySelectorAll('#agents .pxrow').length }; }")
             state_mid = rp.evaluate(probe_state, [tgt_s, attn_s])
+            # 再生を止めたら**帯も止まる**（live の時計を渡すと帯だけ歩き続ける・別モデルレビュー medium）
+            rp.click("#replay-pause")
+            rp.wait_for_timeout(200)
+            band_t0 = rp.evaluate("() => [(window.__office.stats() || {}).t, window.__office.t()]")
+            rp.wait_for_timeout(700)
+            band_t1 = rp.evaluate("() => [(window.__office.stats() || {}).t, window.__office.t()]")
+            if band_t0[0] == band_t1[0] and band_t1[1] > band_t0[1]:
+                print("  ✓ 再生を止めると帯の時計も止まる（live の時計で動き続けない）")
+            else:
+                print(f"  ✗ 再生を止めても帯が動いている: 帯 {band_t0[0]}→{band_t1[0]} live {band_t0[1]}→{band_t1[1]}")
+                ng += 1
+            rp.click("#replay-pause")
             rp.click("#replay-controls .digest-close")
             rp.wait_for_function("() => !document.querySelector('.pxshell').classList.contains('replay-active')", timeout=5000)
             state_live = rp.evaluate(probe_state, [tgt_s, attn_s])

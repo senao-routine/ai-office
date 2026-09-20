@@ -135,6 +135,9 @@ export function init({ shell, T, el, getBoard, getWorld, selectedId, onPick, arr
       const key = `p:${g.key}`;
       let row = old.get(key);
       if (!row) { row = makeRow("proj", face); row.dataset.key = key; }
+      // 帯のホバーはここで引く。既定の avatarMode=session では同じフォルダのセッションが
+      // 別々の id を持つので、代表の id で引くと本人しか光らない（別モデルレビューで実測）。
+      if (row.dataset.group !== g.key) row.dataset.group = g.key;
       old.delete(key); place(row);
       fill(row, face, { name: g.name, count: g.sessions.length, vendors, kind: "proj", selected, offline, lang: w.lang,
         state: g.state, evidence: groupEvidence(g.sessions) });

@@ -59,6 +59,22 @@ export function stripLayout(world, board = []) {
   // 立ち位置の割り当ては**並び順で決める**（乱数を使わない＝毎フレーム同じ場所）。
   let queue = 0, lounge = 0, meeting = 0;
   const actors = [];
+  // 同じ座標に 2 体を置かない。机は 1 プロジェクト 1 台なので、同じプロジェクトの 2 本目以降は
+  // そのままだと**完全に重なって消える**（別モデルレビューが basic.json の (120,48) で実測）。
+  // 空いている方へ 4px ずつ逃がす＝「机に 2 人ぶら下がっている」が絵で分かる。純関数のまま。
+  const taken = new Set();
+  const place = (x, y) => {
+    const lo = 0, hi = STRIP.width - STRIP.robot.w;
+    const home = clampInt(x, lo, hi);
+    for (let d = 0; d <= STRIP.width; d += 4) {
+      for (const cand of d === 0 ? [home] : [home + d, home - d]) {
+        if (cand < lo || cand > hi || taken.has(`${cand},${y}`)) continue;
+        taken.add(`${cand},${y}`);
+        return cand;
+      }
+    }
+    return home;                                   // 帯が埋まった＝重ねるしかない
+  };
   for (const project of projects) {
     for (const a of project.sessions) {
       const zone = a.attention ? "queue" : (a.zone || "desk");
@@ -82,11 +98,15 @@ export function stripLayout(world, board = []) {
         x = desk.x;
         y = desk.y;
       }
+      const row = clampInt(y, 0, STRIP.height - STRIP.robot.h);
       actors.push({
         id: a.id, session: a.session, projectKey: project.key,
-        x: clampInt(x, 0, STRIP.width - STRIP.robot.w),
-        y: clampInt(y, 0, STRIP.height - STRIP.robot.h),
+        x: place(x, row),
+        y: row,
         zone, facing, vendor: a.vendor || "claude", attention: Boolean(a.attention),
+        // コマを決めるのは pxpose だが、材料（本人の状態）はここが運ぶ。
+        // これを落とすと働いている人も待っている人も同じ idle の絵になる（別モデルレビューで実測）。
+        state: a.state, kind: a.kind,
       });
     }
   }
@@ -99,12 +119,18 @@ export function stripLayout(world, board = []) {
  */
 export function stripRoom() {
   return {
+    // 壁は上端 6px。窓は大きく取り、下端に枠線を引く（明度差が無いと「空白」に見える）
     wall: { x: 0, y: STRIP.wall.y, w: STRIP.width, h: STRIP.wall.h },
-    windows: [0, 1, 2, 3].map((i) => ({ x: 24 + i * 96, y: 1, w: 48, h: 4 })),
+    windows: [0, 1, 2, 3].map((i) => ({ x: 20 + i * 116, y: 1, w: 84, h: 5 })),
+    windowSill: { x: 0, y: STRIP.wall.h, w: STRIP.width, h: 1 },
+    // 奥列（y6–36）: 左から 棚 → 植物 → 会議室ガラス箱 → サーバー帯
+    shelves: [0, 1, 2].map((i) => ({ x: 16 + i * 60, y: STRIP.back.y + 12, w: 40, h: 18 })),
+    plants: [0, 1].map((i) => ({ x: 200 + i * 120, y: STRIP.back.y + 18, w: 8, h: 12 })),
+    meeting: { x: STRIP.meeting.x, y: STRIP.back.y + 2, w: STRIP.meeting.w, h: STRIP.back.h - 2 },
+    server: { x: STRIP.server.x, y: STRIP.back.y, w: STRIP.server.w, h: STRIP.back.h },
+    // 手前列の床と、受付カウンター・ラウンジのラグ
     floorLine: { x: 0, y: STRIP.front.y, w: STRIP.width, h: 1 },
-    reception: { x: STRIP.reception.x, y: STRIP.front.y + 18, w: STRIP.reception.w - 8, h: 18 },
-    meeting: { x: STRIP.meeting.x, y: STRIP.back.y + 4, w: STRIP.meeting.w, h: STRIP.back.h - 4 },
-    server: { x: STRIP.server.x, y: STRIP.back.y + 2, w: STRIP.server.w, h: STRIP.back.h - 2 },
-    lounge: { x: STRIP.lounge.x, y: STRIP.front.y + 20, w: STRIP.lounge.w - 4, h: 16 },
+    reception: { x: STRIP.reception.x + 2, y: STRIP.front.y + 20, w: STRIP.reception.w - 10, h: 16 },
+    lounge: { x: STRIP.lounge.x, y: STRIP.height - 3, w: STRIP.lounge.w - 2, h: 3 },
   };
 }

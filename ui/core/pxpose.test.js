@@ -13,8 +13,12 @@ test("pxpose: 状態 → 7 種類のコマ（❗が最優先・歩行が次）",
   assert.equal(pxpose(agent({ kind: "think", state: "waiting" }), 0).kind, "think");
   assert.equal(pxpose(agent({ state: "waiting" }), 0).kind, "idle");
   assert.equal(pxpose(agent(), 0, { walkPhase: 0.3 }).kind, "walk");
-  // ❗は歩いていても挙手（呼んでいる相手を見失わない）
-  assert.equal(pxpose(agent({ attention: true }), 0, { walkPhase: 0.3 }).kind, "raise");
+  // ❗で受付へ歩いている間は**歩く**（挙手のまま床を滑ると壊れて見える）。
+  // 「呼んでいる」は消えない＝頭上の点滅が歩行中も続く。着いたら挙手へ戻る。
+  const walkingAttn = pxpose(agent({ attention: true }), 0, { walkPhase: 0.3 });
+  assert.equal(walkingAttn.kind, "walk");
+  assert.equal(walkingAttn.blink, true);
+  assert.equal(pxpose(agent({ attention: true }), 0).kind, "raise");
 });
 
 test("pxpose: コマは表の中だけ・時間で循環する（同じ t なら同じ絵）", () => {

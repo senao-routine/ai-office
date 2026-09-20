@@ -34,7 +34,7 @@ export function template() {
       <button id="btn-help" class="abtn" type="button">?</button>
     </header>
     <main class="main">
-      <section class="pxstage" id="stage" hidden>
+      <section class="pxstage" id="stage">
         <div class="viewport" id="viewport"></div>
       </section>
       <div class="offbar" id="offbar" hidden></div>

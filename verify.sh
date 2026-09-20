@@ -633,6 +633,10 @@ elif [ -x "$VENV_PY" ] && "$VENV_PY" -c 'import playwright' >/dev/null 2>&1 \
   # ★パイプの直後に PIPESTATUS を見る（間に別のパイプを挟むと前の門が消える＝別モデルレビューで実際に踏んだ）
   "$VENV_PY" tools/ui_shot.py --style pixel --check | sed 's/^/  /'
   [ "${PIPESTATUS[0]}" = "0" ] || ng "R98 台帳(pixel)ビジュアル回帰失敗 (exit ${PIPESTATUS[0]})"
+  # R98-W2: 22 プロジェクトの帯（机の pitch 16・ベンダー 3 種が並ぶ密度）。9 体だけ見ていると
+  # 机あふれ・重なり・ベンダーの描き分けが回帰しても気づけない（iso の xl22 と同じ理由）。
+  "$VENV_PY" tools/ui_shot.py --style pixel --world xl22 --name pixel_xl22 --check | sed 's/^/  /'
+  [ "${PIPESTATUS[0]}" = "0" ] || ng "R98 帯(22体)ビジュアル回帰失敗 (exit ${PIPESTATUS[0]})"
   # R90: 方向Cの参照画像で較正した3D品質ゲート（docs/art-direction.md）。
   # R93-M1'（2026-09-14）: 常設ゲートを glass（G1 ラベンダー・グラスロフト）へ。c は retired（tools/style_score.py）。
   "$VENV_PY" tools/style_score.py --profile glass tests/artifacts/ui_iso_scene.png | sed 's/^/  /'

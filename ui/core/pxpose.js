@@ -48,9 +48,11 @@ export function pxpose(agent, t, opts = {}) {
   const time = Number.isFinite(t) ? t : 0;
   const walking = Number.isFinite(opts.walkPhase);
   // 種別は「見ればわかる 7 つ」だけ。3D の 20 種類を持ち込まない（16×24 では描き分けられない）。
+  // **歩いている間は walk が勝つ**（❗で受付へ歩く間も歩かせる）。挙手のコマのまま床を滑ると
+  // 壊れて見えるため。「呼んでいる」は消えない＝頭上の点滅（blink）が attention に従って出続ける。
   let kind = "idle";
-  if (a.attention) kind = "raise";
-  else if (walking) kind = "walk";
+  if (walking) kind = "walk";
+  else if (a.attention) kind = "raise";
   else if (Number.isFinite(opts.doneUntil) && time < opts.doneUntil) kind = "done";
   else if (a.state === "resting" || a.zone === "lounge") kind = "rest";
   else if (a.kind === "think") kind = "think";
@@ -66,8 +68,8 @@ export function pxpose(agent, t, opts = {}) {
     kind,
     // 側面視は 1 方向だけ描き、左へ歩くときは反転する
     flip: opts.facing === -1,
-    // ❗は 2Hz で点滅（挙手のコマと合わせて「呼んでいる」が 1 秒で分かる）
-    blink: kind === "raise" && Math.floor(time * 2) % 2 === 0,
+    // ❗は 2Hz で点滅（歩いている最中も点滅は続く＝「呼んでいる」が途切れない）
+    blink: Boolean(a.attention) && Math.floor(time * 2) % 2 === 0,
   };
 }
 

@@ -31,7 +31,7 @@
 .ui-pixel #btn-help { width: 28px; padding: 4px 0; text-align: center; }
 /* ── 本体 ── */
 .ui-pixel .main { flex: 1; min-height: 0; gap: 8px; }
-.ui-pixel .pxstage { flex: none; height: 216px; border-radius: var(--radius-sm); background: var(--iso-stage-bg);
+.ui-pixel .pxstage { flex: none; border-radius: var(--radius-sm); background: var(--iso-floor, var(--iso-bg));
   border: 1px solid var(--iso-line); overflow: hidden; position: relative; }
 .ui-pixel .pxstage[hidden] { display: none; }
 .ui-pixel .pxstage .viewport { position: absolute; inset: 0; }
@@ -100,7 +100,14 @@
 .ui-pixel .sheet { top: 0; right: 0; bottom: 0; width: clamp(420px, 32%, 520px); }
 /* hud.css の 3D 用 sheet-open 則（#stage を grid に／≤1024 でシートを relative に縦積み／wide で grid-row）は
    台帳に当てない。畳んだ帯が空の 216px で現れ、シートが表の下に落ちる（別モデルレビュー）。 */
-.ui-pixel #stage[hidden], .ui-pixel .sheet-open #stage[hidden], .ui-pixel .sheet-open:has(.sheet.wide) #stage[hidden] { display: none; }
+/* 帯は絵の高さそのもの（論理 72 × 整数倍）。216px 固定だと上下に死んだ余白が出る。
+   3D 用の sheet-open 則（#stage を grid にする等）は当てない。 */
+.ui-pixel #stage, .ui-pixel .sheet-open #stage, .ui-pixel .sheet-open:has(.sheet.wide) #stage {
+  display: block; height: auto; flex: none; overflow: hidden;
+}
+.ui-pixel #stage[hidden] { display: none; }
+.ui-pixel .pxstage .viewport { position: static; display: flex; justify-content: center; }
+.ui-pixel .pxstage canvas { image-rendering: pixelated; display: block; }
 .ui-pixel .sheet-open .sheet, .ui-pixel .sheet-open .sheet.wide,
 .ui-pixel .sheet-open:has(.sheet.wide):has(#attn[hidden]) .sheet, .ui-pixel .sheet-open:has(#attn[hidden]) .sheet {
   position: absolute; top: 0; right: 0; bottom: 0; grid-row: auto; margin-top: 0; max-height: none;
