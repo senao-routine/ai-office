@@ -1,6 +1,6 @@
 // R96-D: Tripo 生成什器の登録簿。tools/glb_to_geom.py --register が manifest.json から書く（手で編集しない）。
-// ここに無い種類は kit.js の procedural にフォールバックする。PWA では manifest.json で
-// pwa:false の物を tools/gen_pwa_modules.py が `export default null` に差し替える（同じ import 図のまま軽くする）。
+// ここに無い種類は kit.js の procedural にフォールバックする。
+// （PWA は R99-P4-6 で部屋をドット絵にし、3D を同梱しなくなった＝manifest の pwa は記録として残るだけで何も変えない。）
 
 import cafe_counter from "./cafe_counter.js";
 import chair from "./chair.js";

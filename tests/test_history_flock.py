@@ -25,7 +25,7 @@ def _worker(home, idx):
     o = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(o)
     for i in range(POSTS_PER_CHILD):
-        ok, _ = o.post_instruction(f"child{idx}sess{i:02d}", f"msg {idx}-{i}")
+        ok, _ = o.post_instruction(f"child{idx}sess{i:02d}", f"msg {idx}-{i}", src="local")
         assert ok
 
 

@@ -956,8 +956,10 @@ class PrivacyIsolationRegressionTest(unittest.TestCase):
             # R90-D12: "v" はスキーマ版（docs/office-json.md が正本）。
             # R97-D: "app" は動いているコードの版（server/office_version.py が正本）。中継へは出さない
             #（下の relay push 検査で「本文に app が無い」ことまで見る）。
-            self.assertEqual(set(snapshot), {"v", "app", "officeName", "employees", "history", "today", "generatedAt",
-                                             "setup", "counts", "lang", "avatarMode",
+            # R102-5: macActive（0/1 だけ・ioreg が読めなければキーごと無い）
+            self.assertIn(snapshot.get("macActive", 0), (0, 1))
+            self.assertEqual(set(snapshot) - {"macActive"}, {"v", "app", "officeName", "employees", "history", "today",
+                                             "generatedAt", "setup", "counts", "lang", "avatarMode",
                                              "roster", "tasks", "actions",
                                              "relay", "res", "launchable", "templates", "sources", "events", "growth"})
             for tp in snapshot["templates"]:

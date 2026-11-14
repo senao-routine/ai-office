@@ -36,10 +36,21 @@ def _make_home():
     return home
 
 
+def _door():
+    """R126: 出勤の口（server/office_door.py）。一時 HOME の台帳に Bot を登録するために読む。"""
+    spec = importlib.util.spec_from_file_location("office_door_mcp_t", ROOT / "server" / "office_door.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+DOOR_TOOL_NAMES = {"office_checkin", "office_report", "office_ask", "office_inbox", "office_withdraw"}
+
+
 class McpSubprocessTest(unittest.TestCase):
     """Part A: 実プロトコル往復。"""
 
-    def _spawn(self, requests, home=None, extra_env=None):
+    def _spawn(self, requests, home=None, extra_env=None, args=()):
         home = home or _make_home()
         self.addCleanup(shutil.rmtree, home, ignore_errors=True)
         env = {k: v for k, v in os.environ.items() if not k.startswith("OFFICE_")}  # OFFICE_* 除染
@@ -48,7 +59,7 @@ class McpSubprocessTest(unittest.TestCase):
         if extra_env:
             env.update(extra_env)
         payload = b"".join(json.dumps(r).encode("utf-8") + b"\n" for r in requests)
-        p = subprocess.Popen([sys.executable, str(ROOT / "server" / "mcp_office.py")],
+        p = subprocess.Popen([sys.executable, str(ROOT / "server" / "mcp_office.py"), *args],
                              stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                              stderr=subprocess.PIPE, env=env)
         try:
@@ -91,6 +102,78 @@ class McpSubprocessTest(unittest.TestCase):
         self.assertIn("配達テスト", inbox.read_text(encoding="utf-8"))
         self.assertIn("session=sess-mcp00000001", byid[4]["result"]["content"][0]["text"])  # 完全ID
         self.assertEqual(byid[5]["result"], {})                   # ping
+
+    # ── R126 出勤の口（--bot <id>）──────────────────────────
+    def _call(self, mid, name, arguments=None):
+        req = {"jsonrpc": "2.0", "id": mid, "method": "tools/call", "params": {"name": name}}
+        if arguments is not None:
+            req["params"]["arguments"] = arguments
+        return req
+
+    def test_bot_mode_offers_exactly_the_five_door_tools(self):
+        """--bot のときは口の 5 つだけ。いつもの 3 つ（status・instruct・digest）は一覧にも呼び出しにも無い。"""
+        home = _make_home()
+        door = _door()
+        self.assertTrue(door.add_bot("demo", "見回り", home=home)["ok"])
+        reqs = [
+            {"jsonrpc": "2.0", "id": 1, "method": "initialize",
+             "params": {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "t", "version": "0"}}},
+            {"jsonrpc": "2.0", "method": "notifications/initialized"},
+            {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
+            self._call(3, "office_checkin", {"doing": "受信箱を見回り中", "ttl_min": 30}),
+            self._call(4, "office_ask", {"question": "送ってよい？", "options": ["はい", "いいえ"]}),
+            self._call(5, "office_inbox", {}),
+            self._call(6, "office_status", {}),
+            self._call(7, "office_instruct", {"session": "sess-mcp00000001", "text": "Bot からの指示"}),
+            self._call(8, "office_digest", {}),
+            self._call(9, "office_report", {"title": "済み", "evil": 1}),
+            self._call(10, "office_checkin", {"doing": "x" * 61}),
+            self._call(11, "office_report"),                                   # arguments 無し＝title が無い
+        ]
+        rc, resps, err, _ = self._spawn(reqs, home=home, args=("--bot", "demo"))
+        self.assertEqual(rc, 0, err)
+        byid = {r["id"]: r for r in resps}
+        self.assertEqual(len(resps), 11)
+        self.assertIn("demo", byid[1]["result"]["instructions"])
+        tools = byid[2]["result"]["tools"]
+        self.assertEqual([t["name"] for t in tools], ["office_checkin", "office_report", "office_ask",
+                                                      "office_inbox", "office_withdraw"])
+        self.assertTrue(all(t["inputSchema"]["additionalProperties"] is False for t in tools))
+        out = json.loads(byid[3]["result"]["content"][0]["text"])
+        self.assertTrue(out["ok"] and not byid[3]["result"]["isError"])
+        aid = json.loads(byid[4]["result"]["content"][0]["text"])["askId"]
+        self.assertRegex(aid, r"^[0-9a-f]{32}$")
+        self.assertEqual(json.loads(byid[5]["result"]["content"][0]["text"])["items"], [])
+        for i in (6, 7, 8):
+            self.assertEqual(byid[i]["error"]["code"], -32602, i)            # Bot はセッションの道具を呼べない
+        self.assertFalse((home / ".claude" / "office_inbox" / "sess-mcp00000001.json").exists())
+        for i in (9, 10, 11):
+            self.assertTrue(byid[i]["result"]["isError"], i)
+            self.assertEqual(json.loads(byid[i]["result"]["content"][0]["text"])["error"], "bad-args", i)
+        st = json.loads(door.state_path("demo", home).read_text(encoding="utf-8"))
+        self.assertEqual((st["checkin"]["doing"], st["ask"]["askId"]), ("受信箱を見回り中", aid))
+
+    def test_bot_mode_for_an_unregistered_bot_answers_errors_and_stays_up(self):
+        rc, resps, _e, home = self._spawn([self._call(1, "office_checkin", {"doing": "x"}),
+                                           {"jsonrpc": "2.0", "id": 2, "method": "ping"}], args=("--bot=ghost",))
+        self.assertEqual(rc, 0)
+        self.assertTrue(resps[0]["result"]["isError"])
+        self.assertEqual(json.loads(resps[0]["result"]["content"][0]["text"])["error"], "unregistered")
+        self.assertEqual(resps[1]["result"], {})
+        self.assertFalse((home / ".claude" / "office_door" / "bot" / "ghost.json").exists())
+
+    def test_bad_arguments_exit_2_with_nothing_on_stdout(self):
+        for args in (("--bot", "BAD"), ("--bot",), ("--bot", "../x"), ("--other",), ("--bot=",)):
+            rc, resps, err, _ = self._spawn([{"jsonrpc": "2.0", "id": 1, "method": "ping"}], args=args)
+            self.assertEqual((rc, resps), (2, []), args)
+            self.assertIn("mcp_office", err)
+
+    def test_normal_mode_has_no_door_tools(self):
+        rc, resps, _e, home = self._spawn([{"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
+                                           self._call(2, "office_checkin", {"doing": "x"})])
+        self.assertEqual({t["name"] for t in resps[0]["result"]["tools"]} & DOOR_TOOL_NAMES, set())
+        self.assertEqual(resps[1]["error"]["code"], -32602)
+        self.assertFalse((home / ".claude" / "office_door").exists())
 
     def test_params_omitted(self):
         rc, resps, _e, _h = self._spawn([
@@ -262,12 +345,14 @@ class McpResolveTest(unittest.TestCase):
         self._posts = []
         self.m.office.office_json = lambda: {"employees": self._emps,
                                              "counts": {"working": 0, "waiting": 0, "resting": 0}}
-        self.m.office.post_instruction = lambda s, t: (self._posts.append((s, t)) or (True, "投函しました"))
+        # R126: 呼び手（src）はキーワード専用・既定値なし＝偽物も同じ形で受け、MCP からは "mcp" で来ることを控える
+        self.m.office.post_instruction = lambda s, t, *, src: (self._posts.append((s, t, src)) or (True, "投函しました"))
 
     def tearDown(self):
         self.m.office.office_json = self._orig["office_json"]
         self.m.office.post_instruction = self._orig["post_instruction"]
         self.m.office.PROJECTS = self._orig["PROJECTS"]
+        self.m.BOT = None
 
     def _emp(self, session, disp, **kw):
         e = {"session": session, "disp": disp, "dept": kw.get("dept", disp), "state": kw.get("state", "working"),
@@ -366,10 +451,63 @@ class McpResolveTest(unittest.TestCase):
 
     def test_post_instruction_failure_iserror(self):
         self._emp("sess-abcdef01", "AI Office")
-        self.m.office.post_instruction = lambda s, t: (False, "指示が長すぎます")
+        self.m.office.post_instruction = lambda s, t, *, src: (False, "指示が長すぎます")
         text, is_err = self.m._tool_instruct({"session": "sess-abcdef01", "text": "x"})
         self.assertTrue(is_err)
         self.assertIn("指示が長すぎます", text)
+
+    # ── R126: セッションと Bot の壁（両向き）──────────────────
+    def _bot(self, bot_id="demo", name="見回り", **kw):
+        e = self._emp(f"bot-{bot_id}", name, verb=kw.get("verb", "BOT_DOING_SECRET"),
+                      question=kw.get("question", ""), pending=kw.get("pending", False))
+        e.update(vendor="bot", cwd="", branch="", role="Bot")
+        return e
+
+    def test_instruct_refuses_bots_and_says_it_is_the_session(self):
+        self._bot()
+        self._emp("sess-mimawari1", "見回り部")
+        for q in ("bot-demo", " bot-demo", "bot-", "bot-ghost"):
+            text, is_err = self.m._tool_instruct({"session": q, "text": "セッションの文"})
+            self.assertTrue(is_err, q)
+            self.assertIn("Bot", text)
+        self.assertEqual(self._posts, [], "Bot 宛がセッションから投函された")
+        # Bot は宛先の候補に入らない＝名前が重なってもセッションの方へ解決する（Bot を「曖昧」に数えない）
+        text, is_err = self.m._tool_instruct({"session": "見回り", "text": "進めて"})
+        self.assertFalse(is_err, text)
+        self.assertEqual(self._posts, [("sess-mimawari1", "進めて", "mcp")])
+        self._emps.pop()                                                      # Bot だけが名前に当たる
+        text, is_err = self.m._tool_instruct({"session": "見回り", "text": "進めて"})
+        self.assertTrue(is_err)
+        self.assertIn("Bot", text)
+        self.assertEqual(len(self._posts), 1)
+
+    def test_status_shows_bots_by_name_and_state_only(self):
+        self._bot(question="BOT_QUESTION_SECRET")
+        self._emp("sess-abcdef01", "AI Office", verb="編集中")
+        out = self.m._tool_status()
+        self.assertIn("見回り（Bot）", out)
+        for secret in ("BOT_DOING_SECRET", "BOT_QUESTION_SECRET", "bot-demo"):
+            self.assertNotIn(secret, out, "Bot の文（または宛先）をセッションのプロンプトへ出した")
+        self.assertIn("session=sess-abcdef01", out)                         # セッションの行は今までどおり
+
+    def test_bot_mode_in_process_lists_five_and_refuses_the_rest(self):
+        self.m.BOT = "demo"
+        tools = self.m._handle({"jsonrpc": "2.0", "id": 1, "method": "tools/list"})["result"]["tools"]
+        self.assertEqual({t["name"] for t in tools}, DOOR_TOOL_NAMES)
+        self.assertEqual(len(tools), 5)
+        for name in ("office_status", "office_instruct", "office_digest", "nope"):
+            r = self.m._handle({"jsonrpc": "2.0", "id": 2, "method": "tools/call",
+                                "params": {"name": name, "arguments": {"session": "sess-x", "text": "x"}}})
+            self.assertEqual(r["error"]["code"], -32602, name)
+        self.assertEqual(self._posts, [])
+        r = self.m._handle({"jsonrpc": "2.0", "id": 3, "method": "tools/call",
+                            "params": {"name": "office_checkin", "arguments": ["not", "an", "object"]}})
+        self.assertEqual(json.loads(r["result"]["content"][0]["text"])["error"], "bad-args")
+        for bad_name in (["office_checkin"], {"x": 1}, None, 5):              # 名前の形が違っても Unknown tool（-32603 にしない）
+            r = self.m._handle({"jsonrpc": "2.0", "id": 5, "method": "tools/call", "params": {"name": bad_name}})
+            self.assertEqual(r["error"]["code"], -32602, bad_name)
+        self.m.BOT = None
+        self.assertEqual(len(self.m._handle({"jsonrpc": "2.0", "id": 4, "method": "tools/list"})["result"]["tools"]), 3)
 
     def test_status_alert_and_truncation(self):
         self._emp("sess-approv01", "承認待ち部", approvalMin=12)

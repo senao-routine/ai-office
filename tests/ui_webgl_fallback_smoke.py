@@ -41,7 +41,8 @@ def main(argv):
         try:
             page = browser.new_page(viewport={"width": 1440, "height": 900})
             page.on("pageerror", lambda e: errors.append(str(e)))
-            page.goto(base_url.rstrip("/"), wait_until="domcontentloaded")
+            # R105: 既定はコックピット（WebGL を使わない）＝3D の退避を見るには iso を明示する
+            page.goto(base_url.rstrip("/") + "/?ui=iso", wait_until="domcontentloaded")
 
             # ① 起動が完走する（#bootstate の失敗画面のままにならない）
             try:

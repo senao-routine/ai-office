@@ -9,10 +9,34 @@
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 mkdir -p "$HOME/.claude/hooks"
+# 置き換えは同じフォルダの一時ファイルに書いてから mv（2026-10-14）。cp の上書きは inode が同じまま中身が変わり、
+# 配備をまたいで待っている bash（受信・承認の hook は最長 12 時間待つ）が、python から戻った後に
+# 「古いオフセットから新しい中身」を読む＝新しい方が長いと途中の行を実行して、その件の答えや配達が崩れる。
+# mv なら待っている側は古い中身を最後まで読み、次の起動から新しい中身になる。リンクはリンクのまま中身を書く（今までどおり）。
+PUT_FAIL=0
+put() {  # put <src> <dst> <mode>
+  local tmp=""
+  if [ -L "$2" ]; then
+    cp "$1" "$2" && chmod "$3" "$2" && { echo "✓ 配布: $2"; return 0; }
+  else
+    tmp="$(mktemp "$2.tmp.XXXXXX")" \
+      && cp "$1" "$tmp" && chmod "$3" "$tmp" && mv -f "$tmp" "$2" && { echo "✓ 配布: $2"; return 0; }
+    [ -n "$tmp" ] && rm -f "$tmp"
+  fi
+  echo "✗ 配布できませんでした: $2" >&2; PUT_FAIL=1; return 1
+}
 for f in office-inbox-wait.sh office-approval-wait.sh office-statusline-capture.sh office-event.sh; do
-  cp "$HERE/$f" "$HOME/.claude/hooks/$f" && chmod +x "$HOME/.claude/hooks/$f"
-  echo "✓ 配布: $HOME/.claude/hooks/$f"
+  put "$HERE/$f" "$HOME/.claude/hooks/$f" 755
 done
+# R100-0: hook が読む Python の部品（実行ファイルではない＝ +x しない）。office-event.sh は同じ場所から読む。
+for f in office_shell_lex.py; do
+  put "$HERE/$f" "$HOME/.claude/hooks/$f" 644
+done
+# R100-1b: 承認フックが「スマホからの許可」を自分の入力で確かめる危険判定（正本は server/approval_policy.py）。
+# 無ければ remote の許可は一切通らない（安全側）。
+put "$HERE/../server/approval_policy.py" "$HOME/.claude/hooks/approval_policy.py" 644
+# R102-2: 3 段の拒否リスト（approval_policy.py が同じフォルダから読む・無ければ remote も review も通さない）
+put "$HERE/../server/approval_review.py" "$HOME/.claude/hooks/approval_review.py" 644
 
 # 配線の検査と自動追記。jq 依存をやめ python3 stdlib で完結
 #（クリーンMacに jq は無い＝検出が常に「未配線」になる偽警告の根絶）。
@@ -199,3 +223,7 @@ else:
 if "office-statusline-capture" not in str((data.get("statusLine") or {}).get("command", "")):
     print("ℹ Claude枠%の実測ゲージ: bash hooks/install.sh --statusline で配線できます")
 PYEOF
+rc=$?
+# 配れなかった部品が 1 つでもあれば失敗で終える（無言で失敗しない・配線の検査は先に済ませる）
+[ "$PUT_FAIL" = 0 ] || rc=1
+exit "$rc"

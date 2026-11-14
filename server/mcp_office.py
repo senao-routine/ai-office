@@ -7,15 +7,21 @@
   - office_instruct : 指定セッションへ指示を投函（既存 post_instruction を再利用）
   - office_digest   : 指定日の実績を数値と表示名だけで要約
 
+R126 出勤の口（`--bot <id>` で起動したとき・正本= docs/door.md）: 道具は次の 5 つ**だけ**（上の 3 つは出さない＝
+Bot からセッションへ指示もしないし、セッションの様子も読まない）。どの Bot かは起動の引数で決まる（道具の引数では名乗れない）。
+  - office_checkin / office_report / office_ask / office_inbox / office_withdraw（中身は server/office_door.py）
+
 不変条件（掟）:
   * ネットワークを一切開かない（stdio のみ・:4780 サーバーの生死と独立）。
   * **stdout には JSON-RPC メッセージ以外を1バイトも書かない**。ログ・デバッグは全て stderr。
-  * トランスクリプトは読み取り専用（office_json）。書き込みは post_instruction 1本だけ。
+  * トランスクリプトは読み取り専用（office_json）。書き込みは post_instruction 1本だけ（--bot のときは office_door の口だけ）。
   * メッセージは1行=1 JSON（改行区切り・埋め込み改行なし）。EOF で exit 0。
+  * R126: office_instruct は Bot（bot-）宛を断る・office_status は Bot の行を名前と状態だけにする（Bot の文をセッションのプロンプトに入れない）。
 仕様: modelcontextprotocol.io（stdio transport / lifecycle / server-tools）。
 
 登録（ユーザー手順・自走で実行しない）:
   claude mcp add --scope user aioffice -- <python3実体> "<...>/AI Office/server/mcp_office.py"
+  Bot 用は**その仕事の設定にだけ**足す（--scope user で全セッションに配らない）: … mcp_office.py --bot <id>
 """
 import json
 import os
@@ -30,6 +36,7 @@ HERE = Path(__file__).resolve().parent
 if str(HERE) not in sys.path:          # exec_module 反復でも sys.path に重複挿入しない
     sys.path.insert(0, str(HERE))
 import office_server as office   # 同 server/・標準ライブラリのみ（office_json / post_instruction）
+import office_door               # R126: 出勤の口（--bot のときの道具 5 つの中身）
 
 # 対応プロトコル版。クライアント提示が集合内なら鸚鵡返し（MUST）、集合外は LATEST を返す。
 SUPPORTED = {"2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25"}
@@ -68,6 +75,66 @@ TOOLS = [
                  "description": "ローカル日付 YYYY-MM-DD（省略時は今日）"}},
          "additionalProperties": False}},
 ]
+
+# R126 出勤の口（--bot <id> のときだけ・この 5 つだけ）。上限の正本は server/office_door.py（docs/door.md）
+BOT = None        # 起動の引数 --bot <id>（どの Bot かは起動の設定で決まる＝道具の引数では名乗れない）
+DOOR_TOOLS = [
+    {"name": "office_checkin",
+     "description": ("出勤を記録する（AI Office の部屋に座る）。ttl_min 分は作業中、その後 3 時間は休憩として見える。"
+                     "届いている答え・指示の数を返す。前と同じ内容なら書かない（期限の半分を過ぎたら延ばす）。"),
+     "inputSchema": {"type": "object", "properties": {
+         "doing": {"type": "string", "minLength": 1, "maxLength": office_door.DOING_LEN,
+                   "description": f"いまやっていること（{office_door.DOING_LEN} 字まで）"},
+         "state": {"type": "string", "enum": list(office_door.STATES), "description": "既定 working"},
+         "ttl_min": {"type": "integer", "minimum": office_door.TTL_MIN_RANGE[0],
+                     "maximum": office_door.TTL_MIN_RANGE[1],
+                     "description": f"出勤が続く分（既定 {office_door.TTL_MIN_DEFAULT}）"}},
+         "required": ["doing"], "additionalProperties": False}},
+    {"name": "office_report",
+     "description": "終わったことを記録する（Bot の記録に残る・人を呼ばない。気づいてほしいことは office_ask）。",
+     "inputSchema": {"type": "object", "properties": {
+         "title": {"type": "string", "minLength": 1, "maxLength": office_door.TITLE_LEN,
+                   "description": f"題（{office_door.TITLE_LEN} 字まで）"},
+         "body": {"type": "string", "maxLength": office_door.BODY_LEN,
+                  "description": f"本文（{office_door.BODY_LEN} 字まで・省略可）"},
+         "kind": {"type": "string", "enum": list(office_door.KINDS), "description": "既定 done"}},
+         "required": ["title"], "additionalProperties": False}},
+    {"name": "office_ask",
+     "description": ("人に相談する（Mac のあなたの番に並ぶ）。開いている相談は 1 件まで・1 時間 6 件／1 日 20 件まで。"
+                     "askId を返す。答えは office_inbox に届く（選択肢に当たれば choice{index,label} つき）。"),
+     "inputSchema": {"type": "object", "properties": {
+         "question": {"type": "string", "minLength": 1, "maxLength": office_door.ASK_Q_LEN,
+                      "description": f"問い（{office_door.ASK_Q_LEN} 字まで）"},
+         "options": {"type": "array", "maxItems": office_door.ASK_OPT_MAX,
+                     "items": {"type": "string", "minLength": 1, "maxLength": office_door.ASK_OPT_LEN},
+                     "description": f"選択肢（{office_door.ASK_OPT_LEN} 字 × {office_door.ASK_OPT_MAX} まで・省略可）"},
+         "ttl_hours": {"type": "integer", "minimum": office_door.TTL_HOURS_RANGE[0],
+                       "maximum": office_door.TTL_HOURS_RANGE[1],
+                       "description": f"答えを待つ時間（既定 {office_door.TTL_HOURS_DEFAULT}）"}},
+         "required": ["question"], "additionalProperties": False}},
+    {"name": "office_inbox",
+     "description": ("届いている答え・指示・期限切れの知らせを覗く（消さない）。読んだものは ack に id を渡して消す。"
+                     "種類= answer（text・choice）／instruct（text）／expired／rejected。"),
+     "inputSchema": {"type": "object", "properties": {
+         "ack": {"type": "array", "items": {"type": "string"}, "description": "読んだ id（省略可）"}},
+         "additionalProperties": False}},
+    {"name": "office_withdraw",
+     "description": "相談を取り下げる（ほかの窓口で先に答えが出たとき）。",
+     "inputSchema": {"type": "object", "properties": {
+         "askId": {"type": "string", "pattern": r"^[0-9a-f]{32}$", "description": "office_ask が返した askId"}},
+         "required": ["askId"], "additionalProperties": False}},
+]
+DOOR_NAMES = frozenset(t["name"] for t in DOOR_TOOLS)
+
+
+def _tools():
+    """tools/list の中身。--bot のときは出勤の口の 5 つだけ（いつもの 3 つは出さない）。"""
+    return DOOR_TOOLS if BOT else TOOLS
+
+
+def _is_bot(e):
+    """R126: 出勤の口の Bot の行（vendor "bot" か session "bot-…"）。"""
+    return e.get("vendor") == "bot" or str(e.get("session") or "").startswith(office_door.SESSION_PREFIX)
 
 
 # ---- stdout に書く唯一の関数（バイナリ層直書き＝C localeでも UnicodeEncodeError で死なない） ----
@@ -134,6 +201,11 @@ def _tool_status():
     shown = sorted(emps, key=lambda e: not _alert(e))[:MAX_EMPLOYEES]   # ❗を先頭へ（安定ソート）＝打切りで隠れない
     for e in shown:
         head = "❗" if _alert(e) else " "
+        if _is_bot(e):
+            # R126: Bot の行は名前と状態だけ（doing・相談の文は Bot が書いた文＝セッションのプロンプトに入れない。
+            # session も出さない＝office_instruct の宛先にならない）
+            lines.append(f"{head}[{_emoji(e.get('state'))}] {_disp(e)}（Bot）")
+            continue
         why = ""
         if e.get("question"):
             why = " ❓質問あり"
@@ -200,7 +272,8 @@ def _resolve_session(query):
     q = (query or "").strip()
     if not q:
         return None, "NOTFOUND"          # 空/空白のみ→全員前方一致で誤配達するのを防ぐ
-    emps = office.office_json().get("employees", [])
+    # R126: Bot（出勤の口）はセッションからの宛先にしない（解決の候補にも入れない）
+    emps = [e for e in office.office_json().get("employees", []) if not _is_bot(e)]
     # (a) 完全一致
     for e in emps:
         if e.get("session") == q:
@@ -235,6 +308,18 @@ def _resolve_session(query):
     return None, "NOTFOUND"
 
 
+def _names_a_bot(query):
+    """R126: セッションの宛先に当たらなかった語が Bot の名前を指していたか（断りの文を分かりやすくするだけ）。"""
+    qn = unicodedata.normalize("NFC", (query or "").strip()).casefold()
+    if not qn:
+        return False
+    for e in office.office_json().get("employees", []):
+        if _is_bot(e) and any(qn in unicodedata.normalize("NFC", str(e.get(k) or "")).casefold()
+                              for k in ("disp", "dept")):
+            return True
+    return False
+
+
 def _tool_instruct(args):
     """(text, is_error) を返す。"""
     if not isinstance(args, dict):
@@ -243,13 +328,21 @@ def _tool_instruct(args):
     text = args.get("text")
     if not isinstance(session_q, str) or not isinstance(text, str):
         return "session と text（文字列）が必要です", True
+    # R126: セッションの文が「人の指示」として Bot に入り、のちに中継で外へ出るのを止める（post_instruction も src で断る）
+    bot_refusal = ("Bot（出勤の口）へはセッションから指示できません。Bot への指示は Mac の画面から人が出します", True)
+    if session_q.strip().startswith(office_door.SESSION_PREFIX):
+        return bot_refusal
     sid, note = _resolve_session(session_q)
     if sid is None:
         if note.startswith("AMBIGUOUS:"):
             return ("宛先が複数見つかりました。session を全文で指定してください:\n"
                     + note[len("AMBIGUOUS:"):].lstrip("\n"), True)
+        if _names_a_bot(session_q):
+            return bot_refusal
         return "宛先が見つかりません。office_status で session を確認してください", True
-    ok, msg = office.post_instruction(sid, text)
+    if sid.startswith(office_door.SESSION_PREFIX):
+        return bot_refusal
+    ok, msg = office.post_instruction(sid, text, src="mcp")
     if not ok:
         return f"投函できませんでした: {msg}", True
     disp = ""
@@ -260,7 +353,53 @@ def _tool_instruct(args):
     return f"📨 {disp or sid} へ投函しました（待機中なら数秒で配達）{note}", False
 
 
+_DOOR_ARGS = {
+    "office_checkin": {"doing", "state", "ttl_min"},
+    "office_report": {"title", "body", "kind"},
+    "office_ask": {"question", "options", "ttl_hours"},
+    "office_inbox": {"ack"},
+    "office_withdraw": {"askId"},
+}
+
+
+def _door_call(name, args):
+    """R126: 出勤の口の道具 1 回（結果は office_door の dict・形の検査も office_door が持つ）。"""
+    if not isinstance(args, dict):
+        return {"ok": False, "error": "bad-args", "text": "arguments はオブジェクトで渡してください"}
+    extra = sorted(str(k) for k in args if k not in _DOOR_ARGS[name])
+    if extra:
+        return {"ok": False, "error": "bad-args", "text": f"知らない引数: {', '.join(extra)[:120]}"}
+    kw = {"home": office._HOME, "lang": office.office_lang()}
+    if name == "office_checkin":
+        return office_door.checkin(BOT, args.get("doing"), args.get("state", "working"),
+                                   args.get("ttl_min", office_door.TTL_MIN_DEFAULT), **kw)
+    if name == "office_report":
+        return office_door.report(BOT, args.get("title"), args.get("body", ""), args.get("kind", "done"), **kw)
+    if name == "office_ask":
+        return office_door.ask(BOT, args.get("question"), args.get("options"),
+                               args.get("ttl_hours", office_door.TTL_HOURS_DEFAULT), **kw)
+    if name == "office_inbox":
+        return office_door.inbox(BOT, args.get("ack"), **kw)
+    return office_door.withdraw(BOT, args.get("askId"), **kw)
+
+
+def _on_door_call(mid, params):
+    """--bot のときの tools/call。5 つ以外（office_status・office_instruct・office_digest を含む）は Unknown tool。"""
+    name = params.get("name")
+    if not isinstance(name, str) or name not in DOOR_NAMES:     # 配列などの名前でも TypeError（-32603）にせず -32602
+        return _err(mid, -32602, f"Unknown tool: {name}")
+    args = params.get("arguments")
+    try:
+        res = _door_call(name, {} if args is None else args)
+    except Exception:
+        traceback.print_exc(file=sys.stderr)
+        res = {"ok": False, "error": "internal", "text": f"{name} の実行に失敗しました"}
+    return _text(mid, json.dumps(res, ensure_ascii=False), not res.get("ok"))
+
+
 def _on_tools_call(mid, params):
+    if BOT:
+        return _on_door_call(mid, params)
     name = params.get("name")
     args = params.get("arguments") or {}
     if name == "office_digest":
@@ -289,13 +428,18 @@ def _on_tools_call(mid, params):
 def _on_initialize(mid, params):
     pv = params.get("protocolVersion")
     version = pv if isinstance(pv, str) and pv in SUPPORTED else LATEST   # 非hashable pv の TypeError も封じる
+    if BOT:
+        instructions = (f"AI Office の出勤の口（Bot「{BOT}」）。office_checkin で出勤、office_report で終わったことの記録、"
+                        "office_ask で人に相談（答えは office_inbox に届く・読んだら ack）、office_withdraw で相談の取り下げ。")
+    else:
+        instructions = ("office_status でMac上の全Claude Codeセッションを確認し、"
+                        "office_instruct で指示を投函、office_digest で日別実績を確認できる。"
+                        "❗付き社員は人の対応待ち。")
     return _result(mid, {
         "protocolVersion": version,
         "capabilities": {"tools": {}},
         "serverInfo": SERVER_INFO,
-        "instructions": ("office_status でMac上の全Claude Codeセッションを確認し、"
-                         "office_instruct で指示を投函、office_digest で日別実績を確認できる。"
-                         "❗付き社員は人の対応待ち。"),
+        "instructions": instructions,
     })
 
 
@@ -322,7 +466,7 @@ def _handle(msg):
     if method == "ping":
         return _result(mid, {})
     if method == "tools/list":
-        return _result(mid, {"tools": TOOLS})
+        return _result(mid, {"tools": _tools()})
     if method == "tools/call":
         return _on_tools_call(mid, params)
     return _err(mid, -32601, f"Method not found: {method}")
@@ -335,7 +479,30 @@ def _drain_to_newline():
             return
 
 
+def _parse_argv(argv):
+    """引数は `--bot <id>`（`--bot=<id>`）だけ。→ Bot の id か None。それ以外の引数・不正な id は ValueError。"""
+    bot = None
+    i = 0
+    while i < len(argv):
+        a = argv[i]
+        if a == "--bot" and i + 1 < len(argv):
+            bot, i = argv[i + 1], i + 2
+        elif a.startswith("--bot="):
+            bot, i = a[len("--bot="):], i + 1
+        else:
+            raise ValueError(f"知らない引数: {a[:40]}（使えるのは --bot <id> だけ）")
+    if bot is not None and not office_door.valid_id(bot):
+        raise ValueError("--bot の id は英小文字・数字・- の 4〜32 字（先頭は英数字）")
+    return bot
+
+
 def main():
+    global BOT
+    try:
+        BOT = _parse_argv(sys.argv[1:])
+    except ValueError as e:
+        _log(f"mcp_office: {e}")
+        sys.exit(2)
     _adopt_p4_data()
     while True:
         line = sys.stdin.buffer.readline(MAX_LINE)

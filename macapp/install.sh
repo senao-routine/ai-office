@@ -48,6 +48,9 @@ for p in Downloads Desktop Documents "Library/Mobile Documents"; do
   esac
 done
 
+# R120: ProcessType=Interactive（2 本とも）。未指定は launchd が CPU と I/O を絞る帯（優先度 20）で動かす
+#（man launchd.plist）＝同じ Mac の重い I/O（動画の書き出し等）と重なると走査の小さな読みが待たされ 10〜180 秒止まった。
+# コックピットの端末から起こしたシェルも同じ絞りを継ぐ。plist を変えた配備は bootout→bootstrap（kickstart は読み直さない）。
 gen_plist() {  # 引数: 出力先("-"=stdout)。PYBIN/DEST を焼き込む
   local out="$1"
   local body
@@ -70,6 +73,7 @@ gen_plist() {  # 引数: 出力先("-"=stdout)。PYBIN/DEST を焼き込む
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>
   <key>ThrottleInterval</key><integer>10</integer>
+  <key>ProcessType</key><string>Interactive</string>
   <key>StandardOutPath</key><string>$LOGDIR/office.daemon.log</string>
   <key>StandardErrorPath</key><string>$LOGDIR/office.daemon.log</string>
 </dict></plist>
@@ -100,6 +104,7 @@ gen_relay_plist() {  # P4.5: relay_agent 常駐（スマホ配達を常時オン
   <key>RunAtLoad</key><false/>
   <key>KeepAlive</key><dict><key>PathState</key><dict><key>$HOME/.claude/office_relay.json</key><true/></dict></dict>
   <key>ThrottleInterval</key><integer>10</integer>
+  <key>ProcessType</key><string>Interactive</string>
   <key>StandardOutPath</key><string>$LOGDIR/relay.daemon.log</string>
   <key>StandardErrorPath</key><string>$LOGDIR/relay.daemon.log</string>
 </dict></plist>

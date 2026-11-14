@@ -51,6 +51,24 @@ class TestStringsParity(unittest.TestCase):
         self.assertGreater(len(strings["en"]), 80)
         # ja 側は日本語が主体なので逆方向は検査しない（英字のみのラベルも正当）
 
+    def test_apv_reason_covers_policy_reasons(self):
+        """b4-mac: 📱「Mac だけの理由」は server/approval_policy.py の REASONS 全部に訳がある（内部コードを画面に出さない）。
+        ja は日本語・en は日本語なし。新しい理由を足したら strings.js の APV_REASON_JA/EN にも足す。"""
+        import sys
+        sys.path.insert(0, str(ROOT / "server"))
+        import approval_policy
+        keys = list(approval_policy.REASONS)
+        expr = ("(() => { const K = %s; const out = {};"
+                " for (const l of ['ja', 'en']) { m.setLang(l); out[l] = K.map((k) => m.T('apv_reason', k)); }"
+                " m.setLang('ja'); return out; })()") % json.dumps(keys)
+        got = _eval(self.node, expr)
+        for lang in ("ja", "en"):
+            raw = [k for k, v in zip(keys, got[lang]) if v == k]
+            self.assertEqual(raw, [], f"{lang}: 訳の無い理由（内部コードのまま出る）")
+        self.assertEqual([k for k, v in zip(keys, got["ja"]) if not CJK.search(v)], [], "ja の訳が日本語でない")
+        self.assertEqual([k for k, v in zip(keys, got["en"]) if CJK.search(v)], [], "en の訳に日本語")
+        self.assertGreater(len(keys), 40)
+
 
 if __name__ == "__main__":
     unittest.main()

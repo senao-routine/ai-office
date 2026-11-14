@@ -5,6 +5,7 @@
 # 型は公開リポ更新（tools/publish_snapshot.sh）と同じ:
 #   git archive HEAD → 内部物を除外（正本= tools/_publish_excludes.sh）→ 禁止語ゲート →
 #   顧客名スクラブの回帰 → 除外の機械検査。**そのうえで、展開して実際に起動するところまで確かめる**
+#   （/api/office・?demo=1・コックピットの ESM の閉包と xterm が 200 で JS の型）
 #   （R80 で確立した「配布物そのものを実測する」型。素の /usr/bin/python3 で回す＝配布先で死なない）。
 #
 # 公開リポとの違い（run プロファイル）: 動かす人に要らない開発ハーネスを落とす。
@@ -33,8 +34,11 @@ RUN_EXCLUDES=(
   ".github"          # Issue テンプレは公開リポの機能（zip には要らない）
 )
 
-# --check は「除外の仕組みが効いているか」だけを見る（HEAD が対象なので汚れていてもよい）
-if [ "$DRY" != "--check" ] && { ! git diff --quiet || ! git diff --cached --quiet; }; then
+# --check は「除外の仕組みが効いているか」だけを見る（HEAD が対象なので汚れていてもよい）。
+# 汚れの判定は DIRTY_OK（毎日自動で書き換わる・配布物に入らない記録）を除いて見る（正本は _publish_excludes.sh）。
+# DIRTY_OK の行が EXCLUDES に在るかは --check（verify ▶ の配布物の除外）でも確かめる
+publish_dirty_ok_check
+if [ "$DRY" != "--check" ] && publish_tree_dirty; then
   echo "✗ ワーキングツリーが汚れています。commit してから実行してください" >&2
   exit 1
 fi
@@ -111,6 +115,9 @@ for x in "${EXCLUDES[@]}" "${RUN_EXCLUDES[@]}"; do
   [ -e "$STAGE/$NAME/$x" ] && { echo "✗ 除外対象が残っています: $x" >&2; leak=1; }
 done
 [ "$leak" = "0" ] || { echo "✗ 中断します（除外の取りこぼし）" >&2; exit 1; }
+# シンボリックリンクは配布物に入れない（参照先の絶対パスは禁止語ゲートが見ない）
+links="$(find "$STAGE/$NAME" -type l | sed "s|$STAGE/$NAME/||")"
+[ -z "$links" ] || { echo "✗ 中断します（シンボリックリンクがある: ${links}）" >&2; exit 1; }
 COUNT="$(find "$STAGE/$NAME" -type f | wc -l | tr -d ' ')"
 SIZE="$(du -sk "$STAGE/$NAME" | cut -f1)"
 echo "  ✓ 除外 $(( ${#EXCLUDES[@]} + ${#RUN_EXCLUDES[@]} )) 項目すべて不在（機械検査）"
@@ -139,12 +146,66 @@ for _ in $(seq 1 20); do
 done
 demo=0
 [ "$ok" = "1" ] && curl -sf -o /dev/null "http://127.0.0.1:$PORT/?demo=1" 2>/dev/null && demo=1
+# R99-P4: 配布物でコックピット（?ui=cockpit）が開けること。boot.html は様式の /ui/<様式>/index.js を import し、
+# 静的 import が 1 本でも 404 か JS 以外の型で返ると mount ごと落ちて起動画面に戻る（/api/office と ?demo=1
+# だけでは気づけない＝除外の書き足しで ui/vendor/ や ui/cockpit/ の一部が落ちても緑のまま配ってしまう）。
+# /ui/cockpit/index.js から静的 import の閉包を HTTP で辿り（端末の xterm まで）、index.js が link で足す CSS も取る。
+cockpit=0
+[ "$ok" = "1" ] && /usr/bin/python3 - "$PORT" >"$STAGE/cockpit.log" 2>&1 <<'PYESM' && cockpit=1
+import re, sys, urllib.error, urllib.request
+from urllib.parse import urljoin, urlsplit
+base = f"http://127.0.0.1:{sys.argv[1]}"
+ENTRY = "/ui/cockpit/index.js"
+MUST = ["/ui/vendor/xterm/xterm.mjs", "/ui/vendor/xterm/addon-fit.mjs"]      # 端末（ui/cockpit/term.js が import）
+CSS = ["/ui/hud/hud.css", "/ui/vendor/xterm/xterm.css", "/ui/cockpit/style.css"]  # ui/cockpit/index.js が link で足す
+# 行頭の import / export … from "x"・副作用の import "x"・動的 import("x")（字面の文字列だけ）
+SPEC = re.compile(r"""^\s*(?:import|export)\b[^;'"]*?\bfrom\s*["']([^"']+)["']"""
+                  r"""|^\s*import\s*["']([^"']+)["']|\bimport\(\s*["']([^"']+)["']\s*\)""", re.M)
+bad = []
+def get(path, kind):
+    try:
+        with urllib.request.urlopen(base + path, timeout=5) as r:
+            ctype, body = r.headers.get("Content-Type", ""), r.read()
+    except urllib.error.HTTPError as e:
+        bad.append(f"{path}: HTTP {e.code}")
+        return None
+    except OSError as e:
+        bad.append(f"{path}: {type(e).__name__}")
+        return None
+    want = "text/css" if kind == "css" else "javascript"   # モジュールは JS の型でないとブラウザが読まない
+    if want not in ctype or not body:
+        bad.append(f"{path}: 型 {ctype or '無し'}・{len(body)}B")
+        return None
+    return body.decode("utf-8", "replace")
+seen, todo = set(), [ENTRY, *MUST]
+while todo:
+    path = todo.pop()
+    if path in seen:
+        continue
+    seen.add(path)
+    src = get(path, "js")
+    for m in SPEC.finditer(src or ""):
+        spec = next(s for s in m.groups() if s)
+        if not spec.startswith(("/", "./", "../")) or not spec.endswith((".js", ".mjs")):
+            continue                                        # 裸の指定子（importmap）はここでは辿らない
+        todo.append(urlsplit(urljoin(base + path, spec)).path)
+for path in CSS:
+    get(path, "css")
+if len(seen) < 10:                                         # 辿り方が壊れて空振りしていないか（今は 44 本）
+    bad.append(f"閉包が小さすぎる（{len(seen)} 本）＝import の読み方が壊れている")
+if bad:
+    print("\n".join(bad[:20]))
+    sys.exit(1)
+print(f"{ENTRY} から静的 import の閉包 {len(seen)} 本（xterm を含む）と CSS {len(CSS)} 本が 200・JS/CSS の型で返る")
+PYESM
 kill "$RUNPID" 2>/dev/null || true
 wait "$RUNPID" 2>/dev/null || true
 RUNPID=""     # 回収済み。EXIT トラップで二重に kill しない
 [ "$ok" = "1" ] || { echo "✗ 配布物が素の python3 で起動しない → $(tail -1 "$STAGE/run.log")" >&2; exit 1; }
 [ "$demo" = "1" ] || { echo "✗ 配布物の ?demo=1 が開かない" >&2; exit 1; }
 echo "  ✓ 展開 → 素の /usr/bin/python3 で起動 → /api/office と ?demo=1 が応答"
+[ "$cockpit" = "1" ] || { echo "✗ 配布物でコックピットが開けない（ESM/CSS の取得）:" >&2; sed 's/^/    /' "$STAGE/cockpit.log" >&2; exit 1; }
+echo "  ✓ コックピット: $(tail -1 "$STAGE/cockpit.log")"
 
 mkdir -p dist
 rm -f "dist/$NAME.tar.gz" "dist/$NAME.zip"

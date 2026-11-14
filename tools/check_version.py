@@ -9,7 +9,8 @@
   同じ嘘がまた生える。だから**手書きの版はここで落とす**。
 
 検査:
-  1. server/office_version.py の VERSION が semver
+  1. server/office_version.py の VERSION が semver（"-beta.1" 等の先行版識別子・"+build" のビルド
+     メタデータも許す＝メンバー先行β（v3.0.0-beta.1）のような版を手で書けるように）
   2. MCP の serverInfo.version が同じ（数字の直書きが無いこと）
   3. README.md / README.ja.md のバッジが同じ
   4. CHANGELOG.md に同じ版の節が在る（[Unreleased] は許す＝未リリースの間）
@@ -24,11 +25,16 @@ import office_version                                   # noqa: E402
 
 V = office_version.VERSION
 BADGE = re.compile(r"<!--version-->v([0-9A-Za-z.\-+]+)<!--/version-->")
+# semver 2.0.0（https://semver.org）の核＝X.Y.Z に、任意の先行版識別子（-beta.1 等）とビルド
+# メタデータ（+build 等）を許す。数字 3 つだけの従来版も素通りする。
+SEMVER = re.compile(
+    r"\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?"
+)
 
 
 def main():
     bad = []
-    if not re.fullmatch(r"\d+\.\d+\.\d+", V):
+    if not SEMVER.fullmatch(V):
         bad.append(f"VERSION が semver でない: {V!r}")
 
     mcp = (ROOT / "server" / "mcp_office.py").read_text(encoding="utf-8")

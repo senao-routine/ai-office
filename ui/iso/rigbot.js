@@ -82,11 +82,13 @@ function buildGeometry(mod) {
 }
 
 /** ハイブリッド C で procedural 側から出す部品（頭・顔・耳・アンテナ・胸リング・職業アクセサリ）。胴体・腕・脚は生成体。 */
-export const HYBRID_PARTS = new Set(["head", "headCodex", "headOpenclaw", "visor", "ear", "antStem", "antCodex", "antOpenclaw", "antTip", "chest", "__acc"]);
+export const HYBRID_PARTS = new Set(["head", "headCodex", "headOpenclaw", "headBot", "lampBot", "visor", "ear", "antStem", "antCodex", "antOpenclaw", "antTip", "chest", "__acc"]);
 /** D（採用案）で生成体に重ねる部品: 表情アトラスのバイザー・胸の状態リング・職業アクセサリ。頭・耳・アンテナは生成体のもの。 */
 export const D_PARTS = new Set(["visorRig", "chest", "antTip", "__acc", "__prop"]);
+/** Bot は生成体の頭を外し、箱頭と半球ランプを同じ Head 骨に載せる。 */
+export const BOT_PARTS = new Set(["headBot", "lampBot", "visor", "ear", "chest", "__acc", "__prop"]);
 /** ベンダー差（R96-D2）: 頭の幅は Head 骨のスケール、OpenClaw は手の骨にハサミ。色は個体の頂点色。 */
-const VENDOR_HEAD = { claude: [1, 1, 1], codex: [1.37, 1, 0.98], openclaw: [1.5, 1, 0.90] };
+const VENDOR_HEAD = { claude: [1, 1, 1], codex: [1.37, 1, 0.98], openclaw: [1.5, 1, 0.90], bot: [1, 1, 1] };
 export const D_PARTS_CLAW = new Set([...D_PARTS, "claw"]);
 const HEAD_LIFT = 0.166;   // C: Head 骨（首・0.645）から procedural の neck 原点へ: 頭の底が切り口に載る高さ（1.035 − HEAD_Y 0.2244 − 0.645）
 const HEAD_LIFT_D = 0.18;  // D: 生成体の頭の中心に procedural の neck 原点（+HEAD_Y 0.2244）を合わせる（帽子が頭頂に触れる高さ・実レンダで 0.205→0.18）
@@ -202,6 +204,21 @@ export function createRigKit(materials, scene, mode = 1) {
   const rest = sk.nodes;
   const jointIndex = (name) => sk.joints.findIndex((ni) => rest[ni].name === name);
   const HEAD_J = jointIndex("Head"), SPINE_J = jointIndex("Spine02");
+  let botIndex = null;
+  const headlessIndex = () => {
+    if (mode === 2) return geometry.getIndex();   // ハイブリッドの生成物は既に首で切ってある
+    if (!botIndex) {
+      const cut = (HEAD_J >= 0 ? restWorld(sk, sk.joints[HEAD_J])[1] : .645) + .01;
+      const pos = geometry.getAttribute("position"), index = geometry.getIndex().array, keep = [];
+      // glb_rig.py --cut-above と同じく、首をまたぐ三角形は残す。元の index は変更しない。
+      for (let i = 0; i < index.length; i += 3) {
+        if (pos.getY(index[i]) >= cut && pos.getY(index[i + 1]) >= cut && pos.getY(index[i + 2]) >= cut) continue;
+        keep.push(index[i], index[i + 1], index[i + 2]);
+      }
+      botIndex = new THREE.BufferAttribute(new Uint16Array(keep), 1);
+    }
+    return botIndex;
+  };
   // 姿勢オーバーレイ層が触る骨。rest は個体で変わらないので、体の軸→骨ローカル軸の変換は kit で 1 回だけ作る
   const OVERLAY = new Map();
   for (const name of OVERLAY_BONES) {
@@ -210,7 +227,7 @@ export function createRigKit(materials, scene, mode = 1) {
   }
   return {
     clips, mode, headParts: mode === 2 ? HYBRID_PARTS : D_PARTS,
-    partsFor: (vendor) => (mode === 2 ? HYBRID_PARTS : vendor === "openclaw" ? D_PARTS_CLAW : D_PARTS),
+    partsFor: (vendor) => (vendor === "bot" ? BOT_PARTS : mode === 2 ? HYBRID_PARTS : vendor === "openclaw" ? D_PARTS_CLAW : D_PARTS),
     facePlate,
     /** リグ＋皮を scene に置き、毎フレーム nodes.root の行列（root は scene に居ない数学用の骨格）を写す。
      *  返り値の apply(poseKind, t, dist, seated, changedAt, prevKind, seed) で骨を置く。 */
@@ -232,6 +249,8 @@ export function createRigKit(materials, scene, mode = 1) {
         geo.setIndex(geometry.getIndex()); geo.boundingSphere = geometry.boundingSphere;
         geo.setAttribute("color", new THREE.BufferAttribute(baseColor.array.slice(), 3));
       }
+      // プールの前の利用者が Bot でも、通常の頭つき index から始める。
+      geo.setIndex(geometry.getIndex());
       const color = geo.getAttribute("color");
       let tintKey = null;   // null＝未適用。プールから来た器は前の個体色を持つので、最初の setTint(null) でも基準色へ戻す（別モデルレビュー）
       const setTint = (tint) => {
@@ -258,6 +277,10 @@ export function createRigKit(materials, scene, mode = 1) {
       // 頭（D はバイザーだけ出す）・胸リング・蝶ネクタイの dummy を root 直下へ移し、毎フレーム骨の位置＋差分回転へ追従させる
       nodes.root.add(nodes.neck); nodes.root.add(nodes.chest);
       const bowtie = nodes.acc?.bowtie; if (bowtie) nodes.root.add(bowtie);
+      const fittedNodes = [...Object.entries(nodes.acc || {}).filter(([part]) => part !== "bowtie").map(([, node]) => node),
+        ...(nodes.antTips || [])];
+      const saveFit = () => fittedNodes.map((node) => ({ node, position: node.position.clone(), scale: node.scale.clone() }));
+      const proceduralFit = saveFit(), proceduralRigFitted = nodes.rigFitted;
       if (metrics) {
         nodes.rigFitted = true;   // robot.js の setVendor に「アンテナ先端は procedural 座標で上書きしない」と伝える印
         // R96-D3: 頭に付く物（帽子・ヘッドセット・王冠・アンテナ先端）を生成体の頭の実測へ合わせる。
@@ -271,6 +294,7 @@ export function createRigKit(materials, scene, mode = 1) {
         }
         for (const tip of nodes.antTips || []) tip.position.set(0, metrics.antTipY - neckY, 0);
       }
+      const generatedFit = saveFit(), generatedRigFitted = nodes.rigFitted;
       // ハサミ（OpenClaw）は手の骨に追従させる。腕は生成体なので procedural の hand ノードだけ借りる
       const handJ = ["L_Hand", "R_Hand"].map((n) => sk.joints.findIndex((ni) => rest[ni].name === n));
       const hands = (nodes.arms || []).map((arm) => arm.hand);
@@ -363,7 +387,7 @@ export function createRigKit(materials, scene, mode = 1) {
         return t + seed;                                               // 個体差は位相オフセット
       };
       const followAll = () => {
-        if (HEAD_J >= 0) follow(nodes.neck, jointBones[HEAD_J], mode === 2 ? HEAD_LIFT : HEAD_LIFT_D, 0);
+        if (HEAD_J >= 0) follow(nodes.neck, jointBones[HEAD_J], mode === 2 || bot ? HEAD_LIFT : HEAD_LIFT_D, 0);
         if (SPINE_J >= 0) { follow(nodes.chest, jointBones[SPINE_J], CHEST_LIFT, CHEST_FWD); if (bowtie) follow(bowtie, jointBones[SPINE_J], CHEST_LIFT + 0.06, BOWTIE_FWD); }
         for (let i = 0; i < hands.length; i++) {
           if (!hands[i] || handJ[i] < 0) continue;
@@ -376,6 +400,7 @@ export function createRigKit(materials, scene, mode = 1) {
         }
       };
       let headScale = VENDOR_HEAD.claude;
+      let bot = false;
       const track = transitionTracker();   // 遷移元は補間が終わるまで動かさない（中断されたら混合姿勢のまま引き継ぐ）
       followAll();
       return {
@@ -388,6 +413,18 @@ export function createRigKit(materials, scene, mode = 1) {
           return [+_v.x.toFixed(3), +_v.y.toFixed(3), +_v.z.toFixed(3)];
         },
         setVendorShape(vendor) {
+          const nextBot = vendor === "bot";
+          if (nextBot !== bot) {
+            bot = nextBot;
+            geo.setIndex(bot ? headlessIndex() : geometry.getIndex());
+            // push の setVendor が現在の幅から次の幅への比を掛けるので、その前の幅で復元する。
+            const width = (VENDOR_HEAD[nodes.vendor] || VENDOR_HEAD.claude)[0];
+            for (const saved of bot ? proceduralFit : generatedFit) {
+              saved.node.position.copy(saved.position);
+              saved.node.scale.copy(saved.scale); saved.node.scale.x *= width;
+            }
+            nodes.rigFitted = bot ? proceduralRigFitted : generatedRigFitted;
+          }
           headScale = VENDOR_HEAD[vendor] || VENDOR_HEAD.claude;
           if (mode !== 2) nodes.visor.scale.z = visorBaseZ * headScale[2];
           // アンテナ先端の位置は attach で置いた値のまま（setVendor は nodes.rigFitted を見て触らない）

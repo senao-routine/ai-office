@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import sqlite3
 import stat
+from statistics import median
 import sys
 import tempfile
 import threading
@@ -723,7 +724,377 @@ class OfficeTimelineTest(unittest.TestCase):
         self.assertIn("待たせ中央値 5分", md)
         growth = self.timeline.growth_json(self.home, now=base + 901)
         with patch.object(office.office_timeline, "growth_json", return_value=growth):
-            self.assertEqual(office.office_json()["growth"], growth)
+            exposed = office.office_json()["growth"]
+        # R123-C: 全体のレベル・連続日数はそのまま、byProject はいま居る人の分だけ（ここでは誰も居ない）
+        self.assertEqual({k: v for k, v in exposed.items() if k not in ("byProject", "maxSeen")},
+                         {k: v for k, v in growth.items() if k not in ("byProject", "maxSeen")})
+        self.assertEqual(exposed["byProject"], {})
+
+    def test_office_json_growth_keeps_only_present_projects(self):
+        """R123-C: byProject は timeline の全件ではなく、名簿に居るプロジェクトの分だけ（使うほど太らない）。
+        growth_json のキャッシュの dict は書き換えない。"""
+        office = load_module("office_timeline_present", "office_server.py")
+        cached = {"byProject": {"p-here": {"xp": 10, "level": 0}, "p-gone": {"xp": 990, "level": 3},
+                                "s-here": {"xp": 5, "level": 0}},
+                  "office": {"xp": 1005, "level": 3, "nextAt": 1600}, "streak15": 2}
+        roster = [{"projectId": "p-here", "session": "s-x", "sessions": []}]
+        employees = [{"session": "s-here"}]
+        out = office.present_growth(cached, roster, employees)
+        self.assertEqual(sorted(out["byProject"]), ["p-here", "s-here"])
+        self.assertEqual(out["office"], cached["office"])
+        self.assertEqual(out["streak15"], 2)
+        self.assertEqual(sorted(cached["byProject"]), ["p-gone", "p-here", "s-here"], "キャッシュの dict を書き換えた")
+        self.assertEqual(office.present_growth({"office": {}}, [], [])["byProject"], {})
+
+    # ---- R115: 読み手は必要な行だけを読む（全行を読んだ R115 前と同じ結果） ----
+
+    def legacy_read(self, now):
+        """R115 前の `_snapshot`（全行 → facts・キャッシュ無し）の写し。新しい読み手の正解。"""
+        t = self.timeline
+        with closing(t._reader(self.home)) as db:
+            sessions = {row["sid"]: dict(row) for row in db.execute("SELECT * FROM sessions")}
+            events = [dict(row) for row in db.execute("SELECT * FROM events ORDER BY ts,id")]
+            spans = [dict(row) for row in db.execute("SELECT * FROM spans")]
+            answers = {row["spanId"]: dict(row) for row in db.execute("SELECT * FROM answers")}
+            resolved = {row["k"] for row in db.execute("SELECT k FROM meta WHERE k LIKE 'resolved:%'")}
+        facts = [dict(e, projectId=t._project(sessions.get(e["sid"], {}).get("projectId"))) for e in events]
+        answered = {(s["sid"], s["start"]) for s in spans if s["id"] in answers}
+        last = {(s["sid"], s["start"]): s["id"] for s in spans if s["kind"] == "ask"}
+        for s in spans:
+            if s["sid"] not in sessions or s["start"] is None:
+                continue
+            session = sessions[s["sid"]]
+            base = {"sid": s["sid"], "vendor": session["vendor"], "projectId": t._project(session["projectId"])}
+            if s["kind"] == "state":
+                start = s["start"]
+                end = min(now, s["end"] if s["end"] is not None else session["lastSeen"])
+                while start < end:
+                    day = datetime.fromtimestamp(start).date()
+                    stop = min(end, datetime.combine(day + timedelta(days=1), datetime.min.time()).timestamp())
+                    working = s["label"] == "working"
+                    facts.append(dict(base, ev="active" if working else "state", state=s["label"], start=start,
+                                      ts=stop, day=day.isoformat(), activeMin=(stop - start) / 60 if working else 0))
+                    start = stop
+            elif s["kind"] == "ask":
+                answer = answers.get(s["id"])
+                key = "resolved:" + hashlib.sha256(json.dumps([s["sid"], s["start"]]).encode()).hexdigest()
+                if (answer is None and s["end"] is not None and (s["sid"], s["start"]) not in answered
+                        and last.get((s["sid"], s["start"])) == s["id"] and key in resolved):
+                    answer = {"ts": s["end"], "waitedSec": s["end"] - s["start"]}
+                if answer is not None:
+                    facts.append(dict(base, ev="askResolved", ts=answer["ts"], day=t._day(answer["ts"]),
+                                      waitedSec=answer["waitedSec"]))
+        return sessions, facts
+
+    def legacy_growth(self, now):
+        facts = [row for row in self.legacy_read(now)[1] if row["ts"] <= now]
+        return self.timeline.growth_from_events(facts, self.timeline._day(now))
+
+    def legacy_digest(self, day, since, now):
+        t = self.timeline
+        parsed = date.fromisoformat(day)
+        start = max(since, datetime.combine(parsed, datetime.min.time()).timestamp())
+        end = min(now, datetime.combine(parsed + timedelta(days=1), datetime.min.time()).timestamp())
+        metadata, all_facts = self.legacy_read(now)
+        facts = []
+        for row in all_facts:
+            if row["ev"] in ("active", "state"):
+                left, right = max(start, row["start"]), min(end, row["ts"])
+                if left < right:
+                    facts.append(dict(row, start=left, ts=right,
+                                      activeMin=(right - left) / 60 if row["ev"] == "active" else 0))
+            elif start <= row["ts"] < end:
+                facts.append(row)
+        growth = t.growth_from_events(facts, day)
+        growth["streak15"] = t._streak([row for row in all_facts if row["ts"] <= end], parsed)
+
+        def metrics(rows):
+            counts, tools, waits = t._measure(rows)
+            return {**{key: round(value, 9) for key, value in counts.items()}, "tools": tools,
+                    "waitingMin": round(sum((r["ts"] - r["start"]) / 60 for r in rows
+                                            if r.get("state") == "waiting"), 9),
+                    "avgWaitSec": sum(waits) / len(waits) if waits else 0,
+                    "medianWaitSec": median(waits) if waits else 0}
+
+        sessions = [{"sid": sid, "vendor": metadata.get(sid, {}).get("vendor", ""),
+                     "name": metadata.get(sid, {}).get("name", ""),
+                     "projectId": t._project(metadata.get(sid, {}).get("projectId")),
+                     **metrics([r for r in facts if r["sid"] == sid])}
+                    for sid in sorted({r["sid"] for r in facts})]
+        totals = metrics(facts)
+        totals.update(xp=growth["office"]["xp"], level=growth["office"]["level"])
+        return {"day": day, "since": since, "sessions": sessions, "totals": totals, "hires": totals["hires"],
+                "streak15": growth["streak15"], "growth": growth,
+                "available": any(r.get("day") == day for r in all_facts)}
+
+    def edge_case_database(self):
+        """同じ project の 2 セッション（作業が日を跨いで交互）・待つだけの project・Codex の turn・
+        掃除で hire だけ消えた古いセッション・sessions に無い sid・不正な projectId・未来の event・
+        answers の無い旧い解消キー・数えない PostToolUse を 1 つの DB に揃える。"""
+        t = self.timeline
+        midnight = datetime.combine(date.today(), datetime.min.time()).timestamp()
+        d1, d2 = midnight - 86400, midnight - 2 * 86400
+        writer = t._Timeline(self.home)
+
+        def row(sid, state, project, vendor="claude", attention=False):
+            return {"sid": sid, "vendor": vendor, "cwdh": "c" + sid, "projectId": project, "name": "N" + sid,
+                    "state": state, "attention": attention}
+
+        a = lambda state, **kw: row("a1", state, "shared", **kw)
+        b = lambda state, **kw: row("a2", state, "shared", **kw)
+        w = lambda state: row("w", state, "waitonly")
+        cx = lambda state: row("cx", state, "cxp", "codex")
+        bad = lambda state: row("bad", state, "/private/path")
+        asked = d1 + 10 * 3600
+        with closing(t._connect(self.path)) as db:
+            writer.batch(db, [
+                ("states", ([a("working"), b("waiting"), w("waiting"), cx("working"), bad("working")], d2 + 22 * 3600)),
+                ("states", ([a("working"), b("working"), w("resting"), cx("waiting"), bad("waiting")], d1 + 3600)),
+                ("states", ([a("waiting", attention=True), b("working", attention=True), w("waiting"),
+                             cx("working")], asked)),
+                ("states", ([a("waiting"), b("working"), w("waiting"), cx("working")], asked + 400)),
+                ("resolved", ("shared", "a1", 400, asked + 400)),
+                ("resolved", ("shared", "a2", 1000, asked + 400)),
+                ("states", ([a("working"), b("waiting"), w("resting"), cx("working")], midnight + 7200)),
+            ])
+            hooks = [("a1", "TaskCompleted", d1 + 7200, {"task": "t1"}), ("a1", "TaskCompleted", d1 + 7300, {"task": "t1"}),
+                     ("a1", "TaskCompleted", d1 + 7400, {}), ("a1", "TaskCompleted", d1 + 7500, {"task": "t2", "ok": False}),
+                     ("a2", "PostToolUse", d1 + 8000, {"tool": "Bash", "kind": "git:commit"}),
+                     ("a2", "PostToolUse", d1 + 8100, {"tool": "Bash", "kind": "git:commit", "ok": False}),
+                     ("a2", "PostToolUseFailure", d1 + 8200, {"tool": "Bash", "kind": "git:commit", "ok": False}),
+                     ("a2", "PostToolUse", d1 + 8300, {"tool": "Bash", "kind": "git:push"}),
+                     ("a2", "PostToolUse", midnight + 600, {"tool": "Bash", "kind": "test"}),
+                     ("a2", "PostToolUse", midnight + 700, {"tool": "Read"}),
+                     ("a2", "PreToolUse", midnight + 800, {"tool": "Bash", "kind": "git:commit"}),
+                     ("old", "PreToolUse", d1 + 9000, {"tool": "Read"}),
+                     ("a1", "TaskCompleted", midnight + 4 * 3600, {"task": "future"})]
+            with db:
+                for n, (sid, ev, ts, extra) in enumerate(hooks):
+                    writer.hook(db, self.hook(ev, ts=ts, sid=sid, **extra), f"edge:{n}")
+                db.execute("DELETE FROM events WHERE ev='hire' AND sid IN ('old','w')")
+                db.execute("DELETE FROM answers WHERE spanId IN (SELECT id FROM spans WHERE sid='a2' AND kind='ask')")
+                t._event(db, {"sid": "ghost", "ts": d1 + 5 * 3600, "ev": "TaskCompleted", "task": "g"})
+                t._event(db, {"sid": "ghost2", "ts": d1 + 6 * 3600, "ev": "PreToolUse"})
+                # 別の UTC オフセットで書かれた行: 保存した day（昨日）と時計の日付（今日 00:30）が違う
+                t._event(db, {"sid": "a1", "ts": midnight + 1800, "ev": "TaskCompleted", "task": "tz"})
+                db.execute("UPDATE events SET day=? WHERE task='tz'", (t._day(d1),))
+        return midnight, d1
+
+    def test_readers_equal_reading_every_row_on_edge_cases(self):
+        """R115: 必要な行だけ読む growth_json／digest_json が、全行を読んでいた R115 前の結果と JSON（型まで）で一致する。"""
+        t = self.timeline
+        midnight, d1 = self.edge_case_database()
+        now = midnight + 3 * 3600
+        for at in (now, d1 + 12 * 3600, midnight - 0.000001):
+            with self.subTest(growth_at=at):
+                t._READ_CACHE.clear()
+                self.assertEqual(json.dumps(t.growth_json(self.home, at), sort_keys=True),
+                                 json.dumps(self.legacy_growth(at), sort_keys=True))
+        for day in [(date.today() - timedelta(days=n)).isoformat() for n in range(4)]:
+            for since in (0.0, d1 + 9 * 3600):
+                with self.subTest(day=day, since=since):
+                    t._READ_CACHE.clear()
+                    self.assertEqual(json.dumps(t.digest_json(self.home, day=day, since=since, now=now), sort_keys=True),
+                                     json.dumps(self.legacy_digest(day, since, now), sort_keys=True))
+        # 一致が偶然でない＝端の形が実際に結果へ出ている
+        t._READ_CACHE.clear()
+        growth = t.growth_json(self.home, now)["byProject"]
+        self.assertEqual(growth["waitonly"]["xp"], 0)                       # 待つだけ（hire も無い）でも残る
+        self.assertEqual(growth["123456789abc"]["xp"], 0)                   # hire の消えた古いセッション
+        self.assertEqual(growth["unknown"]["breakdown"]["tasksDone"]["count"], 1)   # sessions に無い sid
+        self.assertEqual(growth["cxp"]["breakdown"]["turnsCompleted"]["count"], 1)
+        self.assertEqual(growth["shared"]["breakdown"]["asksAnswered"]["count"], 2)  # answers の無い旧いキーも
+        self.assertEqual(growth["shared"]["breakdown"]["commits"]["count"], 1)
+
+    def bare_home(self):
+        tmp = tempfile.TemporaryDirectory(prefix="office_timeline_r115_")
+        self.addCleanup(tmp.cleanup)
+        home = Path(tmp.name)
+        (home / self.timeline.DB_FILE).parent.mkdir(parents=True)
+        db = self.timeline._connect(home / self.timeline.DB_FILE)
+        self.addCleanup(db.close)
+        return home, db
+
+    def test_streak_counts_from_a_day_seen_only_in_events_spans_or_answers(self):
+        """streak の「最初に観測した日」は、数えない event だけ／待つだけの span だけ／回答だけの日でも同じに立つ。"""
+        t = self.timeline
+        midnight = datetime.combine(date.today(), datetime.min.time()).timestamp()
+        first = midnight - 2 * 86400 + 3600          # 2 日前 01:00 が唯一の活動
+        now = midnight + 3600
+        session = "INSERT INTO sessions VALUES ('s','claude','c','p1','N',?,?)"
+        cases = {
+            "event": [("INSERT INTO events(ts,day,sid,vendor,ev,tool,tgt,kind,nt,sub,task,ok) "
+                       "VALUES (?,?,'s','claude','PreToolUse','Read','','','','','',1)", (first, t._day(first)))],
+            "span": [(session, (first, first + 600)),
+                     ("INSERT INTO spans(sid,kind,label,start,end,day) VALUES ('s','state','waiting',?,?,?)",
+                      (first, first + 600, t._day(first)))],
+            "answer": [(session, (first - 60, first)),
+                       ("INSERT INTO spans(id,sid,kind,label,start,end,day) VALUES (7,'s','ask','attention',?,?,?)",
+                        (first - 60, first, t._day(first - 60))),
+                       ("INSERT INTO answers VALUES (7,?,60)", (first,))],
+            "slow answer": [(session, (first - 1000, first)),
+                            ("INSERT INTO spans(id,sid,kind,label,start,end,day) VALUES (7,'s','ask','attention',?,?,?)",
+                             (first - 1000, first, t._day(first - 1000))),
+                            ("INSERT INTO answers VALUES (7,?,1000)", (first,))],
+        }
+        expected = {"event": 3, "span": 3, "answer": 3, "slow answer": 2}   # 遅い回答の日（中央値 ≥15 分）で切れる
+        for name, statements in cases.items():
+            with self.subTest(only=name):
+                home, db = self.bare_home()
+                with db:
+                    for sql, args in statements:
+                        db.execute(sql, args)
+                with closing(t._reader(home)) as reader:
+                    self.assertEqual(reader.execute("SELECT COUNT(*) FROM events WHERE ev IN "
+                                                    "('hire','TaskCompleted','turnCompleted')").fetchone()[0], 0)
+                self.assertEqual(t.growth_json(home, now)["streak15"], expected[name])
+                self.assertEqual(t.digest_json(home, since=0, now=now)["streak15"], expected[name])
+                # 1 日前のダイジェストは「その日まで」の streak（今日は数えない）
+                yesterday = (date.today() - timedelta(days=1)).isoformat()
+                self.assertEqual(t.digest_json(home, day=yesterday, since=0, now=now)["streak15"],
+                                 expected[name] - 1)
+
+    def test_xp_reads_only_successful_git_commit_post_tool_use_rows(self):
+        """XP に読む PostToolUse は git:commit だけ（他の kind・失敗・PreToolUse は読まない）＝全行を読んだ結果と同じ。"""
+        t = self.timeline
+        writer = t._Timeline(self.home)
+        base = datetime.combine(date.today(), datetime.min.time()).timestamp() + 3600
+        now = base + 600
+        rows = [("PostToolUse", {"kind": "git:commit"}), ("PostToolUse", {"kind": "git:commit", "ok": False}),
+                ("PostToolUseFailure", {"kind": "git:commit", "ok": False}), ("PreToolUse", {"kind": "git:commit"}),
+                ("PostToolUse", {"kind": "git:push"}), ("PostToolUse", {"kind": "test"}),
+                ("PostToolUse", {"kind": "", "tool": "Read"})]
+        with closing(t._connect(self.path)) as db, db:
+            for n, (ev, extra) in enumerate(rows):
+                writer.hook(db, self.hook(ev, ts=base + n, **dict({"tool": "Bash"}, **extra)), f"x:{n}")
+        facts = t._snapshot(self.home, now)[1]
+        self.assertEqual(sorted((f["ev"], f["kind"]) for f in facts if f["ev"] != "hire"),
+                         [("PostToolUse", "git:commit"), ("PostToolUse", "git:commit")])
+        growth = t.growth_json(self.home, now)
+        self.assertEqual(growth["byProject"]["123456789abc"]["breakdown"]["commits"]["count"], 1)
+        self.assertEqual(json.dumps(growth, sort_keys=True), json.dumps(self.legacy_growth(now), sort_keys=True))
+        digest = t.digest_json(self.home, since=0, now=now)
+        self.assertEqual(digest["totals"]["commits"], 1)
+        self.assertEqual(digest["totals"]["tools"], {"Bash": 3, "Read": 1})   # ダイジェストは数えない行も読む
+
+    def test_event_sid_without_session_row_counts_for_unknown_project(self):
+        """sessions に行の無い sid の event は projectId 'unknown'（数えない行だけでも byProject に残る）。"""
+        t = self.timeline
+        base = datetime.combine(date.today(), datetime.min.time()).timestamp() + 3600
+        now = base + 600
+        with closing(t._connect(self.path)) as db, db:
+            t._event(db, {"sid": "ghost2", "ts": base, "ev": "PreToolUse"})
+        growth = t.growth_json(self.home, now)
+        self.assertEqual(list(growth["byProject"]), ["unknown"])
+        self.assertEqual(growth["byProject"]["unknown"]["xp"], 0)
+        with closing(t._connect(self.path)) as db, db:
+            t._event(db, {"sid": "ghost", "ts": base + 10, "ev": "TaskCompleted", "task": "g"})
+        t._READ_CACHE.clear()
+        self.assertEqual(t.growth_json(self.home, now)["byProject"]["unknown"]["xp"], 10)
+        digest = t.digest_json(self.home, since=0, now=now)
+        self.assertEqual([(s["sid"], s["projectId"], s["vendor"], s["name"]) for s in digest["sessions"]],
+                         [("ghost", "unknown", "", ""), ("ghost2", "unknown", "", "")])
+        self.assertEqual(list(digest["growth"]["byProject"]), ["unknown"])
+
+    def test_digest_available_from_an_event_a_reaching_span_or_an_answer(self):
+        """available は「その日の event」「その日に掛かる state の span」「その日の回答」のどれか 1 つで立つ。"""
+        t = self.timeline
+        midnight = datetime.combine(date.today(), datetime.min.time()).timestamp()
+        d1 = midnight - 86400
+        now = midnight + 3600
+        session = "INSERT INTO sessions VALUES ('s','claude','c','p1','N',?,?)"
+        cases = {
+            "event": [("INSERT INTO events(ts,day,sid,vendor,ev,tool,tgt,kind,nt,sub,task,ok) "
+                       "VALUES (?,?,'s','claude','PreToolUse','Read','','','','','',1)", (d1 + 43200, t._day(d1 + 43200)))],
+            # 2 日前 23:30 に始まり昨日 00:30 に終わる span＝昨日に掛かる
+            "span": [(session, (d1 - 1800, d1 + 1800)),
+                     ("INSERT INTO spans(sid,kind,label,start,end,day) VALUES ('s','state','working',?,?,?)",
+                      (d1 - 1800, d1 + 1800, t._day(d1 - 1800)))],
+            # 待ちは 2 日前に始まり、回答は昨日＝回答の日だけが立つ
+            "answer": [(session, (d1 - 600, d1 + 300)),
+                       ("INSERT INTO spans(id,sid,kind,label,start,end,day) VALUES (7,'s','ask','attention',?,?,?)",
+                        (d1 - 600, d1 + 300, t._day(d1 - 600))),
+                       ("INSERT INTO answers VALUES (7,?,900)", (d1 + 300,))],
+        }
+        days = {n: (date.today() - timedelta(days=n)).isoformat() for n in range(4)}
+        expected = {"event": {1}, "span": {1, 2}, "answer": {1}}
+        for name, statements in cases.items():
+            with self.subTest(only=name):
+                home, db = self.bare_home()
+                with db:
+                    for sql, args in statements:
+                        db.execute(sql, args)
+                self.assertEqual({n for n, day in days.items()
+                                  if t.digest_json(home, day=day, since=0, now=now)["available"]}, expected[name])
+
+    def test_cached_results_show_a_stored_row_once_now_reaches_its_time(self):
+        """R115 反証: 結果の 60 秒キャッシュでも、DB に既にある「その時の now より後の ts」の行は、now が追い越した次の
+        呼び出しで数える（R115 前＝生の行をキャッシュして呼び出しごとに ts<=now で絞った、と同じ）。数える event・回答・
+        解消キーだけの回答・数えない event・window の終わりちょうどの行・events_kind_ts の無い DB。来る行が無い間はキャッシュ。"""
+        t = self.timeline
+        today = date.today().isoformat()
+        T = datetime.combine(date.fromisoformat(today), datetime.min.time()).timestamp() + 12 * 3600
+
+        def database(statements=(), rows=(), indexed=True):
+            for suffix in ("", "-wal", "-shm"):
+                Path(str(self.path) + suffix).unlink(missing_ok=True)
+            t._READ_CACHE.clear()
+            with closing(t._connect(self.path)) as db, db:
+                if not indexed:
+                    db.execute("DROP INDEX events_kind_ts")
+                db.execute("INSERT INTO sessions VALUES ('s','claude','c','p1','N',?,?)", (T - 600, T - 600))
+                for sql, args in statements:
+                    db.execute(sql, args)
+                for row in rows:
+                    t._event(db, dict(row, sid="s"))
+
+        def same(results, legacy):
+            self.assertEqual([json.dumps(result, sort_keys=True) for result, _ in results],
+                             [json.dumps(legacy(now), sort_keys=True) for _, now in results])
+
+        ask = ("INSERT INTO spans(id,sid,kind,label,start,end,day) VALUES (7,'s','ask','attention',?,?,?)",
+               (T - 100, T + 10, t._day(T - 100)))
+        resolved = "resolved:" + hashlib.sha256(json.dumps(["s", T - 100]).encode()).hexdigest()
+        cases = {
+            "task": ((), [{"ts": T + 10, "ev": "TaskCompleted", "task": "later"}], "tasksDone"),
+            "answer": ((ask, ("INSERT INTO answers VALUES (7,?,110)", (T + 10,))), (), "asksAnswered"),
+            "resolved key": ((ask, ("INSERT INTO meta VALUES (?,?)", (resolved, today))), (), "asksAnswered"),
+            "uncounted": ((), [{"ts": T + 10, "ev": "PostToolUse", "tool": "Read"}], None),
+        }
+        for name, (statements, rows, key) in cases.items():
+            for indexed in (True, False):
+                with self.subTest(row=name, events_kind_ts=indexed):
+                    database(statements, rows, indexed)
+                    growth, digest = [], []
+                    for now in (T, T + 10.5):     # 同じ日のキー・TTL の内側で now だけ進める
+                        growth.append((t.growth_json(self.home, now), now))
+                        digest.append((t.digest_json(self.home, since=0, now=now), now))
+                    same(growth, self.legacy_growth)
+                    same(digest, lambda now: self.legacy_digest(today, 0.0, now))
+                    if key:
+                        self.assertEqual([g["office"]["breakdown"][key]["count"] for g, _ in growth], [0, 1])
+                        self.assertEqual([d["totals"][key] for d, _ in digest], [0, 1])
+                    else:
+                        self.assertEqual([(list(g["byProject"]), g["streak15"]) for g, _ in growth],
+                                         [([], 0), (["p1"], 1)])
+                        self.assertEqual([d["totals"]["tools"] for d, _ in digest], [{}, {"Read": 1}])
+        with self.subTest(row="at the window end"):
+            # growth は ts<=now で数え、digest の window [start, now) は now を過ぎた次から数える
+            database(rows=[{"ts": T, "ev": "TaskCompleted", "task": "edge"}])
+            self.assertEqual(t.growth_json(self.home, T)["office"]["breakdown"]["tasksDone"]["count"], 1)
+            digest = [(t.digest_json(self.home, since=0, now=now), now) for now in (T, T + 1)]
+            same(digest, lambda now: self.legacy_digest(today, 0.0, now))
+            self.assertEqual([d["totals"]["tasksDone"] for d, _ in digest], [0, 1])
+        with self.subTest(row="none comes due"):
+            # 読んだ後に書いた行は、来る行が無ければ TTL まで見えない（R115 前のスナップショットと同じ＝キャッシュは生きている）
+            database(rows=[{"ts": T - 10, "ev": "TaskCompleted", "task": "one"}])
+            self.assertEqual(t.growth_json(self.home, T)["office"]["breakdown"]["tasksDone"]["count"], 1)
+            self.assertEqual(t.digest_json(self.home, since=0, now=T)["totals"]["tasksDone"], 1)
+            with closing(sqlite3.connect(self.path)) as db, db:
+                t._event(db, {"sid": "s", "ts": T - 5, "ev": "TaskCompleted", "task": "two"})
+            self.assertEqual(t.growth_json(self.home, T + 30)["office"]["breakdown"]["tasksDone"]["count"], 1)
+            self.assertEqual(t.digest_json(self.home, since=0, now=T + 30)["totals"]["tasksDone"], 1)
+            self.assertEqual(t.growth_json(self.home, T + 60)["office"]["breakdown"]["tasksDone"]["count"], 2)
 
 
 if __name__ == "__main__":

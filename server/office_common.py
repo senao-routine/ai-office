@@ -12,6 +12,11 @@ import tempfile
 from pathlib import Path
 
 
+# 質問の上限（R112-H の掲示の questions・R126 の出勤の口の相談が同じ値を使う）。承認フック
+# hooks/office-approval-wait.sh も同じ値で切る（hooks/ は配布先で単独に動くので import せず数字で持つ）。
+ASK_Q_MAX, ASK_Q_LEN, ASK_OPT_MAX, ASK_OPT_LEN = 8, 200, 4, 40
+
+
 class file_flock:
     """Lock <target>.lock exclusively; acquire any thread lock before this lock."""
 

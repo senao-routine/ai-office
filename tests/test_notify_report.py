@@ -15,6 +15,62 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "server"))
 import office_server as office  # noqa: E402
 
 
+class TestSecretaryNudges(unittest.TestCase):
+    """R125: 秘書の芽＝エラーで止まった人と ❗ の待たせすぎだけを、段ごとに 1 回知らせる（沈黙が既定）。"""
+
+    def emp(self, sid="s1", **kw):
+        return {"session": sid, "disp": "制作本部", **kw}
+
+    def test_first_tick_only_remembers(self):
+        """起動直後の 1 回は今の状態を覚えるだけ（再起動のたびに古い止まりや待ちで鳴らさない）。"""
+        mem, out = office.secretary_nudges(None, [self.emp(err={"k": "limit", "ago": 5}),
+                                                  self.emp("s2", approvalMin=30)])
+        self.assertEqual(out, [])
+        self.assertEqual(mem, {"s1": {"err": "limit"}, "s2": {"wait": 15}})
+        _, out2 = office.secretary_nudges(mem, [self.emp(err={"k": "limit", "ago": 65}), self.emp("s2", approvalMin=31)])
+        self.assertEqual(out2, [], "覚えた状態で鳴らした")
+
+    def test_fresh_error_once_and_stale_error_never(self):
+        mem, _ = office.secretary_nudges(None, [self.emp()])
+        mem, out = office.secretary_nudges(mem, [self.emp(title="LINE返事", err={"k": "ctx", "ago": 30})])
+        self.assertEqual(len(out), 1)
+        self.assertIn("LINE返事", out[0][0])
+        mem, out = office.secretary_nudges(mem, [self.emp(title="LINE返事", err={"k": "ctx", "ago": 90})])
+        self.assertEqual(out, [], "同じ止まりで 2 度鳴らした")
+        mem, _ = office.secretary_nudges(mem, [self.emp()])                      # 続きが動いた＝記憶を消す
+        mem, out = office.secretary_nudges(mem, [self.emp(err={"k": "api", "ago": 20})])
+        self.assertEqual(len(out), 1, "また止まったのに鳴らない")
+        mem2, _ = office.secretary_nudges(None, [self.emp("s9")])
+        _, out = office.secretary_nudges(mem2, [self.emp("s9", err={"k": "limit", "ago": office.NUDGE_ERR_FRESH_SEC + 1})])
+        self.assertEqual(out, [], "古い止まりを「いま止まった」と言った")
+
+    def test_wait_stages_15_and_60_once_each(self):
+        mem, _ = office.secretary_nudges(None, [self.emp()])
+        mem, out = office.secretary_nudges(mem, [self.emp(question="どっち？", age=14 * 60)])
+        self.assertEqual(out, [], "15 分前に鳴らした")
+        mem, out = office.secretary_nudges(mem, [self.emp(question="どっち？", age=15 * 60)])
+        self.assertEqual(len(out), 1)
+        self.assertIn("15", out[0][0])
+        self.assertEqual(out[0][1], "どっち？")
+        mem, out = office.secretary_nudges(mem, [self.emp(question="どっち？", age=40 * 60)])
+        self.assertEqual(out, [], "同じ段で 2 度鳴らした")
+        mem, out = office.secretary_nudges(mem, [self.emp(ask={"tool": "Bash", "kind": "permission", "min": 61})])
+        self.assertEqual(len(out), 1, "60 分の段で鳴らない")
+        self.assertIn("Bash", out[0][1])
+        mem, out = office.secretary_nudges(mem, [self.emp()])                    # 答えた＝記憶を消す
+        self.assertEqual(mem, {})
+        mem, out = office.secretary_nudges(mem, [self.emp(approvalMin=16)])
+        self.assertEqual(len(out), 1, "次の要求の 15 分で鳴らない")
+
+    def test_name_order_and_gone_sessions_and_external(self):
+        mem, _ = office.secretary_nudges(None, [self.emp("a"), self.emp("b")])
+        mem, out = office.secretary_nudges(mem, [self.emp("a", aiTitle="請求書の住所の直し", approvalMin=20),
+                                                 self.emp("x", external=True, approvalMin=99)])
+        self.assertEqual(len(out), 1)
+        self.assertIn("請求書の住所の直し", out[0][0])
+        self.assertEqual(set(mem), {"a"}, "居なくなった人の記憶が残った")
+
+
 class TestAttentionDiff(unittest.TestCase):
     def test_new_attention_is_reported_once(self):
         roster = [
@@ -292,7 +348,9 @@ async function sendWebPush(sub, payload) { sent.push(payload); return 201; }
     const room = { getStatus: async () => ({ json: JSON.stringify({ roster: [entry] }) }) };
     await sendAttnPushes(room, { VAPID_JWK: '{}' }, ['p1'], { p1: { disp: entry.disp, dept: 'works' } },
       [{ k: 'push:test', v: '{}' }], 'https://example.test');
-    assert.equal(sent.at(-1).body, `❗ works 6号 — ${expected}を待っています（3分）`);
+    // R116-S0（意図した変更・本人 2026-10-09「ごちゃごちゃしすぎている」）: 本文は「<名前> · <何を>（<いつから>）」＝絵文字と「を待っています」を外した
+    assert.equal(sent.at(-1).body, `works 6号 · ${expected}（3分）`);
+    assert.equal(sent.at(-1).title, 'AI Office');
     assert(!JSON.stringify(sent).includes('PRIVATE_'));
   }
   const before = sent.length;
@@ -321,9 +379,95 @@ sendAttnPushes(room, { VAPID_JWK: '{}' }, ['p1'], { p1: { disp: 'Demo', dept: 'd
         self.assertNotIn("PRIVATE_", result.stdout)
         return json.loads(result.stdout)["body"]
 
+    def test_push_says_why_a_session_stopped(self):
+        """R102-4: API エラー・利用上限・会話の長さで止まったセッション（err）は「〜で止まっています」。本文は載せない。
+        聞かれている事実（ask・質問）の方が強い。"""
+        for k, word in (("limit", "利用上限"), ("ctx", "会話の長さの上限"), ("api", "API エラー")):
+            self.assertEqual(self.push_body({"state": "waiting", "err": {"k": k, "ago": 30}, "approvalMin": 0}),
+                             f"Demo · {word}で止まっています")      # R116-S0: 絵文字を外した（意図した変更）
+        self.assertEqual(self.push_body({"state": "waiting", "err": {"k": "api", "ago": 30},
+                                         "question": "PRIVATE_Q", "approvalMin": 0}),
+                         "Demo · 質問（いま）")      # R116-S0: 0 分は「いま」（「（0分）」を外した・意図した変更）
+
+    def test_no_push_while_someone_is_at_the_mac_and_badge_count(self):
+        """R102-5: Mac の前に人がいる（macActive=1）間はスマホを鳴らさない。鳴らすときは n＝あなた待ちの件数（バッジ）。"""
+        source = (Path(__file__).resolve().parents[1] / "relay/src/worker.js").read_text()
+        targets = source[source.index("function pushTargets("):source.index("// R5_PUSH_TARGETS_END")]
+        push = source[source.index("async function sendAttnPushes("):source.index("// P7: /status push")]
+        script = targets + "\n" + push + "\n" + (
+            "const sent = [];"
+            "async function sendWebPush(sub, payload) { sent.push(payload); return 201; }"
+            "const entry = { projectId: 'p1', disp: 'Demo', state: 'waiting', approvalMin: 2, ask: { kind: 'permission', tool: 'Bash' } };"
+            "const nowMap = { p1: { disp: 'Demo', dept: 'demo' }, p2: { disp: 'B', dept: 'demo' } };"
+            "(async () => {"
+            "  for (const active of [1, 0, undefined]) {"
+            "    const office = { roster: [entry] }; if (active !== undefined) office.macActive = active;"
+            "    const room = { getStatus: async () => ({ json: JSON.stringify(office) }) };"
+            "    await sendAttnPushes(room, { VAPID_JWK: '{}' }, ['p1'], nowMap, [{ k: 'push:t', v: '{}' }], 'https://x.test');"
+            "  }"
+            "  console.log(JSON.stringify(sent.map(p => p.n)));"
+            "})();")
+        result = subprocess.run(["node", "-e", script], capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout), [2, 2])      # macActive=1 は 0 通・0 と未設定は 1 通ずつ（n＝2 件）
+
+    def test_attention_set_includes_stopped_sessions_but_not_working_ones(self):
+        source = (Path(__file__).resolve().parents[1] / "relay/src/worker.js").read_text()
+        fn = source[source.index("function attnDept("):source.index("// 新規❗遷移分")]
+        script = fn + "\n" + (
+            "const out = computeAttnNow({ roster: ["
+            "{ projectId: 'a', disp: 'A', state: 'waiting', err: { k: 'limit', ago: 3 } },"
+            "{ projectId: 'b', disp: 'B', state: 'working', err: { k: 'api', ago: 3 } },"
+            "{ projectId: 'c', disp: 'C', state: 'waiting', err: { k: 'api', ago: 3 }, minions: 2 },"
+            "{ projectId: 'd', disp: 'D', state: 'waiting' }] });"
+            "console.log(JSON.stringify(Object.keys(out).sort()));")
+        result = subprocess.run(["node", "-e", script], capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        # minions（15 分以内に更新されたサブエージェントの数・終わった子も数える）では隠さない（別モデルレビュー）
+        self.assertEqual(json.loads(result.stdout), ["a", "c"])
+
+    def test_inferred_stuck_counts_for_badge_but_never_rings(self):
+        """B1: 掲示（ask）も質問も止まった理由も無く approvalMin だけ＝推測の「止まっている?」（PWA の stuck）は鳴らさない
+        （長く走る道具でも立つ推測を「承認を待っています」と呼んでいた）。件数 n（バッジ）には数える。後で掲示が付けば鍵が変わる＝鳴る。"""
+        source = (Path(__file__).resolve().parents[1] / "relay/src/worker.js").read_text()
+        fn = source[source.index("function attnDept("):source.index("// 新規❗遷移分")]
+        targets = source[source.index("function pushTargets("):source.index("// R5_PUSH_TARGETS_END")]
+        push = source[source.index("async function sendAttnPushes("):source.index("// P7: /status push")]
+        script = fn + "\n" + targets + "\n" + push + "\n" + (
+            "const sent = [];"
+            "async function sendWebPush(sub, payload) { sent.push(payload); return 201; }"
+            "const stuck = { projectId: 'p1', disp: 'Demo', state: 'waiting', approvalMin: 3 };"
+            "const asked = { ...stuck, ask: { kind: 'permission', tool: 'Bash', min: 2 } };"
+            "const busy = { projectId: 'p2', disp: 'B', state: 'waiting', question: 'Q', ask: { kind: 'question', tool: 'AskUserQuestion', min: 7 } };"
+            "(async () => {"
+            "  const out = []; let prev = {};"
+            "  for (const roster of [[stuck, busy], [asked, busy]]) {"
+            "    const now = computeAttnNow({ roster, setup: { approvalWired: WIRED } }), newly = Object.keys(now).filter(k => !(k in prev)); prev = now;"
+            "    const room = { getStatus: async () => ({ json: JSON.stringify({ roster }) }) };"
+            "    const n0 = sent.length;"
+            "    await sendAttnPushes(room, { VAPID_JWK: '{}' }, newly, now, [{ k: 'push:t', v: '{}' }], 'https://x.test');"
+            "    out.push({ keys: Object.keys(now).sort(), bodies: sent.slice(n0).map(p => p.body), n: sent.slice(n0).map(p => p.n) });"
+            "  }"
+            "  console.log(JSON.stringify(out));"
+            "})();")
+        result = subprocess.run(["node", "-e", "const WIRED = true;" + script], capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        first, second = json.loads(result.stdout)
+        # 承認フックが未配線の Mac では、推測が本物の許可ダイアログの唯一の信号＝従来どおり鳴らす（別モデルレビュー）
+        unwired = subprocess.run(["node", "-e", "const WIRED = false;" + script], capture_output=True, text=True, timeout=10)
+        self.assertEqual(unwired.returncode, 0, unwired.stderr)
+        u_first, _u = json.loads(unwired.stdout)
+        self.assertEqual(u_first["keys"], ["p1", "p2"])
+        self.assertTrue(u_first["bodies"] and "Demo" in u_first["bodies"][0], u_first)   # 推測の人も鳴る（まとめて 1 通）
+        self.assertEqual(first["keys"], ["p1#stuck", "p2"])                      # 推測は別の鍵
+        self.assertEqual(first["bodies"], ["B · 質問（7分）"])      # 鳴るのは質問だけ・分は ask.min（R116-S0 の形）
+        self.assertEqual(first["n"], [2])                                        # バッジには stuck も数える
+        self.assertEqual(second["keys"], ["p1", "p2"])                           # 掲示が付けば鍵が変わる＝新しい遷移
+        self.assertEqual(second["bodies"], ["Demo · Bash の許可（2分）"])
+
     def test_push_legacy_question_without_ask_is_classified_as_question(self):
         self.assertEqual(self.push_body({"question": "PRIVATE_QUESTION", "approvalMin": 0}),
-                         "❗ Demo — 質問を待っています（0分）")
+                         "Demo · 質問（いま）")      # R116-S0: 0 分は「いま」（「（0分）」を外した・意図した変更）
 
     def test_push_question_minutes_through_parser_grouping_and_redaction(self):
         import relay_agent
@@ -343,7 +487,23 @@ sendAttnPushes(room, { VAPID_JWK: '{}' }, ['p1'], { p1: { disp: 'Demo', dept: 'd
                 project = office.group_by_project(entries)[0]
                 for entry in (questioner, project):
                     relay_agent._redact_entry_for_relay(entry)
-                    self.assertEqual(self.push_body(entry), "❗ Demo — 質問を待っています（7分）")
+                    self.assertEqual(self.push_body(entry), "Demo · 質問（7分）")
+
+    def test_push_exit_plan_mode_is_plan_approval_not_question(self):
+        """R99-P4 第 E 波: 計画の承認（ExitPlanMode）はフックが kind=question で掲示する。Worker が kind だけ見て
+        『質問を待っています』と呼ぶと、PWA の 4 面（ドック・シート・リスト・ログ＝『計画の承認』）と食い違い、
+        通知から『答えれば進む』と読める（中継の回答は deny＝計画の差し戻しにしかならない・不変条件 7）。
+        入力は中継へ出る形（_redact_entry_for_relay の後＝ask は tool と kind だけ）。分は質問と同じく age から。"""
+        import relay_agent
+        entry = {"session": "plan-1", "disp": "Demo", "state": "waiting", "age": 5 * 60,
+                 "question": "PRIVATE_QUESTION",
+                 "ask": {"kind": "question", "tool": "ExitPlanMode", "title": "PRIVATE_TITLE"}}
+        relay_agent._redact_entry_for_relay(entry)
+        self.assertEqual(entry["ask"], {"tool": "ExitPlanMode", "kind": "question", "remote": 0})   # R100-1b: remote（0/1）
+        self.assertEqual(self.push_body(entry), "Demo · 計画の承認（5分）")
+        # 同じ kind=question でも AskUserQuestion は『質問』のまま（ExitPlanMode の分岐が広すぎない）
+        entry = dict(entry, ask={"kind": "question", "tool": "AskUserQuestion"})
+        self.assertEqual(self.push_body(entry), "Demo · 質問（5分）")
 
 
 if __name__ == "__main__":

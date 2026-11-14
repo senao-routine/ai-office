@@ -9,6 +9,7 @@ Claude のトランスクリプトは読み取り専用であり、このモジ�
 import base64
 import copy
 import hashlib
+import http.client
 import json
 import math
 import os
@@ -23,6 +24,9 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import provider_registry  # noqa: E402  R103-5: AI サービス・API の接続の正本（同じ server/ の平らな部品）
 try:
     import office_common
 except ModuleNotFoundError:  # importlibでファイルを直接読む既存テスト向け
@@ -231,8 +235,8 @@ def _fetch_json(url, headers, timeout=6):
         if isinstance(reason, (socket.timeout, TimeoutError)) or "timed out" in str(reason).lower():
             return {"error": "timeout"}
         return {"error": "network error"}
-    except (OSError, UnicodeError, json.JSONDecodeError, ValueError):
-        return {"error": "取得エラー"}
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError, http.client.HTTPException):
+        return {"error": "取得エラー"}               # IncompleteRead（途中で切れた応答）も（別モデルレビュー）
 
 
 def _external_error(payload):
@@ -745,6 +749,9 @@ def _gauges_from_providers(providers):
                 row["bars"].append({"k": k, "pct": int(round(max(0, min(100, pct))))})
             elif pid == "openai" and p.get("connected"):
                 row["note"] = "cap-none"
+            elif (pid == "anthropic" and p.get("connected") and p.get("status") != "error"
+                  and isinstance(p.get("spentMonth"), (int, float))):
+                row["note"] = "cap-none"      # R103-5: 今月の額は取れるが上限は API で読めない（予算を入れれば % になる）
             else:
                 continue        # ゲージ材料なし（gemini等）は行ごと出さない
         if not row["bars"] and "note" not in row:
@@ -1461,12 +1468,9 @@ def _external_provider(provider_id, label, payload):
 #   Groq       : 残高/消費APIは存在しない（実測404）＝手動予算のみ
 # 掟: 推測レートを作らない（円換算はUSDだけ）。上限が取れない＝pctを出さない。
 
-API_PROVIDERS = (
-    {"id": "openrouter", "label": "OpenRouter", "key": "OPENROUTER_API_KEY"},
-    {"id": "moonshot", "label": "Kimi (Moonshot)", "key": "MOONSHOT_API_KEY"},
-    {"id": "deepseek", "label": "DeepSeek", "key": "DEEPSEEK_API_KEY"},
-    {"id": "groq", "label": "Groq", "key": "GROQ_API_KEY"},
-)
+# R103-5: 表の正本は provider_registry（OpenAI は管理キーの別の集計＝collect_openai_cost のまま・ここには入れない）
+API_PROVIDERS = tuple({"id": p["id"], "label": p["label"], "key": p["key"]}
+                      for p in provider_registry.PROVIDERS if p["id"] != "openai_usage")
 API_PROVIDER_IDS = frozenset(p["id"] for p in API_PROVIDERS)
 _BUDGET_CURRENCIES = frozenset(("USD", "CNY", "JPY"))
 MAX_BUDGET_AMOUNT = 1_000_000
@@ -1579,7 +1583,15 @@ _API_FETCHERS = {
     "moonshot": fetch_moonshot,
     "deepseek": fetch_deepseek,
     "groq": fetch_groq,
+    # R103-5: 新しい形の取得は provider_registry に置く（HTTP は同じ _fetch_json・鍵はヘッダーだけ）
+    **{pid: (lambda secret, _f=f: _f(secret, _fetch_json, time.time())) for pid, f in provider_registry.FETCHERS.items()},
 }
+assert set(_API_FETCHERS) == {p["id"] for p in API_PROVIDERS}, "provider_registry と取得の関数が食い違う"
+
+
+def api_fetcher(provider_id):
+    """R103-5: 接続テストが使う取得の関数（OpenAI の管理キーは provider_registry の確認の窓口で見る＝None）。"""
+    return _API_FETCHERS.get(provider_id)
 
 
 def _budget_for(ledger, provider_id):

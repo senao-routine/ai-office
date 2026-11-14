@@ -10,6 +10,7 @@ import shutil
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 TESTS = Path(__file__).resolve().parent
 ROOT = TESTS.parent
@@ -27,11 +28,13 @@ class ParseSessionTest(unittest.TestCase):
         self.tmp = Path(tempfile.mkdtemp(prefix="office_fx_"))
         office._SKILL_MEMORY.clear()
         office._TITLE_MEMORY.clear()
+        office._AI_TITLE_MEMORY.clear()
 
     def tearDown(self):
         shutil.rmtree(self.tmp, ignore_errors=True)
         office._SKILL_MEMORY.clear()
         office._TITLE_MEMORY.clear()
+        office._AI_TITLE_MEMORY.clear()
 
     def load(self, fixture, age, name="sess-aaaa1111.jsonl"):
         """フィクスチャをコピーし、mtime=now-age で parse_session を呼ぶ"""
@@ -45,6 +48,7 @@ class ParseSessionTest(unittest.TestCase):
         e = self.load("working_tool.jsonl", age=10)
         self.assertEqual(e["state"], "working")
         self.assertEqual(e["verb"], "実行中")
+        self.assertEqual(e["tool"], "Bash")            # R110: 工具名そのもの（部屋の用事の根拠・言語に依らない）
         self.assertIn("push", e["target"])
         self.assertEqual(e["approvalMin"], 0)
         self.assertEqual(e["branch"], "main")
@@ -99,6 +103,34 @@ class ParseSessionTest(unittest.TestCase):
         self.assertIn("完了しました", e["lastSaid"])
         self.assertIn("まとめて", e["lastOrder"])
 
+    def test_api_error_line_says_why_it_stopped(self):
+        """R102-4: 合成のエラー行（isApiErrorMessage）で止まったセッションは「指示待ち／報告中」でなく、止まった理由の種類を持つ。
+        本文（API の応答）は err に入れない。直後（age 5 秒）でも作業中と言わない。"""
+        for fx, kind, verb in (("api_error_limit.jsonl", "limit", "利用上限で停止"),
+                               ("api_error_overloaded.jsonl", "api", "API エラーで停止"),
+                               ("api_error_context.jsonl", "ctx", "会話の長さの上限で停止")):
+            with self.subTest(fx=fx):
+                e = self.load(fx, age=5)
+                self.assertEqual(e["err"], {"k": kind, "ago": 5})
+                self.assertEqual((e["state"], e["verb"], e["target"]), ("waiting", verb, ""))
+                self.assertEqual(e["approvalMin"], 0)
+        e = self.load("api_error_limit.jsonl", age=3600)
+        self.assertEqual((e["state"], e["err"]["k"]), ("resting", "limit"))
+        self.assertEqual(e["permMode"], "plan")
+
+    def test_interrupt_closes_the_turn(self):
+        """R102-4: Esc の中断（Stop フックは走らない）は interruptedAt（ローカル専用）で「閉じたターン」を知らせる。
+        中断した道具を ❗（止まっている?）にしない。"""
+        e = self.load("interrupted_tool.jsonl", age=200)
+        self.assertEqual((e["state"], e["verb"], e["approvalMin"]), ("waiting", "中断しました", 0))
+        self.assertGreater(e["interruptedAt"], 0)
+        self.assertNotIn("err", e)
+        self.assertEqual(e["permMode"], "bypassPermissions")
+        e = self.load("waiting_said.jsonl", age=600, name="sess-bbbb2222.jsonl")   # 権限モードは同じパスで覚える＝別の名前で
+        self.assertNotIn("interruptedAt", e)
+        self.assertNotIn("err", e)
+        self.assertNotIn("permMode", e)
+
     def test_resting(self):
         e = self.load("waiting_said.jsonl", age=3600)
         self.assertEqual(e["state"], "resting")
@@ -133,6 +165,66 @@ class ParseSessionTest(unittest.TestCase):
             os.utime(f, (mtime, mtime))
         e = office.parse_session(p, now=mtime + 10)
         self.assertEqual(e["minions"], 1)
+
+    def test_minions_live_counts_only_children_written_in_the_last_minute(self):
+        """minions は終わった子も 15 分数える（スマホが指示待ちのセッションを 15 分「作業中」と出していた）。
+        minionsLive は直近 60 秒に書いた子だけ＝作業中の根拠はこちら。"""
+        p = self.tmp / "sess-bbbb3333.jsonl"
+        shutil.copy(FX / "waiting_said.jsonl", p)
+        sub = self.tmp / "sess-bbbb3333" / "subagents"
+        sub.mkdir(parents=True)
+        now = 1_800_000_000.0
+        for name, ago in (("agent-live.jsonl", 10), ("agent-done.jsonl", 300), ("agent-old.jsonl", 1000)):
+            (sub / name).write_text("{}")
+            os.utime(sub / name, (now - ago, now - ago))
+        os.utime(p, (now - 30, now - 30))
+        e = office.parse_session(p, now=now)
+        self.assertEqual((e["minions"], e["minionsLive"]), (2, 1))
+        os.utime(sub / "agent-live.jsonl", (now - 61, now - 61))
+        self.assertEqual(office.parse_session(p, now=now)["minionsLive"], 0)
+
+    def _ask(self, now, **kw):
+        return dict({"tool": "AskUserQuestion", "kind": "question", "title": "どの順で直しますか？",
+                     "options": ["server から", "PWA から"], "ts": now - 130, "askId": "a" * 32,
+                     "remote": 0, "askCount": 1}, **kw)
+
+    def test_question_ask_carries_minutes_count_and_multi_select(self):
+        """質問の掲示は approvalMin が立たない＝スマホが 40 分前の質問を「いま」と出していた → ask.min。
+        2 問以上・複数選択の質問を 1 問目の 1 ラベルで答えさせない → ask.qn・ask.multi（整数だけ）。"""
+        p = self.tmp / "sess-qqqq1111.jsonl"
+        shutil.copy(FX / "ask_question_multi.jsonl", p)
+        now = 1_800_000_000.0
+        os.utime(p, (now - 130, now - 130))
+        with mock.patch.object(office, "pending_approval", return_value=self._ask(now)):
+            e = office.parse_session(p, now=now)
+        self.assertEqual(e["approvalMin"], 0)
+        self.assertEqual({k: e["ask"][k] for k in ("min", "qn", "multi")}, {"min": 2, "qn": 2, "multi": 1})
+        # 掲示の 1 問目と照合できない（サブエージェントの質問など）＝形は言わない（スマホは従来どおり）
+        with mock.patch.object(office, "pending_approval", return_value=self._ask(now, title="別の質問")):
+            e = office.parse_session(p, now=now)
+        self.assertEqual(e["ask"]["min"], 2)
+        self.assertNotIn("qn", e["ask"])
+        self.assertNotIn("multi", e["ask"])
+        # 1 問・単一選択
+        q1 = self.tmp / "sess-qqqq2222.jsonl"
+        shutil.copy(FX / "ask_question_pending_options.jsonl", q1)
+        os.utime(q1, (now - 20, now - 20))
+        with mock.patch.object(office, "pending_approval",
+                               return_value=self._ask(now, title="どの構成で進めますか？", ts=now - 20)):
+            e = office.parse_session(q1, now=now)
+        self.assertEqual({k: e["ask"][k] for k in ("min", "qn", "multi")}, {"min": 0, "qn": 1, "multi": 0})
+
+    def test_permission_and_plan_asks_carry_minutes_only(self):
+        p = self.tmp / "sess-pppp1111.jsonl"
+        shutil.copy(FX / "working_tool.jsonl", p)
+        now = 1_800_000_000.0
+        os.utime(p, (now - 30, now - 30))
+        for ask in (self._ask(now, tool="Bash", kind="permission", title="git push", ts=now - 190),
+                    self._ask(now, tool="ExitPlanMode", kind="question", title="プランの承認", ts=now - 190)):
+            with mock.patch.object(office, "pending_approval", return_value=ask):
+                e = office.parse_session(p, now=now)
+            self.assertEqual(e["ask"]["min"], 3, ask["tool"])
+            self.assertNotIn("qn", e["ask"])
 
     def test_skills_extract_tool_and_command_with_window_order_limit_and_safety(self):
         e = self.load("skills_transcript.jsonl", age=10)
@@ -188,11 +280,13 @@ class CustomTitleTest(unittest.TestCase):
         self.tmp = Path(tempfile.mkdtemp(prefix="office_title_"))
         office._SKILL_MEMORY.clear()
         office._TITLE_MEMORY.clear()
+        office._AI_TITLE_MEMORY.clear()
 
     def tearDown(self):
         shutil.rmtree(self.tmp, ignore_errors=True)
         office._SKILL_MEMORY.clear()
         office._TITLE_MEMORY.clear()
+        office._AI_TITLE_MEMORY.clear()
 
     def load(self, fixture, age, name="sess-aaaa1111.jsonl"):
         p = self.tmp / name
@@ -248,6 +342,65 @@ class CustomTitleTest(unittest.TestCase):
         os.utime(p, (mtime, mtime))
         e3 = office.parse_session(p, now=mtime + 30)
         self.assertEqual(e3["title"], "")
+
+
+class AiTitleTest(unittest.TestCase):
+    """R123-A: Claude Code の自動タイトル（ai-title 行 → employee['aiTitle']）。title（/rename）には混ぜない。"""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="office_aititle_"))
+        office._SKILL_MEMORY.clear()
+        office._TITLE_MEMORY.clear()
+        office._AI_TITLE_MEMORY.clear()
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+        office._SKILL_MEMORY.clear()
+        office._TITLE_MEMORY.clear()
+        office._AI_TITLE_MEMORY.clear()
+
+    def parse(self, head_lines, name="sess-ai000001.jsonl", age=10, fixture="working_tool.jsonl"):
+        p = self.tmp / name
+        src = (FX / fixture).read_text()
+        p.write_text("".join(json.dumps(x, ensure_ascii=False) + "\n" for x in head_lines) + src)
+        mtime = 1_800_000_000.0
+        os.utime(p, (mtime, mtime))
+        return office.parse_session(p, now=mtime + age)
+
+    def test_custom_title_fixture_keeps_both_apart(self):
+        """custom-title と ai-title が両方あるとき、title は /rename・aiTitle は自動タイトル（別の欄）。"""
+        p = self.tmp / "sess-aaaa1111.jsonl"
+        shutil.copy(FX / "custom_title.jsonl", p)
+        mtime = 1_800_000_000.0
+        os.utime(p, (mtime, mtime))
+        e = office.parse_session(p, now=mtime + 10)
+        self.assertEqual(e["title"], "決済チーム")
+        self.assertEqual(e["aiTitle"], "自動生成の別タイトル（採用しない）")
+
+    def test_last_ai_title_wins_and_whitespace_folds(self):
+        e = self.parse([{"type": "ai-title", "aiTitle": "最初の題"},
+                        {"type": "ai-title", "aiTitle": "  前回作業の\n続き  "},
+                        {"type": "ai-title", "aiTitle": 42}])
+        self.assertEqual(e["aiTitle"], "前回作業の 続き")
+        self.assertEqual(e["title"], "")
+
+    def test_no_ai_title_is_empty_and_clamped(self):
+        self.assertEqual(self.parse([])["aiTitle"], "")
+        e = self.parse([{"type": "ai-title", "aiTitle": "あ" * 60}], name="sess-ai000002.jsonl")
+        self.assertEqual(len(e["aiTitle"]), 40)
+        self.assertTrue(e["aiTitle"].endswith("…"))
+
+    def test_ai_title_sticky_when_scrolled_out_of_tail(self):
+        """ai-title 行が tail 窓から流れても記憶で表示を保つ（/rename の名前と同じ流儀）。"""
+        p = self.tmp / "sess-ai000003.jsonl"
+        mtime = 1_800_000_000.0
+        p.write_text(json.dumps({"type": "ai-title", "aiTitle": "検証フォルダの整理"}, ensure_ascii=False) + "\n"
+                     + (FX / "working_tool.jsonl").read_text())
+        os.utime(p, (mtime, mtime))
+        self.assertEqual(office.parse_session(p, now=mtime + 10)["aiTitle"], "検証フォルダの整理")
+        shutil.copy(FX / "working_tool.jsonl", p)
+        os.utime(p, (mtime, mtime))
+        self.assertEqual(office.parse_session(p, now=mtime + 20)["aiTitle"], "検証フォルダの整理")
 
 
 class ListeningTest(unittest.TestCase):
@@ -352,6 +505,9 @@ class CanPromptTest(unittest.TestCase):
             (B, "Read", {"file_path": "/x"}, False),
             (B, "ExitPlanMode", {}, True),                             # プラン承認は全モード
             ("plan", "Bash", {"command": "ls"}, True),                 # 従来どおり
+            ("dontAsk", "Bash", {"command": "git push origin main"}, False),   # 聞かないモード＝走っているだけ
+            ("dontAsk", "Read", {"file_path": "/x"}, False),
+            ("dontAsk", "ExitPlanMode", {}, True),
             ("default", "Bash", {"command": "ls"}, True),
             ("", "Bash", {"command": "ls"}, True),                     # 不明＝安全側
             (None, "Bash", {"command": "ls"}, True),
@@ -374,6 +530,7 @@ class ApprovalGateTest(unittest.TestCase):
         self.tmp = Path(tempfile.mkdtemp(prefix="office_perm_"))
         office._SKILL_MEMORY.clear()
         office._TITLE_MEMORY.clear()
+        office._AI_TITLE_MEMORY.clear()
         office._PERM_MEMORY.clear()
         self._orig = office._ask_rules
         office._ask_rules = lambda: ("git push", "firebase deploy")
@@ -401,6 +558,11 @@ class ApprovalGateTest(unittest.TestCase):
         e = self.load("bypass_git_push.jsonl", age=400)
         self.assertEqual(e["approvalMin"], 6)
         self.assertIn("実行中", e["stuckTool"])
+
+    def test_dont_ask_long_bash_is_not_approval(self):
+        """dontAsk は聞かずに拒否するモード＝75 秒を越える Bash は走っているだけ（❗と通知の誤報だった）。"""
+        e = self.load("dontask_bash_stall.jsonl", age=400)
+        self.assertEqual((e["approvalMin"], e["stuckTool"]), (0, ""))
 
     def test_exit_plan_mode_is_real_approval(self):
         e = self.load("plan_exit_plan.jsonl", age=400)

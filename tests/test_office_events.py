@@ -97,7 +97,189 @@ class OfficeEventsTest(unittest.TestCase):
         self.append(self.event("PreToolUse"))
         self.events._poll(self.home)
         self.assertEqual(self.events.overlay(self.info(), self.home, now + 25)["state"], "working")
-        self.assertEqual(self.events.overlay(self.info(), self.home, now + 25.01)["state"], "resting")
+        # R102-4（意図した更新）: 本体の道具が走っている間は 25 秒を過ぎても作業中（TOOL_TTL まで）
+        self.assertEqual(self.events.overlay(self.info(), self.home, now + 25.01)["state"], "working")
+        self.assertEqual(self.events.overlay(self.info(), self.home, now + self.events.TOOL_TTL)["state"], "working")
+        self.assertEqual(self.events.overlay(self.info(), self.home,
+                                             now + self.events.TOOL_TTL + 0.01)["state"], "resting")
+
+    def test_turn_keeps_working_while_the_transcript_looks_still(self):
+        """R102-4: 27 分の検査を回すセッションが 4 分で「指示待ち」に化けた。ターンが開いている間は作業中。"""
+        t0 = self.rows[0]["ts"]
+        ev = lambda name, dt, **kw: self.event(name, ts=t0 + dt, **kw)   # noqa: E731
+        info = self.info(state="waiting")
+        self.append(ev("UserPromptSubmit", 0), ev("PreToolUse", 1), ev("PostToolUse", 60))
+        self.events._poll(self.home)
+        # 道具の後の考え（transcript は止まって見える）: 最後のイベントから TURN_TTL までは作業中
+        self.assertEqual(self.events.overlay(info, self.home, t0 + 60 + self.events.TURN_TTL)["state"], "working")
+        self.assertEqual(self.events.overlay(info, self.home, t0 + 60 + self.events.TURN_TTL + 1)["state"], "waiting")
+        # Stop で閉じる → 上書きしない（直後は waiting・古くなれば transcript の推定のまま）
+        self.append(ev("Stop", 70))
+        self.events._poll(self.home)
+        self.assertEqual(self.events.overlay(info, self.home, t0 + 71)["state"], "waiting")
+        self.assertEqual(self.events.overlay(self.info(), self.home, t0 + 200)["state"], "resting")
+        # 閉じたターンを裏のサブエージェント（ag=1）の道具で開き直さない・本体の道具（Stop フックの配達で続きを始めた）は開く
+        self.append(ev("PreToolUse", 80, ag=1), ev("SubagentStop", 81))
+        self.events._poll(self.home)
+        self.assertEqual(self.events.overlay(self.info(), self.home, t0 + 200)["state"], "resting")
+        self.append(ev("PreToolUse", 90))
+        self.events._poll(self.home)
+        self.assertEqual(self.events.overlay(self.info(), self.home, t0 + 90 + 1500)["state"], "working")
+        # 許可のダイアログで保留 → 作業中と言わない
+        self.append(ev("PermissionRequest", 95))
+        self.events._poll(self.home)
+        self.assertEqual(self.events.overlay(self.info(), self.home, t0 + 200)["state"], "resting")
+        self.append(ev("PostToolUse", 100))
+        self.events._poll(self.home)
+        self.assertEqual(self.events.overlay(self.info(), self.home, t0 + 200)["state"], "working")
+        # transcript の中断（Esc・Stop フックは走らない）がターンの最後のイベントより後 → 閉じたものとして扱う
+        self.assertEqual(self.events.overlay(self.info(interruptedAt=t0 + 101), self.home, t0 + 200)["state"], "resting")
+        self.assertEqual(self.events.overlay(self.info(interruptedAt=t0 + 99), self.home, t0 + 200)["state"], "working")
+        # 許可の掲示（ask）がある間は掲示が正本（上書きしない）
+        asked = self.info(state="waiting", ask={"title": "x"})
+        self.assertEqual(self.events.overlay(asked, self.home, t0 + 200)["state"], "waiting")
+
+    def test_interrupt_survives_neutral_events_from_background_subagents(self):
+        """別モデルレビュー（3fb7b3f）: Esc の中断の後に裏のサブエージェントの SubagentStop（中立）が来ると ts が進み、中断より後の
+        イベントに見えて作業中に戻った → 中断は本体の最後のイベント（main）と比べる。本体の次の開始で開く。"""
+        t0 = self.rows[0]["ts"]
+        ev = lambda name, dt, **kw: self.event(name, ts=t0 + dt, **kw)   # noqa: E731
+        self.append(ev("UserPromptSubmit", 0), ev("PreToolUse", 1))
+        self.events._poll(self.home)
+        cut = self.info(interruptedAt=t0 + 5)
+        self.assertEqual(self.events.overlay(cut, self.home, t0 + 400)["state"], "resting")
+        self.append(ev("SubagentStop", 300), ev("PostToolUse", 301, ag=1))
+        self.events._poll(self.home)
+        self.assertEqual(self.events.overlay(cut, self.home, t0 + 400)["state"], "resting")
+        self.append(ev("UserPromptSubmit", 350))
+        self.events._poll(self.home)
+        self.assertEqual(self.events.overlay(cut, self.home, t0 + 400)["state"], "working")
+
+    def test_running_main_tool_clears_the_guessed_stuck_alert(self):
+        """default モードの長い Bash・サブエージェント: transcript の最後が tool_use のまま 75 秒を越え、推測の
+        approvalMin（「止まっている?」❗・通知）が立っていた。本体の道具が走っていると記録で分かるなら消す。"""
+        t0 = self.rows[0]["ts"]
+        ev = lambda name, dt, **kw: self.event(name, ts=t0 + dt, **kw)   # noqa: E731
+        stuck = self.info(state="working", approvalMin=1, stuckTool="実行中 bash verify.sh")
+        self.append(ev("UserPromptSubmit", 0), ev("PreToolUse", 1))
+        self.events._poll(self.home)
+        r = self.events.overlay(stuck, self.home, t0 + 81, asks_wired=True, holds_seen=True)
+        self.assertEqual((r["state"], r["approvalMin"], r["stuckTool"]), ("working", 0, ""))
+        # サブエージェントの道具（中立）が続いても本体の道具は走っている
+        self.append(ev("PreToolUse", 100, ag=1), ev("PostToolUse", 120, ag=1))
+        self.events._poll(self.home)
+        r = self.events.overlay(dict(stuck, approvalMin=3), self.home, t0 + 200, asks_wired=True, holds_seen=True)
+        self.assertEqual((r["approvalMin"], r["stuckTool"]), (0, ""))
+        # PermissionRequest を記録しない配線・承認フックが無い配線では言い切らない（本物の許可待ちを隠さない）
+        r = self.events.overlay(stuck, self.home, t0 + 81)
+        self.assertEqual((r["approvalMin"], r["stuckTool"]), (1, "実行中 bash verify.sh"))
+        r = self.events.overlay(stuck, self.home, t0 + 81, holds_seen=True)
+        self.assertEqual((r["approvalMin"], r["stuckTool"]), (1, "実行中 bash verify.sh"))
+        # 許可のダイアログで保留 → 推測の❗は残す
+        self.append(ev("PermissionRequest", 130))
+        self.events._poll(self.home)
+        r = self.events.overlay(stuck, self.home, t0 + 135, asks_wired=True, holds_seen=True)
+        self.assertEqual((r["approvalMin"], r["stuckTool"]), (1, "実行中 bash verify.sh"))
+        # 道具の外（結果の後の考え）は道具が走っているとは言わない（推測をそのまま残す）
+        self.append(ev("PostToolUse", 140))
+        self.events._poll(self.home)
+        r = self.events.overlay(stuck, self.home, t0 + 200, asks_wired=True, holds_seen=True)
+        self.assertEqual(r["approvalMin"], 1)
+
+    def test_reordered_hold_events_do_not_hide_a_real_dialog_without_the_approval_hook(self):
+        """別モデルレビュー: office-event.sh は非同期＝同じ呼び出しの PreToolUse が PermissionRequest より後の時刻で記録され
+        保留が解けて見える（実測 5〜56ms）。承認フックが無い配線では、それで本物の許可待ちの ❗ を消してはいけない。"""
+        t0 = self.rows[0]["ts"]
+        ev = lambda name, dt, **kw: self.event(name, ts=t0 + dt, **kw)   # noqa: E731
+        self.append(ev("UserPromptSubmit", 0), ev("PermissionRequest", 1), ev("PreToolUse", 1.05))
+        self.events._poll(self.home)
+        stuck = self.info(state="waiting", approvalMin=2, stuckTool="実行中 deploy.sh")
+        r = self.events.overlay(stuck, self.home, t0 + 130, holds_seen=True)
+        self.assertEqual((r["approvalMin"], r["stuckTool"]), (2, "実行中 deploy.sh"))
+
+    def test_hold_without_a_posting_means_the_answer_was_given_and_the_tool_runs(self):
+        """PermissionRequest の後、ターミナルで答えて道具が走っている間（PostToolUse まで）保留のまま＝waiting→stuck に化けた。
+        承認フックが配線済みなら許可のダイアログには必ず掲示が出る＝掲示が無いまま HOLD_GRACE を越えた保留は答えが出たもの。"""
+        t0 = self.rows[0]["ts"]
+        ev = lambda name, dt, **kw: self.event(name, ts=t0 + dt, **kw)   # noqa: E731
+        self.append(ev("UserPromptSubmit", 0), ev("PreToolUse", 1), ev("PermissionRequest", 2))
+        self.events._poll(self.home)
+        stuck = self.info(state="waiting", approvalMin=1, stuckTool="実行中 git push")
+        grace = self.events.HOLD_GRACE
+        # 掲示が出る前（ASK_GRACE の間）は人を待っているとみなす
+        r = self.events.overlay(stuck, self.home, t0 + 2 + grace - 1, asks_wired=True, holds_seen=True)
+        self.assertEqual((r["state"], r["approvalMin"]), ("waiting", 1))
+        r = self.events.overlay(stuck, self.home, t0 + 2 + grace, asks_wired=True, holds_seen=True)
+        self.assertEqual((r["state"], r["approvalMin"], r["stuckTool"]), ("working", 0, ""))
+        r = self.events.overlay(stuck, self.home, t0 + 300, asks_wired=True, holds_seen=True)
+        self.assertEqual((r["state"], r["approvalMin"]), ("working", 0))
+        # 承認フックが無い配線では保留のまま（従来どおり）
+        r = self.events.overlay(stuck, self.home, t0 + 300, holds_seen=True)
+        self.assertEqual((r["state"], r["approvalMin"]), ("waiting", 1))
+        # 道具の時計は保留の時刻から（TOOL_TTL を越えたら作業中と言わない）
+        late = t0 + 2 + self.events.TOOL_TTL + 1
+        self.assertEqual(self.events.overlay(self.info(), self.home, late, asks_wired=True)["state"], "resting")
+
+    def test_ended_session_stays_gone_after_the_state_ttl(self):
+        """/exit したセッションが 60 秒後に transcript の窓から「指示待ち」（上限で止まっていたものは ❗）として戻っていた。"""
+        t0 = self.rows[0]["ts"]
+        ev = lambda name, dt, **kw: self.event(name, ts=t0 + dt, **kw)   # noqa: E731
+        self.append(ev("UserPromptSubmit", 0), ev("Stop", 30), ev("SessionEnd", 40))
+        self.events._poll(self.home)
+        for now in (t0 + 41, t0 + 101, t0 + 3600):
+            info = self.info(state="waiting", age=int(now - (t0 + 30)), err={"k": "limit", "ago": 5})
+            self.assertTrue(self.events.overlay(info, self.home, now).get("gone"), now)
+        # transcript が終了より後に進んだ（イベントの hook が SessionStart を取り逃した再開）＝戻す
+        self.assertFalse(self.events.overlay(self.info(age=5), self.home, t0 + 200).get("gone"))
+        # 再開（SessionStart）・次の指示で消える
+        self.append(ev("SessionStart", 500))
+        self.events._poll(self.home)
+        self.assertFalse(self.events.overlay(self.info(age=1000), self.home, t0 + 1000).get("gone"))
+        self.append(ev("SessionEnd", 1100), ev("UserPromptSubmit", 1200))
+        self.events._poll(self.home)
+        self.assertFalse(self.events.overlay(self.info(age=1000), self.home, t0 + 2000).get("gone"))
+
+    def test_refresh_reads_events_in_a_process_without_the_thread(self):
+        """別モデルレビュー（3fb7b3f）: 中継の配達員（relay_agent）は別プロセスで読み取りのスレッドが無い＝_TURN が空のまま
+        スマホへ出していた → refresh(home) が増分で読む（2 回目は新しい行だけ）。スレッドが動いているプロセスでは何もしない。"""
+        t0 = self.rows[0]["ts"]
+        self.append(self.event("UserPromptSubmit", ts=t0), self.event("PreToolUse", ts=t0 + 1))
+        self.events.refresh(self.home)
+        self.assertTrue(self.events.turn_of(self.sid)["open"])
+        self.assertEqual(self.events.seq(), 2)
+        self.append(self.event("Stop", ts=t0 + 2))
+        self.events.refresh(self.home)
+        self.assertEqual((self.events.seq(), self.events.turn_of(self.sid)["open"]), (3, False))
+        self.events.refresh(self.home)
+        self.assertEqual(self.events.seq(), 3)                       # 同じ行を二度読まない
+        # 別の HOME へ移ったら読み直す（前の HOME の状態を持ち越さない）
+        other = self.home / "other"
+        self.events.refresh(other)
+        self.assertEqual((self.events.seq(), self.events.turn_of(self.sid)), (3, None))
+        with patch.object(self.events, "_poll") as poll:
+            self.events._THREAD = Mock(is_alive=Mock(return_value=True))
+            try:
+                self.events.refresh(self.home)
+            finally:
+                self.events._THREAD = None
+            poll.assert_not_called()
+
+    def test_stop_failure_marks_an_api_error_until_the_next_prompt(self):
+        t0 = self.rows[0]["ts"]
+        ev = lambda name, dt, **kw: self.event(name, ts=t0 + dt, **kw)   # noqa: E731
+        self.append(ev("UserPromptSubmit", 0), ev("PreToolUse", 1), ev("StopFailure", 5))
+        self.events._poll(self.home)
+        r = self.events.overlay(self.info(state="working"), self.home, t0 + 6)
+        self.assertEqual((r["state"], r["err"]), ("waiting", {"k": "api", "ago": 1}))
+        r = self.events.overlay(self.info(), self.home, t0 + 5 + self.events.ERR_TTL)
+        self.assertEqual(r["err"]["k"], "api")
+        self.assertNotIn("err", self.events.overlay(self.info(), self.home, t0 + 5 + self.events.ERR_TTL + 1))
+        # transcript 側で分かった種類（limit など）を上書きしない
+        r = self.events.overlay(self.info(err={"k": "limit", "ago": 3}), self.home, t0 + 6)
+        self.assertEqual(r["err"]["k"], "limit")
+        self.append(ev("UserPromptSubmit", 10))
+        self.events._poll(self.home)
+        self.assertNotIn("err", self.events.overlay(self.info(), self.home, t0 + 11))
 
     def test_midnight_reads_yesterdays_continuation_and_new_file(self):
         yesterday = self.day - timedelta(days=1)

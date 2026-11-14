@@ -1,14 +1,52 @@
 // R98-W1: 「誰が・何を」の 2 階層（プロジェクト → セッション）と、様式に依らないクロームの貼り替え。
 // ui/iso/index.js から移設。描画（右レールの行／台帳の行）は様式側＝ここはデータ整形と共通部だけ。
 import { activityGloss, agoStr, buildWorld, tidyActivity, zoneOf } from "/ui/core/world.js";
+import { attnKind, errOf, waitMinutes, waitWord, withKindFields } from "/ui/core/kind.js";
 import { deliveryChip } from "/ui/hud/delivery.js";
 import { el, optional } from "/ui/hud/shell.js";
 
 export const ZONES = ["desk", "meeting", "queue", "lounge", "external"];
 export const zoneLabel = (T, z) => (ZONES.includes(z) ? T(`zone_${z}`) : "");
 
-/** ❗の内容キー。質問文が変われば別の❗として扱う（回答済み楽観表示の解除判定に使う）。 */
-export const attnKeyFor = (a) => (a?.question ? `q:${a.question}` : `approval:${a?.session || ""}`);
+/** ❗の内容キー。質問文が変われば別の❗として扱う（回答済み楽観表示の解除判定に使う）。
+ *  R100-0: 承認フックの 1 件ごとの番号（ask.askId）も含める＝同じセッションで 2 件並んだとき、1 件目に答えた後の
+ *  2 件目が「回答済み・反映待ち」に化けてボタンが消えない（R100-0 のレビュー）。 */
+export const attnKeyFor = (a) => {
+  const id = a?.ask?.askId ? `#${a.ask.askId}` : "";
+  return a?.question ? `q:${a.question}${id}` : `approval:${a?.session || ""}${id}`;
+};
+
+/**
+ * b4-mac: ❗（とエラー）の 1 行。種類を必ず言う（許可待ち・計画の確認・質問・止まっている?・エラーで停止）＋待っている長さ。
+ * 以前は質問文が無いと全部「N分 止まっています」＝本物の許可待ちも推定の停止も同じ文で、スマホの札とも食い違っていた。
+ * 語はスマホと同じ（ui/core/kind.js・tests/ismute_parity.mjs）。トレイ・台帳・シート・通知・コックピットが使う。
+ */
+export function attnLine(T, a, lang = "ja") {
+  if (!a) return "";
+  const k = attnKind(a);
+  const wait = waitWord(waitMinutes(a), lang);
+  if (k === "perm") return T("attn_perm", a.ask?.tool || "", a.ask?.title || "", wait);
+  if (k === "plan") return T("attn_plan", wait);
+  if (k === "question") return T("attn_question", a.question || "", wait);
+  if (k === "error") return T("attn_error", T(`err_${errOf(a).k}`), wait);
+  if (k === "stuck") return T("attn_stuck", wait, a.stuckTool ? tidyActivity(a.stuckTool, 40) : "");
+  return "";
+}
+
+/**
+ * R128 #4: 消音の Bot（⚙ の Bot パネル＝台帳の muted・サーバーの employees の bot- の行が持つ）の session の集合。
+ * Mac の音（ui/platform/sound.js）と画面の通知（ui/hud/tray.js）は、この Bot の相談・出勤では鳴らさない＝**鳴らさないだけ**
+ *（一覧・あなたの番・記録・受付には今までどおり出る）。bot- の行の muted が true のものだけ（ほかの行に muted があっても効かない）。
+ * buildWorld（ui/core・スマホの束と共有）には足さない＝様式の apply が world に添える（built.muted＝この Set）。
+ */
+export function mutedSessions(office) {
+  const out = new Set();
+  for (const e of Array.isArray(office?.employees) ? office.employees : []) {
+    const sid = typeof e?.session === "string" ? e.session : "";
+    if (e?.muted === true && /^bot-[a-z0-9][a-z0-9-]{3,31}$/.test(sid)) out.add(sid);
+  }
+  return out;
+}
 
 /** 受信済みの本文・ベンダー・成長値をHUD専用の2階層へ。core/3Dのworldは変更しない。 */
 export function departmentBoard(office, w, T) {
@@ -19,29 +57,36 @@ export function departmentBoard(office, w, T) {
     const p = raw.get(a.id) || employees.get(a.session) || {};
     const name = p.name || p.dept || a.dept || a.name;
     const key = a.external ? a.id : p.cwd || name || a.id;
-    if (!groups.has(key)) groups.set(key, { key, name, sessions: [] });
+    // R123: 組の名前は Claude のプロジェクト名を優先する。同じフォルダで動く Codex（名前「Codex」）が先に来ると、
+    // 並び順しだいで「制作本部(works)」の組が「Codex」と名乗っていた（本番の一覧で実測）。
+    const fromClaude = String(p.vendor || a.vendor || "claude").toLowerCase() === "claude";
+    const group = groups.get(key);
+    if (!group) groups.set(key, { key, name, sessions: [], fromClaude });
+    else if (fromClaude && !group.fromClaude) Object.assign(group, { name, fromClaude });
     const members = a.sessions.length ? a.sessions : [{ session: a.session }];
     members.forEach((brief, i) => {
       const lead = brief.session === a.session;
       const member = employees.get(brief.session) || {};
       const data = { ...(lead ? p : {}), ...brief, ...member };
-      const model = buildWorld({ employees: [data] }).agents[0];
+      // b4-mac: Mac の画面だけが読む err・permMode・minionsLive を足す（buildWorld はスマホと共有＝そこでは捨てている）
+      const model = withKindFields(buildWorld({ employees: [data] }).agents[0], data);
       const vendor = String(data.vendor || p.vendor || (a.external ? "openclaw" : "claude")).toLowerCase();
-      const detail = data.detail || data.bg?.detail || model.question
-        || (model.attention ? T("approval_min", model.approvalMin) : "")
+      const detail = data.detail || data.bg?.detail
+        || (model.attention || errOf(model) ? attnLine(T, model, w.lang) : "") || model.question
         || activityGloss(model, w.lang) || zoneLabel(T, model.zone);
       // detailは40 Unicode文字。カテゴリ由来の絵文字を箇条書きの印にしない。
       const plainDetail = String(detail).replace(/^[\p{Extended_Pictographic}\uFE0F\s]+/u, "");
       const level = data.level ?? office.growth?.byProject?.[a.id]?.level;
       groups.get(key).sessions.push({ ...model, id: a.id, session: brief.session,
-        name: data.title || member.name || brief.name
+        // R123-A: /rename の名前 → Claude Code の自動タイトル（Mac だけ・中継には載らない）→ これまでの名前
+        name: data.title || data.aiTitle || member.name || brief.name
           || (members.length === 1 ? a.name : T("board_session", i + 1)),
-        vendor: ["claude", "codex", "openclaw"].includes(vendor) ? vendor : "other",
+        vendor: ["claude", "codex", "openclaw", "bot"].includes(vendor) ? vendor : "other",
         detail: tidyActivity(plainDetail, 40),
         level: typeof level === "number" && Number.isFinite(level) ? level : null });
     });
   }
-  return [...groups.values()];
+  return [...groups.values()].map(({ fromClaude: _, ...group }) => group);
 }
 
 /**
@@ -152,8 +197,15 @@ export function renderChrome(shell, w, T, tray) {
 /** 最近の指示（#hist）。件数は様式が決める（iso は 3 件＋展開で 12 件）。 */
 export function renderHistory(shell, w, T, { limit = 3 } = {}) {
   const hist = shell.querySelector("#hist");
+  const rows = (w.history || []).slice(0, limit).map((h) => ({ h,
+    ago: w.generatedAt && h.ts ? agoStr(w.generatedAt - h.ts, w.lang) : null }));
+  // R102-11: 同じ中身なら DOM に触らない（apply ごとの作り直しで ↻ の押下・「もう一度押すと再送」の表示が消えた）
+  const sig = JSON.stringify([T("resend_title"), T("hist_empty"), T("dstate_live"), T("dstate_pending"),
+    rows.map(({ h, ago }) => [h.session || "", h.text || "", h.disp || "", ago, !!h.pending])]);
+  if (hist._sig === sig) return;
+  hist._sig = sig;
   hist.replaceChildren();
-  for (const h of (w.history || []).slice(0, limit)) {
+  for (const { h, ago } of rows) {
     const row = el("div", "hrow");
     const resend = el("button", "hresend", "↻");
     resend.type = "button";
@@ -161,11 +213,11 @@ export function renderHistory(shell, w, T, { limit = 3 } = {}) {
     resend.dataset.session = h.session || "";
     resend.dataset.text = h.text || "";
     resend.dataset.disp = h.disp || "";
-    row.append(el("b", "", h.disp || ""),
-      el("span", "", h.text || ""));
-    if (w.generatedAt && h.ts) {
-      row.append(el("i", "hago", agoStr(w.generatedAt - h.ts, w.lang)));
-    }
+    // R110-D4: 本文は様式によって 2 行で切る（cockpit の受付）＝全文はいつも title に置く（切れた先がどこにも無い、を作らない）
+    const body = el("span", "", h.text || "");
+    if (h.text) body.title = h.text;
+    row.append(el("b", "", h.disp || ""), body);
+    if (ago !== null) row.append(el("i", "hago", ago));
     const status = deliveryChip({ T, state: h.pending ? "pending" : "live" });
     status.classList.add("hp");
     row.append(status, resend);

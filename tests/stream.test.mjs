@@ -12,7 +12,7 @@ const { PostProcess } = await import("../ui/iso/post.js");
 const THREE = await import("../ui/vendor/three/three.module.min.js");
 const { broadcastURL, initStream, streamOptions } = await import("../ui/hud/stream.js");
 const { recordWebM, webmType } = await import("../ui/platform/webm.js");
-const { STYLE_KEY, persistStyle, resolveStyle } = await import("../ui/platform/style.js");
+const { DEFAULT_STYLE, STYLE_KEY, persistStyle, resolveStyle } = await import("../ui/platform/style.js");
 
 test("R98: 配信 URL は保存値も ?ui= も無視して iso（台帳は匿名化を実装していない）", () => {
   assert.equal(resolveStyle("?ui=pixel"), "pixel");
@@ -32,6 +32,24 @@ test("R98: 配信 URL で起動しても普段の表示設定（台帳）を上�
     assert.equal(store.get(STYLE_KEY), "iso");
     globalThis.localStorage = { getItem: () => null, setItem() { throw new Error("private mode"); } };
     assert.equal(persistStyle("pixel", "?t=1"), false);     // switchStyle はこのとき ?ui= を付けて再読み込みする
+  } finally {
+    delete globalThis.localStorage;
+  }
+});
+
+test("R122: 既定は明るい画面・v2 の保存値（起動のたびに書いていた iso）は引き継がない", () => {
+  assert.equal(DEFAULT_STYLE, "app");
+  assert.equal(STYLE_KEY, "aioffice.ui.v3");
+  const store = new Map([["aioffice.ui.v2", "iso"]]);
+  globalThis.localStorage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => store.set(k, v) };
+  try {
+    assert.equal(resolveStyle(""), "app");                   // 旧キーの iso は見ない
+    assert.equal(resolveStyle("?ui=app"), "app");
+    assert.equal(resolveStyle("?ui=cockpit"), "cockpit");
+    assert.equal(resolveStyle("?ui=iso"), "iso");            // 明示は効く
+    assert.equal(resolveStyle("?stream=1"), "iso");          // 配信は iso のまま（匿名化は 3D 側）
+    store.set(STYLE_KEY, "iso");
+    assert.equal(resolveStyle(""), "iso");                   // ⚙ で選んだ保存値は既定より強い
   } finally {
     delete globalThis.localStorage;
   }

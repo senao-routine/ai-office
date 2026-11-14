@@ -20,7 +20,61 @@ export function init({ T, el: sEl, modals: { modal, openModal } }) {
     box.scrollTop = box.scrollHeight;
   };
 
-  const loadDialog = async (session, listEl, headEl, depth = 0) => {
+  const keyOf = (m) => `${m.role === "user" ? "u" : "a"}${m.text}`;
+  /** 「↓ 新着 N」（読み直しで新しい発言が来たが、本人が上を読んでいる＝位置を奪わない）。押すか下端まで来たら消える */
+  const showNew = (listEl, n) => {
+    listEl.querySelector(".dlgnew")?.remove();
+    if (!(n > 0)) return;
+    const b = sEl("button", "dlgnew", T("dialog_new", n));
+    b.type = "button";
+    b.addEventListener("click", () => { listEl.scrollTop = listEl.scrollHeight; b.remove(); });
+    listEl.append(b);
+    if (!listEl.dataset.dlgnewWired) {
+      listEl.dataset.dlgnewWired = "1";
+      listEl.addEventListener("scroll", () => {
+        if (listEl.scrollHeight - listEl.scrollTop - listEl.clientHeight < 24) listEl.querySelector(".dlgnew")?.remove();
+      }, { passive: true });
+    }
+  };
+
+  /**
+   * b4-mac: 読み直し（同じ相手・いまの深さのまま）。新しい発言が無ければ DOM に触らない。下端を見ていたら下端へ追従し、
+   * 上を読んでいたら位置を保って「↓ 新着 N」を出す。失敗は黙る（読めている会話を消さない）。
+   */
+  const refreshDialog = async (session, listEl, headEl) => {
+    const seq = ++dlgSeq;
+    const depth = Number(listEl.dataset.depth) || 0;
+    const atBottom = listEl.scrollHeight - listEl.scrollTop - listEl.clientHeight < 24;
+    const top = listEl.scrollTop;
+    const before = [...listEl.querySelectorAll(".dlgmsg")].map(
+      (n) => keyOf({ role: n.classList.contains("user") ? "user" : "ai", text: n.textContent }));
+    let res;
+    try {
+      res = await getDialog(session, depth);
+    } catch {
+      return;
+    }
+    if (seq !== dlgSeq) return;
+    const msgs = res.messages || [];
+    const after = msgs.map(keyOf);
+    if (after.length === before.length && after.every((k, i) => k === before[i])) return;
+    const last = before[before.length - 1];
+    const at = last === undefined ? -1 : after.lastIndexOf(last);
+    const fresh = at >= 0 ? after.length - 1 - at : after.length;
+    listEl.replaceChildren();
+    if (!msgs.length) listEl.append(sEl("div", "dlgnote", T("dialog_empty")));
+    else for (const m of msgs) listEl.append(dlgMsgEl(m));
+    listEl.dataset.depth = String(res.depth ?? depth);
+    paintDlgHead(headEl, listEl, session, res);
+    if (atBottom) listEl.scrollTop = listEl.scrollHeight;
+    else {
+      listEl.scrollTop = top;
+      showNew(listEl, fresh);
+    }
+  };
+
+  const loadDialog = async (session, listEl, headEl, depth = 0, { refresh = false } = {}) => {
+    if (refresh) return refreshDialog(session, listEl, headEl);
     const seq = ++dlgSeq;
     // R86-C: 復元アンカーは**件数索引**で取る。本文一致だと「はい」「ok」や 400字クランプで
     // 先頭が同じ長文が古い側にもあると誤爆して会話の最古部へ飛ぶ（実測）。
@@ -47,6 +101,7 @@ export function init({ T, el: sEl, modals: { modal, openModal } }) {
     if (seq !== dlgSeq) return;                     // 取得中に宛先が変わった＝破棄
     const msgs = res.messages || [];
     listEl.replaceChildren();
+    listEl.dataset.depth = String(res.depth ?? depth);
     if (!msgs.length) {
       listEl.append(sEl("div", "dlgnote", T("dialog_empty")));
     } else {
@@ -72,7 +127,8 @@ export function init({ T, el: sEl, modals: { modal, openModal } }) {
     const msgs = res.messages || [...listEl.querySelectorAll(".dlgmsg")].map(
       (n) => ({ role: n.classList.contains("user") ? "user" : "ai", text: n.textContent }));
     for (const n of [...headEl.children]) n.remove();   // 件数/ボタンを一旦落とす（B4: 残留防止）
-    headEl.append(sEl("i", "seccount", String(msgs.length)));
+    // 件数 0 は出さない（足元に「0」だけが残っていた）
+    if (msgs.length) headEl.append(sEl("i", "seccount", String(msgs.length)));
     if (msgs.length) {
       const exp = sEl("button", "dlgexpand", T("dialog_expand"));
       exp.type = "button";

@@ -16,9 +16,24 @@ import unittest
 from pathlib import Path
 
 _TMP_HOME = tempfile.mkdtemp(prefix="aioffice-actions-")
-os.environ["OFFICE_HOME"] = _TMP_HOME       # import前に注入（RECIPES_FILE 等が確定する）
+os.environ["OFFICE_HOME"] = _TMP_HOME       # 置き場所は呼び出しのたびに OFFICE_HOME から決まる（R100-0）
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "server"))
 import office_actions as oa  # noqa: E402
+
+
+def _ensure_tmp_home(case):
+    """R100-0: ファイルを消す・書くテストの前に、対象が一時 HOME の中であることを確かめる（違えば止める）。
+    2026-09-29: 単体実行の並び次第で office_actions が実 HOME を向き、ここのテストが**本物の監査ログを消した**。
+    別のテストが tearDown で OFFICE_HOME を外しても、ここで毎回置き直す。"""
+    os.environ["OFFICE_HOME"] = _TMP_HOME
+    for f in (oa.recipes_file(), oa.audit_file(), oa.results_file()):
+        if not str(f).startswith(_TMP_HOME + os.sep):
+            case.fail(f"一時 HOME の外を触ろうとした（止めた）: {f}")
+
+
+class _TmpHome(unittest.TestCase):
+    def setUp(self):
+        _ensure_tmp_home(self)
 
 
 def _recipe(**kw):
@@ -35,7 +50,7 @@ def _valid(**kw):
     return recipes[0]
 
 
-class TestValidateRecipes(unittest.TestCase):
+class TestValidateRecipes(_TmpHome):
     def test_ok(self):
         recipes, errors = oa.validate_recipes({"recipes": [_recipe()]})
         self.assertEqual(errors, [])
@@ -86,7 +101,7 @@ class TestValidateRecipes(unittest.TestCase):
         self.assertEqual(oa.load_recipes(), ([], []))   # 無し=レシピゼロ（実行できるものが無い）
 
 
-class TestParseAction(unittest.TestCase):
+class TestParseAction(_TmpHome):
     def test_run_ok(self):
         act = oa.parse_action(json.dumps(
             {"aioffice": 1, "kind": "run", "recipe": "r_verify", "args": [],
@@ -116,7 +131,7 @@ class TestParseAction(unittest.TestCase):
             self.assertIsNone(oa.parse_action(b), b[:60])
 
 
-class TestScrubOutput(unittest.TestCase):
+class TestScrubOutput(_TmpHome):
     def test_paths_to_basename(self):
         s = oa.scrub_output("編集: /Users/someone/private/works/secret_plan.md を更新")
         self.assertNotIn("/Users/", s)
@@ -158,7 +173,7 @@ class TestScrubOutput(unittest.TestCase):
         self.assertEqual(oa.scrub_output(None), "")
 
 
-class TestAdmit(unittest.TestCase):
+class TestAdmit(_TmpHome):
     """同時実行ガードは純関数 admit() で固定（プロセスを起こさない＝速く決定論的）。"""
 
     def test_allows_when_idle(self):
@@ -176,8 +191,9 @@ class TestAdmit(unittest.TestCase):
         self.assertFalse(oa.admit("r_new", running))
 
 
-class TestStartAction(unittest.TestCase):
+class TestStartAction(_TmpHome):
     def setUp(self):
+        super().setUp()
         oa._ACTIONS.clear()
         oa._ORDER.clear()
         oa.RESULTS_FILE.unlink(missing_ok=True)   # R92: 前のテストの結果を持ち越さない
@@ -268,13 +284,33 @@ class TestStartAction(unittest.TestCase):
         lines = [json.loads(x) for x in oa.AUDIT_FILE.read_text().splitlines() if x.strip()]
         self.assertTrue(any(x.get("reqId") == "req-audit01" for x in lines))
 
+    def test_audit_is_0600_from_creation_and_rotates(self):
+        """R100-0: 作ってから chmod ではなく最初から 0600（chmod が効かなくても 0644 にならない）・5MB で 1 世代。"""
+        from unittest.mock import patch
+        _ensure_tmp_home(self)
+        oa.AUDIT_FILE.unlink(missing_ok=True)
+        old = os.umask(0o022)
+        try:
+            with patch.object(oa.os, "chmod", lambda *a, **k: None):
+                oa._audit({"reqId": "req-mode0001"})
+        finally:
+            os.umask(old)
+        self.assertEqual(oa.AUDIT_FILE.stat().st_mode & 0o777, 0o600, "作成直後に 0600 でない（chmod 頼み）")
+        oa.AUDIT_FILE.write_text("x" * (oa.AUDIT_ROTATE + 1), encoding="utf-8")
+        oa._audit({"reqId": "req-rot00001"})
+        rotated = oa.AUDIT_FILE.with_name(oa.AUDIT_FILE.name + ".1")
+        self.assertTrue(rotated.exists(), "5MB を超えても回さない")
+        self.assertIn("req-rot00001", oa.AUDIT_FILE.read_text(encoding="utf-8"))
+        self.assertLess(oa.AUDIT_FILE.stat().st_size, 1000)
+        rotated.unlink()
+
     def test_recipes_public_hides_argv_cwd(self):
         pub = oa.recipes_public([_valid(id="r_pub", cwd="/Users/me/secret")])
         self.assertEqual(set(pub[0]), {"id", "label", "dangerous", "returnOutput"})
         self.assertNotIn("secret", json.dumps(pub, ensure_ascii=False))
 
 
-class SharedResultsTest(unittest.TestCase):
+class SharedResultsTest(_TmpHome):
     """R92: 実行結果が**別プロセス**へ渡るか。
 
     実行者は daemon、スマホへ配達する relay_agent は別プロセスで自分の office_json() を
@@ -283,6 +319,7 @@ class SharedResultsTest(unittest.TestCase):
     """
 
     def setUp(self):
+        super().setUp()
         oa._ACTIONS.clear()
         oa._ORDER.clear()
         oa.RESULTS_FILE.parent.mkdir(parents=True, exist_ok=True)
@@ -374,6 +411,15 @@ class SharedResultsTest(unittest.TestCase):
         self.assertLessEqual(len(saved["results"]), oa.RESULT_KEEP)
         self._forget_memory()
         self.assertEqual(len(oa.results_public(limit=50)), oa.RESULT_KEEP)
+
+
+class TmpHomeGuardTest(unittest.TestCase):
+    def test_guard_stops_before_touching_the_real_home(self):
+        """番人そのものの検査: OFFICE_HOME が外れていても、壊すテストは本物に触る前に止まる。"""
+        from unittest.mock import patch
+        with patch.object(oa, "_home", lambda: Path.home()):
+            with self.assertRaises(AssertionError):
+                _ensure_tmp_home(self)
 
 
 if __name__ == "__main__":

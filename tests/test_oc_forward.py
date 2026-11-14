@@ -52,7 +52,7 @@ class OcOutboxTest(unittest.TestCase):
             setattr(office, k, v)
 
     def test_oc_session_goes_to_outbox_not_inbox(self):
-        ok, msg = office.post_instruction("oc-lobster-1", "ロブスターへ指示")
+        ok, msg = office.post_instruction("oc-lobster-1", "ロブスターへ指示", src="local")
         self.assertTrue(ok, msg)
         files = list(office.OC_OUTBOX.glob("*.json"))
         self.assertEqual(len(files), 1)
@@ -63,19 +63,19 @@ class OcOutboxTest(unittest.TestCase):
         self.assertEqual(hist[-1]["session"], "oc-lobster-1")             # 履歴は共通で記録
 
     def test_oc_same_ms_posts_get_distinct_files(self):
-        office.post_instruction("oc-lobster-1", "一通目")
-        office.post_instruction("oc-lobster-1", "二通目")
+        office.post_instruction("oc-lobster-1", "一通目", src="local")
+        office.post_instruction("oc-lobster-1", "二通目", src="local")
         self.assertEqual(len(list(office.OC_OUTBOX.glob("*.json"))), 2)
 
     def test_validation_is_shared(self):
-        ok, _ = office.post_instruction("oc-x", "短すぎるsession")   # regex 8文字未満
+        ok, _ = office.post_instruction("oc-x", "短すぎるsession", src="local")   # regex 8文字未満
         self.assertFalse(ok)
-        ok, _ = office.post_instruction("oc-lobster-1", "x" * 4001)
+        ok, _ = office.post_instruction("oc-lobster-1", "x" * 4001, src="local")
         self.assertFalse(ok)
         self.assertFalse(office.OC_OUTBOX.exists())
 
     def test_normal_session_still_uses_inbox(self):
-        ok, _ = office.post_instruction("relaytest-0001", "通常の投函")
+        ok, _ = office.post_instruction("relaytest-0001", "通常の投函", src="local")
         self.assertTrue(ok)
         self.assertTrue((office.INBOX / "relaytest-0001.json").exists())
         self.assertFalse(office.OC_OUTBOX.exists())

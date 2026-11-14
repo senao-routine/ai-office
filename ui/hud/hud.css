@@ -55,9 +55,25 @@
   --iso-shadow: var(--shadow);
 }
 .hud {
+  /* 共通部品の既定値は従来の寸法。cockpit だけ下の token を上書きする。 */
+  --hud-radius-label: 2px;
+  --hud-radius-menu: 8px;
+  --hud-radius-field: 10px;
+  --hud-radius-step: 12px;
+  --hud-radius-panel: 14px;
+  --hud-radius-dot: 10px;
+  --hud-font-island: 9px;
+  --hud-font-note: 11px;
+  --hud-font-badge: 11.5px;
+  --hud-font-control: 12px;
+  --hud-font-body: 12.5px;
+  --hud-font-heading: 14px;
+  --hud-font-title: 18px;
+  --hud-font-donut: 20px;
+  --hud-font-total: 24px;
   width: 100%;
   height: 100dvh;
-  font-size: 14px; line-height: 1.45;
+  font-size: var(--hud-font-heading); line-height: 1.45;
   background: var(--iso-stage-bg);
   color: var(--iso-ink);
   font-family: "Hiragino Kaku Gothic ProN", "Noto Sans JP", system-ui, sans-serif;
@@ -76,25 +92,25 @@
 .hud .offbar {
   position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 30;
   background: var(--iso-alert); color: var(--iso-on-accent);
-  font-size: 12.5px; font-weight: 700; letter-spacing: .02em;
-  padding: 8px 16px; border-radius: 10px;
+  font-size: var(--hud-font-body); font-weight: 700; letter-spacing: .02em;
+  padding: 8px 16px; border-radius: var(--hud-radius-field);
   box-shadow: var(--iso-shadow);
 }
 .hud .offbar[hidden] { display: none; }
 
 /* 📮 配達未設定バナー（ヘッダー直下・hook配線が済むまで） */
 .hud .setupbar {
-  margin-top: 8px; padding: 8px 16px; border-radius: 10px;
+  margin-top: 8px; padding: 8px 16px; border-radius: var(--hud-radius-field);
   background: var(--iso-warn-chip); border: 1px solid var(--iso-warn);
-  font-size: 12.5px; color: var(--iso-ink); line-height: 1.45;
+  font-size: var(--hud-font-body); color: var(--iso-ink); line-height: 1.45;
 }
 
 /* 空オフィスの案内カード（部署ボード・次の一歩を必ず示す） */
 .hud .onboard { display: flex; flex-direction: column; gap: 8px; padding: 4px 4px; }
-.hud .onboard b { font-size: 12.5px; }
-.hud .onboard p { margin: 0; font-size: 12.5px; color: var(--iso-ink-soft); line-height: 1.45; }
+.hud .onboard b { font-size: var(--hud-font-body); }
+.hud .onboard p { margin: 0; font-size: var(--hud-font-body); color: var(--iso-ink-soft); line-height: 1.45; }
 .hud .onboard .odemo {
-  font-size: 12.5px; font-weight: 700; color: var(--iso-accent);
+  font-size: var(--hud-font-body); font-weight: 700; color: var(--iso-accent);
   text-decoration: underline; text-underline-offset: 3px;
 }
 
@@ -108,7 +124,7 @@
   box-shadow: var(--iso-shadow);
 }
 .hud .cardtitle {
-  display: block; font-size: 12.5px; font-weight: 800; letter-spacing: .02em;
+  display: block; font-size: var(--hud-font-body); font-weight: 800; letter-spacing: .02em;
   color: var(--iso-ink); margin-bottom: 8px;
 }
 
@@ -120,25 +136,25 @@
 }
 .hud .brand { display: flex; align-items: center; gap: 8px; }
 .hud .brand .mark {
-  width: 40px; height: 40px; border-radius: 10px; flex: none;
+  width: 40px; height: 40px; border-radius: var(--hud-radius-field); flex: none;
   display: grid; place-items: center;
-  background: var(--iso-accent-chip); font-size: 18px;
+  background: var(--iso-accent-chip); font-size: var(--hud-font-title);
   box-shadow: var(--iso-shadow);
 }
 .hud .brand .txt { display: flex; flex-direction: column; min-width: 0; }
-.hud .brand .txt b { font-size: 14px; font-weight: 800; letter-spacing: .01em; }
+.hud .brand .txt b { font-size: var(--hud-font-heading); font-weight: 800; letter-spacing: .01em; }
 .hud .brand .txt i {
-  font-style: normal; font-size: 11px; color: var(--iso-ink-soft);
+  font-style: normal; font-size: var(--hud-font-note); color: var(--iso-ink-soft);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
 .hud .zones { display: flex; flex-direction: column; gap: 4px; }
 .hud .zrow {
   display: flex; align-items: center; gap: 8px;
-  padding: 8px 8px; border-radius: 10px; font-size: 12.5px;
+  padding: 8px 8px; border-radius: var(--hud-radius-field); font-size: var(--hud-font-body);
 }
 .hud .zrow:hover { background: var(--iso-accent-chip); }
-.hud .zrow .zdot { width: 8px; height: 8px; border-radius: 10px; flex: none; background: var(--iso-rest); }
+.hud .zrow .zdot { width: 8px; height: 8px; border-radius: var(--hud-radius-dot); flex: none; background: var(--iso-rest); }
 .hud .zrow.z-desk .zdot { background: var(--iso-ok); }
 .hud .zrow.z-meeting .zdot { background: var(--iso-accent); }
 .hud .zrow.z-queue .zdot { background: var(--iso-alert); }
@@ -146,8 +162,8 @@
 .hud .zrow.z-external .zdot { background: var(--iso-accent-2); }
 .hud .zrow .zlabel { flex: 1; color: var(--iso-ink); }
 .hud .zrow .zcount {
-  font-size: 12.5px; font-weight: 800; color: var(--iso-ink-soft);
-  background: var(--iso-accent-chip); border-radius: 10px;
+  font-size: var(--hud-font-body); font-weight: 800; color: var(--iso-ink-soft);
+  background: var(--iso-accent-chip); border-radius: var(--hud-radius-field);
   min-width: 24px; text-align: center; padding: 4px 8px;
 }
 
@@ -161,15 +177,15 @@
 }
 .hud .gauges[hidden] { display: none; }   /* 明示displayはhidden属性に勝つ（1敗） */
 .hud .gcard {
-  border: 1px solid var(--iso-hairline); border-radius: 10px;
+  border: 1px solid var(--iso-hairline); border-radius: var(--hud-radius-field);
   background: var(--iso-glass-solid); padding: 8px 12px;
   display: flex; flex-direction: column; gap: 8px;
 }
 .hud .gcard[hidden] { display: none; }
 .hud .gbody { display: flex; flex-direction: column; gap: 8px; }
-.hud .gtitle { font-size: 11px; font-weight: 800; letter-spacing: .05em; color: var(--iso-ink-soft); }
+.hud .gtitle { font-size: var(--hud-font-note); font-weight: 800; letter-spacing: .05em; color: var(--iso-ink-soft); }
 .hud .grow { display: flex; flex-direction: column; gap: 4px; }
-.hud .ghead { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-size: 11px; }
+.hud .ghead { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-size: var(--hud-font-note); }
 .hud .ghead span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hud .ghead b { flex: none; white-space: nowrap; }
 .hud .ghead span { color: var(--iso-ink); }
@@ -177,9 +193,9 @@
 .hud .ghead .gwarn, .hud .ghead b.gwarn { color: var(--iso-alert); }
 .hud .gfixed { border-top: 1px solid var(--iso-hairline); padding-top: 8px; margin-top: 4px; }
 .hud .gbar {
-  height: 7px; border-radius: 10px; background: var(--iso-accent-chip); overflow: hidden;
+  height: 7px; border-radius: var(--hud-radius-field); background: var(--iso-accent-chip); overflow: hidden;
 }
-.hud .gfill { display: block; height: 100%; border-radius: 10px; background: var(--iso-accent); }
+.hud .gfill { display: block; height: 100%; border-radius: var(--hud-radius-field); background: var(--iso-accent); }
 .hud .gfill.warn { background: var(--iso-warn); }
 
 /* R55: 旧Codexバー式のプロバイダブロック（planチップ・%大表示・太バー・窓/リセット残） */
@@ -189,39 +205,54 @@
 }
 .hud .gprov:first-child { border-top: 0; padding-top: 4px; }
 .hud .gprovhead { display: flex; align-items: baseline; gap: 8px; }
-.hud .gname { font-size: 12.5px; font-weight: 800; color: var(--iso-ink); white-space: nowrap; }
+.hud .gname { font-size: var(--hud-font-body); font-weight: 800; color: var(--iso-ink); white-space: nowrap; }
 .hud .gplan {
-  font-size: 11px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase;
+  font-size: var(--hud-font-note); font-weight: 800; letter-spacing: .04em; text-transform: uppercase;
   color: var(--iso-accent); background: var(--iso-accent-chip);
-  border-radius: 10px; padding: 4px 8px; white-space: nowrap;
+  border-radius: var(--hud-radius-field); padding: 4px 8px; white-space: nowrap;
 }
 .hud .gacctline { display: flex; }
-.hud .gpct { margin-left: auto; font-size: 14px; font-weight: 800; color: var(--iso-ink); }
+.hud .gpct { margin-left: auto; font-size: var(--hud-font-heading); font-weight: 800; color: var(--iso-ink); }
 .hud .gpct.gwarn { color: var(--iso-alert); }
 .hud .gbar.big { height: 10px; background: var(--iso-accent-chip); }
-.hud .gsub { font-size: 11px; color: var(--iso-ink-soft); }
+.hud .gsub { font-size: var(--hud-font-note); color: var(--iso-ink-soft); }
 .hud .gsub.gok { color: var(--iso-ok); font-weight: 700; }
 
 /* R57: アカウント別表示（チップ=ログイン中・淡色バー=別アカウントの前回確認値） */
 .hud .gacct {
-  font-size: 11px; font-weight: 700; color: var(--iso-ink-soft);
-  background: var(--iso-hairline); border-radius: 10px; padding: 4px 8px;
+  font-size: var(--hud-font-note); font-weight: 700; color: var(--iso-ink-soft);
+  background: var(--iso-hairline); border-radius: var(--hud-radius-field); padding: 4px 8px;
   max-width: 92px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .hud .gbar.pale { opacity: .45; }
-.hud .gacctrow { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--iso-ink-soft); }
-.hud .gacctrow .gadot { width: 6px; height: 6px; border-radius: 10px; background: var(--iso-rest); flex: none; }
+.hud .gacctrow { display: flex; align-items: center; gap: 8px; font-size: var(--hud-font-note); color: var(--iso-ink-soft); }
+.hud .gacctrow .gadot { width: 6px; height: 6px; border-radius: var(--hud-radius-dot); background: var(--iso-rest); flex: none; }
 .hud .gacctrow.on .gadot { background: var(--iso-ok); }
 .hud .gacctrow .galab { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hud .gacctrow b { font-weight: 700; color: var(--iso-ink); }
 .hud .admin { display: flex; flex-direction: column; gap: 8px; flex: none; }
 .hud .abtn {
-  font: inherit; font-size: 12.5px; font-weight: 700; text-align: left;
+  font: inherit; font-size: var(--hud-font-body); font-weight: 700; text-align: left;
   color: var(--iso-ink); background: var(--iso-glass-solid);
-  border: 1px solid var(--iso-hairline); border-radius: 10px;
+  border: 1px solid var(--iso-hairline); border-radius: var(--hud-radius-field);
   padding: 12px 12px; cursor: pointer;
 }
 .hud .abtn:hover { background: var(--iso-glass-solid); border-color: var(--iso-accent); }
+/* R102-11: スマホから許可が ON の間だけ出す札（admin.js）。30 分前から警告色。[hidden] は display 指定に負けるので明示 */
+.hud .apvbadge {
+  display: flex; align-items: stretch; flex: 0 1 auto; min-width: 0; overflow: hidden;   /* 縮められる＝狭いヘッダーで OFF・管理のボタンを横へ押し出さない */
+  font-size: var(--hud-font-badge); font-weight: 700; color: var(--iso-ink);
+  background: var(--iso-accent-chip); border: 1px solid var(--iso-hairline); border-radius: var(--hud-radius-field);
+}
+.hud .apvbadge[hidden] { display: none; }
+.hud .apvbadge button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 6px 10px; }
+.hud .apvbadge .apvgo {
+  flex: 1; min-width: 0; display: inline-flex; align-items: center; gap: 6px;
+  text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.hud .apvbadge .apvoff { flex: none; background: var(--iso-glass-solid); }
+.hud .apvbadge.warn { background: var(--iso-warn-chip); color: var(--iso-warn); }
+.hud.ui-cockpit .apvbadge { border-radius: 0; }                                          /* コックピットの部品は角を丸めない */
 
 /* ── モーダル（管理フロー用・紙色の面） ─────────────────────────── */
 .hud .modalwrap {
@@ -239,99 +270,158 @@
   background: var(--iso-glass-solid);
   border: 1px solid var(--iso-hairline);
 
-  border-radius: 14px; padding: 16px;
+  border-radius: var(--hud-radius-panel); padding: 16px;
   box-shadow: var(--iso-shadow);
   display: flex; flex-direction: column; gap: 12px;
 }
-.hud .mtitle { font-size: 14px; font-weight: 800; }
-.hud .mnote { font-size: 12.5px; color: var(--iso-ink-soft); line-height: 1.45; margin: 0; }
+.hud .mtitle { font-size: var(--hud-font-heading); font-weight: 800; }
+.hud .mnote { font-size: var(--hud-font-body); color: var(--iso-ink-soft); line-height: 1.45; margin: 0; }
 .hud .mnote.merr { color: var(--iso-alert); font-weight: 700; }
 .hud .mpath {
-  font-size: 11px; font-family: inherit;
-  background: var(--iso-accent-chip); border-radius: 10px; padding: 8px 8px;
+  font-size: var(--hud-font-note); font-family: inherit;
+  background: var(--iso-accent-chip); border-radius: var(--hud-radius-field); padding: 8px 8px;
   margin: 0; word-break: break-all;
 }
 .hud .minput {
-  font: inherit; font-size: 12.5px; color: var(--iso-ink);
-  border: 1px solid var(--iso-hairline); border-radius: 10px;
+  font: inherit; font-size: var(--hud-font-body); color: var(--iso-ink);
+  border: 1px solid var(--iso-hairline); border-radius: var(--hud-radius-field);
   padding: 8px 12px; outline: none; background: var(--iso-glass-solid);
 }
 .hud .minput:focus { border-color: var(--iso-accent); }
-.hud .mopt { font-size: 12.5px; color: var(--iso-ink); display: flex; gap: 8px; align-items: center; }
+.hud .mopt { font-size: var(--hud-font-body); color: var(--iso-ink); display: flex; gap: 8px; align-items: center; }
 .hud .mgo {
-  font: inherit; font-size: 12.5px; font-weight: 800; color: var(--iso-on-accent);
-  background: var(--iso-accent); border: 0; border-radius: 10px;
+  font: inherit; font-size: var(--hud-font-body); font-weight: 800; color: var(--iso-on-accent);
+  background: var(--iso-accent); border: 0; border-radius: var(--hud-radius-field);
   padding: 12px; cursor: pointer;
 }
 .hud .mgo:hover { filter: brightness(1.07); }
 .hud .mgo:disabled { opacity: .5; cursor: default; }
 .hud .mbuy {
-  display: block; font-size: 12.5px; font-weight: 700;
+  display: block; font-size: var(--hud-font-body); font-weight: 700;
   color: var(--iso-accent); text-decoration: underline;
   text-underline-offset: 3px; margin: 4px 0;
 }
-.hud .mqr { width: 240px; height: 240px; align-self: center; border-radius: 10px; background: #fff; }
-.hud .msub { font-size: 12.5px; font-weight: 800; }
+.hud .mqr { width: 240px; height: 240px; align-self: center; border-radius: var(--hud-radius-field); background: #fff; }
+.hud .msub { font-size: var(--hud-font-body); font-weight: 800; }
 .hud .mdevices { display: flex; flex-direction: column; gap: 8px; }
+/* b4-mac: 端末の行は 2 段（名前と状態／登録日と最後の使用＋操作）。1 行に 4〜5 個の操作を詰めて「失/効」と折れていた */
 .hud .mdev {
-  display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  font-size: 12.5px; border-top: 1px solid var(--iso-hairline); padding-top: 8px;
+  display: flex; flex-direction: column; align-items: stretch; gap: 4px;
+  font-size: var(--hud-font-body); border-top: 1px solid var(--iso-hairline); padding-top: 8px;
 }
+.hud .mdev.stale { opacity: .6; }
+.hud .mdevtop { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.hud .mdevname { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hud .mdevtop .devmeta { margin-left: 0; flex: none; }
+.hud .mdevsub { font-size: var(--hud-font-note); color: var(--iso-ink-soft); }
+.hud .mdevops { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.hud .mdevops .devmeta { margin-left: 0; }
+.hud .mdevdead { display: flex; flex-direction: column; gap: 8px; }
+.hud .mdevices > .mrevoke { align-self: flex-start; }
+.hud .mdevdead > summary { font-size: var(--hud-font-control); color: var(--iso-ink-soft); cursor: pointer; }
+/* チェックボックスの行（左寄せ・文は箱のすぐ右）。.mdev の space-between に当てない */
+.hud .mcheck {
+  display: flex; align-items: flex-start; justify-content: flex-start; gap: 8px;
+  font-size: var(--hud-font-body); color: var(--iso-ink); cursor: pointer;
+}
+.hud .mcheck input { flex: none; margin: 2px 0 0; }
+/* スマホから許可の欄・ボタンの並び（隙間なしで 4 本が主ボタンの塗りのまま並んでいた） */
+.hud .mapprove {
+  display: flex; flex-direction: column; gap: 8px;
+  border-top: 1px solid var(--iso-hairline); padding-top: 12px;
+}
+.hud .mrow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+/* 副ボタン（中立の操作: 時間・OFF・戻る・コピー）。主ボタン .mgo は登録の 2 つだけ・破壊操作は .mrevoke */
+.hud .mbtn {
+  font: inherit; font-size: var(--hud-font-control); font-weight: 700; color: var(--iso-ink); white-space: nowrap;
+  background: transparent; border: 1px solid var(--iso-hairline); border-radius: var(--hud-radius-field);
+  padding: 8px 12px; cursor: pointer;
+}
+.hud .mbtn:hover:not(:disabled) { border-color: var(--iso-accent); }
+.hud .mbtn[aria-pressed="true"] { background: var(--iso-accent); color: var(--iso-on-accent); border-color: var(--iso-accent); }
+.hud .mbtn:disabled { opacity: .5; cursor: default; }
+.hud .mnote.mok { color: var(--iso-ok); font-weight: 700; }
+/* 許可鍵の登録の段階（番号つき）。いまの段だけ濃く・済んだ段は淡く */
+.hud .msteps {
+  margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px;
+  font-size: var(--hud-font-body); line-height: 1.45; color: var(--iso-ink-soft);
+}
+.hud .msteps li.now { color: var(--iso-ink); font-weight: 700; }
+.hud .msteps li.done { opacity: .6; }
 .hud .mres { border-top: 1px solid var(--iso-hairline); padding-top: 8px; }
 
 /* 💳 台帳の編集（⚡リソースモーダル内・R50提案3で旧UIから移植） */
 .hud .mled { border-top: 1px solid var(--iso-hairline); padding-top: 8px;
   display: flex; flex-direction: column; gap: 8px; }
 .hud .mledlist { display: flex; flex-direction: column; gap: 4px; }
-.hud .mledrow { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
+.hud .mledrow { display: flex; align-items: center; gap: 8px; font-size: var(--hud-font-body); }
 .hud .mledrow .mledname { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.hud .mledrow b { flex: none; font-size: 12.5px; }
-.hud .mledkind { flex: none; font-size: 11px; font-style: normal; color: var(--iso-ink-soft); }
+.hud .mledrow b { flex: none; font-size: var(--hud-font-body); }
+.hud .mledkind { flex: none; font-size: var(--hud-font-note); font-style: normal; color: var(--iso-ink-soft); }
 .hud .mledel {
-  flex: none; font: inherit; font-size: 11px; font-weight: 700;
+  flex: none; font: inherit; font-size: var(--hud-font-note); font-weight: 700;
   background: transparent; color: var(--iso-alert); border: 1px solid var(--iso-alert);
-  border-radius: 10px; padding: 4px 8px; cursor: pointer;
+  border-radius: var(--hud-radius-field); padding: 4px 8px; cursor: pointer;
 }
 .hud .mledel:hover { background: var(--iso-alert-chip); }
 .hud .mledel:disabled { opacity: .5; cursor: wait; }
 .hud .mledform { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .hud .mledin {
-  font: inherit; font-size: 12.5px; padding: 8px 8px;
-  border: 1px solid var(--iso-hairline); border-radius: 10px; background: var(--iso-glass-solid);
+  font: inherit; font-size: var(--hud-font-body); padding: 8px 8px;
+  border: 1px solid var(--iso-hairline); border-radius: var(--hud-radius-field); background: var(--iso-glass-solid);
 }
 .hud .mledname-in { flex: 1 1 100%; }
 .hud .mledamt { width: 7em; }
 .hud .mledrenew { width: 7.5em; }
 .hud .mledform .mgo { width: auto; padding: 8px 16px; margin: 0; }
 .hud .mreshead { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
-.hud .mreshead b { font-size: 12.5px; }
-.hud .mressub { font-size: 11px; color: var(--iso-ink-soft); text-align: right; }
+.hud .mreshead b { font-size: var(--hud-font-body); }
+.hud .mressub { font-size: var(--hud-font-note); color: var(--iso-ink-soft); text-align: right; }
 .hud .mtextarea {
-  font: inherit; font-size: 11px; font-family: inherit;
-  color: var(--iso-ink); border: 1px solid var(--iso-hairline); border-radius: 10px;
+  font: inherit; font-size: var(--hud-font-note); font-family: inherit;
+  color: var(--iso-ink); border: 1px solid var(--iso-hairline); border-radius: var(--hud-radius-field);
   padding: 8px 12px; outline: none; background: var(--iso-glass-solid); resize: vertical;
 }
 .hud .mtextarea:focus { border-color: var(--iso-accent); }
 .hud .mpick {
   display: flex; align-items: center; gap: 8px; text-align: left;
-  font: inherit; font-size: 12.5px; color: var(--iso-ink);
+  font: inherit; font-size: var(--hud-font-body); color: var(--iso-ink);
   background: var(--iso-glass-solid); border: 1px solid var(--iso-hairline);
-  border-radius: 10px; padding: 8px 12px; cursor: pointer;
+  border-radius: var(--hud-radius-field); padding: 8px 12px; cursor: pointer;
 }
 .hud .mpick:hover { background: var(--iso-glass-solid); border-color: var(--iso-accent); }
 .hud .mpick b { flex: none; }
 .hud .mpick span {
   min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  color: var(--iso-ink-soft); font-size: 11px;
+  color: var(--iso-ink-soft); font-size: var(--hud-font-note);
 }
-.hud .sq-ish { width: 8px; height: 8px; border-radius: 10px; flex: none; background: var(--iso-rest); }
+.hud .sq-ish { width: 8px; height: 8px; border-radius: var(--hud-radius-dot); flex: none; background: var(--iso-rest); }
 .hud .sq-ish.st-working { background: var(--iso-ok); }
 .hud .sq-ish.st-waiting { background: var(--iso-warn); }
 .hud .mrevoke {
-  font: inherit; font-size: 11px; font-weight: 700; color: var(--iso-alert);
+  white-space: nowrap;
+  font: inherit; font-size: var(--hud-font-note); font-weight: 700; color: var(--iso-alert);
   background: var(--iso-alert-chip); border: 1px solid var(--iso-alert);
-  border-radius: 10px; padding: 4px 8px; cursor: pointer;
+  border-radius: var(--hud-radius-field); padding: 4px 8px; cursor: pointer;
 }
+/* R128 #4: ⚙ の Bot の節（ui/hud/bots.js）。行は端末の一覧（.mdev）と同じ段＋登録コマンドの 1 行。色は既存の --iso-* だけ
+   （新しい色・左の帯・影は無い＝罫と地の明度差だけ）。cockpit 以外は節の上に罫（cockpit は ┤ Bot ├ の群が罫を持つ） */
+.hud .mbots { display: flex; flex-direction: column; gap: 8px; }
+.hud .mbots.mbots-sep { border-top: 1px solid var(--iso-hairline); padding-top: 12px; }
+.hud .mbotnotes { display: flex; flex-direction: column; gap: 4px; }
+.hud .mbotnotes:empty { display: none; }
+.hud .mbotcmd {
+  display: block; margin: 0; padding: 6px 8px;
+  font-family: var(--t-mono, ui-monospace, Menlo, monospace); font-size: var(--hud-font-note); line-height: 1.45;
+  color: var(--iso-ink); background: var(--iso-bg); border: 1px solid var(--iso-hairline);
+  border-radius: var(--hud-radius-field); overflow-wrap: anywhere; user-select: all;
+}
+.hud .mbotcmd[hidden] { display: none; }
+.hud .mbotremove { white-space: normal; text-align: left; }      /* 2 回押しの長い文（en）で行の幅をはみ出さない */
+.hud .mbotform { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.hud .mbotform .minput { flex: 1 1 9em; min-width: 0; }
+.hud .mbotform .mgo { flex: none; width: auto; padding: 8px 16px; margin: 0; }
+.hud .mboterr[hidden] { display: none; }
 
 /* ── 中央 ────────────────────────────────────────────────────── */
 .hud .main {
@@ -342,8 +432,8 @@
   display: flex; align-items: center; gap: 8px; min-width: 0; height: auto; min-height: 40px;
   flex: none; padding: 4px 0; white-space: nowrap;
 }
-.hud .head h1 { font-size: 18px; font-weight: 800; letter-spacing: .01em; margin: 0; }
-.hud .head .sub { flex: none; font-size: 12.5px; color: var(--iso-ink); margin: 0; }
+.hud .head h1 { font-size: var(--hud-font-title); font-weight: 800; letter-spacing: .01em; margin: 0; }
+.hud .head .sub { flex: none; font-size: var(--hud-font-body); color: var(--iso-ink); margin: 0; }
 
 .hud .stage {
   flex: 1; min-height: 0; position: relative; overflow: hidden;
@@ -360,8 +450,8 @@
 .hud .island-label {
   position: absolute; transform: translate(-50%, -50%); max-width: 108px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  padding: 2px 5px; border-radius: 2px; background: #ead6b5e8;
-  color: #4c3c29; font: 600 9px/1.25 var(--font-ui, sans-serif);
+  padding: 2px 5px; border-radius: var(--hud-radius-label); background: #ead6b5e8;
+  color: #4c3c29; font: 600 var(--hud-font-island)/1.25 var(--font-ui, sans-serif);
   pointer-events: none;
 }
 
@@ -379,11 +469,11 @@
 .hud .donutwrap svg { width: 96px; height: 96px; display: block; }
 .hud .donutmid {
   position: absolute; inset: 0; display: grid; place-items: center;
-  font-size: 24px; font-weight: 800; color: var(--iso-ink);
+  font-size: var(--hud-font-total); font-weight: 800; color: var(--iso-ink);
 }
 .hud .legend { display: flex; flex-direction: column; gap: 8px; align-self: center; }
-.hud .lrow { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
-.hud .lrow .ldot { width: 9px; height: 9px; border-radius: 10px; flex: none; }
+.hud .lrow { display: flex; align-items: center; gap: 8px; font-size: var(--hud-font-body); }
+.hud .lrow .ldot { width: 9px; height: 9px; border-radius: var(--hud-radius-dot); flex: none; }
 .hud .lrow span { flex: 1; color: var(--iso-ink-soft); }
 .hud .lrow b { font-weight: 800; }
 
@@ -394,12 +484,12 @@
   -webkit-backdrop-filter: none; backdrop-filter: none;
 }
 .hud .side .donutwrap, .hud .side .donutwrap svg { width: 80px; height: 80px; }
-.hud .side .donutmid { font-size: 20px; }
+.hud .side .donutmid { font-size: var(--hud-font-donut); }
 .hud .donutwrap[hidden], .hud .legend[hidden], .hud .todaycard[hidden] { display: none; }
 
 .hud .hist { display: flex; flex-direction: column; gap: 8px; }
 .hud .hrow {
-  display: flex; align-items: baseline; gap: 8px; font-size: 12.5px;
+  display: flex; align-items: baseline; gap: 8px; font-size: var(--hud-font-body);
   border-bottom: 1px solid var(--iso-hairline); padding-bottom: 8px;
 }
 .hud .hrow:last-child { border-bottom: 0; padding-bottom: 0; }
@@ -409,29 +499,29 @@
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .hud .hrow .hp {
-  flex: none; font-style: normal; font-size: 11px; font-weight: 800;
-  border-radius: 10px; padding: 4px 8px;
+  flex: none; font-style: normal; font-size: var(--hud-font-note); font-weight: 800;
+  border-radius: var(--hud-radius-field); padding: 4px 8px;
 }
 .hud .hrow .hp.dstate-live { background: var(--iso-accent-chip); color: var(--iso-accent); }
 .hud .hrow .hp.dstate-pending { background: var(--iso-warn-chip); color: var(--iso-warn); }
-.hud .hempty { font-size: 12.5px; color: var(--iso-ink-soft); }
-.hud .hrow .hago { font-size: 11px; font-style: normal; color: var(--iso-ink-soft); flex: none; }
-.hud .aage { font-size: 11px; font-style: normal; color: var(--iso-ink-soft); }
+.hud .hempty { font-size: var(--hud-font-body); color: var(--iso-ink-soft); }
+.hud .hrow .hago { font-size: var(--hud-font-note); font-style: normal; color: var(--iso-ink-soft); flex: none; }
+.hud .aage { font-size: var(--hud-font-note); font-style: normal; color: var(--iso-ink-soft); }
 .hud .hresend.arm {
-  width: auto; padding: 0 8px; font-size: 11px; font-weight: 800;
+  width: auto; padding: 0 8px; font-size: var(--hud-font-note); font-weight: 800;
   background: var(--iso-accent-chip); color: var(--iso-accent);
 }
 .hud .hresend {
-  flex: none; font: inherit; font-size: 12.5px; color: var(--iso-accent);
+  flex: none; font: inherit; font-size: var(--hud-font-body); color: var(--iso-accent);
   background: transparent; border: 1px solid var(--iso-accent);
-  border-radius: 10px; padding: 4px 8px; cursor: pointer;
+  border-radius: var(--hud-radius-field); padding: 4px 8px; cursor: pointer;
 }
 .hud .hresend:hover { background: var(--iso-accent-chip); }
 /* エージェント行のタスク進捗ゲージ（動きが見える化＝ユーザーFB） */
 .hud .aprog { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
-.hud .abar { flex: 1; height: 5px; border-radius: 10px; background: var(--iso-accent-chip); overflow: hidden; }
-.hud .afill { display: block; height: 100%; border-radius: 10px; background: var(--iso-accent); }
-.hud .apct { font-size: 11px; font-weight: 800; color: var(--iso-ink-soft); }
+.hud .abar { flex: 1; height: 5px; border-radius: var(--hud-radius-field); background: var(--iso-accent-chip); overflow: hidden; }
+.hud .afill { display: block; height: 100%; border-radius: var(--hud-radius-field); background: var(--iso-accent); }
+.hud .apct { font-size: var(--hud-font-note); font-weight: 800; color: var(--iso-ink-soft); }
 
 /* ── 右の部署ボード ─────────────────────────────────────────────────── */
 .hud .rail {
@@ -441,11 +531,11 @@
 .hud .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .hud .tile {
   background: var(--iso-glass-solid); border: 1px solid var(--iso-hairline);
-  border-radius: 10px; padding: 12px 12px;
+  border-radius: var(--hud-radius-field); padding: 12px 12px;
   display: flex; flex-direction: column; gap: 4px;
 }
-.hud .tile b { font-size: 18px; font-weight: 800; line-height: 1.45; }
-.hud .tile span { font-size: 11px; color: var(--iso-ink-soft); }
+.hud .tile b { font-size: var(--hud-font-title); font-weight: 800; line-height: 1.45; }
+.hud .tile span { font-size: var(--hud-font-note); color: var(--iso-ink-soft); }
 .hud .tile.t-meet b { color: var(--iso-accent); }
 .hud .tile.t-attn b { color: var(--iso-alert); }
 .hud .tile.t-done b { color: var(--iso-accent); }
@@ -454,7 +544,7 @@
 .hud .agents { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
 .hud .arow {
   background: var(--iso-glass-solid); border: 1px solid var(--iso-hairline);
-  border-radius: 10px; padding: 8px 12px; cursor: pointer;
+  border-radius: var(--hud-radius-field); padding: 8px 12px; cursor: pointer;
 }
 .hud .arow:hover { background: var(--iso-glass-solid); }
 .hud .arow.sel { outline: 2px solid var(--iso-accent); outline-offset: -1px; }
@@ -463,35 +553,35 @@
 .hud .crewlist { display: flex; flex-direction: column; gap: 4px; }
 .hud .crewrow {
   display: flex; align-items: center; gap: 8px; text-align: left;
-  font: inherit; font-size: 11px; padding: 4px 8px; cursor: pointer;
+  font: inherit; font-size: var(--hud-font-note); padding: 4px 8px; cursor: pointer;
   background: var(--iso-glass-solid); border: 1px solid var(--iso-hairline);
-  border-radius: 10px;
+  border-radius: var(--hud-radius-field);
 }
 .hud .crewrow:hover { background: var(--iso-glass-solid); }
 .hud .crewrow.sel { outline: 2px solid var(--iso-accent); outline-offset: -1px; }
 .hud .crewrow span:first-child { flex: 1; }
-.hud .crewage { flex: none; font-size: 11px; color: var(--iso-ink-soft); }
-.hud .crewmark { flex: none; font-size: 11px; }
+.hud .crewage { flex: none; font-size: var(--hud-font-note); color: var(--iso-ink-soft); }
+.hud .crewmark { flex: none; font-size: var(--hud-font-note); }
 .hud .sheettarget {
-  margin: 0; font-size: 11px; font-weight: 700; color: var(--iso-accent);
+  margin: 0; font-size: var(--hud-font-note); font-weight: 700; color: var(--iso-accent);
 }
 .hud .sheettarget[hidden] { display: none; }
 .hud .arowhead { display: flex; align-items: center; gap: 8px; }
-.hud .adot { width: 8px; height: 8px; border-radius: 10px; flex: none; background: var(--iso-rest); }
+.hud .adot { width: 8px; height: 8px; border-radius: var(--hud-radius-dot); flex: none; background: var(--iso-rest); }
 .hud .arow.st-working .adot { background: var(--iso-ok); }
 .hud .arow.st-waiting .adot { background: var(--iso-warn); }
 .hud .arow.zone-queue .adot { background: var(--iso-alert); }
 .hud .arow.zone-external .adot { background: var(--iso-accent-2); }
 .hud .aname {
-  font-size: 12.5px; font-weight: 800; min-width: 0;
+  font-size: var(--hud-font-body); font-weight: 800; min-width: 0;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .hud .acrew {
-  flex: none; margin-left: auto; font-size: 11px; font-weight: 800;
-  background: var(--iso-accent); color: var(--iso-on-accent); border-radius: 10px; padding: 4px 8px;
+  flex: none; margin-left: auto; font-size: var(--hud-font-note); font-weight: 800;
+  background: var(--iso-accent); color: var(--iso-on-accent); border-radius: var(--hud-radius-field); padding: 4px 8px;
 }
 .hud .aact {
-  margin-top: 4px; font-size: 11px; color: var(--iso-ink-soft);
+  margin-top: 4px; font-size: var(--hud-font-note); color: var(--iso-ink-soft);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .hud .arow.zone-queue .aact { color: var(--iso-alert); font-weight: 700; }
@@ -501,19 +591,19 @@
   position: absolute; transform: translateX(-50%);
   display: flex; align-items: center; gap: 4px;
   background: var(--iso-glass-solid);
-  border: 1px solid var(--iso-hairline); border-radius: 10px;
+  border: 1px solid var(--iso-hairline); border-radius: var(--hud-radius-field);
   padding: 4px 8px; white-space: nowrap;
   box-shadow: var(--iso-shadow);
   pointer-events: auto; cursor: pointer;
 }
 .hud .lbl:hover { background: var(--iso-glass-solid); }
-.hud .lbl b { font-size: 11px; font-weight: 700; color: var(--iso-ink); max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
+.hud .lbl b { font-size: var(--hud-font-note); font-weight: 700; color: var(--iso-ink); max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
 /* R80-A17: 足元チップの先頭をスマホと同じモノグラム（1文字＋状態リング）にする。
    Mac↔スマホで同じ記号を使うことで「チップのE＝あのロボ」の対応が両画面で通じる。 */
 .hud .lbl .mono {
-  width: 20px; height: 20px; border-radius: 10px; flex: none;
+  width: 20px; height: 20px; border-radius: var(--hud-radius-dot); flex: none;
   display: inline-flex; align-items: center; justify-content: center;
-  font-style: normal; font-size: 11px; font-weight: 800; line-height: 1.45;
+  font-style: normal; font-size: var(--hud-font-note); font-weight: 800; line-height: 1.45;
   color: var(--iso-ink); background: var(--iso-glass-solid);
   border: 1px solid var(--iso-rest); box-sizing: border-box;
 }
@@ -541,21 +631,21 @@
   /* R80-A5: ❗は --iso-alert に一本化（旧: こげ茶ソリッドだけがガラスUIから浮いていた） */
   background: var(--iso-alert-chip); color: var(--iso-ink);
   border: 1px solid var(--iso-alert);
-  border-radius: 10px; padding: 8px 16px;
+  border-radius: var(--hud-radius-field); padding: 8px 16px;
   box-shadow: var(--iso-shadow);
 }
 #attn.tray[hidden] { display: none; }
-#attn.tray b { font-size: 12.5px; font-weight: 800; color: var(--iso-alert); }
-#attn.tray span { font-size: 12.5px; flex: 1; min-width: 8em; overflow: hidden; text-overflow: ellipsis; }
+#attn.tray b { font-size: var(--hud-font-body); font-weight: 800; color: var(--iso-alert); }
+#attn.tray span { font-size: var(--hud-font-body); flex: 1; min-width: 8em; overflow: hidden; text-overflow: ellipsis; }
 #attn.tray b, #attn.tray .kbd, #attn.tray .trayans { flex: none; }
 #attn.tray .kbd {
-  font: inherit; font-size: 11px; font-weight: 700;
+  font: inherit; font-size: var(--hud-font-note); font-weight: 700;
   background: var(--iso-glass-solid); color: var(--iso-ink);
-  border-radius: 10px; padding: 4px 8px; border: 1px solid var(--iso-line); cursor: pointer;
+  border-radius: var(--hud-radius-field); padding: 4px 8px; border: 1px solid var(--iso-line); cursor: pointer;
 }
 #attn.tray .kbd:hover { background: var(--iso-glass-solid); }
 #attn.tray .kbd:active { transform: translateY(1px); }
-#attn.tray .trayans { font-size: 12.5px; font-style: normal; color: var(--iso-alert); font-weight: 700; }
+#attn.tray .trayans { font-size: var(--hud-font-body); font-style: normal; color: var(--iso-alert); font-weight: 700; }
 /* R80-A5: 旧こげ茶トレイ用の淡いクリーム色は、ガラス化した明るい帯の上では読めない
    （実レンダで確認）。❗の意味色でコントラストを取る。 */
 #attn.tray .traynext { background: var(--iso-glass-solid); color: var(--iso-ink);
@@ -563,7 +653,7 @@
 #attn.tray .traynext:hover { background: var(--iso-glass-solid); border-color: var(--iso-alert); }
 
 /* 📨 投函済み・未配達チップ（エージェント行） */
-.hud .apend { font-size: 11px; opacity: .9; }
+.hud .apend { font-size: var(--hud-font-note); opacity: .9; }
 
 /* ── エージェント詳細シート（行/チップのタップが操作の基点・永続DOM） ── */
 .hud .sheet {
@@ -579,7 +669,7 @@
   background: var(--iso-glass-solid);
   border: 1px solid var(--iso-hairline);
 
-  border-radius: 14px; padding: 16px;
+  border-radius: var(--hud-radius-panel); padding: 16px;
   box-shadow: var(--iso-shadow);
 }
 .hud .sheet.show { opacity: 1; transform: none; }
@@ -587,15 +677,15 @@
 .hud .sheetwide.on { color: var(--iso-accent); }
 .hud .sheet[hidden] { display: none; }
 .hud .sheethead { display: flex; align-items: center; justify-content: space-between; }
-.hud .sheethead b { font-size: 14px; font-weight: 800; }
+.hud .sheethead b { font-size: var(--hud-font-heading); font-weight: 800; }
 .hud .sheettools { display: flex; gap: 4px; }
-.hud .sheetsnd { font: inherit; font-size: 12.5px; background: transparent; border: 0; cursor: pointer; padding: 4px; }
-.hud .sheetterm { font: inherit; font-size: 12.5px; background: transparent; border: 0; cursor: pointer; padding: 4px; }
+.hud .sheetsnd { font: inherit; font-size: var(--hud-font-body); background: transparent; border: 0; cursor: pointer; padding: 4px; }
+.hud .sheetterm { font: inherit; font-size: var(--hud-font-body); background: transparent; border: 0; cursor: pointer; padding: 4px; }
 .hud .sheetclose {
-  font: inherit; font-size: 12.5px; color: var(--iso-ink-soft);
+  font: inherit; font-size: var(--hud-font-body); color: var(--iso-ink-soft);
   background: transparent; border: 0; cursor: pointer; padding: 4px;
 }
-.hud .sheetact { font-size: 12.5px; color: var(--iso-ink-soft); margin: 0; }
+.hud .sheetact { font-size: var(--hud-font-body); color: var(--iso-ink-soft); margin: 0; }
 /* R86-C: overflow-y:auto は overflow-x を visible→auto へ格上げする（CSS Overflow仕様）。
    放置すると本文がはみ出した瞬間に**横スクロールコンテナ**になり、トラックパッドの横スワイプで
    シートの中身が丸ごと横滑りする（実測352px＝ユーザーFB「クリックしたら幅が崩れる」の正体）。
@@ -614,21 +704,21 @@
 .hud .sheetq {
   background: var(--iso-alert-chip); color: var(--iso-ink);
   border: 1px solid var(--iso-alert);
-  border-radius: 10px; padding: 8px 12px;
+  border-radius: var(--hud-radius-field); padding: 8px 12px;
   display: flex; flex-direction: column; gap: 8px;
 }
-.hud .sheetq b { font-size: 12.5px; color: var(--iso-alert); }
+.hud .sheetq b { font-size: var(--hud-font-body); color: var(--iso-alert); }
 .hud .sheetopt {
-  font: inherit; font-size: 12.5px; font-weight: 700; text-align: left;
+  font: inherit; font-size: var(--hud-font-body); font-weight: 700; text-align: left;
   background: var(--iso-glass-solid); color: var(--iso-ink);
   border: 1px solid var(--iso-line);
-  border-radius: 10px; padding: 8px 8px; cursor: pointer;
+  border-radius: var(--hud-radius-field); padding: 8px 8px; cursor: pointer;
 }
 .hud .sheetopt:hover { background: var(--iso-glass-solid); }
-.hud .devmeta { color: var(--iso-ink-soft); font-size: 11px; margin-left: 8px; }
+.hud .devmeta { color: var(--iso-ink-soft); font-size: var(--hud-font-note); margin-left: 8px; }
 /* R86-H: 「いま実際に聞かれている」事実（推測の❗と区別できるように控えめな地の文で） */
 .hud .askfact {
-  font-size: 11px; line-height: 1.45; color: var(--iso-ink); opacity: .92;
+  font-size: var(--hud-font-note); line-height: 1.45; color: var(--iso-ink); opacity: .92;
   overflow-wrap: break-word; word-break: break-word;
 }
 /* 実行の許可は意味色（--iso-ok=承認）。文章の返信ボタンと取り違えないようにする */
@@ -636,33 +726,33 @@
   background: var(--iso-ok); color: var(--iso-glass-solid); border-color: transparent;
 }
 .hud .sheetopt.allowbtn:hover { background: var(--iso-ok); filter: brightness(1.06); }
-.hud .sheetsub { font-size: 11px; font-weight: 800; color: var(--iso-ink-soft); margin-top: 4px; }
-.hud .sheetline { font-size: 11px; color: var(--iso-ink); line-height: 1.45; }
+.hud .sheetsub { font-size: var(--hud-font-note); font-weight: 800; color: var(--iso-ink-soft); margin-top: 4px; }
+.hud .sheetline { font-size: var(--hud-font-note); color: var(--iso-ink); line-height: 1.45; }
 .hud .sheetline.feed { color: var(--iso-ink-soft); }
 
 /* R54-D: シート本文のグループカード（ラベル列＋内容列の整列・hairline枠のみ） */
 .hud .sheetsec {
-  border: 1px solid var(--iso-hairline); border-radius: 10px;
+  border: 1px solid var(--iso-hairline); border-radius: var(--hud-radius-field);
   background: var(--iso-glass-solid); padding: 8px 8px;
   display: flex; flex-direction: column; gap: 8px;
 }
 .hud .sheetsec-head {
   display: flex; align-items: center; gap: 8px;
-  font-size: 11px; font-weight: 800; letter-spacing: .04em; color: var(--iso-ink-soft);
+  font-size: var(--hud-font-note); font-weight: 800; letter-spacing: .04em; color: var(--iso-ink-soft);
 }
 .hud .seccount {
-  font-style: normal; font-size: 11px; font-weight: 800; color: var(--iso-ink-soft);
-  background: var(--iso-accent-chip); border-radius: 10px; padding: 4px 8px;
+  font-style: normal; font-size: var(--hud-font-note); font-weight: 800; color: var(--iso-ink-soft);
+  background: var(--iso-accent-chip); border-radius: var(--hud-radius-field); padding: 4px 8px;
 }
 .hud .workgrid {
   display: grid; grid-template-columns: 44px minmax(0, 1fr);
   column-gap: 8px; row-gap: 4px; align-items: baseline;
 }
 .hud .workgrid .wl {
-  font-style: normal; font-size: 11px; font-weight: 800;
+  font-style: normal; font-size: var(--hud-font-note); font-weight: 800;
   color: var(--iso-ink-soft); white-space: nowrap;
 }
-.hud .workgrid .wv { font-size: 11px; line-height: 1.45; color: var(--iso-ink); }
+.hud .workgrid .wv { font-size: var(--hud-font-note); line-height: 1.45; color: var(--iso-ink); }
 .hud .workgrid .wv.strong { font-weight: 800; }
 .hud .feedlist {
   max-height: 132px; overflow-y: auto;
@@ -679,8 +769,8 @@
   max-height: 32vh; overflow-y: auto; overflow-x: hidden; padding: 4px;
 }
 .hud .dlgmsg {
-  max-width: 88%; padding: 8px 8px; border-radius: 10px;
-  font-size: 11px; line-height: 1.45; white-space: pre-wrap; word-break: break-word;
+  max-width: 88%; padding: 8px 8px; border-radius: var(--hud-radius-field);
+  font-size: var(--hud-font-note); line-height: 1.45; white-space: pre-wrap; word-break: break-word;
 }
 .hud .dlgmsg.user {
   align-self: flex-end; color: var(--iso-ink);
@@ -690,21 +780,21 @@
   align-self: flex-start; color: var(--iso-ink);
   background: var(--iso-glass-solid); border: 1px solid var(--iso-hairline);
 }
-.hud .dlgnote { font-size: 11px; color: var(--iso-ink-soft); padding: 4px 4px; }
+.hud .dlgnote { font-size: var(--hud-font-note); color: var(--iso-ink-soft); padding: 4px 4px; }
 /* R86-D: 受信待機が切れている相手への但し書き（嘘をつかない・でも送信は止めない） */
 .hud .dlgnote.listenoff {
   background: var(--iso-warn-chip); border: 1px solid var(--iso-warn);
-  border-radius: 10px; padding: 8px 8px; line-height: 1.45; color: var(--iso-ink);
+  border-radius: var(--hud-radius-field); padding: 8px 8px; line-height: 1.45; color: var(--iso-ink);
   overflow-wrap: break-word;
 }
-.hud .arow .amute { font-size: 11px; opacity: .85; }
+.hud .arow .amute { font-size: var(--hud-font-note); opacity: .85; }
 .hud .arow .amute[hidden] { display: none; }
 /* R86-C: 「もっと見る」「全画面」は**見出し行**に置く（リスト内だと最新へのピン留めで
    可視域の外へ流れて一生押せない＝実測 -706px）。margin-left:auto で右寄せ。 */
 .hud .dlgmore, .hud .dlgexpand {
-  flex: none; font: inherit; font-size: 11px; font-weight: 800; letter-spacing: 0;
+  flex: none; font: inherit; font-size: var(--hud-font-note); font-weight: 800; letter-spacing: 0;
   color: var(--iso-accent); background: var(--iso-accent-chip);
-  border: 1px solid var(--iso-accent); border-radius: 10px;
+  border: 1px solid var(--iso-accent); border-radius: var(--hud-radius-field);
   padding: 4px 8px; cursor: pointer; white-space: nowrap;
 }
 .hud .dlgexpand { margin-left: auto; }
@@ -717,7 +807,7 @@
 .hud .dlgmore:hover, .hud .dlgexpand:hover { background: var(--iso-accent-chip); }
 .hud .dlgmore:disabled { opacity: .55; cursor: default; }
 .hud .dlgend {
-  margin-left: auto; font-style: normal; font-size: 11px; font-weight: 700;
+  margin-left: auto; font-style: normal; font-size: var(--hud-font-note); font-weight: 700;
   color: var(--iso-ink-soft); white-space: nowrap;
 }
 /* ⤢全画面で読む（モーダル再利用） */
@@ -725,7 +815,7 @@
   display: flex; flex-direction: column; gap: 8px;
   max-height: 68vh; overflow-y: auto; overflow-x: hidden; padding: 4px;
 }
-.hud .dlgfull .dlgmsg { max-width: 80%; font-size: 12.5px; }
+.hud .dlgfull .dlgmsg { max-width: 80%; font-size: var(--hud-font-body); }
 
 /* R54-E: 定型ボード（compose直上に常設＝本文がスクロールしても動かない返信の一箇所） */
 /* R86-C: ❗回答ボタン＋QUICK4種＋ユーザー定型が積み上がると **283px** を占め、
@@ -735,36 +825,36 @@
 .hud .quickdock { flex: 0 1 auto; min-height: 92px; max-height: 40%; overflow-y: auto; overflow-x: hidden; }
 .hud .quickdock:empty { display: none; }
 .hud .quickboard {
-  border: 1px solid var(--iso-accent); border-radius: 10px;
+  border: 1px solid var(--iso-accent); border-radius: var(--hud-radius-field);
   background: var(--iso-glass); padding: 8px 8px;
   display: flex; flex-direction: column; gap: 8px;
 }
 .hud .qb-head {
-  font-size: 11px; font-weight: 800; letter-spacing: .04em; color: var(--iso-accent);
+  font-size: var(--hud-font-note); font-weight: 800; letter-spacing: .04em; color: var(--iso-accent);
 }
 .hud .qb-answers { display: flex; flex-direction: column; gap: 4px; }
 .hud .qb-answers .sheetopt { min-height: 34px; }
 .hud .sheetquick { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .hud .qchip {
   display: flex; align-items: center; gap: 8px; min-height: 36px;
-  font: inherit; font-size: 11px; font-weight: 700; text-align: left;
+  font: inherit; font-size: var(--hud-font-note); font-weight: 700; text-align: left;
   background: var(--iso-glass-solid); color: var(--iso-accent);
-  border: 1px solid var(--iso-accent); border-radius: 10px;
+  border: 1px solid var(--iso-accent); border-radius: var(--hud-radius-field);
   padding: 4px 8px; cursor: pointer; overflow: hidden;
 }
 .hud .qchip:hover {
   background: var(--iso-glass-solid); border-color: var(--iso-accent);
   box-shadow: var(--iso-shadow);
 }
-.hud .qchip .qicon { font-style: normal; font-size: 12.5px; flex: none; }
+.hud .qchip .qicon { font-style: normal; font-size: var(--hud-font-body); flex: none; }
 .hud .qchip span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hud .compose {
   display: flex; align-items: center;
   border-top: 1px solid var(--iso-hairline); padding-top: 8px;
 }
 .hud .compose input {
-  flex: 1; min-width: 0; font: inherit; font-size: 12.5px; color: var(--iso-ink);
-  background: var(--iso-glass-solid); border: 1px solid var(--iso-hairline); border-radius: 10px;
+  flex: 1; min-width: 0; font: inherit; font-size: var(--hud-font-body); color: var(--iso-ink);
+  background: var(--iso-glass-solid); border: 1px solid var(--iso-hairline); border-radius: var(--hud-radius-field);
   padding: 8px 12px; outline: none;
 }
 .hud .compose input:focus { border-color: var(--iso-accent); }
@@ -777,8 +867,8 @@
   z-index: 8; display: flex; flex-direction: column; gap: 8px; align-items: center;
 }
 .hud .toast .tmsg {
-  font-size: 12.5px; font-weight: 700; color: var(--iso-on-accent);
-  background: var(--iso-accent); border-radius: 10px; padding: 8px 16px;
+  font-size: var(--hud-font-body); font-weight: 700; color: var(--iso-on-accent);
+  background: var(--iso-accent); border-radius: var(--hud-radius-field); padding: 8px 16px;
   box-shadow: var(--iso-shadow); white-space: nowrap;
   opacity: 0; transform: translateY(6px);
   transition: opacity 120ms ease-out, transform 120ms ease-out;
@@ -789,61 +879,96 @@
 
 /* R54-F: 🔑 アカウント連携（⚡モーダル内・旧UIの連携設定を移植） */
 .hud .mkeys { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
-/* R66: 方式別グループ（🅰自動/🅱APIキー）＝「どう繋ぐか」を構造で見せる */
+/* R103-5b: 自動・AI サービス・その他の鍵を、見出しと間隔で分ける */
+.hud .mkeys { --mkey-fail: #bb4838; }
 .hud .mkeygrp { display: flex; flex-direction: column; gap: 8px; }
 .hud .mkeygrp + .mkeygrp { margin-top: 8px; }
-.hud .mkeygrph { font-size: 11px; font-weight: 800; color: var(--iso-ink); }
-.hud .mkeygrpsub { margin: 0; font-size: 11px; color: var(--iso-ink-soft); line-height: 1.45; }
+.hud .mkeygrph { font-size: var(--hud-font-note); font-weight: 800; color: var(--iso-ink); }
+.hud .mkeygrpsub { margin: 0; font-size: var(--hud-font-note); color: var(--iso-ink-soft); line-height: 1.45; }
 .hud .mkeyauto {
-  font-size: 11px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase;
+  font-size: var(--hud-font-note); font-weight: 800; letter-spacing: .04em; text-transform: uppercase;
   color: var(--iso-ok); background: var(--iso-accent-chip);
-  border-radius: 10px; padding: 4px 8px; white-space: nowrap;
+  border-radius: var(--hud-radius-field); padding: 4px 8px; white-space: nowrap;
 }
 .hud .mkeymask {
-  font-style: normal; font-size: 11px; color: var(--iso-ink-soft);
+  font-style: normal; font-size: var(--hud-font-note); color: var(--iso-ink-soft);
   font-family: inherit;
 }
 .hud .mkeyrow {
   display: flex; flex-direction: column; gap: 4px;
-  border: 1px solid var(--iso-hairline); border-radius: 10px;
+  border: 1px solid var(--iso-hairline); border-radius: var(--hud-radius-field);
   background: var(--iso-glass-solid); padding: 8px 8px;
 }
 .hud .mkeyhead { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .hud .mkeyhead .mkeybtn { margin-left: auto; }
 .hud .mkeydot {
-  width: 8px; height: 8px; border-radius: 10px; flex: none;
+  width: 8px; height: 8px; border-radius: var(--hud-radius-dot); flex: none;
   background: var(--iso-rest); font-style: normal;
 }
 .hud .mkeydot.on { background: var(--iso-ok); }
-.hud .mkeyname { font-size: 12.5px; font-weight: 700; color: var(--iso-ink); }
+.hud .mkeydot.fail { background: var(--mkey-fail); }
+.hud .mkeyname { font-size: var(--hud-font-body); font-weight: 700; color: var(--iso-ink); }
 .hud .mkeyhint {
-  font-style: normal; font-size: 11px; color: var(--iso-ink-soft);
+  font-style: normal; font-size: var(--hud-font-note); color: var(--iso-ink-soft);
   padding-left: 16px; line-height: 1.45;   /* R66: ガイドは2行目（ドット分だけ字下げ） */
 }
 .hud .mkeybtn {
-  font: inherit; font-size: 11px; font-weight: 700; color: var(--iso-accent);
+  font: inherit; font-size: var(--hud-font-note); font-weight: 700; color: var(--iso-accent);
   background: var(--iso-accent-chip); border: 1px solid var(--iso-accent);
-  border-radius: 10px; padding: 4px 8px; cursor: pointer;
+  border-radius: var(--hud-radius-field); padding: 4px 8px; cursor: pointer;
 }
 .hud .mkeybtn:hover { background: var(--iso-accent-chip); }
 .hud .mkeyrevoke {
-  font: inherit; font-size: 11px; color: var(--iso-alert); background: transparent;
+  font: inherit; font-size: var(--hud-font-note); color: var(--iso-alert); background: transparent;
   border: 0; cursor: pointer; padding: 4px 4px; text-decoration: underline;
   text-underline-offset: 2px; white-space: nowrap;
 }
 .hud .mkeyrevoke:disabled { opacity: .5; cursor: default; }
 .hud .mkeyform { display: flex; gap: 8px; width: 100%; }
 .hud .mkeyin {
-  flex: 1; min-width: 0; font: inherit; font-size: 12.5px;
-  border: 1px solid var(--iso-hairline); border-radius: 10px; padding: 8px 8px;
+  flex: 1; min-width: 0; font: inherit; font-size: var(--hud-font-body);
+  border: 1px solid var(--iso-hairline); border-radius: var(--hud-radius-field); padding: 8px 8px;
 }
 .hud .mkeyin:focus { border-color: var(--iso-accent); outline: none; }
 .hud .mkeysave {
-  font: inherit; font-size: 11px; font-weight: 700; color: var(--iso-on-accent);
-  background: var(--iso-accent); border: 0; border-radius: 10px;
+  font: inherit; font-size: var(--hud-font-note); font-weight: 700; color: var(--iso-on-accent);
+  background: var(--iso-accent); border: 0; border-radius: var(--hud-radius-field);
   padding: 8px 12px; cursor: pointer;
 }
 .hud .mkeysave:disabled { opacity: .5; }
+.hud .mkeyadd { align-self: flex-start; }
+.hud .mkeybtn:disabled, .hud .mkeychoice:disabled { opacity: .5; cursor: default; }
+.hud .mkeywizard {
+  display: flex; flex-direction: column; gap: 8px; padding: 12px;
+  border: 1px solid var(--iso-hairline); border-radius: var(--hud-radius-step);
+  background: var(--iso-glass-solid);
+}
+.hud .mkeychoices { display: flex; flex-direction: column; gap: 8px; }
+.hud .mkeychoice {
+  display: flex; flex-direction: column; gap: 4px; text-align: left;
+  font: inherit; background: var(--iso-bg); border: 1px solid var(--iso-hairline);
+  border-radius: var(--hud-radius-field); padding: 8px 12px; cursor: pointer;
+}
+.hud .mkeychoice:hover, .hud .mkeychoice:focus-visible { border-color: var(--iso-accent); }
+.hud .mkeywizardform { flex-wrap: wrap; }
+.hud .mkeywizardform .mkeyin { flex-basis: 100%; }
+.hud .mkeyfrom { overflow-wrap: anywhere; }
+.hud .mkeyresult {
+  margin: 0; font-size: var(--hud-font-note); color: var(--iso-ink-soft); line-height: 1.45;
+  overflow-wrap: anywhere; white-space: pre-wrap;
+}
+.hud .mkeyresult.ok { color: var(--iso-ok); }
+.hud .mkeyresult.fail { color: var(--mkey-fail); }
+.hud .mkeynav { display: flex; flex-wrap: wrap; gap: 8px; }
+.hud .mkeyoverride, .hud .mkeyconfirm { display: flex; flex-direction: column; gap: 8px; }
+.hud .mkeyoverride[hidden], .hud .mkeyconfirm[hidden] { display: none; }
+.hud .mkeyforce, .hud .mkeyforceconfirm {
+  align-self: flex-start; font: inherit; font-size: var(--hud-font-note); color: var(--mkey-fail);
+  border: 0; background: transparent; padding: 4px 0; cursor: pointer;
+  text-decoration: underline; text-underline-offset: 2px;
+}
+.hud .mkeyforce:disabled, .hud .mkeyforceconfirm:disabled { opacity: .5; cursor: default; }
+.hud.th-dark .mkeys { --mkey-fail: #ef8d7d; }
 
 /* R54: クレジットゲージはクリックで⚡（連携・台帳）へ */
 .hud .gauges { cursor: default; }
@@ -852,17 +977,17 @@
 .hud .mapis { display: flex; flex-direction: column; gap: 8px; }
 .hud .mapi {
   display: flex; flex-direction: column; gap: 4px;
-  padding: 8px 8px; border: 1px solid var(--iso-hairline); border-radius: 10px;
+  padding: 8px 8px; border: 1px solid var(--iso-hairline); border-radius: var(--hud-radius-field);
   background: var(--iso-glass-solid);
 }
 .hud .mapibudget { display: flex; gap: 8px; align-items: center; }
 .hud .mapibudget .mnum { flex: 1; min-width: 0; }
-.hud .mgo.mgosm { padding: 8px 12px; font-size: 11px; flex: none; }
+.hud .mgo.mgosm { padding: 8px 12px; font-size: var(--hud-font-note); flex: none; }
 .hud .gsub.gnolimit { color: var(--iso-warn); font-weight: 700; }
 /* R72: 課金方式の見出し（定額サブスク／APIキー従量）。装飾バーは使わず
    hairline と字間で段差を作る（AI臭い色付きアクセントバー禁止の方針） */
 .hud .gbillhead {
-  margin: 8px 0 4px; padding-top: 8px; font-size: 11px; font-weight: 800;
+  margin: 8px 0 4px; padding-top: 8px; font-size: var(--hud-font-note); font-weight: 800;
   letter-spacing: .06em; color: var(--iso-ink-soft);
   border-top: 1px solid var(--iso-hairline);
 }
@@ -896,11 +1021,11 @@
 .hud .gfill { transition: width 120ms ease-out; }
 /* ヘッダーの鮮度表示（frozenでは非表示） */
 .hud .freshness {
-  font-style: normal; font-size: 11px; color: var(--iso-ink-soft); opacity: .75;
+  font-style: normal; font-size: var(--hud-font-note); color: var(--iso-ink-soft); opacity: .75;
 }
 .hud .freshness[hidden] { display: none; }
 /* 履歴「ほか N 件」注記 */
-.hud .hmore { font-size: 11px; color: var(--iso-ink-soft); padding: 4px 4px; }
+.hud .hmore { font-size: var(--hud-font-note); color: var(--iso-ink-soft); padding: 4px 4px; }
 
 /* R69: 低い画面（1280x800等）でシート本文が定型ボード+内訳に押し潰される実測
    （sheetbody可視域118px）への対応＝本文の最低可視域を確保し周辺をcompact化 */
@@ -943,8 +1068,8 @@
   position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
   margin: auto; max-width: 460px; height: fit-content; padding: 16px 24px;
   background: var(--iso-glass-solid);
-  border: 1px solid var(--iso-line); border-radius: 14px;
-  font-size: 12.5px; line-height: 1.45; color: var(--iso-ink-soft); text-align: center;
+  border: 1px solid var(--iso-line); border-radius: var(--hud-radius-panel);
+  font-size: var(--hud-font-body); line-height: 1.45; color: var(--iso-ink-soft); text-align: center;
 }
 
 /* R80: 購入の下に置く「お知らせを受け取る」導線（買わない人を袋小路にしない） */
@@ -954,13 +1079,13 @@
 /* R80-A21: 配達未設定バナー＝製品の前提条件なので、読めてコピーできる形にする */
 .hud .setupbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .hud .setupbar .sb-cmd {
-  font-family: inherit; font-size: 11px;
+  font-family: inherit; font-size: var(--hud-font-note);
   background: var(--iso-glass-solid); border: 1px solid var(--iso-line);
-  border-radius: 10px; padding: 4px 8px;
+  border-radius: var(--hud-radius-field); padding: 4px 8px;
 }
 .hud .setupbar .sb-copy {
-  font-size: 11px; font-weight: 700; padding: 4px 8px; min-height: 24px;
-  border: 1px solid var(--iso-line); border-radius: 10px; background: var(--iso-glass-solid);
+  font-size: var(--hud-font-note); font-weight: 700; padding: 4px 8px; min-height: 24px;
+  border: 1px solid var(--iso-line); border-radius: var(--hud-radius-field); background: var(--iso-glass-solid);
   color: var(--iso-ink-soft); cursor: pointer;
 }
 .hud .setupbar .sb-copy:hover { border-color: var(--iso-accent); color: var(--iso-accent); }
@@ -969,9 +1094,9 @@
 .hud .modalclose {
   position: absolute; top: 18px; right: 18px; width: 32px; height: 32px;
   display: flex; align-items: center; justify-content: center;
-  border: 1px solid var(--iso-line); border-radius: 10px;
+  border: 1px solid var(--iso-line); border-radius: var(--hud-radius-field);
   background: var(--iso-glass-solid); color: var(--iso-ink-soft);
-  font-size: 14px; line-height: 1.45; cursor: pointer;
+  font-size: var(--hud-font-heading); line-height: 1.45; cursor: pointer;
 }
 .hud .modalclose:hover { color: var(--iso-ink); border-color: var(--iso-accent); }
 
@@ -980,8 +1105,8 @@
   position: absolute; left: 50%; top: 46%; transform: translate(-50%, -50%);
   max-width: 380px; padding: 16px 16px; text-align: center;
   background: var(--iso-glass-solid);
-  border: 1px solid var(--iso-line); border-radius: 14px;
-  font-size: 12.5px; line-height: 1.45; color: var(--iso-ink-soft); pointer-events: none;
+  border: 1px solid var(--iso-line); border-radius: var(--hud-radius-panel);
+  font-size: var(--hud-font-body); line-height: 1.45; color: var(--iso-ink-soft); pointer-events: none;
 }
 
 
@@ -991,20 +1116,20 @@
 .tplrow {
   display: flex; align-items: center; gap: 8px;
   padding: 8px 4px; border-bottom: 1px dashed var(--iso-accent-chip);
-  font-size: 12.5px;
+  font-size: var(--hud-font-body);
 }
 .tplrow b { flex: none; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tplrow .tpltext { flex: 1; min-width: 0; color: var(--iso-muted, var(--iso-ink-soft)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tplrow .tpldel { flex: none; width: auto; margin: 0; padding: 4px 8px; font-size: 11px; }
+.tplrow .tpldel { flex: none; width: auto; margin: 0; padding: 4px 8px; font-size: var(--hud-font-note); }
 .tpladdrow { margin-top: 8px; }
 
 /* R86-I: タスクが無いときの「今日のオフィス」（ドーナツの代わり＝死んだ面積を作らない） */
 .hud .todaycard { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 8px; padding: 4px 4px 0; }
-.hud .todaycard .trow { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
+.hud .todaycard .trow { display: flex; align-items: center; gap: 8px; font-size: var(--hud-font-body); }
 .hud .todaycard .ticon { font-style: normal; }
 .hud .todaycard .tlabel { flex: 1; color: var(--iso-ink-soft); }
-.hud .todaycard .tval { font-size: 12.5px; font-weight: 800; color: var(--iso-ink); }
-.hud .todaycard .tnote { margin-top: 4px; font-size: 11px; color: var(--iso-ink-soft); }
+.hud .todaycard .tval { font-size: var(--hud-font-body); font-weight: 800; color: var(--iso-ink); }
+.hud .todaycard .tnote { margin-top: 4px; font-size: var(--hud-font-note); color: var(--iso-ink-soft); }
 
 /* ヘッダーはゲージを折り返せる。コストの元DOMは380pxの詳細面で全項目を参照できる。 */
 .hud *, .hud *::before, .hud *::after { box-sizing: border-box; }
@@ -1013,7 +1138,7 @@
 .hud #usage-summary {
   display: flex; align-items: center; gap: 16px; width: 100%; padding: 0; border: 0;
   background: transparent; text-align: left; font: inherit; cursor: pointer;
-  color: var(--iso-ink-soft); font-size: 12.5px;
+  color: var(--iso-ink-soft); font-size: var(--hud-font-body);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .hud #usage-summary::before { content: "|"; margin-right: 0; color: var(--iso-ink-muted); flex: none; }
@@ -1025,19 +1150,19 @@
   color: var(--iso-ink-soft);
 }
 .hud .gpbar {
-  width: 64px; height: 4px; flex: none; border-radius: 10px; overflow: hidden;
+  width: 64px; height: 4px; flex: none; border-radius: var(--hud-radius-field); overflow: hidden;
   background: var(--iso-accent-chip);
 }
 .hud .gpfill { display: block; height: 100%; background: var(--iso-accent); }
 .hud .gpfill.warn { background: var(--iso-warn); }
-.hud .gppct { flex: none; font-size: 12.5px; font-weight: 800; color: var(--iso-ink); }
+.hud .gppct { flex: none; font-size: var(--hud-font-body); font-weight: 800; color: var(--iso-ink); }
 .hud .gppct.warn { color: var(--iso-warn); }
-.hud #usage-summary:focus-visible { outline: 1px solid var(--iso-accent); border-radius: 10px; }
+.hud #usage-summary:focus-visible { outline: 1px solid var(--iso-accent); border-radius: var(--hud-radius-field); }
 .hud .usage .gauges {
   position: absolute; top: 64px; right: 16px; z-index: 10;
   width: 380px; max-width: calc(100vw - 32px); max-height: calc(100dvh - 80px);
   padding: 16px; background: var(--iso-glass); border: 1px solid var(--iso-hairline);
-  border-radius: 14px; box-shadow: var(--iso-shadow); white-space: normal;
+  border-radius: var(--hud-radius-panel); box-shadow: var(--iso-shadow); white-space: normal;
   opacity: 0; transform: translateX(100%); clip-path: inset(50%); pointer-events: none;
   transition: opacity 120ms ease-out, transform 120ms ease-out;
 }
@@ -1046,8 +1171,8 @@
 .hud .department { flex: none; min-width: 0; }
 .hud .department + .department { border-top: 1px solid var(--iso-hairline); padding-top: 8px; }
 .hud .department-head { display: flex; align-items: center; gap: 4px; padding: 4px 0; }
-.hud .department-name { flex: 1; min-width: 0; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.hud .department-state, .hud .department-count { flex: none; font-size: 11px; color: var(--iso-ink-soft); }
+.hud .department-name { flex: 1; min-width: 0; font-size: var(--hud-font-body); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hud .department-state, .hud .department-count { flex: none; font-size: var(--hud-font-note); color: var(--iso-ink-soft); }
 .hud .department.st-attention .department-state { color: var(--iso-alert); }
 .hud .department.st-working .department-state { color: var(--iso-accent); }
 .hud .department.st-waiting .department-state { color: var(--iso-warn); }
@@ -1056,19 +1181,20 @@
 .hud .vendor-claude { background: #c4a47c; }
 .hud .vendor-codex { background: #787676; }
 .hud .vendor-openclaw { background: var(--iso-alert); }
+.hud .vendor-bot { background: #5d76a8; }
 .hud .department-sessions { padding-left: 8px; }
 .hud .arow {
   display: grid; grid-template-columns: minmax(44px, .9fr) minmax(32px, 1fr) auto auto;
   align-items: center; gap: 4px; padding: 4px; min-height: 32px;
-  background: transparent; border: 1px solid transparent; border-radius: 10px;
+  background: transparent; border: 1px solid transparent; border-radius: var(--hud-radius-field);
 }
 .hud .arow.sel, .hud .arow:focus-visible { border-color: var(--iso-accent); outline: none; background: var(--iso-accent-chip); }
 .hud .arowhead { grid-column: 1; grid-row: 1; min-width: 0; gap: 4px; }
-.hud .arow .aname { font-size: 11px; font-weight: 700; }
+.hud .arow .aname { font-size: var(--hud-font-note); font-weight: 700; }
 .hud .arow .adot { width: 4px; height: 4px; }
 .hud .arow .aact { grid-column: 2; grid-row: 1; margin: 0; min-width: 0; }
-.hud .arow .atext { font-size: 11px; }
-.hud .arow .aage, .hud .arow .alevel { font-size: 11px; white-space: nowrap; }
+.hud .arow .atext { font-size: var(--hud-font-note); }
+.hud .arow .aage, .hud .arow .alevel { font-size: var(--hud-font-note); white-space: nowrap; }
 .hud .arow .aage { grid-column: 3; grid-row: 1; }
 .hud .arow .alevel { grid-column: 4; grid-row: 1; }
 /* 進捗ノードも維持し、値のある行だけ同じ1行内に置く。 */
@@ -1085,24 +1211,24 @@
 /* R90-U4: added only by the live HUD; frozen captures retain their existing DOM. */
 .hud #btn-hire { color: var(--iso-accent); background: var(--iso-accent-chip); }
 .hud .hire-form { display: grid; gap: 16px; }
-.hud .hire-step { min-width: 0; margin: 0; padding: 12px; border: 1px solid var(--iso-line); border-radius: 10px; }
-.hud .hire-step legend { padding: 0 4px; font-size: 14px; font-weight: 700; }
+.hud .hire-step { min-width: 0; margin: 0; padding: 12px; border: 1px solid var(--iso-line); border-radius: var(--hud-radius-field); }
+.hud .hire-step legend { padding: 0 4px; font-size: var(--hud-font-heading); font-weight: 700; }
 .hud .hire-step .minput { width: 100%; box-sizing: border-box; }
 .hud .hire-step .mopt { margin-bottom: 0; }
 .hud .hire-step input[type="checkbox"] { accent-color: var(--iso-accent); }
-.hud .hire-command { display: block; padding: 8px; color: var(--iso-ink); background: var(--paper-2); border-radius: 10px; }
+.hud .hire-command { display: block; padding: 8px; color: var(--iso-ink); background: var(--paper-2); border-radius: var(--hud-radius-field); }
 .hud .hire-command[hidden] { display: none; }
 .hud .hire-form button:disabled { opacity: .55; cursor: default; }
-.hud .arrival-badge { flex: none; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--iso-accent); }
+.hud .arrival-badge { flex: none; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--hud-font-note); color: var(--iso-accent); }
 .hud .arowhead .arrival-badge { max-width: 96px; }
 .hud .setup-checklist { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; width: 100%; }
 .hud .setup-complete { border-color: var(--iso-line); background: var(--paper); }
 .hud .setup-complete .setup-checklist span { color: var(--iso-accent); }
 .hud .boss-onboarding {
   position: absolute; z-index: 9; transform: translateX(-50%); max-width: calc(100% - 16px);
-  padding: 12px 16px; border: 1px solid var(--iso-line); border-radius: 14px;
+  padding: 12px 16px; border: 1px solid var(--iso-line); border-radius: var(--hud-radius-panel);
   background: var(--paper); box-shadow: var(--iso-shadow); color: var(--iso-ink);
-  font: inherit; font-size: 12.5px; line-height: 1.45; cursor: pointer;
+  font: inherit; font-size: var(--hud-font-body); line-height: 1.45; cursor: pointer;
 }
 .hud .boss-onboarding[hidden] { display: none; }
 .hud .boss-onboarding::after {
@@ -1129,36 +1255,36 @@
 /* R90-U3: these nodes/classes are never installed when the clock is frozen. */
 .hud .digest-strip {
   flex: none; min-height: 40px; padding: 8px 12px; text-align: left;
-  font: inherit; font-size: 12.5px; line-height: 1.45; color: var(--iso-ink); cursor: pointer;
-  background: var(--iso-glass); border: 1px solid var(--iso-line); border-radius: 10px;
+  font: inherit; font-size: var(--hud-font-body); line-height: 1.45; color: var(--iso-ink); cursor: pointer;
+  background: var(--iso-glass); border: 1px solid var(--iso-line); border-radius: var(--hud-radius-field);
 }
 .hud .digest-strip:disabled { color: var(--iso-ink-soft); cursor: default; }
 .hud .digest-card {
   position: absolute; z-index: 45; top: 88px; left: 50%; transform: translateX(-50%);
   width: min(440px, calc(100% - 32px)); max-height: calc(100% - 104px); overflow-y: auto;
   box-sizing: border-box; padding: 16px; background: var(--iso-glass);
-  border: 1px solid var(--iso-line); border-radius: 14px; box-shadow: var(--iso-shadow);
-  color: var(--iso-ink); font-size: 14px; line-height: 1.45;
+  border: 1px solid var(--iso-line); border-radius: var(--hud-radius-panel); box-shadow: var(--iso-shadow);
+  color: var(--iso-ink); font-size: var(--hud-font-heading); line-height: 1.45;
 }
 .hud .digest-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .hud .digest-card p { margin: 12px 0; }
 .hud .digest-answers { display: flex; flex-wrap: wrap; gap: 8px; }
 .hud .digest-card button, .hud .replay-controls button {
   min-height: 36px; padding: 8px; font: inherit; color: var(--iso-ink);
-  background: var(--iso-bg); border: 1px solid var(--iso-line); border-radius: 10px; cursor: pointer;
+  background: var(--iso-bg); border: 1px solid var(--iso-line); border-radius: var(--hud-radius-field); cursor: pointer;
 }
 .hud .digest-card button:disabled, .hud .replay-controls button:disabled { opacity: .6; cursor: default; }
 .hud .digest-card .digest-details { margin-top: 12px; background: var(--iso-accent-chip); color: var(--iso-accent); }
 .hud .replay-controls {
   position: absolute; top: 16px; left: 50%; transform: translateX(-50%); z-index: 45;
   display: flex; align-items: center; gap: 12px; padding: 8px 12px;
-  background: var(--iso-glass); border: 1px solid var(--iso-line); border-radius: 14px;
-  box-shadow: var(--iso-shadow); font-size: 12.5px; white-space: nowrap;
+  background: var(--iso-glass); border: 1px solid var(--iso-line); border-radius: var(--hud-radius-panel);
+  box-shadow: var(--iso-shadow); font-size: var(--hud-font-body); white-space: nowrap;
 }
 .hud .replay-progress, .hud .label-level { font-family: ui-monospace, monospace; font-variant-numeric: tabular-nums; }
-.hud .label-level { font-size: 11px; white-space: nowrap; color: var(--iso-accent); }
+.hud .label-level { font-size: var(--hud-font-note); white-space: nowrap; color: var(--iso-accent); }
 .hud .growth-level { white-space: nowrap; color: var(--iso-accent); }
-.hud .growth-details { padding: 8px; border: 1px solid var(--iso-line); border-radius: 10px; font-size: 12.5px; }
+.hud .growth-details { padding: 8px; border: 1px solid var(--iso-line); border-radius: var(--hud-radius-field); font-size: var(--hud-font-body); }
 .hud .growth-details summary { cursor: pointer; color: var(--iso-accent); }
 .hud .growth-details p { margin: 8px 0 0; white-space: pre-line; overflow-wrap: anywhere; }
 .hud .replay-active .bottom, .hud .replay-active #attn { visibility: hidden; }
@@ -1190,11 +1316,11 @@ html.iso-stream, html.iso-stream body { background: transparent; }
   position: absolute; top: 16px; right: 16px; z-index: 40;
   padding: 8px 12px; border-radius: var(--radius-sm);
   color: var(--alert); background: var(--paper); border: 1px solid var(--line);
-  font-size: 24px; font-weight: 800; pointer-events: none;
+  font-size: var(--hud-font-total); font-weight: 800; pointer-events: none;
 }
-.hud.stream-large .lbl { font-size: 18px; max-width: 260px; padding: 8px 12px; }
-.hud.stream-large .lbl b { font-size: 18px; max-width: 220px; }
-.hud.stream-large .lbl .mono { width: 28px; height: 28px; font-size: 18px; }
+.hud.stream-large .lbl { font-size: var(--hud-font-title); max-width: 260px; padding: 8px 12px; }
+.hud.stream-large .lbl b { font-size: var(--hud-font-title); max-width: 220px; }
+.hud.stream-large .lbl .mono { width: 28px; height: 28px; font-size: var(--hud-font-title); }
 
 /* R90: 13体以上では名前を出すのは意味のある相手だけ（選択・❗・📨・ホバー）。
    残りはバッジ1文字＋状態リングだけにして、名札の団子を防ぐ。全文は title で読める。 */
@@ -1208,7 +1334,7 @@ html.iso-stream, html.iso-stream body { background: transparent; }
 /* R91: 殻の色。チップ自身が色見本＝ラベルを読まずに選べる。 */
 .hud .color-choices { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; }
 .hud .swatch {
-  width: 28px; height: 28px; padding: 0; border-radius: 10px; cursor: pointer;
+  width: 28px; height: 28px; padding: 0; border-radius: var(--hud-radius-field); cursor: pointer;
   background: var(--sw, var(--iso-glass-solid));
   border: 1px solid var(--iso-hairline);
 }
@@ -1231,14 +1357,14 @@ html.iso-stream, html.iso-stream body { background: transparent; }
 .hud .reply-menu > summary { cursor: pointer; list-style: none; padding: 8px; color: var(--iso-ink-soft); }
 .hud .reply-save { display: block; width: 100%; padding: 8px 12px;
   white-space: normal; color: var(--iso-ink); background: var(--iso-glass-solid);
-  border: 1px solid var(--iso-line); border-radius: 10px; cursor: pointer; }
+  border: 1px solid var(--iso-line); border-radius: var(--hud-radius-field); cursor: pointer; }
 .hud .tpl-existing { margin-bottom: 12px; color: var(--iso-ink-soft); }
 .hud .tpl-existing > summary { cursor: pointer; padding: 8px 0; }
 
 /* R96: 状態の語彙と部品は配達面すべてで共有する。 */
 .hud .dstate {
   display: inline-flex; align-items: center; gap: 4px; max-width: 100%; min-width: 0;
-  padding: 2px 6px; border-radius: 8px; font-size: 11px; font-style: normal;
+  padding: 2px 6px; border-radius: var(--hud-radius-menu); font-size: var(--hud-font-note); font-style: normal;
   color: var(--iso-accent); background: var(--iso-accent-chip); vertical-align: middle;
 }
 .hud .dstate-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1251,12 +1377,12 @@ html.iso-stream, html.iso-stream body { background: transparent; }
 .hud .sheetact { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
 .hud .sheetgloss { flex: 1 1 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .hud .qb-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.hud .qb-edit { font: inherit; font-size: 11px; border: 0; padding: 4px; background: transparent; color: var(--iso-accent); cursor: pointer; }
+.hud .qb-edit { font: inherit; font-size: var(--hud-font-note); border: 0; padding: 4px; background: transparent; color: var(--iso-accent); cursor: pointer; }
 .hud .compose { flex-wrap: wrap; }
 .hud .compose .dstate { flex: none; }
 .hud .zrow { width: 100%; border: 0; background: transparent; text-align: left; font-family: inherit; cursor: pointer; }
 .hud .zrow.on { background: var(--iso-accent-chip); outline: 1px solid var(--iso-accent); outline-offset: -1px; }
-.hud .hmore { align-self: flex-start; font-family: inherit; border: 0; border-radius: 8px; background: transparent; cursor: pointer; }
+.hud .hmore { align-self: flex-start; font-family: inherit; border: 0; border-radius: var(--hud-radius-menu); background: transparent; cursor: pointer; }
 .hud .hmore:hover { color: var(--iso-accent); background: var(--iso-accent-chip); }
 .hud .bottom .histcard.expanded { max-height: min(40vh, 420px); overflow-y: auto; }
 .hud .histhead { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; }
@@ -1267,7 +1393,7 @@ html.iso-stream, html.iso-stream body { background: transparent; }
 .hud .head .sub { min-width: 0; max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
 .hud #viewreset { position: absolute; right: 16px; bottom: 16px; background: var(--iso-glass-solid); }
 .hud .run-form { display: grid; gap: 12px; }
-.hud .run-field { display: grid; gap: 4px; font-size: 12.5px; }
+.hud .run-field { display: grid; gap: 4px; font-size: var(--hud-font-body); }
 .hud .run-field .minput { margin: 0; }
 .hud .run-advanced { margin-top: 16px; }
 .hud .run-advanced summary { cursor: pointer; padding: 8px 0; color: var(--iso-ink-soft); }
@@ -1280,9 +1406,9 @@ html.iso-stream, html.iso-stream body { background: transparent; }
 .hud .sheet-open #attn { flex-wrap: wrap; white-space: normal; overflow-y: auto; max-height: calc(100% - 32px); }
 .hud .sheet-open #attn > b, .hud .sheet-open #attn > span:not(.dstate),
 .hud .sheet-open #attn > .trayans, .hud .sheet-open #attn > .traylock { flex: 1 1 100%; min-width: 0; }
-.hud #attn .dstate, .hud #attn .dstate span { flex: none; min-width: 0; font-size: 11px; }
+.hud #attn .dstate, .hud #attn .dstate span { flex: none; min-width: 0; font-size: var(--hud-font-note); }
 .hud #attn .dstate-label { flex: 0 1 auto; }
-.hud #attn .traylock { font-style: normal; font-size: 11px; color: var(--iso-ink-soft); }
+.hud #attn .traylock { font-style: normal; font-size: var(--hud-font-note); color: var(--iso-ink-soft); }
 .hud #attn .trayprev { border-color: var(--iso-alert); }
 .hud .sheet-open:has(.sheet.wide) #stage { display: grid; grid-template-rows: auto minmax(0, 1fr); }
 .hud .sheet-open:has(.sheet.wide) #attn {
@@ -1313,8 +1439,8 @@ html.iso-stream, html.iso-stream body { background: transparent; }
   .hud .rail { display: none; }
   .hud .rail-toggle {
     display: block; position: absolute; top: 88px; right: 12px; writing-mode: vertical-rl;
-    padding: 12px 8px; border: 1px solid var(--iso-line); border-radius: 10px;
-    background: var(--iso-glass-solid); color: var(--iso-ink); font: inherit; font-size: 12.5px; cursor: pointer;
+    padding: 12px 8px; border: 1px solid var(--iso-line); border-radius: var(--hud-radius-field);
+    background: var(--iso-glass-solid); color: var(--iso-ink); font: inherit; font-size: var(--hud-font-body); cursor: pointer;
   }
   .hud .rail-open .rail {
     display: flex; position: absolute; right: 48px; top: 64px; bottom: 12px;
@@ -1341,7 +1467,7 @@ html.iso-stream, html.iso-stream body { background: transparent; }
 }
 
 .hud .dstate:has(.dstate-hint) { flex-wrap: wrap; }
-.hud .dstate-hint { flex: 1 1 100%; min-width: 0; font-size: 11px; white-space: normal; line-height: 1.45; }
+.hud .dstate-hint { flex: 1 1 100%; min-width: 0; font-size: var(--hud-font-note); white-space: normal; line-height: 1.45; }
 .hud #attn .trayhead { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; min-width: 0; }
 .hud #attn.tray { flex-wrap: wrap; white-space: normal; }
 /* 質問文は行を折り返して幅を取る（min-width:0 だと細い列で文の途中で折れる＝実レンダで確認）。 */
@@ -1369,3 +1495,87 @@ html.iso-stream, html.iso-stream body { background: transparent; }
 .hud #stream-subtitle, .hud #stream-attention { z-index: 40; }
 .hud .digest-card, .hud .replay-controls { z-index: 45; }
 /* HUD_LAYERS_END */
+
+
+/* R105-A: 共用 HUD を端末の文法へ。様式の既定値には触れず、cockpit の中だけ適用する。 */
+.hud.ui-cockpit {
+  --hud-radius-label: 0;
+  --hud-radius-menu: 0;
+  --hud-radius-field: 0;
+  --hud-radius-step: 0;
+  --hud-radius-panel: 0;
+  --radius: 0;
+  --radius-sm: 0;
+  --hud-font-island: var(--cp-font-small, 12px);
+  --hud-font-note: var(--cp-font-small, 12px);
+  --hud-font-badge: var(--cp-font-small, 12px);
+  --hud-font-control: var(--cp-font-body, 14px);
+  --hud-font-body: var(--cp-font-body, 14px);
+  --hud-font-heading: var(--cp-font-title, 16px);
+  --hud-font-title: var(--cp-font-display, 20px);
+  --hud-font-donut: var(--cp-font-display, 20px);
+  --hud-font-total: var(--cp-font-display, 20px);
+  --paper: var(--iso-bg);
+  --paper-2: var(--iso-glass-solid);
+  --paper-3: var(--iso-glass-solid);
+}
+.hud.ui-cockpit :is(button, input, textarea, select, summary) {
+  font-family: inherit;
+  font-size: var(--cp-font-body, 14px);
+}
+.hud.ui-cockpit :is(button, summary) { min-height: 32px; }
+.hud.ui-cockpit .mkeys { --mkey-fail: var(--iso-alert); }
+.hud.ui-cockpit :is(.mgo, .mkeysave, .mkeybtn, .mkeychoice, .dlgmore, .dlgexpand,
+  .qchip, .sheetopt, .mbtn, .mbtn[aria-pressed="true"], .hresend.arm, .mgo.mgosm) {
+  color: var(--iso-accent); background: transparent;
+  border: 1px solid var(--iso-accent);
+}
+.hud.ui-cockpit :is(.mgo, .mkeysave, .mkeybtn, .mkeychoice, .dlgmore, .dlgexpand,
+  .qchip, .sheetopt, .mbtn, .hresend):hover:not(:disabled) {
+  background: var(--iso-accent-chip);
+}
+.hud.ui-cockpit :is(.abtn, .minput, .mledin, .mtextarea, .mpick, .mrevoke, .crewrow,
+  .mkeyin, .mkeyrow, .gcard, .sheet, .modal, .setupbar, .digest-card,
+  .growth-details, .quickboard, .qchip, .compose input) { box-shadow: none; }
+.hud.ui-cockpit :is(.card, .side, .rail, .usage .gauges) {
+  -webkit-backdrop-filter: none; backdrop-filter: none;
+}
+.hud.ui-cockpit :is(.gbar, .gpbar, .abar) {
+  -webkit-mask-image: repeating-linear-gradient(to right, #000 0 6px, transparent 6px 8px);
+  mask-image: repeating-linear-gradient(to right, #000 0 6px, transparent 6px 8px);
+}
+.hud.ui-cockpit .dstate-label { overflow-wrap: anywhere; }
+.hud.ui-cockpit .pxrow .c-state {
+  min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 4px;
+}
+.hud.ui-cockpit .pxrow .stext { white-space: nowrap; }
+.hud.ui-cockpit .pxrow .dstate { max-width: 100%; }
+/* 3 カラム（状態の列 124px）だけ配達の札を折り返して全文を出す。狭い段（96px）で折り返すと行が 92px になった（形状の門 ⑤ の上限 90）
+   ＝狭い段は 1 行で … に切る（「保存済み（次の…」・全文は行の title とシート） */
+@media (width > 1400px) {
+  .hud.ui-cockpit .pxrow .dstate { max-width: none; }
+  .hud.ui-cockpit .pxrow .dstate-label { white-space: normal; overflow: visible; text-overflow: clip; }
+}
+.hud.ui-cockpit.stream-mode #stream-subtitle { font-size: var(--cp-font-body, 14px); }
+.hud.ui-cockpit .cp-settings-group {
+  display: flex; flex-direction: column; gap: 12px;
+  border-top: 1px solid var(--iso-line); padding-top: 12px;
+}
+.hud.ui-cockpit .cp-settings-group .msubtitle {
+  margin: 0; font-size: var(--cp-font-title, 16px); font-weight: 700;
+}
+.hud.ui-cockpit .cp-settings-link { align-self: flex-start; background: transparent; }
+.hud.ui-cockpit .cp-help-keys {
+  width: 100%; border-collapse: collapse;
+  font-size: var(--cp-font-body, 14px); line-height: 1.5;
+}
+.hud.ui-cockpit .cp-help-keys :is(th, td) {
+  padding: 8px; text-align: left; vertical-align: top;
+  border-bottom: 1px solid var(--iso-line);
+}
+.hud.ui-cockpit .cp-help-keys :is(th, td):first-child { width: 8em; }
+.hud.ui-cockpit .cp-help-advanced > summary { display: flex; align-items: center; }
+.hud.ui-cockpit .cp-help-advanced > summary::after { content: " ▾"; }
+.hud.ui-cockpit .cp-help-advanced .mnote { overflow-wrap: anywhere; }
+.hud.ui-cockpit .setupbar .sb-msg { flex: 1 1 100%; }
+.hud.ui-cockpit .setupbar .sb-cmd { min-width: 0; overflow-wrap: anywhere; }

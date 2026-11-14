@@ -15,16 +15,19 @@ const PARTS = [
   "phones", "cap", "beret", "pencil", "crown", "bowtie",
   "mortar", "headset", "hardhat", "eyeshade",
   ...Object.keys(PROP_MATERIALS),
+  "headBot", "lampBot",
 ];
+const BOT_PARTS = new Set(["headBot", "lampBot"]);
 
 /** Vendor shell colors are supplied once through instanceColor. */
 export const LOBSTER_TINT = new THREE.Color(0xbb4838);
 export const GRAPHITE_TINT = new THREE.Color(0x787676);
 export const CREAM_TINT = new THREE.Color(0xe9e0d5);
+export const BOT_TINT = new THREE.Color(0x5d76a8);
 const WHITE = new THREE.Color(1, 1, 1);
 /** 殻の色を差し替える部品（目・バイザー・靴は共通のまま＝表情と接地感を壊さない）。 */
 const TINT_PARTS = new Set([
-  "head", "headCodex", "headOpenclaw", "ear", "torso", "pelvis", "upper", "fore",
+  "head", "headCodex", "headOpenclaw", "headBot", "ear", "torso", "pelvis", "upper", "fore",
   "thigh", "shin", "antStem", "antCodex", "antOpenclaw",
 ]);
 
@@ -37,6 +40,7 @@ const VENDORS = {
   claude: { head: "head", antenna: "antStem", width: 1, tint: CREAM_TINT },
   codex: { head: "headCodex", antenna: "antCodex", width: 1.37, tint: GRAPHITE_TINT },
   openclaw: { head: "headOpenclaw", antenna: "antOpenclaw", width: 1.5, tint: LOBSTER_TINT },
+  bot: { head: "headBot", antenna: "lampBot", width: 1, tint: BOT_TINT },
 };
 /** R91: 個体の殻の色。ベンダー既定色に乗算する（Codex は暗いまま色味だけ乗る）。 */
 export function shellTintFor(vendor, rgb) {
@@ -87,8 +91,8 @@ function facePlate(rim = false) {
 function headGeometry(vendor) {
   const width = VENDORS[vendor].width;
   let g;
-  if (vendor === "codex") {
-    const r = HEAD_H * .35;
+  if (vendor === "codex" || vendor === "bot") {
+    const r = HEAD_H * (vendor === "bot" ? .12 : .35);
     g = new THREE.BoxGeometry(HEAD_H * width, HEAD_H, .66, 32, 24, 24);
     const p = g.getAttribute("position"), point = new THREE.Vector3(), inner = new THREE.Vector3();
     for (let i = 0; i < p.count; i++) {
@@ -187,6 +191,10 @@ export function buildPartGeometries() {
     hardhat: hardhatGeometry(),
     eyeshade: eyeshadeGeometry(),
     ...propGeometries(),
+    headBot: headGeometry("bot"),
+    // Upper hemisphere sits directly on the head; there is no antenna stalk.
+    lampBot: new THREE.SphereGeometry(HEAD_H * .15, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2)
+      .translate(0, HEAD_H / 2, 0),
   };
   for (const [part, geometry] of Object.entries(parts)) {
     if (part === "visor") continue;
@@ -523,7 +531,7 @@ export class RobotBatch {
     this.meshes = {};
     this.counts = {};
     this.partMaterial = {
-      head: "shell", headCodex: "shell", headOpenclaw: "shell", visor: "visor", visorRig: "visorRig", ear: "shell",
+      head: "shell", headCodex: "shell", headOpenclaw: "shell", headBot: "shell", visor: "visor", visorRig: "visorRig", ear: "shell",
       antStem: "shell", antCodex: "shell", antOpenclaw: "shell", antTip: "accent", collar: "joint", chest: "accent", shoulder: "joint",
       torso: "shell", pelvis: "shell", upper: "shell", fore: "shell",
       hand: "joint", thigh: "shell", shin: "shell", foot: "joint",
@@ -531,6 +539,7 @@ export class RobotBatch {
       phones: "shell", cap: "shell", beret: "shell", pencil: "shell", crown: "crown",
       bowtie: "shell", mortar: "shell", headset: "shell", hardhat: "shell",
       eyeshade: "shell",
+      lampBot: "accent",
       ...PROP_MATERIALS,
     };
     this.perBody = {
@@ -539,7 +548,7 @@ export class RobotBatch {
     };
     this.bodyColor = new THREE.Color();
     this.parts = this.rigVisor ? [...PARTS, "visorRig"] : PARTS;
-    for (const part of this.parts) {
+    this.addPart = (part) => {
       const n = capacity * (this.perBody[part] || 1);
       // AO and instanceColor multiply; shared robot parts always carry a color attribute.
       const geometry = this.geoms[part];
@@ -557,7 +566,9 @@ export class RobotBatch {
       mesh.count = 0;
       scene.add(mesh);
       this.meshes[part] = mesh;
-    }
+    };
+    // Keep the Bot-free scene graph and its draw order exactly as before.
+    for (const part of this.parts) if (!BOT_PARTS.has(part)) this.addPart(part);
     this.faces = new FaceAtlasBatch(scene, this.meshes.visor, capacity);
     this.facesRig = this.rigVisor ? new FaceAtlasBatch(scene, this.meshes.visorRig, capacity) : null;
   }
@@ -574,6 +585,9 @@ export class RobotBatch {
     if (this.bodyCount >= this.capacity) return;
     this.bodyCount += 1;
     if (!VENDORS[vendor]) vendor = "claude";
+    if (vendor === "bot") {
+      for (const part of BOT_PARTS) if (!this.meshes[part]) this.addPart(part);
+    }
     setVendor(nodes, vendor);
     nodes.root.updateMatrixWorld(true);
     const profile = VENDORS[vendor];
@@ -583,7 +597,7 @@ export class RobotBatch {
       const i = this.counts[part];
       if (i >= this.capacity * (this.perBody[part] || 1)) return;
       this.meshes[part].setMatrixAt(i, obj.matrixWorld);
-      if (part === "chest" || part === "antTip") {
+      if (part === "chest" || part === "antTip" || part === "lampBot") {
         this.meshes[part].setColorAt(i, accent || WHITE);
       } else if (TINT_PARTS.has(part)) {
         // 毎回パレット色を明示し、前フレームの instanceColor を残さない
@@ -594,7 +608,7 @@ export class RobotBatch {
     put(profile.head, nodes.head);
     put(profile.antenna, nodes.antStem);
     // 生成体はアンテナが 1 本なので状態ランプも 1 個（ベンダーの識別は頭の幅・ハサミ・個体色が担う）
-    const tips = only && only.has("visorRig") ? 1 : (vendor === "claude" ? 1 : 2);
+    const tips = vendor === "bot" ? 0 : only && only.has("visorRig") ? 1 : (vendor === "claude" ? 1 : 2);
     for (let i = 0; i < tips; i++) put("antTip", nodes.antTips[i]);
     const visorPart = only && only.has("visorRig") && this.facesRig ? "visorRig" : "visor";
     (visorPart === "visorRig" ? this.facesRig : this.faces).setCell(this.counts[visorPart], expression);
@@ -631,6 +645,7 @@ export class RobotBatch {
   end() {
     for (const part of this.parts) {
       const mesh = this.meshes[part];
+      if (!mesh) continue;
       mesh.count = this.counts[part];
       mesh.instanceMatrix.needsUpdate = true;
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
@@ -644,7 +659,7 @@ export class RobotBatch {
     this.faces.dispose();
     this.facesRig?.dispose();
     for (const part of this.parts) {
-      this.meshes[part].dispose();
+      this.meshes[part]?.dispose();
       this.geoms[part].dispose();
     }
   }

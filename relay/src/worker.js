@@ -29,8 +29,10 @@
 import { DurableObject } from "cloudflare:workers";
 // R96-D3: /ui/** の応答（ファイル単位の ETag）は ui_etag.js が決める。modules_data を直接触らない
 //（worker.js は "cloudflare:workers" を import する＝node から読めないので、テストできる側へ寄せた）。
-import { REVALIDATE as UI_REVALIDATE, uiResponse } from "./ui_etag.js";
-import { APP_HTML } from "./app_html.js";
+import { IMMUTABLE as UI_IMMUTABLE, REVALIDATE as UI_REVALIDATE, uiResponse, uiVersioned } from "./ui_etag.js";
+import { APP_HTML, APP_VER } from "./app_html.js";
+// R99-P4-7: ホーム画面のアイコン（コードで描いた PNG）と PWA の地の色。生成= tools/gen_pwa_icons.py（手で書かない）。
+import { PWA_ICONS, PWA_THEME } from "./pwa_icons.js";
 
 // R79: PWAシェル(APP_HTML/SW_JS/MANIFEST)の版ID。**シェル自身の内容**から作る。
 // ここでモジュール束の版（modules_data.js の BUILD）を流用すると、アプリだけ直したときに版が変わらず
@@ -42,7 +44,7 @@ function _fnv1a(s) {
     h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0;
   }
   return h.toString(36);
-}   // R77: PWAの3Dシーン用ESM（自動生成・/ui/... の同じパスで返す）
+}   // R77: PWAの部屋用ESM（自動生成・/ui/... の同じパスで返す。R99-P4-6 で 3D からドット絵の俯瞰へ）
 import { b64u, jwkToRawPub, sendWebPush } from "./webpush.js";   // P7: Web Push（暗号は全部Worker側＝Mac側stdlib不変）
 
 // PWA歩行絵の収録状況はバンドル時に一度だけ索引化する。テーマ派生(__入り)や
@@ -122,7 +124,8 @@ export class Room extends DurableObject {
     const now = Date.now();
     // R79-8.1: WS化でsyncは「変化時+240s heartbeat」だけ＝agentSeenAgoが180s閾値を跨ぎ
     // 偽stale（Mac生存中に「指示は届きません」）が出る。正直な生存信号は接続の有無。
-    return JSON.stringify({ t: "status", json: s.json, ts: s.ts,
+    // R102-1: shell＝今配っている /app の版（APP_VER）。違う版で動いている端末は安全な時に 1 回読み直す（app.js の maybeReload）
+    return JSON.stringify({ t: "status", json: s.json, ts: s.ts, shell: APP_VER,
       dlg: this._dlgLive(),
       agentOnline: this.ctx.getWebSockets("agent").length > 0,
       agentSeenAgo: agent == null ? null : Math.max(0, Math.floor((now - agent) / 1000)) });
@@ -305,7 +308,7 @@ export class Room extends DurableObject {
     // R79-7 扇形配信フックその2: statusが変わった瞬間にスマホ(app)へpush（送信は無料）。
     // ここはMac側経路(/sync・POST /status)からしか呼ばれない＝直前にMacが生きている＝agentSeenAgo:0
     // R87: 封書 dlg（暗号文の JSON 文字列・無ければ ""）を同乗＝Worker は中身を読まない・開けない
-    this._fan("app", JSON.stringify({ t: "status", json: cur.json, ts: cur.ts, agentSeenAgo: 0,
+    this._fan("app", JSON.stringify({ t: "status", json: cur.json, ts: cur.ts, agentSeenAgo: 0, shell: APP_VER,
       dlg: this._dlgLive(),
       agentOnline: this.ctx.getWebSockets("agent").length > 0 }));
   }
@@ -422,7 +425,7 @@ export class Room extends DurableObject {
     }
     const s = this.getStatus();
     const agent = this._seenTs("agentseen");
-    return { json: s.json, ts: s.ts,
+    return { json: s.json, ts: s.ts, shell: APP_VER,
       dlg: this._dlgLive(),
       agentOnline: this.ctx.getWebSockets("agent").length > 0,
       agentSeenAgo: agent == null ? null : Math.max(0, Math.floor((now - agent) / 1000)) };
@@ -507,12 +510,22 @@ function computeAttnNow(office) {
   const list = (Array.isArray(roster) && roster.length ? roster
     : (office && office.employees)) || [];
   const now = {};
+  const wired = !!(office && office.setup && office.setup.approvalWired === true);
   for (const e of list) {
-    if (e && (e.projectId || e.session) && ((e.approvalMin || 0) > 0 || e.question)) {
-      now[String(e.projectId || e.session)] = {
+    // R102-4: API エラー・利用上限・会話の長さで止まった（err）も「あなた待ち」＝通知する（作業中に戻った＝ターンが開いた間は除く。
+    // minions は「15 分以内に更新されたサブエージェントの数」で終わった子も数える＝それで隠さない・別モデルレビュー）
+    const stopped = !!(e && e.err && typeof e.err.k === "string" && e.state !== "working");
+    if (e && (e.projectId || e.session) && ((e.approvalMin || 0) > 0 || e.question || stopped)) {
+      // B1: 掲示（ask）も質問も止まった理由も無く approvalMin だけ＝推測の「止まっている?」（PWA の stuck・長く走る道具でも立つ）。
+      // 別の鍵（#stuck）で集合に入れる＝件数 n（バッジ）には数え、通知は鳴らさない（sendAttnPushes）。
+      // 後でその人に掲示が付けば鍵が変わる＝新しい遷移として鳴る（推測の段で「知らせ済み」にしない）。
+      // ただし承認フックが配線済みの Mac だけ（未配線・hook が素通しした Mac では、推測が本物の許可ダイアログの唯一の信号＝鳴らす・別モデルレビュー）
+      const stuck = !e.ask && !e.question && !stopped && wired;
+      now[String(e.projectId || e.session) + (stuck ? "#stuck" : "")] = {
         // R85-1: /rename のセッション名を優先（Push本文にも同じ名前を出す＝ユーザー裁定）
         disp: [...String(e.title || e.disp || e.session || "")].slice(0, 40).join(""),
         dept: attnDept(e),
+        ...(stuck ? { stuck: 1 } : {}),
       };
     }
   }
@@ -531,15 +544,21 @@ async function sendAttnPushes(room, env, newly, nowMap, subs, subContact) {
     try {
       const status = await room.getStatus();
       const office = JSON.parse(status.json);
+      // R102-5: Mac の前に人がいる（macActive=1）間はスマホを鳴らさない。呼び出し側は attnstate を先に書いている＝
+      // いまの ❗ は「知らせ済み」になり、離れてから新しく出た ❗ だけが鳴る（離席のたびに同じ ❗ を鳴らし直さない）
+      if (office && office.macActive === 1) return;
       const list = (Array.isArray(office.roster) && office.roster.length
         ? office.roster : office.employees) || [];
       for (const e of list) {
         if (e) details.set(String(e.projectId || e.session), e);
       }
     } catch (_) { /* Old status/rooms still get a generic approval notification. */ }
+    // B1: 推測の「止まっている?」（computeAttnNow が stuck の印を付けた行）は鳴らさない＝チップとバッジ（件数 n）だけ
+    const ring = newly.filter((key) => !(nowMap[key] && nowMap[key].stuck));
+    if (!ring.length) return;
     // 同時に複数部署で❗が発生しても、購読対象外の表示名を本文へ混ぜない。
     const targets = new Map();
-    for (const key of newly) {
+    for (const key of ring) {
       for (const row of pushTargets(subs, nowMap[key].dept)) {
         let target = targets.get(row.k);
         if (!target) {
@@ -557,17 +576,32 @@ async function sendAttnPushes(room, env, newly, nowMap, subs, subContact) {
         const ask = first.ask || {};
         const tool = /^[A-Za-z][A-Za-z0-9_.:-]{0,63}$/.test(ask.tool || "") ? ask.tool : "";
         const question = ask.kind === "question" || (!ask.kind && first.question);
-        const kind = ask.kind === "permission" ? (tool ? `${tool} の許可` : "許可")
+        // 計画の承認（ExitPlanMode）はフックが kind=question で掲示する＝kind より先に tool で見分ける
+        // （PWA の askSummary と同じ順・「質問」と呼ぶと 4 面の「計画の承認」と食い違う）
+        const kind = tool === "ExitPlanMode" ? "計画の承認"
+          : ask.kind === "permission" ? (tool ? `${tool} の許可` : "許可")
           : question ? "質問" : "承認";
+        // R102-4: 止まった理由（err の種類だけ・本文は無い）。聞かれている事実（ask・質問・承認まち）の方が強い
+        const errWord = { limit: "利用上限", ctx: "会話の長さの上限", api: "API エラー" }[first.err && first.err.k];
+        // R116-S0（本人 2026-10-09「ごちゃごちゃしすぎている」）: 題は「AI Office」・本文は「<名前> · <何を>（<いつから>）」だけ＝
+        // 絵文字と「（0分）」を外す（0 分は「いま」・PWA のカードの waitText と同じ数え方）。命令・質問の本文は載せない（不変条件 8）
+        const stoppedBody = errWord && !ask.kind && !question && !((first.approvalMin || 0) > 0)
+          ? `${head} · ${errWord}で止まっています` : "";
         // Redaction strips ask.ts; the representative's numeric age survives
         // for both hooked questions and the legacy AskUserQuestion fallback.
         const lead = first.sessions?.find((s) => s.session === first.session) || first;
-        const value = Number(question && lead.age != null ? lead.age / 60 : first.approvalMin);
+        // B1: ask.min（掲示が出てからの分・整数だけ中継に載る）があればそれ＝PWA のカードの待ち時間と同じ数
+        const askMin = Number.isInteger(ask.min) && ask.min >= 0 ? ask.min : null;
+        const value = askMin != null ? askMin : Number(question && lead.age != null ? lead.age / 60 : first.approvalMin);
         const minutes = Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
-        // R96-B: 先頭 1 件の session を運ぶ（本文は載せない）＝通知タップでその❗のシートへ戻れる
+        const when = minutes < 1 ? "いま" : minutes < 60 ? `${minutes}分`
+          : `${Math.floor(minutes / 60)}時間${minutes % 60 ? `${minutes % 60}分` : ""}`;
+        // R96-B: 先頭 1 件の session を運ぶ（本文は載せない）＝通知タップでその❗へ戻れる（R116-S0: 許可待ちは許可の画面へ直行）
         const session = /^[A-Za-z0-9_-]{1,64}$/.test(String(first.session || "")) ? String(first.session) : "";
-        const payload = { title: "🏢 AI Office",
-          body: `❗ ${head} — ${kind}を待っています（${minutes}分）`, tag: "aioffice-attn", session };
+        // R102-5: n＝いまのあなた待ちの件数（ホーム画面のアイコンのバッジ・SW が setAppBadge）
+        const payload = { title: "AI Office",
+          body: stoppedBody || `${head} · ${kind}（${when}）`, tag: "aioffice-attn", session,
+          n: Object.keys(nowMap || {}).length };
         const st = await sendWebPush(JSON.parse(row.v), payload, jwk, subContact);   // TTL=既定3600
         if (st === 404 || st === 410) await room.delSub(row.k.slice(5));   // 購読失効は台帳から掃除
       } catch (_) { /* 個別の送信失敗は握る（次の❗遷移で再送機会がある） */ }
@@ -632,7 +666,19 @@ export default {
                    ETag: APP_ETAG, ...SEC_HEADERS },
       });
     };
-    if (method === "GET" && (path === "/app" || path === "/app/")) {
+    // R99-P4-7: シェルの URL は /app/ の 1 つ（マニフェストの start_url・scope と SW の範囲 /app/ を揃える）。
+    // /app（末尾 / 無し）は SW の範囲の外＝そこで開いたページでは navigator.serviceWorker.ready が永久に解決せず、
+    // 🔔（Web Push の購読）が押しても何も起きなかった。同じシェルを返すと範囲外のまま残るので、308 で /app/ へ寄せる。
+    // 古いリンク・QR（office_server.pair_url の /app#v=…&d=…）は壊れない: フラグメントは送られず、ブラウザが
+    // リダイレクト先へ引き継ぐ（RFC 7231 §7.1.2）。旧マニフェスト（start_url=/app）で追加済みのホーム画面も同じ道で着く。
+    if (method === "GET" && path === "/app") {
+      return new Response(null, {
+        status: 308,
+        headers: { Location: "/app/" + url.search, "Cache-Control": "public, max-age=0, must-revalidate",
+                   ...SEC_HEADERS },
+      });
+    }
+    if (method === "GET" && path === "/app/") {
       return shell(APP_HTML, "text/html; charset=utf-8");
     }
     if (method === "GET" && path === "/app/sw.js") {
@@ -641,14 +687,35 @@ export default {
     if (method === "GET" && path === "/app/manifest.webmanifest") {
       return shell(MANIFEST, "application/manifest+json; charset=utf-8");
     }
+    // R99-P4-7: ホーム画面のアイコン（PNG・一覧と ETag は pwa_icons.js）。画像ごとの ETag＝変わっていなければ 304。
+    if (method === "GET" && path.startsWith("/app/icon-")) {
+      const icon = Object.prototype.hasOwnProperty.call(PWA_ICONS, path) ? PWA_ICONS[path] : null;
+      if (!icon) return new Response("not found", { status: 404, headers: { "Cache-Control": "public, max-age=3600" } });
+      const ih = { ETag: icon.etag, "Cache-Control": "public, max-age=86400, must-revalidate",
+                   "X-Content-Type-Options": "nosniff" };
+      if (request.headers.get("If-None-Match") === icon.etag) return new Response(null, { status: 304, headers: ih });
+      return new Response(spriteBytes(icon.b64), { headers: { "Content-Type": "image/png", ...ih } });
+    }
     // R79: /app/sprite/ は廃止（アバターはモノグラム＝画像ゼロ）。
     // 旧キャッシュのSW/HTMLが要求してきても 404 を短期キャッシュで返して静かに枯らす。
     if (method === "GET" && path.startsWith("/app/sprite/")) {
       return new Response("gone", { status: 404, headers: { "Cache-Control": "public, max-age=3600" } });
     }
+    if (method === "GET" && path.startsWith("/u/")) {
+      // R102-10: 部屋の部品の版つきの道（/u/<BUILD>/pwa/bootpx.js から相対 import で全部品がこの下に来る）。版が変わると URL が変わる
+      // ＝端末に残った古い写し（8 月の immutable の /ui/...）に当たらない。今の版の道だけ immutable（本文は BUILD で決まり二度と変わらない）。
+      const v = uiVersioned(path);
+      const r = v ? uiResponse(v.ui, request.headers.get("If-None-Match"), path.split("/")[2]) : { status: 404 };
+      if (r.status === 404) return new Response("not found", { status: 404 });
+      const cc = v.current ? UI_IMMUTABLE : UI_REVALIDATE;
+      if (r.status === 304) return new Response(null, { status: 304, headers: { ETag: r.etag, "Cache-Control": cc } });
+      return new Response(r.b64 ? spriteBytes(r.b64) : r.body, {
+        headers: { "Content-Type": r.type, "Cache-Control": cc, ETag: r.etag },
+      });
+    }
     if (method === "GET" && path.startsWith("/ui/")) {
-      // R79: immutable(1年) をやめる。3Dシーンのコードは**修正が入る生きたコード**であり、
-      // 1年キャッシュだと boot3d.js の不具合修正が既存端末へ最大1年届かない
+      // R79: immutable(1年) をやめる。部屋のコードは**修正が入る生きたコード**であり、
+      // 1年キャッシュだと起動部品（当時は boot3d.js・今は bootpx.js）の不具合修正が既存端末へ最大1年届かない
       // （R77→R78 の focus() 追加が実際に届かない状態だった）。
       // no-cache + 内容ハッシュETag ＝ 毎回検証させるが、変わっていなければ 304（数百バイト）。
       // R96-D3: ETag は**ファイル単位**（ui_etag.js）。版全体だと 1 本直すたびに 64 URL 全部を再送していた。
@@ -705,6 +772,22 @@ export default {
            (method === "POST" && path === "/ack") ||
            (method === "GET" && path === "/ws")))) {
       return jsonResp({ ok: false, error: "forbidden" }, 403);
+    }
+
+    // R102-8: スマホの部屋が起動しなかった理由（端末でしか起きない失敗を掴む）。フルBearerのみ・ログに 1 行書くだけ（保存しない）。
+    // 載せるのは形の決まった値だけ（エラーの文言・部品のファイル名と行・画面の寸法・版）＝本文や資格情報は受け取っても落とす。
+    if (method === "POST" && path === "/diag" && isFull) {
+      let d = {};
+      try { d = await request.json(); } catch (_) { d = {}; }
+      const de = (d && typeof d.err === "object" && d.err) || {};   // 変数名は e にしない（UI が読む項目を拾う番人の正規表現に当たる）
+      const cut = (v, n) => String(v == null ? "" : v).replace(/[\u0000-\u001f]/g, " ").slice(0, n);
+      console.log("PWA-DIAG " + JSON.stringify({
+        kind: cut(d.kind, 16), err: d.err ? { k: cut(de.k, 16), m: cut(de.m, 200), f: cut(de.f, 60),
+          l: Number(de.l) || 0, c: Number(de.c) || 0 } : null,
+        view: cut(d.view, 8), w: Number(d.w) || 0, h: Number(d.h) || 0, dpr: Number(d.dpr) || 0,
+        standalone: d.standalone === true, build: cut(d.build, 16),
+        ua: cut(request.headers.get("User-Agent"), 200) }));
+      return new Response(null, { status: 204 });
     }
 
     const room = env.ROOM.getByName(site);
@@ -853,7 +936,7 @@ export default {
         for (const row of subs) {
           try {
             const st = await sendWebPush(JSON.parse(row.v),
-              { title: "🏢 AI Office", body: "テスト通知（Web Push配線OK）", tag: "aioffice-test" }, jwk, url.origin, 60);
+              { title: "AI Office", body: "テスト通知（Web Push配線OK）", tag: "aioffice-test" }, jwk, url.origin, 60);
             if (st === 404 || st === 410) { await room.delSub(row.k.slice(5)); gone++; }
             else sent++;
           } catch (_) { /* 個別失敗は継続 */ }
@@ -872,29 +955,42 @@ export default {
 // 署名は WebCrypto。下の sign() の canonical は server/office_server.py の _canonical と厳密一致
 // させること。ズレ検知は tests/js_sign_kat.mjs が本ファイルの canonical リテラルを直接読んで
 // 期待値とバイト一致を検査する（relay_e2e / RUN_RELAY で実行）＝変えたら KAT が破れる。
+// R99-P4-7: ホーム画面のアプリとして名乗る。名前は「AI Office」の 1 つ（app.html の <title> と
+// apple-mobile-web-app-title と同じ）。色は PWA のヘッダーの地の 1 つ（PWA_THEME＝ui/hud-tokens.css の --paper・
+// app.html の meta theme-color と同じ値を gen_pwa_icons.py --check が見る）。start_url・scope は SW の範囲 /app/ の中。
+// id は "/app"（統括の裁定）: 旧マニフェスト（id 無し＝start_url の /app）で Android の Chrome に入れた WebAPK と同じアプリで
+// あり続ける（"/app/" にすると別アプリ扱いになり、新しいアイコンと名前に更新されない）。id は識別子で、範囲の中である必要は無い
+// （W3C の仕様は start_url と同じオリジンだけを求める）。
+// アイコンはコードで描いた PNG（any 192・512／maskable 512）。apple-touch-icon（180）は app.html の link から。
 const MANIFEST = JSON.stringify({
-  name: "せなお AI Office",
+  id: "/app",
+  name: "AI Office",
   short_name: "AI Office",
-  start_url: "/app",
+  start_url: "/app/",
+  scope: "/app/",
   display: "standalone",
-  background_color: "#23213a",
-  theme_color: "#23213a",
-  icons: [{
-    src: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23241f18'/%3E%3Ctext y='74' x='50' font-size='64' text-anchor='middle'%3E%F0%9F%8F%A2%3C/text%3E%3C/svg%3E",
-    sizes: "any", type: "image/svg+xml",
-  }],
+  background_color: PWA_THEME,
+  theme_color: PWA_THEME,
+  icons: Object.keys(PWA_ICONS).filter((src) => PWA_ICONS[src].purpose !== "apple").map((src) => ({
+    src, sizes: `${PWA_ICONS[src].size}x${PWA_ICONS[src].size}`, type: "image/png", purpose: PWA_ICONS[src].purpose,
+  })),
 });
 
 const SW_JS = [
   '// AI Office PWA 最小SW v2: シェルは素通し、/status と /instruct は必ずネットワーク（network-only）。',
-  '// P7: push受信で通知表示・タップで /app へ（iOSはホーム画面追加のPWAのみ通知可）。',
+  '// P7: push受信で通知表示・タップで /app/ へ（iOSはホーム画面追加のPWAのみ通知可）。',
   'self.addEventListener("install", function(e){ self.skipWaiting(); });',
   'self.addEventListener("activate", function(e){ e.waitUntil(self.clients.claim()); });',
-  'self.addEventListener("fetch", function(e){ /* データはキャッシュしない＝常に最新 */ });',
+  '// R99-P4-7: 空の fetch ハンドラは置かない（何もしないのに全リクエストが SW を経由する＝Chrome は no-op と警告し、',
+  '// 範囲 /app/ のページを制御するようになると余計な往復になる）。インストールの条件にも fetch ハンドラは要らない。',
+  '// データはキャッシュしない＝常に最新（SW は Web Push の受信と通知のタップだけ）。',
   'self.addEventListener("push", function(e){',
   '  var d = {}; try { d = e.data ? e.data.json() : {}; } catch (_) {}',
+  '  // R102-5: ホーム画面のアイコンにあなた待ちの件数（Badging API・iOS 16.4+ のホーム画面アプリ）',
+  '  var badge = (typeof d.n === "number" && self.navigator && self.navigator.setAppBadge)',
+  '    ? self.navigator.setAppBadge(d.n).catch(function(){}) : null;',
   '  // R51: 開いているPWAへ即時pollを促す（20秒間隔の谷間を❗が待たない）',
-  '  e.waitUntil(Promise.all([',
+  '  e.waitUntil(Promise.all([badge,',
   '    self.registration.showNotification(d.title || "🏢 AI Office",',
   '      { body: d.body || "", tag: d.tag || "aioffice", data: d }),',
   '    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(function(cs){',
@@ -905,7 +1001,7 @@ const SW_JS = [
   '  e.notification.close();',
   '  // R96-B: 通知タップ → その❗のシートへ（#attn=<session>）。開いている PWA には postMessage、無ければ深リンクで開く',
   '  var sess = (e.notification.data && e.notification.data.session) || "";',
-  '  var target = "/app" + (sess ? "#attn=" + encodeURIComponent(sess) : "");',
+  '  var target = "/app/" + (sess ? "#attn=" + encodeURIComponent(sess) : "");',
   '  e.waitUntil(clients.matchAll({ type: "window", includeUncontrolled: true }).then(function(cs){',
   '    for (var i = 0; i < cs.length; i++) { if (cs[i].url.indexOf("/app") >= 0) { try { cs[i].postMessage({ type: "aioffice-open", session: sess }); } catch (_) {} return cs[i].focus(); } }',
   '    return clients.openWindow(target);',

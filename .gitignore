@@ -4,9 +4,15 @@ __pycache__/
 *.pyc
 # 独立リポ化(2026-07-14)で親worksの.gitignoreが効かなくなったため自前で除外
 relay/node_modules/
+# worktree で本体へのシンボリックリンクを張ったときも無視する（末尾の / はディレクトリ専用でリンクに効かない＝
+# git add -A でホームの絶対パスを持つリンクが入り、公開物の禁止語ゲートを素通りする）
+relay/node_modules
 relay/.wrangler/
+# wrangler のキャッシュ（アカウントのメールと ID が入る）はどの階層でも追跡しない（demo/.wrangler が公開リポに入っていた・2026-10-04）
+.wrangler/
 relay/.dev.vars
 .claude/settings.local.json
+.claude/hooks/.verify-pending
 # P3 秘密（実体は ~/.claude 配下・リポジトリ外だが、誤コピー時の保険）
 office_devices.json
 office_nonces.json
@@ -35,3 +41,6 @@ dist/
 
 # R97-C: Tripo CLI の副産物（開発の一時状態）
 .tripo/
+.DS_Store
+.venv/
+.venv

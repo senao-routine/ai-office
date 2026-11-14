@@ -146,6 +146,71 @@ class SessionTranscriptTest(unittest.TestCase):
         self.assertIsNotNone(office._SESSION_ID_RE.fullmatch("e5769d42-66b4-4936-a42e-7a57d75c0c6a"))
 
 
+class ActivityPageTest(unittest.TestCase):
+    """R121: GET /api/session/activity の中身 activity_page（作業ビュー＝スマホの封書 term と同じ office_term の行）。
+    門（loopback+CSRF）は verify ▶5 のスモークが実際の HTTP で見る。ここはクエリの形・カーソル・未知 session・伏字。"""
+
+    def setUp(self):
+        self.home = Path(tempfile.mkdtemp(prefix="office_activity_"))
+        self.orig = office.PROJECTS
+        office.PROJECTS = self.home / ".claude" / "projects"
+        d = office.PROJECTS / "-Users-test-demo-project"
+        d.mkdir(parents=True)
+        lines = [
+            {"type": "user", "uuid": "a", "message": {"role": "user", "content": "テストを回して"}},
+            {"type": "assistant", "uuid": "b", "message": {"role": "assistant", "content": [
+                {"type": "tool_use", "id": "t1", "name": "Bash",
+                 "input": {"command": "TOKEN=sk-ant-api03-" + "B" * 40 + " npm test", "description": "テストを回す"}}]}},
+            {"type": "user", "uuid": "c", "message": {"role": "user", "content": [
+                {"type": "tool_result", "tool_use_id": "t1", "content": "ok", "is_error": False}]}},
+            {"type": "assistant", "uuid": "d", "message": {"role": "assistant", "content": [{"type": "text", "text": "通りました"}]}},
+        ]
+        self.path = d / "sess-act00001.jsonl"
+        self.path.write_text("".join(json.dumps(x, ensure_ascii=False) + "\n" for x in lines), encoding="utf-8")
+
+    def tearDown(self):
+        office.PROJECTS = self.orig
+        shutil.rmtree(self.home, ignore_errors=True)
+
+    def page(self, **q):
+        return office.activity_page({k: [v] for k, v in q.items()})
+
+    def test_rows_carry_the_description_and_are_scrubbed(self):
+        ok, p = self.page(session="sess-act00001")
+        self.assertTrue(ok)
+        self.assertTrue(p["reset"])
+        self.assertEqual([r["k"] for r in p["rows"]], ["u", "tool", "res", "a"])
+        tool = p["rows"][1]
+        self.assertEqual(tool["ds"], "テストを回す")
+        self.assertNotIn("B" * 20, json.dumps(p, ensure_ascii=False))     # 命令の本文の秘密は伏字
+        self.assertNotIn("_offs", p)                                        # 内部の項目は外す（public）
+
+    def test_delta_after_cursor_and_bad_cursors(self):
+        ok, p = self.page(session="sess-act00001")
+        cur = "%d:%s" % (p["cur"]["off"], p["cur"]["h"])
+        ok, d = self.page(session="sess-act00001", after=cur)
+        self.assertTrue(ok)
+        self.assertEqual((d["rows"], d["reset"]), ([], False))
+        with self.path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps({"type": "assistant", "uuid": "e", "message": {"role": "assistant", "content": [
+                {"type": "text", "text": "次へ"}]}}, ensure_ascii=False) + "\n")
+        ok, d = self.page(session="sess-act00001", after=cur)
+        self.assertEqual([r["t"] for r in d["rows"]], ["次へ"])
+        for bad in ("0:" + "a" * 16, "1:" + "A" * 16, "x:y", "1:" + "a" * 15, "-1:" + "a" * 16):
+            self.assertEqual(self.page(session="sess-act00001", after=bad), (False, "bad cursor"), bad)
+        self.assertEqual(self.page(session="sess-act00001", after="1:" + "a" * 16, before="1:" + "a" * 16 + ":0"),
+                         (False, "bad cursor"))
+        ok, d = self.page(session="sess-act00001", after="1:" + "a" * 16)   # 形は合うが中身が違う＝末尾から読み直し
+        self.assertTrue(ok and d["reset"])
+
+    def test_unknown_and_malformed_sessions(self):
+        self.assertEqual(self.page(session="../evil"), (False, "bad session"))
+        self.assertEqual(office.activity_page({}), (False, "bad session"))
+        ok, p = self.page(session="sess-nothere99")
+        self.assertTrue(ok)
+        self.assertEqual((p["rows"], p["cur"], p["top"]), ([], None, True))
+
+
 class SealedDialogTest(unittest.TestCase):
     """R87-S2: `POST /api/dialog/sealed` の中身 `_dialog_sealed`。
 
@@ -232,6 +297,34 @@ class SealedDialogTest(unittest.TestCase):
             ok, msg, extra = office._dialog_sealed({**bad, "device_id": self.device})
             self.assertFalse(ok, bad)
 
+    def test_approval_bundles_and_their_reasons_are_urgent_but_dialogs_are_not(self):
+        """中継の自動減速（R80）でも許可の全文（kind:"ask"）とその理由は送る＝急ぎの印を付けて保存する。
+        会話ビュー（dialog）は従来どおり減速中は保留（印なし）。"""
+        ds = office.dialog_seal
+        ok, msg, extra = self._ask(req_id="d" * 32)                     # dialog
+        self.assertTrue(ok)
+        ok, msg, extra = self._ask(req_id="e" * 32, kind="ask")         # 掲示が無い＝理由の封筒（noask/off…）
+        self.assertTrue(ok)
+        self.assertIn("err", extra["bundle"])
+        ds._FILE_CACHE.update(key=None, rows=[])                         # ＝relay_agent 側
+        self.assertEqual(ds.urgent_ids(), {"e" * 32})
+
+    @unittest.skipUnless(office.dialog_seal.AVAILABLE, "封緘バックエンドが無い Mac")
+    def test_a_sealed_approval_page_is_urgent(self):
+        from unittest.mock import patch
+        ask_id = "9" * 32
+        raw = {"askId": ask_id, "session": "sess-dlg00001", "tool": "Bash", "inputCanon": "{}", "inputSha": "0" * 64,
+               "inputBytes": 2, "cwd": "/Users/test/demo-project", "ts": 1, "level": "remote", "reasons": []}
+        with patch.object(office, "pending_approvals", lambda session: [{"askId": ask_id}]), \
+                patch.object(office, "_ask_raw", lambda session, a: raw if a == ask_id else None), \
+                patch.object(office.office_approve, "seal_gate", lambda *a, **k: None), \
+                patch.object(office.office_approve, "mark_seen", lambda *a, **k: None), \
+                patch.object(office.office_approve, "audit", lambda *a, **k: None):
+            ok, msg, extra = self._ask(req_id="f" * 32, kind="ask", askId=ask_id)
+        self.assertEqual((ok, msg), (True, "sealed"))
+        office.dialog_seal._FILE_CACHE.update(key=None, rows=[])
+        self.assertEqual(office.dialog_seal.urgent_ids(), {"f" * 32})
+
     def test_errors_are_only_the_fixed_enum(self):
         for err in ("unavailable", "denied", "notfound", "toolarge", "expired"):
             self.assertIn(err, office.dialog_seal.ERRORS)
@@ -257,6 +350,216 @@ class SealedDialogTest(unittest.TestCase):
         _, _, extra = self._ask(req_id="d" * 32, depth=2)
         page = office.dialog_seal.unseal(self.secret, self.device, "sess-dlg00001", extra["bundle"])
         self.assertEqual(page["depth"], 0)
+
+
+    # ── R100-1a: ターミナル画面（kind:"term"・差分カーソル・端末ごとに 1 通） ──────────────────
+    def _term(self, req_id, after=None, device=None, before=None):
+        act = {"aioffice": 1, "kind": "term", "reqId": req_id, "session": "sess-dlg00001", "after": after}
+        if before is not None:
+            act["before"] = before
+        data = {"action": act, "device_id": self.device if device is None else device}
+        return office._dialog_sealed(data)
+
+    @unittest.skipUnless(office.dialog_seal.AVAILABLE, "封緘バックエンドが無い Mac")
+    def test_term_walks_back_before_the_first_row(self):
+        """R104-2: 開く前の行を遡る（before＝画面のいちばん上の行の位置）。封書の中だけ・内部の印（_offs・_l）は外へ出さない。"""
+        f = office.PROJECTS / "-Users-test-demo-project" / "sess-dlg00001.jsonl"
+        with f.open("a", encoding="utf-8") as fh:
+            if not f.read_text(encoding="utf-8").endswith("\n"):
+                fh.write("\n")
+            for i in range(office.office_term.ROWS_MAX + 30):
+                fh.write(json.dumps({"type": "user", "message": {"role": "user", "content": "古い指示 %d" % i}},
+                                    ensure_ascii=False) + "\n")
+        _, _, extra = self._term("a1" * 16)
+        page = office.dialog_seal.unseal(self.secret, self.device, "sess-dlg00001", extra["bundle"])
+        self.assertTrue(page["reset"])
+        self.assertIsNotNone(page["beg"])
+        self.assertNotIn("_offs", page)
+        _, _, e2 = self._term("b2" * 16, before=page["beg"])
+        older = office.dialog_seal.unseal(self.secret, self.device, "sess-dlg00001", e2["bundle"])
+        self.assertTrue(older["older"])
+        self.assertTrue(older["rows"])
+        self.assertTrue(all("_l" not in r for r in older["rows"]))
+        self.assertLessEqual(len(older["rows"]), office.office_term.BACK_ROWS)
+        _, _, e3 = self._term("c3" * 16, before=dict(page["beg"], h="0" * 16))       # ファイルが差し替わった
+        stop = office.dialog_seal.unseal(self.secret, self.device, "sess-dlg00001", e3["bundle"])
+        self.assertEqual((stop["rows"], stop["beg"], stop["older"]), ([], None, True))
+
+    @unittest.skipUnless(office.dialog_seal.AVAILABLE, "封緘バックエンドが無い Mac")
+    def test_term_page_is_sealed_with_a_cursor_and_the_next_request_gets_only_new_rows(self):
+        ok, msg, extra = self._term("e" * 32)
+        self.assertEqual((ok, msg), (True, "sealed"))
+        page = office.dialog_seal.unseal(self.secret, self.device, "sess-dlg00001", extra["bundle"])
+        self.assertEqual((page["kind"], page["reset"], page["session"]), ("term", True, "sess-dlg00001"))
+        self.assertTrue(page["rows"])
+        self.assertTrue({r["k"] for r in page["rows"]} <= {"u", "a", "tool", "res", "q", "cmd", "th"})   # R113-B: 考えは印 th だけ
+        self.assertNotIn("内部思考は会話に出さない", json.dumps(page, ensure_ascii=False))       # 考えの本文は封書の中にも載せない
+        self.assertNotIn("rows", json.dumps(extra, ensure_ascii=False))       # 平文は返らない
+        self.assertEqual(self.audit[-1]["kind"], "term")
+        f = office.PROJECTS / "-Users-test-demo-project" / "sess-dlg00001.jsonl"
+        with f.open("a", encoding="utf-8") as fh:
+            if not f.read_text(encoding="utf-8").endswith("\n"):
+                fh.write("\n")                                               # 実際の transcript は行末が改行
+            fh.write(json.dumps({"type": "user", "message": {"role": "user", "content": "追記した指示"}},
+                                ensure_ascii=False) + "\n")
+        _, _, e2 = self._term("f" * 32, after=page["cur"])
+        p2 = office.dialog_seal.unseal(self.secret, self.device, "sess-dlg00001", e2["bundle"])
+        self.assertEqual((p2["reset"], [r["t"] for r in p2["rows"]]), (False, ["追記した指示"]))
+
+    @unittest.skipUnless(office.dialog_seal.AVAILABLE, "封緘バックエンドが無い Mac")
+    def test_term_keeps_one_bundle_per_device_and_does_not_evict_dialogs(self):
+        self._ask(req_id="1" * 32)                                            # 会話ビューの封書
+        for i in range(6):                                                    # ターミナル画面は数秒おきに要求する
+            self._term(f"{i + 2:x}" * 32)
+        ids = [b["id"] for b in office.dialog_seal.live_bundles()]
+        self.assertIn("1" * 32, ids, "ターミナル画面の要求が会話ビューの封書を追い出した（MAX_LIVE の食い合い）")
+        self.assertEqual(len([i for i in ids if i != "1" * 32]), 1, f"同じ端末の term 封書が 1 通に置き換わらない: {ids}")
+        self.assertEqual(office.dialog_seal.MAX_LIVE, 4)
+
+    def test_sealed_kinds_are_a_closed_set(self):
+        self.assertEqual(office.SEALED_KINDS, frozenset({"dialog", "term", "ask"}))   # R100-1b: ask＝許可の全文
+        ok, _, _ = office._dialog_sealed({"action": {"aioffice": 1, "kind": "bogus", "reqId": "9" * 32,
+                                                     "session": "sess-dlg00001"}, "device_id": self.device})
+        self.assertFalse(ok)
+
+    # ── R113-B-I: Codex（cx-）のターミナル画面＝rollout から封書（dialog は従来どおり notfound） ──────────
+    CX_TID = "019a0000-0000-7000-8000-0000000000c1"
+    CX_KEY = "sk-" + "q1W2e3R4t5Y6u7I8o9P0" * 2
+
+    def _codex_home(self, extra=()):
+        """self.home に Codex の置き場（state_5.sqlite の threads＋rollout）を作り、office._HOME をそこへ向ける。
+        rollout＝匿名化フィクスチャ（exec_custom_tool_call）＋extra の行。"""
+        import sqlite3
+        from unittest.mock import patch
+        roll = (self.home / ".codex" / "sessions" / "2026" / "10" / "08"
+                / ("rollout-2026-10-08T01-00-00-%s.jsonl" % self.CX_TID))
+        roll.parent.mkdir(parents=True, exist_ok=True)
+        body = (FX / "codex_rollout" / "exec_custom_tool_call.jsonl").read_text(encoding="utf-8")
+        roll.write_text(body.rstrip("\n") + "\n" + "".join(x + "\n" for x in extra), encoding="utf-8")
+        db = sqlite3.connect(str(self.home / ".codex" / "state_5.sqlite"))
+        try:
+            with db:
+                db.execute("CREATE TABLE IF NOT EXISTS threads (id TEXT PRIMARY KEY, rollout_path TEXT NOT NULL)")
+                db.execute("INSERT OR REPLACE INTO threads VALUES (?, ?)", (self.CX_TID, str(roll)))
+        finally:
+            db.close()
+        pt = patch.object(office, "_HOME", self.home); pt.start(); self.addCleanup(pt.stop)
+        return roll
+
+    def _cx(self, req_id, kind="term", session=None, after=None, before=None):
+        act = {"aioffice": 1, "kind": kind, "reqId": req_id, "session": session or "cx-" + self.CX_TID, "after": after}
+        if before is not None:
+            act["before"] = before
+        return office._dialog_sealed({"action": act, "device_id": self.device})
+
+    def _secret_line(self, n=0):
+        return json.dumps({"timestamp": "2026-10-08T02:00:%02d.000Z" % n, "type": "event_msg", "payload": {
+            "type": "item_completed", "item": {
+                "type": "CommandExecution", "id": "e-secret-%d" % n, "status": "completed", "exit_code": 0,
+                "command": ["zsh", "-lc", "export OPENAI_API_KEY=%s && cat %s/.codex/auth.json" % (self.CX_KEY, self.home)],
+                "aggregated_output": "token=%s" % self.CX_KEY}}})
+
+    @unittest.skipUnless(office.dialog_seal.AVAILABLE, "封緘バックエンドが無い Mac")
+    def test_codex_term_is_sealed_from_the_rollout(self):
+        from unittest.mock import patch
+        self._codex_home([self._secret_line()])
+        session = "cx-" + self.CX_TID
+        with patch.object(office, "_session_transcript",
+                          side_effect=AssertionError("cx- で Claude の transcript を探した")):
+            ok, msg, extra = self._cx("c1" * 16)
+        self.assertEqual((ok, msg), (True, "sealed"))
+        self.assertNotIn("rows", json.dumps(extra, ensure_ascii=False))           # 平文は返らない（封書だけ）
+        page = office.dialog_seal.unseal(self.secret, self.device, session, extra["bundle"])
+        self.assertEqual((page["kind"], page["session"], page["reset"]), ("term", session, True))
+        kinds = {r["k"] for r in page["rows"]}
+        self.assertTrue({"tool", "res", "th"} <= kinds, kinds)
+        self.assertTrue(kinds <= set(office.office_term.KINDS), kinds)
+        self.assertTrue(any(r.get("n") == "Shell" and "OPENAI_API_KEY" in r["t"] for r in page["rows"]))
+        self.assertTrue(any(r.get("n") == "exec" and r["t"] for r in page["rows"]))   # SHOW_EXEC_INPUT＝True の既定
+        text = json.dumps(page, ensure_ascii=False)
+        self.assertNotIn(self.CX_KEY, text, "rollout の秘密が封書の本文に出た")
+        self.assertNotIn(str(self.home), text, "ホームの絶対パスが封書の本文に出た")
+        self.assertNotIn("_offs", page)
+        self.assertEqual((self.audit[-1]["kind"], self.audit[-1]["state"], self.audit[-1]["session"]),
+                         ("term", "sealed", session))
+        self.assertNotIn(self.CX_KEY, json.dumps(self.audit))
+        # 差分カーソル: 追記した行だけが次の封書に載る
+        roll = next((self.home / ".codex" / "sessions").rglob("rollout-*.jsonl"))
+        with roll.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps({"timestamp": "2026-10-08T02:01:00.000Z", "type": "response_item", "payload": {
+                "type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "追記した返事"}]}},
+                ensure_ascii=False) + "\n")
+        _, _, e2 = self._cx("c2" * 16, after=page["cur"])
+        p2 = office.dialog_seal.unseal(self.secret, self.device, session, e2["bundle"])
+        self.assertEqual((p2["reset"], [r["t"] for r in p2["rows"]]), (False, ["追記した返事"]))
+        # 遡りのカーソルが合わない＝遡りを止める空の頁（Claude と同じ）
+        _, _, e3 = self._cx("c3" * 16, before={"off": 1, "h": "0" * 16})
+        stop = office.dialog_seal.unseal(self.secret, self.device, session, e3["bundle"])
+        self.assertEqual((stop["rows"], stop["beg"], stop["older"]), ([], None, True))
+
+    @unittest.skipUnless(office.dialog_seal.AVAILABLE, "封緘バックエンドが無い Mac")
+    def test_codex_term_shrinks_into_one_envelope(self):
+        """上限いっぱいの Shell の対が続く rollout も、封じる側のループ（office_term.shrink）で 1 通に入る。"""
+        self._codex_home([self._secret_line(i % 60) for i in range(office.office_term.ROWS_MAX)])
+        big = []
+        for i in range(80):
+            big.append(json.dumps({"timestamp": "2026-10-08T03:00:00.000Z", "type": "event_msg", "payload": {
+                "type": "item_completed", "item": {
+                    "type": "CommandExecution", "id": "big-%d" % i, "status": "failed", "exit_code": 1,
+                    "command": ["zsh", "-lc", " ".join("cmd%d-%d" % (i, j) for j in range(900))],
+                    "aggregated_output": "\n".join("out%d-%d %s" % (i, j, "w%d" % (j * 7 % 101)) for j in range(1500))}}}))
+        roll = next((self.home / ".codex" / "sessions").rglob("rollout-*.jsonl"))
+        with roll.open("a", encoding="utf-8") as fh:
+            fh.write("\n".join(big) + "\n")
+        ok, msg, extra = self._cx("d1" * 16)
+        self.assertEqual((ok, msg), (True, "sealed"))
+        page = office.dialog_seal.unseal(self.secret, self.device, "cx-" + self.CX_TID, extra["bundle"])
+        self.assertTrue(page["rows"])
+        self.assertTrue(page["gap"])
+        self.assertTrue(all(len(r["t"]) <= office.office_term.ARG_MAX for r in page["rows"] if r.get("n") == "Shell"),
+                        "Codex の Shell の入力が縮める段（CMD_TOOLS）を通っていない")
+
+    @unittest.skipUnless(office.dialog_seal.AVAILABLE, "封緘バックエンドが無い Mac（unavailable が先に返る）")
+    def test_codex_unknown_thread_is_notfound_and_dialog_stays_refused(self):
+        self._codex_home()
+        # 形は正しいが SQLite に無い thread＝rollout が引けない＝notfound（Claude の transcript は探さない）
+        _, msg, extra = self._cx("e1" * 16, session="cx-019a0000-0000-7000-8000-0000000000ff")
+        self.assertEqual(extra["bundle"]["err"], "notfound")
+        self.assertNotIn("b", extra["bundle"])
+        # 形の違う cx-（下線は source_codex の session の形に無い）も notfound
+        _, _, extra = self._cx("e2" * 16, session="cx-bad_thread_id")
+        self.assertEqual(extra["bundle"]["err"], "notfound")
+        # cx- の dialog（会話ビュー）は今回は開けない＝従来どおり notfound（rollout が在っても）
+        _, msg, extra = self._cx("e3" * 16, kind="dialog")
+        self.assertEqual((msg, extra["bundle"]["err"]), ("notfound", "notfound"))
+        self.assertNotIn("b", extra["bundle"])
+        self.assertEqual([a["state"] for a in self.audit[-3:]], ["notfound"] * 3)
+
+    @unittest.skipUnless(office.dialog_seal.AVAILABLE, "封緘バックエンドが無い Mac（unavailable が先に返る）")
+    def test_codex_term_keeps_the_dialog_relay_and_device_gates(self):
+        """cx- でも門は同じ（本人の許可 dialogRelay・端末の失効の再検査）＝rollout を読む前に断る。"""
+        from unittest.mock import patch
+        self._codex_home()
+        with patch.object(office.office_term, "session_page", side_effect=AssertionError("門の前で rollout を読んだ")):
+            self.config["dialogRelay"] = False
+            _, _, extra = self._cx("f1" * 16)
+            self.assertEqual(extra["bundle"]["err"], "denied")
+            self.config["dialogRelay"] = True
+            for i, dev in enumerate(("dev-gone-0002", "dev-old-0003", "dev-unknown-9")):
+                act = {"aioffice": 1, "kind": "term", "reqId": "f%d" % (i + 2) * 16, "session": "cx-" + self.CX_TID}
+                _, _, extra = office._dialog_sealed({"action": act, "device_id": dev})
+                self.assertEqual(extra["bundle"]["err"], "denied", dev)
+
+    def test_show_flags_default_to_true(self):
+        """本人裁定（2026-10-08）: exec の input（JS のコード）と Grep/Glob の検索語は伏字を通して載せる＝既定 True。"""
+        import sys
+        sys.path.insert(0, str(ROOT / "server"))
+        try:
+            import source_codex_rollout
+        finally:
+            del sys.path[0]
+        self.assertIs(source_codex_rollout.SHOW_EXEC_INPUT, True)
+        self.assertIs(office.office_term.SHOW_SEARCH_TERMS, True)
 
 
 if __name__ == "__main__":

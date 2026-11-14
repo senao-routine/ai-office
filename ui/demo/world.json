@@ -779,7 +779,12 @@
     "lastSentAgo": 120,
     "capped": false
   },
-  "history": [],
+  "history": [
+    { "session": "demo-0001", "disp": "Office Core", "text": "Looks good — ship it.", "ts": 1788829080, "pending": false },
+    { "session": "cx-demo-0002", "disp": "Release Checks", "text": "Re-run the flaky test once more before merging.", "ts": 1788828600, "pending": false },
+    { "session": "demo-0003", "disp": "Design Review", "text": "Use the warmer palette from the second draft.", "ts": 1788827700, "pending": false },
+    { "session": "cx-demo-0004", "disp": "Research Notes", "text": "Summarize the top 3 findings for the team.", "ts": 1788826100, "pending": false }
+  ],
   "actions": {
     "recipes": [],
     "results": [],

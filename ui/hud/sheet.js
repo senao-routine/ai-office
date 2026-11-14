@@ -1,8 +1,12 @@
 // 詳細シート・宛先切替・compose・常設定型ボード。
 import { activityGloss, agoStr, isMuted, tidyActivity } from "/ui/core/world.js";
+import { isBot } from "/ui/core/kind.js";
 import { focusTerminal } from "/ui/platform/api.js";
 import { setSound, soundOn } from "/ui/platform/sound.js";
 import { deliveryChip } from "/ui/hud/delivery.js";
+import { answerActs } from "/ui/hud/tray.js";
+import { attnLine } from "/ui/hud/board.js";
+import { plainText } from "/ui/hud/plain.js";
 
 /** ctx: shell, T, lang, DEMO, attnKeyFor, getWorld(), render(),
  *  focusOn(id), focusOff(), delivery, dialog, getTemplates(), openTemplateEditor() */
@@ -13,10 +17,11 @@ export function init({ shell, T, lang, DEMO, attnKeyFor, getWorld, render,
   let composeTarget = null;          // {session, name, id}
   const sheetEl = shell.querySelector("#sheet");
   const composeInput = shell.querySelector("#composeinput");
+  // b4-mac: 絵文字なしの T（cockpit・T.plain）では、シートの中の直書きの印（🟢 ❓ ❗ 📨）や作業の一言（🧪 …）からも落とす
   const sEl = (tag, cls, text) => {
     const n = document.createElement(tag);
     if (cls) n.className = cls;
-    if (text !== undefined) n.textContent = text;
+    if (text !== undefined) n.textContent = T.plain ? plainText(text) : text;
     return n;
   };
   const stateOptions = (agent) => ({ T, agent,
@@ -26,6 +31,36 @@ export function init({ shell, T, lang, DEMO, attnKeyFor, getWorld, render,
   const withDelivery = (agent, brief) => (brief === agent ? agent
     : { ...agent, ...brief, listening: brief.listening, ask: brief.ask || null,
       pending: Boolean(brief.pending), attention: Boolean(brief.attention) });
+  /**
+   * 入力欄へフォーカスする。**ページ（文書のスクロール）は動かさない**: 1 列のコックピット（ページが縦に流れる形）では
+   * シートがページの丈いっぱいに伸び、入力欄はその底＝何画面も下にある。既定の focus() はそこまでページを送り、
+   * 質問文（シートの先頭）が画面の外へ出た（台帳の行から開くと、何を聞かれているかが見えない）。
+   * シート自身の中のスクロールだけは今までどおり入力欄まで寄せる（縦だけ・シートが溢れているときだけ）。
+   */
+  const focusCompose = () => {
+    composeInput.focus({ preventScroll: true });
+    const box = sheetEl.getBoundingClientRect();
+    const r = composeInput.getBoundingClientRect();
+    if (r.bottom > box.bottom) sheetEl.scrollTop += r.bottom - box.bottom;
+    else if (r.top < box.top) sheetEl.scrollTop -= box.top - r.top;
+  };
+  /**
+   * 開いたシートの見出し（名前）から質問文までを画面の中へ寄せる。**縦だけ・ページだけ**を動かす（scrollIntoView は
+   * overflow:hidden の祖先まで・横にも動かす＝開く途中の translateX(100%) のシートへ横に送って画面が崩れる）。
+   * 見えていれば何もしない（3 カラム・iso はページが流れない＝動かない）。見出しから質問文までが画面に入りきらない
+   * （長い質問）ときは質問文の先頭を画面の上へ（何を聞かれているかを優先する）。
+   */
+  const revealHead = () => {
+    const head = sheetEl.querySelector(".sheethead");
+    const q = sheetEl.querySelector(".sheetq") || head;
+    if (!head || !q) return;
+    const top = head.getBoundingClientRect().top;
+    const qr = q.getBoundingClientRect();
+    const vh = window.innerHeight || document.documentElement.clientHeight;
+    const margin = 8;
+    if (top >= 0 && qr.bottom <= vh) return;
+    window.scrollBy(0, (qr.bottom - top <= vh - 2 * margin ? top : qr.top) - margin);
+  };
   const paintActivity = (agent) => {
     shell.querySelector("#sheetact").replaceChildren(
       sEl("span", "sheetgloss", activityGloss(agent, lang())),
@@ -57,7 +92,10 @@ export function init({ shell, T, lang, DEMO, attnKeyFor, getWorld, render,
   };
   const openCompose = (agent) => {
     agent = getWorld()?.agents.find((a) => a.session === agent.session) || agent;
-    composeTarget = { session: agent.session, name: agent.name, id: agent.id };
+    // R100-0: 開いた時点の要求の番号（無ければ ""）＝押した瞬間に最古の要求へ決め直さない
+    composeTarget = { session: agent.session, name: agent.name, id: agent.id, askId: agent.ask?.askId || "" };
+    // R128: 出勤の口の Bot にはターミナルが無い＝「ターミナルへ移動」を出さない（押しても失敗の文で終わっていた）
+    shell.querySelector("#sheetterm").hidden = isBot(agent);
     let dlgListEl = null;                     // R86-B: crewrow の宛先切替から参照する
     let dlgHeadEl = null;                     // R86-C: previousSibling への暗黙依存をやめる
     shell.querySelector("#sheetname").textContent =
@@ -72,10 +110,10 @@ export function init({ shell, T, lang, DEMO, attnKeyFor, getWorld, render,
       // 質問文の表示は本文の先頭に。回答ボタンは quickboard（compose直上の常設ボード）へ
       // 集約＝「返信はここ」の一箇所感（R54ユーザーFB）
       const q = sEl("div", "sheetq");
+      // b4-mac: 質問文の無い ❗ も種類を言う（許可待ち・計画の確認・止まっている?）＝トレイ・台帳と同じ語
       q.append(sEl("b", "", agent.question
         ? `❓ ${agent.question}`
-        : `❗ ${T("approval_min", agent.approvalMin)}` +
-          (agent.stuckTool ? `\n${T("attn_target", tidyActivity(agent.stuckTool, 60))}` : "")));
+        : `❗ ${attnLine(T, agent, getWorld()?.lang)}`));
       // R86-H: 推測ではなく事実（フックが掲示している「いま聞かれていること」）が
       // あるときは明示する＝ここから答えれば本当に届く、の根拠を見せる
       if (agent.ask) {
@@ -90,7 +128,8 @@ export function init({ shell, T, lang, DEMO, attnKeyFor, getWorld, render,
     // 📋いまの仕事・🕑最近の動きより上に置く（末尾だとスクロールしないと到達できず、
     // 「もっと見る」も本文の折り返しの下に隠れて押せない＝実測 y=833 で不可視だった）。
     // DEMO/外部/oc- はサーバー無し・別Macなので節ごと出さない（demo golden 不変の条件）。
-    if (!DEMO && !agent.external && !String(agent.session || "").startsWith("oc-")) {
+    // R128: Bot（bot-）も会話（transcript）を持たない＝節を出さない（記録は中央の作業ビューに出る）
+    if (!DEMO && !agent.external && !String(agent.session || "").startsWith("oc-") && !isBot(agent)) {
       const dsec = sEl("div", "sheetsec");
       const dhead = sEl("b", "sheetsec-head dlghead", T("dialog_head"));
       const dlist = sEl("div", "dlglist");
@@ -116,7 +155,8 @@ export function init({ shell, T, lang, DEMO, attnKeyFor, getWorld, render,
           sEl("span", "crewage", agoStr(s2.age || 0, lang())),
           sEl("span", "crewmark", marks));
         row.addEventListener("click", () => {
-          composeTarget = { session: s2.session, name: agent.name, id: agent.id };
+          composeTarget = { session: s2.session, name: agent.name, id: agent.id,
+            askId: s2.session === agent.session ? (agent.ask?.askId || "") : undefined };
           for (const r of crewWrap.children) r.classList.remove("sel");
           row.classList.add("sel");
           paintTarget(agent);
@@ -124,7 +164,7 @@ export function init({ shell, T, lang, DEMO, attnKeyFor, getWorld, render,
           paintListenNote(withDelivery(agent, s2));
           // R86-B: 会話ビューアも切替先セッションのやり取りへ追随
           if (dlgListEl) loadDialog(s2.session, dlgListEl, dlgHeadEl);
-          composeInput.focus();
+          focusCompose();
         });
         crewWrap.append(row);
       });
@@ -177,30 +217,18 @@ export function init({ shell, T, lang, DEMO, attnKeyFor, getWorld, render,
     board.append(boardHead);
     if (agent.attention) {
       const answers = sEl("div", "qb-answers");
-      const opts = (agent.questionOptions || []).length
-        ? agent.questionOptions.slice(0, 4).map((o) => ({
-            label: o.label ?? o, text: T("opt_text", o.label ?? o) }))
-        : [{ label: T("opt_approve"), text: T("opt_approve_text") },
-           { label: T("opt_pause"), text: T("opt_pause_text") },
-           { label: T("opt_report"), text: T("opt_report_text") }];   // R80: スマホと同じ3本
-      if (agent.ask?.kind === "permission") {
-        // 実行の許可は「はい」という**文章**では通らない。許可そのものを送るボタンを出す。
-        // （この経路＝loopback+CSRF＝Macの前の人間だけが押せる。スマホには出さない）
-        const yes = sEl("button", "sheetopt allowbtn", T("opt_allow"));
-        yes.type = "button";
-        yes.addEventListener("click", async () => {
-          if (await allow(agent)) closeCompose();
-        });
-        answers.append(yes);
-        opts.length = 0;
-        opts.push({ label: T("opt_refuse"), text: T("opt_refuse_text") });
-      }
-      for (const o of opts) {
-        const b = sEl("button", "sheetopt", o.label);
+      // 答え方はトレイと同じ正本（answerActs）。許可待ち＝許可する／許可しない、計画（ExitPlanMode）＝承認／差し戻す。
+      // 許可・承認は「はい」という**文章**では通らない（文章は deny）＝許可そのものを送るボタンを出す。
+      // （この経路＝loopback+CSRF＝Macの前の人間だけが押せる。スマホには出さない）
+      for (const o of answerActs(agent, T, 4)) {
+        if (o.compose && !o.comment) continue;           // 「自由に書く」＝下の入力欄そのもの
+        const b = sEl("button", o.allow ? "sheetopt allowbtn" : "sheetopt", o.label);
         b.type = "button";
         b.addEventListener("click", async () => {
+          if (o.allow) { if (await allow(agent)) closeCompose(); return; }
+          if (o.compose) { focusCompose(); return; }   // 差し戻す: 理由を書いて Enter（deny＋本文で届く）
           // R67: 成功時のみクローズ（失敗トーストの裏でシートが消える混乱を防ぐ）
-          if (await send(agent.session, agent.name, o.text, attnKeyFor(agent))) closeCompose();
+          if (await send(agent.session, agent.name, o.text, attnKeyFor(agent), agent.ask?.askId || "")) closeCompose();
         });
         answers.append(b);
       }
@@ -212,10 +240,11 @@ export function init({ shell, T, lang, DEMO, attnKeyFor, getWorld, render,
       const b = sEl("button", "qchip");
       b.type = "button";
       b.title = q;                       // 狭幅で省略された全文はツールチップで
-      b.append(sEl("i", "qicon", QUICK_ICONS[i] || "・"), sEl("span", "", q));
+      if (!T.plain) b.append(sEl("i", "qicon", QUICK_ICONS[i] || "・"));   // 絵文字なしの T（cockpit）は字形を出さない
+      b.append(sEl("span", "", q));
       // 内訳で宛先を切り替えた後は QUICK もその宛先へ（❗回答ボタンは代表=❗保持者のまま）
       b.addEventListener("click", async () => {
-        if (await send(composeTarget?.session || agent.session, agent.name, q)) closeCompose();
+        if (await send(composeTarget?.session || agent.session, agent.name, q, "", composeTarget?.askId)) closeCompose();
       });
       quick.append(b);
     });
@@ -226,7 +255,7 @@ export function init({ shell, T, lang, DEMO, attnKeyFor, getWorld, render,
       b.title = tp.text;
       b.append(sEl("i", "qicon", "✳"), sEl("span", "", tp.label));
       b.addEventListener("click", async () => {
-        if (await send(composeTarget?.session || agent.session, agent.name, tp.text)) closeCompose();
+        if (await send(composeTarget?.session || agent.session, agent.name, tp.text, "", composeTarget?.askId)) closeCompose();
       });
       quick.append(b);
     }
@@ -239,8 +268,9 @@ export function init({ shell, T, lang, DEMO, attnKeyFor, getWorld, render,
     // R67: 開きだけ .show 2段階でフェードイン（hidden の即時性は維持＝スモーク互換・
     // frozen は .no-anim で transition:none＝golden 非干渉）
     requestAnimationFrame(() => sheetEl.classList.add("show"));
-    composeInput.focus();
+    focusCompose();
     if (getWorld()) render();            // 選択ハイライトを反映
+    revealHead();                        // 描き直しの後（トレイ・台帳の丈が替わってから）質問文を画面へ
   };
   const closeCompose = () => {
     focusOff();                 // R70: 全景へ戻る
@@ -249,16 +279,27 @@ export function init({ shell, T, lang, DEMO, attnKeyFor, getWorld, render,
     sheetEl.hidden = true;
     shell.classList.remove("sheet-open");
     composeInput.value = "";
+    if (composeInput.tagName === "TEXTAREA") composeInput.style.height = "auto";
     shell.querySelector("#quickdock").replaceChildren();
     if (getWorld()) render();
   };
   const sndBtn = shell.querySelector("#sheetsnd");
-  const paintSnd = () => { sndBtn.textContent = soundOn() ? "🔈" : "🔇"; };
+  // b4-mac: 印（data-px）を持つ様式（cockpit）は字形でなく印を替える（🔈/🔇 の絵文字を出さない）。押された状態は aria-pressed
+  const paintSnd = () => {
+    if (sndBtn.hasAttribute("data-px")) {
+      sndBtn.dataset.px = soundOn() ? "sound" : "bell-off";
+      sndBtn.textContent = "";
+      sndBtn.setAttribute("aria-pressed", String(soundOn()));
+      sndBtn.setAttribute("aria-label", T("snd_title"));
+    } else sndBtn.textContent = soundOn() ? "🔈" : "🔇";
+  };
   paintSnd();
   sndBtn.addEventListener("click", () => { setSound(!soundOn()); paintSnd(); });
   // R53: 🖥 実ターミナルへジャンプ（宛先切替中はそのセッションのターミナルへ）
   const jumpTerminal = async (session, name) => {
     if (DEMO) { showToast(T("demo_no_send")); return; }
+    // R128: Bot（bot-）はターミナルを持たない＝入口は出さない（ロボのダブルクリックなど残りの口も黙って何もしない＝外部の相手と同じ）
+    if (isBot({ session })) return;
     if (!session || session.startsWith("oc-")) { showToast(T("term_none"), false); return; }
     try {
       const r = await focusTerminal(session);
@@ -294,18 +335,35 @@ export function init({ shell, T, lang, DEMO, attnKeyFor, getWorld, render,
     applyWide(wide);
     try { localStorage.setItem(WIDE_KEY, wide ? "1" : "0"); } catch { /* Optional storage. */ }
   });
+  // R106-11: 複数行（textarea）対応。Enter=送信・Shift+Enter=改行・IME 確定の Enter（isComposing）は送らない
+  // （cockpit は #composeinput がtextarea・iso/pixel は従来の input のままで Shift+Enter は単に無視される）。
   composeInput.addEventListener("keydown", async (e) => {
-    if (e.key === "Enter" && composeInput.value.trim() && composeTarget) {
-      // R67: 送信成功時のみクローズ＝失敗しても本文が残る（従来は入力全喪失の実バグ）
-      if (await send(composeTarget.session, composeTarget.name, composeInput.value.trim())) {
-        closeCompose();
+    if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
+      // textarea の既定（改行を入れる）は本文が空でも止める＝input だった頃の no-op を維持
+      // （先に preventDefault し、送信条件を満たす時だけ送る。レビュー指摘: 空のまま Enter で空行が積み重なる実バグ）
+      e.preventDefault();
+      if (composeInput.value.trim() && composeTarget) {
+        // R67: 送信成功時のみクローズ＝失敗しても本文が残る（従来は入力全喪失の実バグ）
+        if (await send(composeTarget.session, composeTarget.name, composeInput.value.trim(), "",
+          composeTarget.askId)) {
+          closeCompose();
+        }
       }
     } else if (e.key === "Escape") {
       closeCompose();
     }
   });
+  // 自動で伸びる textarea（cockpit だけ・iso/pixel の input では何もしない）。シート自体のスクロールは動かさない。
+  if (composeInput.tagName === "TEXTAREA") {
+    const autoGrow = () => {
+      composeInput.style.height = "auto";
+      composeInput.style.height = `${composeInput.scrollHeight}px`;
+    };
+    composeInput.addEventListener("input", autoGrow);
+    autoGrow();
+  }
   return {
-    openCompose, closeCompose, jumpTerminal,
+    openCompose, closeCompose, jumpTerminal, paintSound: paintSnd,
     refreshGrowth: () => {
       const agent = getWorld()?.agents.find((a) => a.id === composeTarget?.id);
       if (agent && !sheetEl.hidden) {

@@ -21,11 +21,13 @@ export function paintDeliveryChip(node, { T, agent, offline = false, stalled = f
     node.append(child);
     return child;
   };
+  // b4-mac: 絵文字なしの T（cockpit・T.plain）では印の字形を出さない（状態は隣の語が言う）
+  const glyph = (s) => (T.plain ? "" : s);
   if (aliases) {
     // ops smoke と既存拡張は hidden を読むため、非該当の印も DOM には残す。
-    append("amute", "📴", !isMuted(agent));
-    append("apend", "📨", !agent?.pending || isMuted(agent));
-  } else if (value === "saved" || value === "pending") {
+    append("amute", glyph("📴"), !isMuted(agent));
+    append("apend", glyph("📨"), !agent?.pending || isMuted(agent));
+  } else if ((value === "saved" || value === "pending") && !T.plain) {
     append("dstate-icon", value === "saved" ? "📴" : "📨");
   }
   append("dstate-label", T(`dstate_${value}`));

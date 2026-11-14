@@ -1,0 +1,5 @@
+{
+  "v": 1,
+  "about": "β の報告の窓口。配布のたびに feedbackUrl へフォームの URL（https のみ）を書く。空なら画面は「β のご案内にある窓口へ」と言う。",
+  "feedbackUrl": "https://github.com/senao-routine/ai-office/issues/new"
+}

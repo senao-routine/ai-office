@@ -87,10 +87,11 @@ class KeysApiTest(unittest.TestCase):
         self.assertEqual(
             [provider["id"] for provider in providers],
             # R63: APIプロバイダ4件を末尾に追加（既存6件の順序は不変＝UIの並びを固定）
-            ["claude", "codex", "gemini", "openai_key", "x_api", "openai_usage",
-             "openrouter", "moonshot", "deepseek", "groq"],
+            # R103-5: AI サービス・API の行は provider_registry の順（本人裁定: Anthropic・OpenAI・Mistral を先に）
+            ["claude", "codex", "gemini", "openai_key", "x_api",
+             "anthropic", "openai_usage", "mistral", "openrouter", "moonshot", "deepseek", "groq"],
         )
-        self.assertEqual(len(providers), 10)
+        self.assertEqual(len(providers), 12)
         by_id = {provider["id"]: provider for provider in providers}
         self.assertTrue(by_id["claude"]["connected"])
         self.assertTrue(by_id["codex"]["connected"])

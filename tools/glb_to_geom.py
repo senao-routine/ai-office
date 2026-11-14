@@ -202,8 +202,8 @@ def b64_u16(vals): return base64.b64encode(struct.pack("<%dH" % len(vals), *vals
 def b64_u8(vals): return base64.b64encode(bytes(vals)).decode("ascii")
 
 INDEX_HEAD = """// R96-D: Tripo 生成什器の登録簿。tools/glb_to_geom.py --register が manifest.json から書く（手で編集しない）。
-// ここに無い種類は kit.js の procedural にフォールバックする。PWA では manifest.json で
-// pwa:false の物を tools/gen_pwa_modules.py が `export default null` に差し替える（同じ import 図のまま軽くする）。
+// ここに無い種類は kit.js の procedural にフォールバックする。
+// （PWA は R99-P4-6 で部屋をドット絵にし、3D を同梱しなくなった＝manifest の pwa は記録として残るだけで何も変えない。）
 """
 
 
@@ -237,7 +237,7 @@ def main():
     ap.add_argument("--dry", action="store_true", help="書かずに統計だけ")
     ap.add_argument("--no-weld", action="store_true", help="頂点の溶接をしない")
     ap.add_argument("--register", action="store_true", help="ui/iso/gen/manifest.json と index.js に登録する")
-    ap.add_argument("--pwa", action="store_true", help="登録時: PWA にも同梱する（manifest pwa:true）")
+    ap.add_argument("--pwa", action="store_true", help="登録時: manifest に pwa:true と記録する（R99-P4-6 以降 PWA は 3D を同梱しない＝記録だけ）")
     ap.add_argument("--yaw", type=float, default=0.0, help="登録時: 正面を +z に向ける回転（rad）")
     ap.add_argument("--fit", default="w", choices=["w", "d", "h", "box"], help="登録時: spec のどの寸法に合わせるか")
     ap.add_argument("--fit-h", default="top", choices=["top", "full"], help="登録時: 高さは天板/座面(top)か外形(full)を spec.h に合わせるか")

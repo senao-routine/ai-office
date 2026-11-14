@@ -9,7 +9,7 @@ cd "$(dirname "$0")/.."   # AI Office/
 NG=0
 ng(){ echo "  ✗ $1"; NG=$((NG+1)); }
 ok(){ echo "  ✓ $1"; }
-PORT=8789
+PORT=""   # wrangler dev を起こす直前に空いているポートを選ぶ（下の「ポートを選ぶ」）
 TOKEN="e2e-relay-token"
 DID="d_0123456789ab"
 SECRET="00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff"
@@ -56,6 +56,20 @@ print(json.dumps(o.sign_envelope(sec, did, sess, text, int(ts), nonce)))
 EOF
 }
 
+# ポートを選ぶ（2026-10-25）: 8789 固定のころ、別のツール（works のコスト管理ダッシュボード）が 8789 を使っていて wrangler dev が
+# 起動せず、後片付けの「ポートを LISTEN しているプロセスを落とす」がそのツールまで止めた（launchd が起こし直した）。
+# → 始める時点で空いているポートだけを使う＝後片付けで落とす相手は自分が起こした wrangler/workerd だけ。固定したいときは RELAY_E2E_PORT。
+port_busy(){ lsof -ti tcp:"$1" -sTCP:LISTEN >/dev/null 2>&1; }
+for P in ${RELAY_E2E_PORT:-8789 8790 8791 8792 8793 8794 8795 8796 8797 8798}; do
+  port_busy "$P" || { PORT=$P; break; }
+done
+if [ -z "$PORT" ]; then
+  ng "中継E2E: 空いているポートが無い（${RELAY_E2E_PORT:-8789〜8798} が使用中・何も止めていません）"; echo "❌ relay E2E 中断"; exit 1
+fi
+if [ -z "${RELAY_E2E_PORT:-}" ] && [ "$PORT" != 8789 ]; then
+  echo "  - 8789 は使用中（$(lsof -nP -iTCP:8789 -sTCP:LISTEN 2>/dev/null | awk 'NR==2{print $1}')）→ ${PORT} で起動（その相手は止めない）"
+fi
+
 POST_TOKEN="e2e-post-token"
 MACMINI_TOKEN="e2e-macmini-token"
 # P7: e2e用の使い捨てVAPID鍵（本番は wrangler secret put VAPID_JWK）
@@ -70,10 +84,14 @@ VHOME=$(mktemp -d)
 # wrangler dev は子に workerd を spawn する。親subshellをkillしても workerd が :PORT に残り
 # 次回起動が古いコードの残骸を叩く（＝嘘green/嘘fail）。ポート専有プロセスも明示的に落とす。
 cleanup(){ kill ${WPID:-} 2>/dev/null; wait ${WPID:-} 2>/dev/null;
+           # R116-S0 の節が途中で落ちても、常駐の relay_agent・承認フック・スマホ役を残さない（一時 HOME も消す）
+           for P in ${R116_PIDS:-}; do pkill -P "$P" 2>/dev/null; kill "$P" 2>/dev/null; done
+           [ -n "${R116_HOME:-}" ] && rm -rf "$R116_HOME";
            # wrangler dev の子孫(npm/node/workerd 2階層)は別プロセス群で残るのでポート名で確実に落とす
            pkill -f "wrangler dev --port $PORT" 2>/dev/null;
            pkill -f "workerd.*:$PORT" 2>/dev/null;
-           lsof -ti tcp:$PORT -sTCP:LISTEN 2>/dev/null | xargs kill 2>/dev/null;  # LISTEN限定=接続中の無関係プロセスを巻き込まない
+           # LISTEN 限定＝接続中の無関係プロセスを巻き込まない。$PORT は始める時点で空いていた（上の「ポートを選ぶ」）＝いま LISTEN しているのは自分の workerd
+           lsof -ti tcp:$PORT -sTCP:LISTEN 2>/dev/null | xargs kill 2>/dev/null;
            rm -f relay/.dev.vars; [ -f relay/.dev.vars.e2e-bak ] && mv relay/.dev.vars.e2e-bak relay/.dev.vars;
            rm -rf "${VHOME:-}"; }
 trap cleanup EXIT
@@ -104,8 +122,11 @@ B="http://127.0.0.1:$PORT"
 NOW=$(date +%s)
 
 # PWAアプリシェルは無認証で配信される（GET /app 200・HTMLマーカー）
-curl -s "$B/app" | grep -q "AI Office" && ok "PWA /app 無認証配信 (200)" || ng "PWA /app 配信異常"
+# R99-P4-7: シェルの URL は /app/。/app（古いリンク・QR）は 308 で /app/ へ寄る＝-L で追って同じシェルに着くことを見る
+curl -sL "$B/app" | grep -q "AI Office" && ok "PWA /app 無認証配信 (200・/app/ へ 308 を追って)" || ng "PWA /app 配信異常"
 curl -s "$B/app/manifest.webmanifest" | grep -q "standalone" && ok "PWA manifest 配信" || ng "PWA manifest 異常"
+# R99-P4-7: ホーム画面のアプリとして名乗れる（start_url・scope が SW の範囲・id は start_url と同じオリジン・PNG アイコンの寸法・apple-touch-icon・名前 1 つ・色 1 つ）
+python3 tests/pwa_install_smoke.py "$B" || ng "R99-P4-7 PWA のインストールの形（python3 tests/pwa_install_smoke.py で詳細）"
 
 # 無署名 {session,text} → Worker が 400（中継経路は署名必須）
 CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$B/instruct" -H "Authorization: Bearer $TOKEN" \
@@ -257,7 +278,7 @@ import importlib.util, os, sys
 os.environ["OFFICE_HOME"] = sys.argv[1]
 spec = importlib.util.spec_from_file_location("o", "server/office_server.py")
 o = importlib.util.module_from_spec(spec); spec.loader.exec_module(o)
-ok, msg = o.post_instruction("oc-lobster-1", "R42.5 双方向テスト指示")
+ok, msg = o.post_instruction("oc-lobster-1", "R42.5 双方向テスト指示", src="local")
 assert ok, msg
 EOF
 [ -n "$(ls "$VHOME/.claude/office_oc_outbox/"*.json 2>/dev/null)" ] \
@@ -298,6 +319,94 @@ curl -s -X POST "$B/instruct?site=macmini" -H "Authorization: Bearer $TOKEN" -H 
 OFFICE_HOME="$VHOME" python3 tools/openclaw_agent.py --once >/dev/null 2>&1
 [ ! -f "$F" ] && ok "R42.5 リプレイ(既視nonce)→再配達なし" || ng "R42.5 リプレイが再配達された"
 
+# ---- R99-P4-5: スマホから ❗ に答える（本物の承認フック × 中継 × relay_agent） ----
+# 承認フック hooks/office-approval-wait.sh を一時 HOME で**本当に起動**して掲示を出させ、スマホ役が
+# 署名封筒で /instruct へ答える → relay_agent --once（HTTP の /sync 経路）→ 回答ファイル → フックの標準出力。
+# 守る性質（不変条件 7）: 質問（AskUserQuestion）は deny＋回答の文言そのもの＝モデルへの回答として届く／
+# 許可（Bash）と計画の承認（ExitPlanMode）は deny＋言葉だけ＝**中継からは allow が絶対に出ない**。
+# 受信箱には書かない（相手は止まっている＝Stop hook が起動せず届かない）。
+# wrangler 無しの同じ鎖は test_relay_agent の test_r86h_chain_through_real_hook（既定の verify で毎回）。
+ASK_DIR="$VHOME/.claude/office_approvals"
+HOOK_PIDS=""
+ASK_CASES="e2e-ask-q0001|AskUserQuestion|選択肢「B案」でお願いします。
+e2e-ask-p0002|Bash|はい、承認します
+e2e-ask-x0003|ExitPlanMode|はい、そのまま進めてください。"
+while IFS='|' read -r S TOOL _TXT; do
+  python3 - "$S" "$TOOL" > "$VHOME/hook_in_$S.json" <<'EOF'
+import json, sys
+s, tool = sys.argv[1:3]
+ti = {"AskUserQuestion": {"questions": [{"question": "どちらで進めますか?", "header": "方式",
+                                          "options": [{"label": "A案"}, {"label": "B案"}]}]},
+      "Bash": {"command": "git push origin main", "description": "push"},
+      "ExitPlanMode": {"plan": "手順を3つに分けます"}}[tool]
+print(json.dumps({"session_id": s, "cwd": "/tmp", "hook_event_name": "PermissionRequest",
+                  "permission_mode": "default", "tool_name": tool, "tool_input": ti,
+                  "transcript_path": "/nonexistent/transcript.jsonl"}, ensure_ascii=False))
+EOF
+  OFFICE_HOME="$VHOME" OFFICE_APPROVAL_WAIT=60 OFFICE_APPROVAL_POLL=0.2 \
+    bash hooks/office-approval-wait.sh < "$VHOME/hook_in_$S.json" > "$VHOME/hook_out_$S.json" 2>/dev/null &
+  HOOK_PIDS="$HOOK_PIDS $!"
+done <<< "$ASK_CASES"
+ASK_UP=0
+# R100-0: 掲示は 1 件ごとの名前 <session>.<askId>.json
+ask_posted() { ls "$ASK_DIR"/"$1".*.json 2>/dev/null | grep -qv '\.reply\.'; }
+for i in $(seq 1 60); do
+  ask_posted e2e-ask-q0001 && ask_posted e2e-ask-p0002 && ask_posted e2e-ask-x0003 \
+    && { ASK_UP=1; break; }
+  sleep 0.25
+done
+[ "$ASK_UP" = "1" ] && ok "R99-P4-5 実フックが掲示を出した（AskUserQuestion・Bash・ExitPlanMode）" \
+  || ng "R99-P4-5 フックの掲示が出ない: $(ls "$ASK_DIR" 2>/dev/null | tr '\n' ' ')"
+# スマホ役: 3 件それぞれに署名封筒で答える（PWA の選択肢ボタン／承認ボタンが送る文言と同じ形）。
+# R102-11: スマホは表示していた掲示の印（askId の先頭 8 桁）を添えて答える＝{"aioffice":1,"kind":"answer","ask","text"}
+while IFS='|' read -r S _TOOL TXT; do
+  ID8=$(ls "$ASK_DIR"/"$S".*.json 2>/dev/null | grep -v '\.reply\.' | head -1 | sed -E 's#.*/[^.]+\.([0-9a-f]{8})[0-9a-f]*\.json#\1#')
+  ATXT=$(python3 -c 'import json,sys;print(json.dumps({"aioffice":1,"kind":"answer","ask":sys.argv[1],"text":sys.argv[2]},ensure_ascii=False,separators=(",",":")))' "$ID8" "$TXT")
+  AENV=$(sign_env "$S" "$ATXT" "$(date +%s)" "$(python3 -c 'import secrets;print(secrets.token_hex(16))')")
+  curl -s -X POST "$B/instruct" -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d "$AENV" >/dev/null
+done <<< "$ASK_CASES"
+OFFICE_HOME="$VHOME" RELAY_URL="$B" RELAY_TOKEN="$TOKEN" python3 server/relay_agent.py --once > /tmp/relay_ask.log 2>&1
+for i in $(seq 1 60); do
+  ALIVE=0
+  for P in $HOOK_PIDS; do kill -0 "$P" 2>/dev/null && ALIVE=1; done
+  [ "$ALIVE" = "0" ] && break
+  sleep 0.25
+done
+for P in $HOOK_PIDS; do                 # 残っていたら（＝回答が届かなかった）子の python ごと止める
+  kill -0 "$P" 2>/dev/null && { pkill -P "$P" 2>/dev/null; kill "$P" 2>/dev/null; }
+  wait "$P" 2>/dev/null
+done
+python3 - "$VHOME" <<'EOF' && ok "R99-P4-5 中継から ❗ に答える: 質問＝deny＋回答そのもの／許可・計画の承認＝deny＋言葉（allow は出ない・掲示は片付く）" \
+  || ng "R99-P4-5 中継から ❗ に答える経路が壊れている（上の AssertionError・relay_agent: $(tail -3 /tmp/relay_ask.log 2>/dev/null | tr '\n' ' ')）"
+import json, os, sys
+from pathlib import Path
+vh = Path(sys.argv[1])
+def decision(s):
+    raw = (vh / f"hook_out_{s}.json").read_text(encoding="utf-8").strip()
+    assert raw, f"{s}: フックが無出力で終わった（回答が届かず素通し）"
+    return json.loads(raw)["hookSpecificOutput"]["decision"]
+q, p, x = decision("e2e-ask-q0001"), decision("e2e-ask-p0002"), decision("e2e-ask-x0003")
+assert q == {"behavior": "deny", "message": "選択肢「B案」でお願いします。"}, q
+assert p["behavior"] == "deny", f"スマホ経由で allow が出た（不変条件 7）: {p}"
+assert p["message"].startswith("はい、承認します") and "実行されていません" in p["message"], p
+assert x["behavior"] == "deny", f"スマホ経由で計画が承認された: {x}"
+assert x["message"].startswith("はい、そのまま進めてください。"), x
+assert "計画は承認されていません" in x["message"], f"計画の承認への答えに『承認されていない』事実が無い: {x}"
+ad = vh / ".claude" / "office_approvals"
+for s in ("e2e-ask-q0001", "e2e-ask-p0002", "e2e-ask-x0003"):
+    assert not (vh / ".claude" / "office_inbox" / f"{s}.json").exists(), f"{s}: 受信箱にも置かれた"
+    left = sorted(f.name for f in ad.glob(f"{s}.*"))
+    assert not [n for n in left if ".reply." not in n], f"{s}: 掲示が残った（❗の幽霊）: {left}"
+    assert not [n for n in left if ".reply." in n], f"{s}: 回答が読まれずに残った: {left}"
+    assert not (ad / f"{s}.reply.json").exists(), f"{s}: 旧名に回答を置いた（新しい hook は読まない）"
+EOF
+[ "$(grep -c '承認まちへ回答を配達' /tmp/relay_ask.log 2>/dev/null)" = "3" ] \
+  && ok "R99-P4-5 relay_agent が 3 件とも承認まちへ回した（受信箱へは回していない）" \
+  || ng "R99-P4-5 relay_agent の回し先が違う: $(tail -4 /tmp/relay_ask.log 2>/dev/null | tr '\n' ' ')"
+R=$(curl -s "$B/pull" -H "Authorization: Bearer $TOKEN")
+echo "$R" | grep -q '"items":\[\]' && ok "R99-P4-5 回答した封筒は ack 済み（キューに残らない）" || ng "R99-P4-5 回答の封筒が残った: $(echo "$R" | head -c 160)"
+rm -f "$VHOME"/hook_in_e2e-ask-* "$VHOME"/hook_out_e2e-ask-* /tmp/relay_ask.log
+
 # ---- P7 Web Push（購読の保存/削除・VAPID公開鍵・❗遷移トリガの生存） ----
 V=$(curl -s "$B/push/vapid" -H "Authorization: Bearer $TOKEN")
 echo "$V" | grep -qE '"key":"[A-Za-z0-9_-]{87}"' && ok "P7 /push/vapid 公開鍵 (65バイトb64u)" || ng "P7 vapid鍵異常: $V"
@@ -323,17 +432,36 @@ CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$B/push/subscribe" -H "Au
 CODE=$(curl -s -o /dev/null -w "%{http_code}" "$B/push/vapid" -H "Authorization: Bearer $POST_TOKEN")
 [ "$CODE" = "403" ] && ok "P7 POSTトークンは /push/* 不可 (403)" || ng "P7 POSTトークンが /push/vapid に通った ($CODE)"
 # ❗遷移トリガ: 承認まち社員入りstatusをpush→200＋（到達不能endpointへの送信失敗でも）購読が残る
-R=$(curl -s -X POST "$B/status" -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"office":{"officeName":"E2Eオフィス","tasks":{"pending":2,"inProgress":1,"completed":3},"res":{"fiveHour":21,"sevenDay":58,"staleSec":30,"providers":[{"id":"claude","label":"Claude","bars":[{"k":"5h","pct":21},{"k":"7d","pct":58}],"staleSec":30},{"id":"codex","label":"Codex","bars":[{"k":"7d","pct":7}]}]},"templates":[{"label":"ビルド確認","text":"verifyを回して結果を1行で報告して"}],"avatarMode":"session","employees":[{"session":"e2e-attn-0001","disp":"E2E検証部","state":"waiting","listening":false,"verb":"検証中","question":"どの案で進めますか?","questionOptions":[{"label":"案A (Recommended)","desc":"推奨案"},{"label":"案B","desc":"別案"},{"label":"案C","desc":"保留案"}]},{"session":"e2e-busy-0002","disp":"E2E稼働部","state":"working","listening":false,"verb":"実行中"},{"session":"e2e-perm-0003","disp":"E2E許可部","state":"waiting","listening":false,"verb":"実行中","approvalMin":4,"ask":{"tool":"Bash","kind":"permission"}},{"session":"oc-e2e","disp":"OpenClaw","dept":"OpenClaw","state":"working","verb":"replying","external":"openclaw"}]}}')
+P7_STATUS='{"office":{"officeName":"E2Eオフィス","tasks":{"pending":2,"inProgress":1,"completed":3},"res":{"fiveHour":21,"sevenDay":58,"staleSec":30,"providers":[{"id":"claude","label":"Claude","bars":[{"k":"5h","pct":21},{"k":"7d","pct":58}],"staleSec":30},{"id":"codex","label":"Codex","bars":[{"k":"7d","pct":7}]}]},"templates":[{"label":"ビルド確認","text":"verifyを回して結果を1行で報告して"}],"avatarMode":"session","employees":[{"session":"e2e-attn-0001","disp":"E2E検証部","state":"waiting","listening":false,"verb":"検証中","question":"どの案で進めますか?","questionOptions":[{"label":"案A (Recommended)","desc":"推奨案"},{"label":"案B","desc":"別案"},{"label":"案C","desc":"保留案"}]},{"session":"e2e-busy-0002","disp":"E2E稼働部","state":"working","listening":false,"verb":"実行中"},{"session":"e2e-perm-0003","disp":"E2E許可部","state":"waiting","listening":false,"verb":"実行中","approvalMin":4,"ask":{"tool":"Bash","kind":"permission"}},{"session":"oc-e2e","disp":"OpenClaw","dept":"OpenClaw","state":"working","verb":"replying","external":"openclaw"}]}}'
+push_p7(){ curl -s -X POST "$B/status" -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d "$P7_STATUS"; }
+R=$(push_p7)
 echo "$R" | grep -q '"ok":true' && ok "P7 ❗入りstatus push 生存 (通知は非同期)" || ng "P7 ❗status pushで死んだ: $R"
 
 # status push済みの社員がスマホPWAに描画され、社員タップ→シートまで通ることを確認。
 PWA_PY="${VENV_PY:-}"
 if [ -n "$PWA_PY" ] && [ -x "$PWA_PY" ] && "$PWA_PY" -c 'import playwright' >/dev/null 2>&1; then
   mkdir -p tests/artifacts
-  # R77: 既定は3D経路（pwa3d_smoke）・2Dへの退避経路は pwa_smoke が担当（/ui/**を落として検査）
+  # R77: 既定は部屋の経路（pwa3d_smoke・R99-P4-6 からドット絵）・一覧への退避経路は pwa_smoke が担当（/ui/**を落として検査）
   "$PWA_PY" tests/pwa3d_smoke.py "$B" "$DID" "$SECRET" "$TOKEN" tests/artifacts/pwa3d_smoke.png \
-    || ng "PWA 3Dスモーク失敗"
+    || ng "PWA の部屋のスモーク失敗（pwa3d_smoke）"
+  # R99-P4-6: pwa_smoke の直前に同じ ❗ 入りの status（P7）を push し直し、/sync（office=null＝status は変えない）で
+  # Mac の生存（agentseen）も刻み直す。pwa3d_smoke は形状ごとの検査で数分かかる＝P7 の push（と、その前の relay_agent の
+  # /sync）から 180 秒を超えると、PWA は同期切れ（status の ts か agentSeenAgo が 180 秒超・app.js の updateStale）として
+  # 送信前に confirm() を出し、Playwright がそれを閉じて /instruct が飛ばない（負荷の高い日の偽の赤・実測）。
+  # 同じ ❗ の集合なので通知の遷移（notifyAttn の newly）は起きない。
+  R=$(push_p7)
+  RS=$(curl -s -X POST "$B/sync" -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+    -d '{"office":null,"ackIds":[],"wantOpenclaw":false}')
+  FRESH=$(curl -s "$B/status" -H "Authorization: Bearer $TOKEN" | python3 -c 'import json,sys,time
+d = json.load(sys.stdin); age = int(time.time() - (d.get("ts") or 0) / 1000); ago = d.get("agentSeenAgo")
+fresh = age <= 30 and isinstance(ago, int) and ago <= 30 and "e2e-attn-0001" in (d.get("json") or "")
+print("ok" if fresh else "ng", age, ago)' 2>/dev/null)
+  read -r FR_OK FR_AGE FR_AGO <<< "$FRESH"
+  if [ "$FR_OK" = "ok" ]; then
+    ok "R99-P4-6 pwa_smoke の直前に ❗ 入りの status を push し直した（status ${FR_AGE} 秒前・agentSeenAgo ${FR_AGO} 秒）"
+  else
+    ng "R99-P4-6 pwa_smoke の直前の push し直しが効いていない（status ${FR_AGE:-?} 秒前・agentSeenAgo ${FR_AGO:-?}・push: ${R}・sync: $(echo "$RS" | head -c 80)）"
+  fi
   "$PWA_PY" tests/pwa_smoke.py "$B" "$DID" "$SECRET" "$TOKEN" tests/artifacts/pwa_smoke.png \
     || ng "PWAスモーク(2D退避)失敗"
 else
@@ -391,6 +519,179 @@ R=$(curl -s "$B/pull" -H "Authorization: Bearer $TOKEN")
 IDS=$(python3 -c 'import json,sys;d=json.loads(sys.argv[1]);print(json.dumps([i["id"] for i in d.get("items",[])]))' "$R")
 [ "$IDS" != "[]" ] && curl -s -X POST "$B/ack" -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" -d "{\"ids\":$IDS}" >/dev/null
+
+# ---- R116-S0 本物の ws_loop（WS 常駐）を何周回しても、中継の status に掲示の印 id8 が載り、status の送信が揺れない ----
+# 以前は _redact_office_for_relay が office_json の 2 秒キャッシュの dict をその場で削っていた＝ローカル走査と直後の sync が
+# 同じ dict に 2 回かけ、中継へ送る方から id8 が落ちた（R102-11 の答え先の指定とスマホの全文の先読みが本番で効かない）うえ、
+# 印あり／なしの指紋が交互に立って 2 秒の走査のたびに sync を送った。P7・pwa3d は status を直接注入する＝この経路を通らない。
+# 鎖: 一時 HOME の transcript ＋ 本物の承認フックの掲示（relay_agent の初回の sync の後に出す＝ローカル走査が変化を見つける経路）
+# → relay_agent（WS 常駐・スマホ役の app 接続があるので走査は 2 秒）→ DO の status（スマホ役の WS フレームと GET /status）。
+# sync の回数は DO の書込行数で数える（sync 1 回ごとに必ず 2 行以上増え、relay_agent が office_relay_usage.json に写す）。
+# wrangler 無しの同じ鎖（偽の WS で本物の ws_loop）は test_relay_agent の test_r116_ws_loop_keeps_id8_and_does_not_resync_every_scan。
+if node -e 'if(typeof WebSocket!=="function")process.exit(1)' 2>/dev/null; then
+  R116_HOME="$PWD/tests/artifacts/.tmp/r116_id8_$$"
+  R116_SESS="e2e-r116-id8-0001"
+  R116_TR="$R116_HOME/.claude/projects/-Users-test-r116/$R116_SESS.jsonl"
+  R116_USAGE="$R116_HOME/.claude/office_relay_usage.json"
+  R116_WIN=12
+  rm -rf "$R116_HOME"
+  mkdir -p "$(dirname "$R116_TR")" "$R116_HOME/.claude/office_inbox"
+  cp tests/fixtures/working_tool.jsonl "$R116_TR"
+  # 本番の形（反証）: 送信履歴を 1 行（本番の _history.json は 50 件を期限なしで持つ＝today.lastSentAgo は常に数で、走査のたびに秒で増える）。
+  # 履歴の無い HOME では lastSentAgo が null のまま＝指紋に秒が入っても緑になり、本番の「走査のたびの sync」を見逃した
+  python3 -c 'import json,sys,time;json.dump([{"session":sys.argv[2],"disp":"demo-project","text":"t","ts":time.time()-100}],open(sys.argv[1],"w"))' \
+    "$R116_HOME/.claude/office_inbox/_history.json" "$R116_SESS"
+  # スマホ役（role=app の WS）: 届いた status フレームを 1 行ずつ書く（受け取った時刻と中身の json だけ）
+  node - "$B" "$TOKEN" "$R116_HOME/frames.jsonl" 90 > "$R116_HOME/app.log" 2>&1 <<'EOF' &
+const fs = require("fs");
+const [base, token, out, secs] = process.argv.slice(2);
+const put = (o) => fs.appendFileSync(out, JSON.stringify(o) + "\n");
+const ws = new WebSocket(base.replace(/^http/, "ws") + "/ws?role=app",
+  ["aioffice.v1", "bearer." + Buffer.from(token, "utf-8").toString("base64url")]);
+ws.onopen = () => put({ at: Date.now(), open: 1 });
+ws.onerror = () => put({ at: Date.now(), error: 1 });
+ws.onmessage = (ev) => {
+  let d = null;
+  try { d = JSON.parse(String(ev.data)); } catch (_) { return; }
+  if (d && d.t === "status") put({ at: Date.now(), json: typeof d.json === "string" ? d.json : "" });
+};
+setTimeout(() => { try { ws.close(); } catch (_) { /* 閉じ済み */ } process.exit(0); }, Number(secs) * 1000);
+EOF
+  R116_PIDS="$!"
+  for i in $(seq 1 40); do grep -q '"open":1' "$R116_HOME/frames.jsonl" 2>/dev/null && break; sleep 0.25; done
+  # 本物の常駐（--once ではない＝WS の ws_loop）。Mac の前の在否は固定（本物の HID の空き時間で macActive が揺れない）
+  OFFICE_HOME="$R116_HOME" OFFICE_FAKE_MAC_IDLE=0 RELAY_URL="$B" RELAY_TOKEN="$TOKEN" \
+    python3 server/relay_agent.py > "$R116_HOME/agent.log" 2>&1 &
+  R116_PIDS="$R116_PIDS $!"
+  for i in $(seq 1 60); do [ -s "$R116_USAGE" ] && break; sleep 0.25; done     # 初回の sync（掲示の前）が済んだ
+  sleep 3                                  # 起動直後に 1 回だけ起きる変化（res の裏の読み込みなど）を掲示の前に済ませる
+  touch "$R116_TR"                         # 経過（age）を 0 から数え直す＝窓の間に分の境を跨がない
+  python3 - "$R116_SESS" > "$R116_HOME/hook_in.json" <<'EOF'
+import json, sys
+print(json.dumps({"session_id": sys.argv[1], "cwd": "/Users/test/demo-project", "hook_event_name": "PermissionRequest",
+                  "permission_mode": "default", "tool_name": "Bash",
+                  "tool_input": {"command": "git push origin main", "description": "push"},
+                  "transcript_path": "/nonexistent/transcript.jsonl"}, ensure_ascii=False))
+EOF
+  OFFICE_HOME="$R116_HOME" OFFICE_APPROVAL_WAIT=90 OFFICE_APPROVAL_POLL=0.5 \
+    bash hooks/office-approval-wait.sh < "$R116_HOME/hook_in.json" > "$R116_HOME/hook_out.json" 2>/dev/null &
+  R116_PIDS="$R116_PIDS $!"
+  R116_ASK=""
+  for i in $(seq 1 40); do
+    R116_ASK=$(ls "$R116_HOME/.claude/office_approvals/" 2>/dev/null \
+      | sed -nE "s/^$R116_SESS\.([0-9a-f]{32})\.json$/\1/p" | head -1)
+    [ -n "$R116_ASK" ] && break
+    sleep 0.25
+  done
+  # 掲示が中継に載るまで待つ（ASK_GRACE 3 秒＋走査 2 秒＋sync）＝スマホ役が受け取ったフレームを読んで、その人の ask で見る
+  # （文字列の grep は不可: status には actions.caps.ask など別の "ask" キーがあり、掲示の前に窓を開けてしまった）
+  for i in $(seq 1 80); do
+    python3 - "$R116_HOME/frames.jsonl" "$R116_SESS" <<'EOF' 2>/dev/null && break
+import json, sys
+for line in open(sys.argv[1], encoding="utf-8"):
+    try:
+        o = json.loads(json.loads(line).get("json") or "{}")
+    except ValueError:
+        continue
+    if any(isinstance(e, dict) and e.get("session") == sys.argv[2] and isinstance(e.get("ask"), dict)
+           for e in (o.get("employees") or [])):
+        sys.exit(0)
+sys.exit(1)
+EOF
+    sleep 0.25
+  done
+  sleep 1                                  # その sync の使用量の写しが書かれるのを待つ
+  R116_ROWS0=$(python3 -c 'import json,sys;print(int(json.load(open(sys.argv[1])).get("rows") or 0))' "$R116_USAGE" 2>/dev/null || echo 0)
+  R116_N0=$(wc -l < "$R116_HOME/frames.jsonl" | tr -d ' ')
+  sleep "$R116_WIN"                        # 2 秒の走査をおよそ 5 周（掲示は出たまま・ほかに変わるものは無い）
+  R116_ROWS1=$(python3 -c 'import json,sys;print(int(json.load(open(sys.argv[1])).get("rows") or 0))' "$R116_USAGE" 2>/dev/null || echo 0)
+  R116_N1=$(wc -l < "$R116_HOME/frames.jsonl" | tr -d ' ')
+  curl -s "$B/status" -H "Authorization: Bearer $TOKEN" > "$R116_HOME/status.json"
+  for P in $R116_PIDS; do pkill -P "$P" 2>/dev/null; kill "$P" 2>/dev/null; wait "$P" 2>/dev/null; done
+  R116_PIDS=""
+  python3 - "$R116_HOME" "$R116_SESS" "$R116_ASK" "$R116_ROWS0" "$R116_ROWS1" "$R116_N0" "$R116_N1" "$R116_WIN" \
+    > "$R116_HOME/check.txt" 2>&1 <<'EOF'
+import json, sys
+from pathlib import Path
+home, sess, ask, rows0, rows1, n0, n1, win = sys.argv[1:9]
+home = Path(home)
+assert len(ask) == 32, f"本物の承認フックが掲示を出さない: {ask!r}"
+assert "WS接続" in (home / "agent.log").read_text(encoding="utf-8", errors="replace"), "relay_agent が WS 常駐（ws_loop）に入らない"
+
+def asks_of(js):
+    try:
+        o = json.loads(js) if isinstance(js, str) and js else {}
+    except ValueError:
+        return []
+    return [(k, e["ask"]) for k in ("employees", "roster") for e in (o.get(k) or [])
+            if isinstance(e, dict) and e.get("session") == sess and isinstance(e.get("ask"), dict)]
+
+def flat(o, p=""):
+    """変わったキーの道筋だけを言うための平らな表（値は出さない）。指紋と同じく generatedAt・relay は除き、経過は分で見る。"""
+    if isinstance(o, dict):
+        out = {}
+        for k, v in o.items():
+            if p == "" and k in ("generatedAt", "relay"):
+                continue
+            out.update(flat(v // 60 if k == "age" and isinstance(v, int) else v, f"{p}.{k}"))
+        return out
+    if isinstance(o, list):
+        out = {}
+        for i, v in enumerate(o):
+            out.update(flat(v, f"{p}[{i}]"))
+        return out
+    return {p: o}
+
+lines = [x for x in (home / "frames.jsonl").read_text(encoding="utf-8").splitlines() if x.strip()]
+frames = [json.loads(x) for x in lines]
+seen = [a for f in frames for a in asks_of(f.get("json"))]
+assert seen, "掲示が中継の status（スマホ役の WS フレーム）に一度も載らない"
+problems = []                                    # id8 と送信の揺れは別々に見て、両方を言う（片方の失敗で他方を隠さない）
+# 本番の形の前提: 送信履歴が載っている（最後の送信からの秒が数＝走査のたびに増える値が中継の snapshot にある）
+lsa = [(json.loads(f["json"]).get("today") or {}).get("lastSentAgo") for f in frames if f.get("json")]
+if not lsa or not all(type(x) is int for x in lsa):
+    problems.append(f"送信履歴が中継の today に載らない（本番の形の前提が崩れた）: {lsa[:3]}")
+bad = [(k, a) for k, a in seen if a.get("id8") != ask[:8]]
+if bad:
+    problems.append(f"中継の ask に掲示の印 id8 が無い／違う（R102-11 の答え先・全文の先読みが効かない）: {bad[:2]}")
+st = json.loads((home / "status.json").read_text(encoding="utf-8"))
+now = asks_of(st.get("json"))
+if not (now and all(a.get("id8") == ask[:8] for _, a in now)):
+    problems.append(f"GET /status の ask に id8 が無い: {now}")
+rows0, rows1, n0, n1 = int(rows0), int(rows1), int(n0), int(n1)
+assert rows0 > 0, "relay_agent の sync の写し（office_relay_usage.json）が無い"
+# 窓の間に届いたフレーム（office を載せた sync＝DO の書込 4 行：agentseen・status・attnstate・使用量）と、何が変わって送ったか
+win_frames = [f for f in frames[n0:n1] if "json" in f]
+changed = []
+for i, f in enumerate(frames[:n1]):
+    if i < n0 or "json" not in f:
+        continue
+    prev = next((g for g in reversed(frames[:i]) if g.get("json")), None)
+    a, b = flat(json.loads(prev["json"])) if prev else {}, flat(json.loads(f["json"] or "{}"))
+    changed.append(sorted(k for k in set(a) | set(b) if a.get(k) != b.get(k))[:4])
+d = rows1 - rows0
+empty_syncs = (d - 4 * len(win_frames)) / 2      # office を載せない sync（2 行：agentseen・使用量）の回数
+if empty_syncs > 1:
+    problems.append(f"掲示の後、何も変わらないのに sync を送り続けた（{win} 秒で DO の書込 {d} 行・フレーム {len(win_frames)} 枚"
+                    f"＝空の sync 約 {empty_syncs:g} 回）")
+if len(win_frames) > 2:
+    problems.append(f"{win} 秒の間に status のフレームが {len(win_frames)} 枚（送信が揺れた・変化: {changed}）")
+assert not problems, " ／ ".join(problems)
+print(f"フレーム {len(seen)} 件すべて id8 あり・{win} 秒で DO の書込 {d} 行＝office の送信 {len(win_frames)} 回"
+      f"（変化: {changed or 'なし'}）・空の sync {empty_syncs:g} 回")
+EOF
+  R116_RC=$?
+  R116_OUT=$(tail -2 "$R116_HOME/check.txt" | tr '\n' ' ')
+  if [ "$R116_RC" -eq 0 ]; then
+    ok "R116-S0 本物の ws_loop（WS 常駐・2 秒の走査）で中継の status に掲示の印 id8 が載り、送信が揺れない（${R116_OUT}）"
+  else
+    ng "R116-S0 中継の id8／送信の揺れ: ${R116_OUT}（relay_agent: $(tail -3 "$R116_HOME/agent.log" 2>/dev/null | tr '\n' ' ')）"
+  fi
+  rm -rf "$R116_HOME"
+  R116_HOME=""
+else
+  echo "  - node組込WebSocket無し（node<22）→ R116-S0 の id8 の E2E 省略"
+fi
 
 # ---- R79-10 遠隔実行（許可リスト）E2E: スマホ役の act-封筒 → relay_agent → daemon → 実行 ----
 # 実daemonを temp HOME で起こし、許可リストに1件だけ登録した安全なレシピを遠隔実行する。
@@ -491,6 +792,13 @@ rows = json.loads(raw)["results"]
 assert any(r["reqId"] == "req-e2e00001" for r in rows), rows
 EOF
 
+# ---- R100-1b スマホから許可（実 hook × 実 daemon × 中継 × パスキー役）--------------------------
+# ON・許可鍵の登録（enr-）・封書 kind:"ask"・apv- の 14 段・hook の allow・rm -rf は通らない・OFF・孤児 inbox 0。詳細は tests/apv_e2e.py。
+# R114: ON の間のタップ（mode:"tap"・WebAuthn 無し）＝remote/review の往復（hook が allow・監査に mode=tap）・mac は tap-mac
+# （掲示の時点で mac なら決定の瞬間に下がっても）・hook の独立の tap-mac・OFF は off・鍵の無い端末は not-enrolled も同じ節。
+python3 tests/apv_e2e.py "$B" "$TOKEN" "$PORT" && ok "R100-1b／R114 スマホから許可 E2E（Face ID の署名とタップ・tests/apv_e2e.py）" \
+  || ng "R100-1b／R114 スマホから許可 E2E が赤（python3 tests/apv_e2e.py の ✗ 行）"
+
 # ---- R87 封書: スマホの会話ビューア（E2EE）E2E -------------------------------------
 # スマホ役が署名した dlg- 要求 → 中継 → relay_agent → daemon が封じる → 次の sync で dlg レーン →
 # GET /status から取った封書を**端末秘密で本当に開ける**（PWA 本番と同じ openBlob）／
@@ -579,6 +887,42 @@ r2 = subprocess.run(["node", "tests/dialog_open_cli.mjs"], input=json.dumps(
     {"bundle": item, "secretHex": "ab" * 32, "deviceId": did, "targetSession": "sess-verify0001"}),
     capture_output=True, text=True, env={"NO_COLOR": "1", "FORCE_COLOR": "0", "PATH": "/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin"})
 assert r2.returncode == 2, "別の秘密で開けてしまった"
+EOF
+# R100-1a: ターミナル画面（kind:"term"）も同じ封書のレーン＝端末の秘密で開くと「端末の行」（kind/rows/cur）が出る・平文は中継に載らない
+TRM_REQ=$(python3 -c 'import secrets;print(secrets.token_hex(16))')
+TRM_TEXT="{\"aioffice\":1,\"kind\":\"term\",\"reqId\":\"$TRM_REQ\",\"session\":\"sess-verify0001\",\"after\":null}"
+ENV_TRM=$(python3 - "$DLG_DID" "$DLG_SEC" "dlg-$TRM_REQ" "$TRM_TEXT" "$(date +%s)" "$(python3 -c 'import secrets;print(secrets.token_hex(16))')" <<'EOF'
+import importlib.util, json, sys
+spec = importlib.util.spec_from_file_location("o", "server/office_server.py")
+o = importlib.util.module_from_spec(spec); spec.loader.exec_module(o)
+did, sec, sess, text, ts, nonce = sys.argv[1:7]
+print(json.dumps(o.sign_envelope(sec, did, sess, text, int(ts), nonce)))
+EOF
+)
+curl -s -X POST "$B/instruct" -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" -d "$ENV_TRM" >/dev/null
+OFFICE_HOME="$DLG_HOME" RELAY_URL="$B" RELAY_TOKEN="$TOKEN" OFFICE_PORT=$DLG_PORT \
+  python3 server/relay_agent.py --once >> /tmp/dlg_relay.log 2>&1
+OFFICE_HOME="$DLG_HOME" RELAY_URL="$B" RELAY_TOKEN="$TOKEN" OFFICE_PORT=$DLG_PORT \
+  python3 server/relay_agent.py --once >> /tmp/dlg_relay.log 2>&1
+curl -s "$B/status" -H "Authorization: Bearer $TOKEN" > /tmp/trm_status.json
+python3 - "$DLG_DID" "$DLG_SEC" "$TRM_REQ" <<'EOF' && ok "R100-1a ターミナル画面の封書: 端末の秘密で開くと kind:term の行とカーソル（平文は中継に無い）" || ng "R100-1a ターミナル画面の往復に失敗（/tmp/dlg_relay.log）"
+import json, subprocess, sys
+did, sec, req = sys.argv[1:4]
+d = json.load(open("/tmp/trm_status.json"))
+lane = json.loads(d["dlg"])
+item = next(i for i in lane["items"] if i["id"] == req)
+assert "err" not in item, item
+r = subprocess.run(["node", "tests/dialog_open_cli.mjs"], input=json.dumps(
+    {"bundle": item, "secretHex": sec, "deviceId": did, "targetSession": "sess-verify0001"}),
+    capture_output=True, text=True, env={"NO_COLOR": "1", "FORCE_COLOR": "0", "PATH": "/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin"})
+assert r.returncode == 0, r.stderr
+page = json.loads(r.stdout)
+assert page["kind"] == "term" and page["reset"] is True and page["rows"], page
+assert isinstance(page["cur"], dict) and page["cur"]["off"] > 0, page["cur"]
+for row in page["rows"]:
+    t = row.get("t") or ""
+    assert len(t) < 8 or t not in d["dlg"], "端末の行の平文が中継に載っている"
 EOF
 # 限定トークンでは dlg を書けない（/sync は 403）・読めない（GET /status に無い）
 for TK in "$POST_TOKEN" "$MACMINI_TOKEN"; do

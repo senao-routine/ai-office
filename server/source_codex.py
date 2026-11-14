@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
 """Codex CLI の SQLite メタデータを employee へ変換するアダプタ。
 
-DB 取得と純粋な変換を分離し、会話本文や rollout は読み取らない。
+DB 取得と純粋な変換を分離し、ここ（一覧とゲージ）は従来どおりメタデータだけを読む＝会話本文や rollout は読み取らない。
+R113-B（本人裁定 2026-10-08）: スマホのセッション画面（E2EE 封書 kind:"term"・dialogRelay ON のとき）だけ
+rollout を読む＝source_codex_rollout（読み取り専用・~/.codex/sessions 配下への閉じ込め・伏字）。
 残留した inProgress は開始時刻で失効させ、子は親の minions にだけ数える。
 """
 import math

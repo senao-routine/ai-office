@@ -28,7 +28,7 @@ import { initStream, privateBadge, privateStatus, streamOptions, streamSettings 
 // R98-W1: 様式非依存の部分は ui/hud へ移した（shell=文言・ピン・ヘルプ／board=2階層と共通クローム／
 // session=ポーリング・オフライン・深リンク・デモ）。ここに残るのは 3D と 3 カラムの固有部だけ。
 import { applyStaticStrings, el, initHelp, initUsage, paintArrivalBadge } from "/ui/hud/shell.js";
-import { ZONES, attnKeyFor, departmentBoard, renderChrome, renderHistory, zoneLabel } from "/ui/hud/board.js";
+import { ZONES, attnKeyFor, departmentBoard, mutedSessions, renderChrome, renderHistory, zoneLabel } from "/ui/hud/board.js";
 import { init as initSession } from "/ui/hud/session.js";
 import { IsoScene } from "./scene3d.js";
 import { DEFAULT_SPEC } from "/ui/core/layout_specs.js";
@@ -232,6 +232,7 @@ export async function mount(root) {
   const apply = (office) => {
     world = office;
     built = buildWorld(office);
+    built.muted = mutedSessions(office);   // R128 #4: 消音の Bot（音＝customize の sounds・画面の通知＝tray で鳴らさない）
     arrivals.update(office);
     // 言語は office_json の lang が正本（サーバー設定に追随）。変わったら静的文言も貼り直す
     if (built.lang !== lang()) { setLang(built.lang); applyStaticStrings(shell, T); }
@@ -771,7 +772,9 @@ function render(shell, w, { tray, sheet, board }) {
         stalled: shell._fx?.stalled?.(a.session) });
       const act = row.querySelector(".aact");
       act.className = "aact" + (a.attention && a.approvalMin >= STARVE_MIN ? " starve" : "");
-      changed = setText(act.querySelector(".atext"), a.detail || T("board_no_detail")) || changed;
+      // b4-mac: 権限モード（plan・編集は自動・確認なし…）を「いま」の後ろに（default は出さない・スマホの端末の見出しと同じ語）
+      const pw = a.permMode && a.permMode !== "default" ? T("perm_mode", a.permMode) : "";
+      changed = setText(act.querySelector(".atext"), (a.detail || T("board_no_detail")) + (pw ? ` · ${pw}` : "")) || changed;
       setText(row.querySelector(".aage"), agoStr(a.age, w.lang));
       setText(row.querySelector(".alevel"), T("board_level", a.level ?? "—"));
       const c = a.work?.counts || {};

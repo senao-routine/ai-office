@@ -3,6 +3,7 @@
 import importlib.util
 import json
 import os
+from datetime import date
 import shutil
 import tempfile
 import time
@@ -144,20 +145,21 @@ class OverlayScanTest(unittest.TestCase):
         self.session("sess-golden001", 10)
         self.session("sess-golden002", 600, "waiting_said.jsonl")
         # R90-D3 適用前の fixture 出力を固定。vendor 以外は全キー・値・型を比較する。
+        # 意図した更新: minionsLive（直近 60 秒に書いたサブエージェントの数）・tool（R110・最後の工具名＝kind tool のときだけ）を足した
         golden = json.loads('''[
           {"session":"sess-golden001","cwd":"/Users/test/demo-project","branch":"main",
-           "title":"","age":10,"mtime":1799999990.0,"state":"working","kind":"tool",
-           "verb":"実行中","target":"push to origin",
+           "title":"","aiTitle":"","age":10,"mtime":1799999990.0,"state":"working","kind":"tool",
+           "verb":"実行中","tool":"Bash","target":"push to origin",
            "feed":["実行中 push to origin","💬 了解です。まずテストを回します。"],
-           "skills":[],"minions":0,"pending":false,"listening":false,
+           "skills":[],"minions":0,"minionsLive":0,"pending":false,"listening":false,
            "lastSaid":"了解です。まずテストを回します。","lastOrder":"デプロイを進めて",
            "question":"","approvalMin":0,"stuckTool":"","dept":"demo-project","role":"",
            "disp":"demo-project"},
           {"session":"sess-golden002","cwd":"/Users/test/demo-project","branch":"main",
-           "title":"","age":600,"mtime":1799999400.0,"state":"waiting","kind":"said",
-           "verb":"指示待ち","target":"完了しました。次の指示をください。",
+           "title":"","aiTitle":"","age":600,"mtime":1799999400.0,"state":"waiting","kind":"said",
+           "verb":"指示待ち","tool":"","target":"完了しました。次の指示をください。",
            "feed":["💬 完了しました。次の指示をください。"],
-           "skills":[],"minions":0,"pending":false,"listening":false,
+           "skills":[],"minions":0,"minionsLive":0,"pending":false,"listening":false,
            "lastSaid":"完了しました。次の指示をください。","lastOrder":"まとめて",
            "question":"","approvalMin":0,"stuckTool":"","dept":"demo-project","role":"",
            "disp":"demo-project 2号"}
@@ -206,6 +208,21 @@ class OverlayScanTest(unittest.TestCase):
             self.assertEqual(data["events"], {"seq": 1, "wired": True, "lastTs": self.NOW})
             with patch.object(office, "pending_approval", return_value={"kind": "permission", "ts": self.NOW}):
                 self.assertEqual(len(office.scan_office()["employees"]), 1)
+
+    def test_events_disabled_are_not_read_synchronously(self):
+        """R102-4（別モデルレビュー）: 中継の配達員のプロセスで同期に読む refresh も OFFICE_EVENTS=0 を守る
+        （無効化しても当日の SessionEnd を読んで社員が消えた）。"""
+        from tests.test_office_events import load_events
+        self.session()
+        events = load_events()
+        path = self.home / events.EVENTS_DIR / (date.today().isoformat() + ".jsonl")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"v": 1, "ts": self.NOW, "sid": "sess-overlay001", "ev": "SessionEnd"}) + "\n")
+        with patch.object(office, "office_events", events), patch.dict(os.environ, {"OFFICE_EVENTS": "0"}):
+            self.assertEqual(len(office.scan_office()["employees"]), 1)
+        self.addCleanup(events.stop)
+        with patch.object(office, "office_events", events):
+            self.assertEqual(office.scan_office()["employees"], [])     # 有効なら読む（中継の配達員のプロセス）
 
     def test_event_prune_is_hourly_even_without_inbox(self):
         events = SimpleNamespace(prune=Mock())
@@ -256,7 +273,8 @@ class OverlayScanTest(unittest.TestCase):
                 patch.object(office.source_claude_bg, "agents_cli",
                              wraps=office.source_claude_bg.agents_cli) as agents:
             data = office.scan_office()
-            bg.assert_called_once_with(self.home, self.NOW)
+            # plan.md #23: bg_index は lang を受け取る（既定 ja・外部 bg の自由文は ja のときだけ通す）。
+            bg.assert_called_once_with(self.home, self.NOW, lang="ja")
             agents.assert_called_once_with(self.home, self.NOW)
             employee = next(e for e in data["employees"] if e["session"] == "sess-overlay001")
             self.assertEqual(employee["state"], "waiting")
@@ -332,14 +350,43 @@ class OverlayScanTest(unittest.TestCase):
         self.assertEqual(office.scan_office()["employees"][0]["dept"], "専用部署")
         self.assertEqual(office.project_label("/unmatched", "demo", self.config), ("unmatched", ""))
 
+    def test_overlay_flags_follow_the_real_hook_wiring(self):
+        """別モデルレビュー: holds_seen／asks_wired の導き方を固定する。推測の ❗ を消すのは両方そろったときだけ＝
+        導き方を取り違える（eventsWired をそのまま渡す・PermissionRequest の配線を見ない）と、記録できない配線で
+        本物の許可待ちを隠す。"""
+        self.session()
+        self.job("blocked")
+        ev_cmd = 'bash "$HOME/.claude/hooks/office-event.sh"'
+        def wire(events, approval):
+            hooks = {e: [{"matcher": "", "hooks": [{"type": "command", "command": ev_cmd}]}] for e in events}
+            if approval:
+                hooks.setdefault("PermissionRequest", []).append(
+                    {"matcher": "", "hooks": [{"type": "command", "command": 'bash "$HOME/.claude/hooks/office-approval-wait.sh"'}]})
+            (self.home / ".claude").mkdir(parents=True, exist_ok=True)
+            (self.home / ".claude" / "settings.json").write_text(json.dumps({"hooks": hooks}), encoding="utf-8")
+        hook = Mock(side_effect=lambda info, home, now, **kw: info)
+        events = SimpleNamespace(overlay=hook, seq=lambda: 0, prune=Mock())
+        with patch.object(office, "office_events", events):
+            for evs, appr, want in ((["Stop"], False, (False, False)), (["Stop"], True, (True, False)),
+                                    (["Stop", "PermissionRequest"], False, (False, True)),
+                                    (["Stop", "PermissionRequest"], True, (True, True)),
+                                    (["PermissionRequest"], True, (True, False))):
+                wire(evs, appr)
+                office._cache.update(t=0.0, data=None)
+                office.scan_office()
+                kw = hook.call_args.kwargs
+                self.assertEqual((kw["asks_wired"], kw["holds_seen"]), want, (evs, appr))
+
     def test_hook_overlay_priority_preserves_approval_and_listening(self):
         self.session()
         self.job("blocked")
-        hook = Mock(side_effect=lambda info, home, now: dict(info, state="working", listening=True))
+        hook = Mock(side_effect=lambda info, home, now, **kw: dict(info, state="working", listening=True))
         events = SimpleNamespace(overlay=hook, seq=lambda: 0, prune=Mock())
         with patch.object(office, "office_events", events):
             employee = office.scan_office()["employees"][0]
             self.assertEqual(hook.call_args.args[0]["state"], "waiting")
+            # 承認フックの配線と PermissionRequest の記録の配線を渡す（保留を解く・推測の❗を消す判断の材料）
+            self.assertEqual(sorted(hook.call_args.kwargs), ["asks_wired", "holds_seen"])
             self.assertEqual(employee["state"], "working")
             self.assertIs(employee["listening"], False)
             ask = {"kind": "permission", "ts": self.NOW, "title": "確認", "options": []}

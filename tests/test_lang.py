@@ -169,6 +169,50 @@ class OfficeLangTest(unittest.TestCase):
         import re
         self.assertFalse(re.search(r"[ぁ-んァ-ヶ一-龥]", e["verb"]), e["verb"])
 
+    def test_remote_on_consent_reaches_the_mac_dialog_uncut(self):
+        """R116-S0（反証）→R118: Mac の［ON にする］→ 実 HTTP の POST /api/config/remote_approve → _confirm_local が osascript に渡す
+        同意の文が、日英のどちらでも 1 字も切れない（_confirm_local は各行を 120 字で切り 4 行まで・R118 から期限なし＝時間の別は無い）。前の英文は 2 行目が
+        147 字で「… Commands that can't 」で切れ、足したばかりの境界（読み切れない形は Mac だけ）が消えたまま［Turn on］を押させていた。
+        osascript は差し替え（キャンセルを返す＝ON にしない・状態を書かない）。"""
+        import http.client
+        import subprocess
+        import threading
+        from unittest import mock
+        scripts = []
+
+        def fake_run(argv, **kw):
+            scripts.append(argv[2])
+            return subprocess.CompletedProcess(argv, 0, stdout="button returned:キャンセル, gave up:false", stderr="")
+
+        handler = type("QuietHandler", (office.Handler,), {"log_message": lambda *a: None})
+        srv = office._OfficeHTTPServer(("127.0.0.1", 0), handler)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        self.addCleanup(srv.server_close)
+        self.addCleanup(srv.shutdown)
+        port = srv.server_address[1]
+        with mock.patch.dict(os.environ, {}), \
+                mock.patch.object(office.office_actions.subprocess, "run", side_effect=fake_run):
+            os.environ.pop("OFFICE_FAKE_CONFIRM", None)
+            for lang in ("ja", "en"):
+                os.environ["OFFICE_LANG"] = lang
+                for hours in (None,):
+                    conn = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+                    conn.request("POST", "/api/config/remote_approve", body=json.dumps({"on": True}),
+                                 headers={"X-Office-Local": "1", "Origin": f"http://127.0.0.1:{port}",
+                                          "Content-Type": "application/json"})
+                    res = json.loads(conn.getresponse().read() or b"{}")
+                    conn.close()
+                    self.assertFalse(res.get("ok"), res)          # キャンセル＝ON にしていない
+                    self.assertEqual(len(scripts), 1, f"{lang} {hours} h: 確認のダイアログが 1 回出ない")
+                    script = scripts.pop()
+                    body = script.split('display dialog "', 1)[1].split('" buttons', 1)[0]
+                    want = office.office_approve.remote_on_consent(lang).split("\n")
+                    self.assertLessEqual(len(want), 4, f"{lang}: _confirm_local は 4 行までしか出さない")
+                    for line in want:
+                        self.assertLessEqual(len(line), 120, f"{lang} {hours} h: 120 字を超える行（切れる）: {line}")
+                    self.assertEqual(body.split("\\n"), want, f"{lang} {hours} h: ダイアログの文が同意の正本と違う（切れた）")
+                    self.assertIn("Mac-only" if lang == "en" else "Mac だけ", body)
+
 
 if __name__ == "__main__":
     unittest.main()

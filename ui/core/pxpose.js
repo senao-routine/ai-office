@@ -4,11 +4,11 @@
 // しておくと ①node でユニットに掛けられる ②golden が決定論になる（時刻は引数・乱数を使わない）
 // ③3D 側（poseFor）と同じ語彙で議論できる。DOM・時刻・乱数には触らない（tools/js_layer_lint.py）。
 //
-// コマ表（1 ベンダーあたり 14 コマ = 42 セル）:
+// コマ表（1 ベンダーあたり 14 コマ × 4 種 = 56 セル）:
 //   idle 2 ／ type 2 ／ walk 4 ／ raise 2 ／ think 1 ／ rest 2 ／ done 1
 // 側面視なので歩行は 1 方向だけ描き、左向きは X 反転で作る（コマ数が 1/4 で済む）。
 
-/** セルの名前（ui/pixel/px/robots.js の文字グリッドのキーと 1:1） */
+/** セルの名前（ui/pixel/px/{claude,codex,openclaw,bot}.js の文字グリッドのキーと 1:1） */
 export const CELLS = Object.freeze([
   "idle0", "idle1", "type0", "type1", "walk0", "walk1", "walk2", "walk3",
   "raise0", "raise1", "think0", "rest0", "rest1", "done0",
@@ -17,8 +17,8 @@ export const CELLS = Object.freeze([
 /** 1 ベンダーあたりのコマ数（tools/px_lint.py が「全ベンダー揃っているか」を見る） */
 export const CELL_COUNT = CELLS.length;
 
-/** ベンダー 3 種（それ以外は claude の殻に落とす＝「知らない相手」を描かない） */
-export const VENDORS = Object.freeze(["claude", "codex", "openclaw"]);
+/** ベンダー 4 種（それ以外は claude の殻に落とす＝「知らない相手」を描かない） */
+export const VENDORS = Object.freeze(["claude", "codex", "openclaw", "bot"]);
 
 const FPS = Object.freeze({ idle: 1, type: 2, walk: 4, raise: 3, think: 1, rest: 0.5, done: 2 });
 

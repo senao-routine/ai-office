@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>🏢 AI Office — Claude Code Live</title>
+<title>AI Office</title>
 <style>
   :root { color-scheme: light; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -20,11 +20,12 @@
     margin: auto; text-align: center; display: flex; flex-direction: column;
     align-items: center; gap: 14px;
   }
+  /* マークは白い面＋hairline の枠（デザイン方針: 紫系のグラデーションを使わない。R99-P4 第 C 波） */
   #bootstate .mark {
     width: 46px; height: 46px; border-radius: 13px;
-    background: linear-gradient(140deg, #7c5cff, #4f8dff);
+    background: #fff; border: 1px solid #dcd9ec;
     display: flex; align-items: center; justify-content: center;
-    font-size: 24px; color: #fff;
+    font-size: 24px;
   }
   #bootstate h1 { font-size: 15px; font-weight: 700; letter-spacing: .01em; }
   #bootstate p { font-size: 12.5px; color: #6c6890; max-width: 34em; line-height: 1.7; }
@@ -37,12 +38,33 @@
     #bootstate .mark { animation: pulse 1.6s ease-in-out infinite; }
     @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.06); } }
   }
+  /* 起動に失敗したら脈打つのをやめる（まだ読み込み中に見せない） */
+  #bootstate.failed .mark { animation: none; }
+  /* R105: 既定のコックピットで開くときの起動画面（ターミナルの地＝燐光グリーン）。白く光ってから暗くならない */
+  :root[data-boot="cockpit"] { color-scheme: dark; }
+  :root[data-boot="cockpit"] body { background: #0c0f0c; color: #d8e0d8; }
+  :root[data-boot="cockpit"] #bootstate .mark { background: #0c0f0c; border-color: #2a332a; border-radius: 0; }
+  :root[data-boot="cockpit"] #bootstate p { color: #9aa79a; }
+  :root[data-boot="cockpit"] #bootstate code { background: #161c16; border-radius: 0; }
+  :root[data-boot="cockpit"] #bootstate a { color: #39d353; }
+  :root[data-boot="app"] body { background: #F7F6F3; color: #1C1B19; }
+  :root[data-boot="app"] #bootstate .mark { border-color: #E4E0D8; animation: none; }
+  :root[data-boot="app"] #bootstate p { color: #57534E; }
 </style>
+<script>
+// 起動画面の地だけを先に決める（正本は /ui/platform/style.js の resolveStyle。ここは見た目のための簡易版＝外れても起動は変わらない）
+(function () {
+  var q = new URLSearchParams(location.search), s = q.get("ui");
+  if (q.get("stream") === "1") s = "iso";
+  if (!s) { try { s = localStorage.getItem("aioffice.ui.v3"); } catch (e) { s = null; } }
+  if (s !== "iso" && s !== "pixel") document.documentElement.setAttribute("data-boot", s === "cockpit" ? "cockpit" : "app");
+})();
+</script>
 </head>
 <body>
 <div id="app">
   <div id="bootstate">
-    <div class="mark">🏢</div>
+    <div class="mark">▌</div>
     <h1 id="boottitle">AI Office is starting…</h1>
     <p id="bootmsg">Loading the interface.</p>
   </div>
@@ -61,14 +83,26 @@ if (String(navigator.language || "").toLowerCase().startsWith("ja")) {
 // R50 エントリ。ここは「どのスタイルを起動するか」だけを決める。
 // 描画・HUD・データはスタイル側と ui/core/ が持つ。
 // ──────────────────────────────────────────────────────────────
-import { resolveStyle, persistStyle } from "/ui/platform/style.js";
+import { DEFAULT_STYLE, STYLES, STYLE_KEY, resolveStyle } from "/ui/platform/style.js";
 
 const el = document.getElementById("app");
+// 起動画面の参照は mount の**前**に取っておく。3 様式の mount は先頭で root.replaceChildren() する
+// （ui/iso・ui/pixel・ui/cockpit の index.js）＝mount が落ちると起動画面が DOM から外れ、失敗の文言を書いても
+// 誰にも見えない白い画面になる（R50 からの穴・R99-P4 第 C 波で塞いだ）。fail() が起動画面を戻す。
+const bootstate = document.getElementById("bootstate");
+const title = document.getElementById("boottitle");
 const msg = document.getElementById("bootmsg");
+const appClass = el.className;
+const JA = String(navigator.language || "").toLowerCase().startsWith("ja");
+const params = new URLSearchParams(location.search);
 
 function fail(text, detail) {
-  msg.innerHTML = "";
-  msg.append(document.createTextNode(text));
+  // 落ちた mount が途中まで組んだ殻・付けた様式の class（cockpit は暗い背景）を外して、起動画面だけを戻す
+  el.className = appClass;
+  el.replaceChildren(bootstate);
+  bootstate.classList.add("failed");
+  title.textContent = JA ? "AIオフィス を起動できませんでした" : "Couldn't start AI Office";
+  msg.replaceChildren(document.createTextNode(text));
   if (detail) {
     msg.append(document.createElement("br"));
     const c = document.createElement("code");
@@ -77,21 +111,97 @@ function fail(text, detail) {
   }
 }
 
-const style = resolveStyle();
-document.documentElement.dataset.uiStyle = style;
+/** URL で頼まれた様式か（?ui=<その様式>・?stream=1＝iso を強制）。頼まれた様式の失敗はすり替えず、保存値も消さない
+ *  （頼まれた URL が壊れていただけで普段の設定を失わない）。?ui=legacy のような無効値は明示ではない
+ *  ＝resolveStyle が無視して保存値へ進んだ（「?ui= が付いていれば明示」と判定すると、壊れた保存値で詰む）。 */
+function explicit(style) {
+  return params.get("ui") === style || params.get("stream") === "1";
+}
 
-try {
-  // 動的 import。スタイルごとに完全に独立したモジュールツリーを読む。
+/** 失敗した様式が保存値から来たなら保存値を捨てる。捨てたら true（統括の裁定）。
+ *  捨てないと、再読み込みしても同じ様式を読みに行って永久に詰む。 */
+function dropSaved(style) {
+  if (explicit(style)) return false;
+  try {
+    // resolveStyle("") は URL を見ない＝保存値だけで決まる様式（改名前の保存値 iso2→iso も含む）
+    if (localStorage.getItem(STYLE_KEY) === null || resolveStyle("") !== style) return false;
+    localStorage.removeItem(STYLE_KEY);
+    return true;
+  } catch {
+    return false;                     // プライベートモード等。保存値が無いなら捨てるものも無い
+  }
+}
+
+/** 様式の入口を読む（動的 import。スタイルごとに完全に独立したモジュールツリー）。 */
+async function load(style) {
+  document.documentElement.dataset.uiStyle = style;
   const mod = await import(`/ui/${style}/index.js`);
   if (typeof mod.mount !== "function") {
     throw new Error(`ui/${style}/index.js に mount() がありません`);
   }
-  persistStyle(style);
-  await mod.mount(el);
+  return mod;
+}
+
+let style = resolveStyle();
+let mod = null;
+try {
+  mod = await load(style);
 } catch (err) {
-  // WebGL不可・古いGPU等。R52: 旧UI(?ui=legacy)は削除済み＝失敗理由の提示のみ。
-  console.error("[boot] failed to start the UI", err);
-  fail("Couldn't start the UI (WebGL may be unavailable).", err && err.message);
+  // R99-P4-4: 読めない様式が保存値に残ると、再読み込みしても同じ様式を読みに行って永久に詰む
+  // （⚙「画面」で選んだ様式が配布物に無い・一部欠けた・古いキャッシュ。R98 の pixel・R99 の cockpit で実測）。
+  // 保存値を捨てて既定で 1 回だけ読み直す。?ui= で明示した様式と ?stream=1（iso を強制・匿名化の都合）は
+  // すり替えない＝頼まれた様式の失敗はそのまま見せる（黙って別の画面を出すと、壊れたことに誰も気づかない）。
+  // 保存値を捨てるのも**失敗した様式が保存値から来たときだけ**（統括の裁定）。明示の URL の失敗で、
+  // 保存値がたまたま同じ様式でも消さない＝頼まれた URL が壊れていただけで普段の設定を失わない。
+  console.error(`[boot] failed to load the UI style "${style}"`, err);
+  // 明示でも保存値でもない＝既に既定で落ちた（読み直す先が無い）。捨てた後の resolveStyle が既定（既定の正本は style.js）
+  let fallback = dropSaved(style) ? resolveStyle("") : null;
+  // R105: 既定（cockpit）そのものが読めないときは 3D（iso）で 1 回だけ開く（保存はしない＝次の訪問はまた既定を試す）。
+  // 明示の ?ui= と ?stream=1 はすり替えない（上の掟のまま）
+  if ((!fallback || fallback === style) && !explicit(style) && style === DEFAULT_STYLE && style !== STYLES.ISO) {
+    fallback = STYLES.ISO;
+  }
+  if (fallback && fallback !== style) {
+    style = fallback;
+    try {
+      mod = await load(style);
+    } catch (err2) {
+      console.error(`[boot] failed to load the default UI style "${style}"`, err2);
+      err = err2;
+    }
+  }
+  if (!mod) {
+    fail(JA ? `画面（${style}）を読み込めませんでした。` : `Couldn't load the UI (${style}).`,
+      err && err.message);
+  }
+}
+if (mod) {
+  try {
+    await mod.mount(el);
+    // R105: 起動では保存しない（保存は ⚙「画面」で選んだときだけ＝switchStyle）。以前は mount の成功のたびに書いていて、
+    // 一度でも開いたブラウザは全部「iso を選んだ」ことになり、既定を切り替えても誰の画面も変わらなかった
+  } catch (err) {
+    // 様式ごとの退避（iso の WebGL 不可→一覧など）は様式の側が持つ。ここへ来るのはそれでも起動できなかったとき。
+    // R52: 旧UI(?ui=legacy)は削除済み＝失敗理由の提示のみ。
+    console.error("[boot] failed to start the UI", err);
+    // 保存値から来た様式なら保存値を捨てる（統括の裁定・明示の ?ui= と ?stream=1 では消さない）。
+    // この場で別の様式を mount し直すことはしない: 落ちた mount が DOM・リスナ・window.__office を途中まで作った
+    // 同じ root に別の様式を載せるのは危ない＝再読み込みで既定が立つ、と文言で伝える
+    const next = dropSaved(style) ? resolveStyle("") : style;
+    const again = next === style ? ""
+      : JA ? `保存していた画面の設定を消したので、再読み込みすると既定の画面（${next}）で開きます。`
+        : ` The saved UI setting was cleared; reload to open the default UI (${next}).`;
+    fail((JA ? `画面（${style}）を起動できませんでした。` : `Couldn't start the UI (${style}).`) + again,
+      err && err.message);
+    // R105: 既定（cockpit）が起動できないときの逃げ道＝3D の画面で開くリンク（配信 URL と 3D 自身の失敗では出さない）
+    if (style !== STYLES.ISO && params.get("stream") !== "1") {
+      const a = document.createElement("a");
+      const u = new URL(location.href); u.searchParams.set("ui", STYLES.ISO);
+      a.href = u.toString();
+      a.textContent = JA ? "3D の画面で開く" : "Open the 3D view";
+      msg.append(document.createElement("br"), a);
+    }
+  }
 }
 </script>
 </body>

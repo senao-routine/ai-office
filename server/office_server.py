@@ -67,9 +67,14 @@ try:
     import openclaw_source
     import office_actions
     import dialog_seal      # R87: 封書（stdlib のみ）
+    import office_term      # R100-1a: スマホのターミナル画面の行（純関数）
+    import office_approve   # R100-1b: スマホから許可（パスキーの検証・期限つき ON・登録）
     import source_claude_bg
     import source_codex
     import office_timeline
+    import office_pty       # R99: コックピットの本物の端末（stdlib のみ・出力はどこにも保存しない）
+    import office_diag      # R105: β の診断情報（数と状態だけ）
+    import office_door      # R126: 出勤の口（常駐 Bot・スクリプト＝vendor "bot" の行・台帳と状態はファイル）
     office_events = _load_office_events()
 except ModuleNotFoundError:  # importlibでファイルを直接読む既存テスト向け
     sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -81,9 +86,14 @@ except ModuleNotFoundError:  # importlibでファイルを直接読む既存テ�
         import openclaw_source
         import office_actions
         import dialog_seal      # R87: 封書（stdlib のみ）
+        import office_term
+        import office_approve
         import source_claude_bg
         import source_codex
         import office_timeline
+        import office_pty
+        import office_diag
+        import office_door
         office_events = _load_office_events()
     finally:
         del sys.path[0]
@@ -108,6 +118,9 @@ OC_OUTBOX = _HOME / ".claude" / "office_oc_outbox"
 # <session>.reply.json = こちらからの回答（office_server / relay_agent が書き、フックが取る）
 APPROVALS = _HOME / ".claude" / "office_approvals"
 DEVICES_FILE = _HOME / ".claude" / "office_devices.json"   # P3: スマホ端末台帳(600・secret平文)
+# b4-mac: 端末ごとの「最後に使った時刻」。書くのは署名を検証した relay_agent（別プロセス）だけ＝秘密の台帳とは
+# 別のファイルにする（台帳を 2 プロセスで読み書きすると、失効の直後に古い写しで上書きして失効を取り消しうる）。
+DEVICES_SEEN_FILE = _HOME / ".claude" / "office_devices_seen.json"
 # R97: 「同時に何人居たか」の最大値。オフィスの広さ（机の数＝ティア）はこれで決まる。
 # これまで**ブラウザの localStorage にしか無かった**ので、別のブラウザで開く・保存領域が消える
 # といったことで部屋が縮んで見えた（本人の報告「机がだいぶ無くなっている」）。
@@ -127,7 +140,9 @@ TOOL_VERB = {
     "Bash": "実行中", "Edit": "編集中", "Write": "執筆中", "Read": "読込中",
     "Grep": "調査中", "Glob": "調査中", "Explore": "調査中",
     "WebFetch": "リサーチ中", "WebSearch": "リサーチ中",
-    "Task": "部下に指示中", "Agent": "部下に指示中", "Workflow": "部隊を編成中",
+    # R106（plan.md #22）: 「部下」は用語統一（プロジェクト/セッション/サブエージェントの3語）の禁止語。
+    # EN の "briefing agents" に合わせ、依頼先を指す中立語へ。
+    "Task": "サブエージェントに指示中", "Agent": "サブエージェントに指示中", "Workflow": "部隊を編成中",
     "Skill": "スキル実行中", "AskUserQuestion": "質問中(返答待ち)",
     "TodoWrite": "段取り整理中", "NotebookEdit": "編集中", "Artifact": "ページ制作中",
 }
@@ -252,6 +267,12 @@ def _latest_pending_question(parsed, blocks):
 
     tool_use_id の無い旧形式は、既存の「最後のAskUserQuestion」判定と互換にする。
     """
+    pending = _pending_questions(parsed, blocks)
+    return pending[-1] if pending else None
+
+
+def _pending_questions(parsed, blocks):
+    """未回答 AskUserQuestion の tool_use ブロック（古い順）。"""
     questions = []
     by_id = {}
     for event in parsed:
@@ -269,9 +290,26 @@ def _latest_pending_question(parsed, blocks):
                 use_id = block.get("tool_use_id")
                 if use_id and str(use_id) in by_id:
                     by_id[str(use_id)]["answered"] = True
-    for item in reversed(questions):
-        if not item["answered"]:
-            return item["block"]
+    return [item["block"] for item in questions if not item["answered"]]
+
+
+def _question_shape(pending, title):
+    """掲示（ask）の質問に当たる transcript の AskUserQuestion から (問いの数, 複数選択 0/1)。
+    掲示は 1 問目の文（hook が空白を畳んで 200 字に切る）しか持たない＝その文で古い順に照合する。
+    決まらなければ None（サブエージェントの質問は親の transcript に無い）＝スマホは従来の形のまま。"""
+    norm = lambda x: " ".join(nfc(str(x or "")).split())    # noqa: E731  掲示の title は nfc 済み（short）＝両側をそろえる
+    want = norm(title).rstrip("…")[:40]
+    for block in pending or []:
+        try:
+            qs = block["input"]["questions"]
+            if not isinstance(qs, list) or not qs or not isinstance(qs[0], dict):
+                continue
+            head = norm(qs[0].get("question") or qs[0].get("header") or "質問")
+        except (KeyError, TypeError):
+            continue
+        if want and head.startswith(want):
+            multi = any(isinstance(q, dict) and q.get("multiSelect") is True for q in qs)
+            return min(len(qs), 99), 1 if multi else 0
     return None
 
 
@@ -423,21 +461,26 @@ def remembered_skills(session_key, events, now, fallback_time):
 # tail窓80KBで拾える）。稀に窓から流れても名前がチラつかないよう記憶する（skillsと同じ流儀・
 # メモリのみ）。空文字の customTitle は「リネーム解除」として記憶ごと消す。
 _TITLE_MEMORY = {}
+# R123-A: Claude Code の自動タイトル（{"type":"ai-title"}・Claude アプリの会話名と同じもの）。
+# /rename の名前（title）とは別の欄 aiTitle に置く＝名前の無いセッションだけ一覧がこれで見分けられる
+#（R122 の一覧で組の見出しと行の名前が同じ「20260714 - ai-office」になっていた）。記憶は title と同じ流儀。
+_AI_TITLE_MEMORY = {}
 
 
-def _remembered_title(session_key, seen, now, mtime):
-    """tail窓で見た custom-title を記憶へ合流して現在値を返す。seen=None は「窓に無かった」。"""
+def _remembered_title(session_key, seen, now, mtime, memory=None):
+    """tail窓で見た custom-title（memory を渡せば ai-title）を記憶へ合流して現在値を返す。seen=None は「窓に無かった」。"""
+    memory = _TITLE_MEMORY if memory is None else memory
     if seen is not None:
         if seen:
-            _TITLE_MEMORY[session_key] = [seen, mtime]
+            memory[session_key] = [seen, mtime]
         else:
-            _TITLE_MEMORY.pop(session_key, None)
-    entry = _TITLE_MEMORY.get(session_key)
+            memory.pop(session_key, None)
+    entry = memory.get(session_key)
     if entry:
         entry[1] = max(entry[1], mtime)   # 現役セッションを失効させない
-    for key in [k for k, v in _TITLE_MEMORY.items() if now - v[1] > SHOW_WINDOW]:
-        _TITLE_MEMORY.pop(key, None)      # 退勤セッションの残骸掃除（表示窓と同期）
-    entry = _TITLE_MEMORY.get(session_key)
+    for key in [k for k, v in memory.items() if now - v[1] > SHOW_WINDOW]:
+        memory.pop(key, None)             # 退勤セッションの残骸掃除（表示窓と同期）
+    entry = memory.get(session_key)
     return entry[0] if entry else ""
 
 
@@ -501,6 +544,8 @@ def can_prompt(mode, tool, tool_input=None):
     **従来どおり「聞かれ得る」**＝安全側（default運用のユーザーの中核機能を黙って殺さない）。"""
     if tool == "ExitPlanMode":
         return True                    # プラン承認はどのモードでも聞かれる
+    if mode == "dontAsk":
+        return False                   # 聞かないモード（事前に許した道具以外は聞かずに拒否する）＝走っているだけ
     if mode != "bypassPermissions":
         return True                    # default/acceptEdits/plan/不明は従来どおり
     if tool != "Bash":
@@ -857,6 +902,7 @@ LISTEN_LEGACY = float(os.environ.get("OFFICE_LISTEN_LEGACY", 2 * 3600))
 _SESSION_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 
+MINIONS_LIVE = 60.0   # minionsLive: 直近この秒数に書いたサブエージェントの jsonl だけ（終わった子は 60 秒で数えない）
 ASK_GRACE = 3.0       # 掲示が出てすぐは❗にしない（下の理由）
 # R86-H2: 掲示の生死は**心拍**（hook が毎 POLL に mtime だけ更新）で判定する。deadline は最後の砦。
 # 人間が TUI で答えると Claude Code は hook をその場で kill し finally は走らない＝掲示が 12 時間残り、
@@ -866,26 +912,96 @@ ASK_LITTER = 3600.0          # 心拍が止まって 1 時間＝死骸（prune �
 REPLY_LITTER = 600.0         # hook の FRESH(300s) の倍＝誰も受け取らない回答
 
 
+_ASK_ID_RE = re.compile(r"[0-9a-f]{32}")
+
+
+def _ask_postings(session):
+    """R100-0: そのセッションの掲示ファイル [(askId|None, Path)]。
+    新しい名前は <session>.<askId>.json（hook が 1 件ごとに作る）。旧名 <session>.json は移行窓
+    （配備の瞬間にすでに待っていた旧 hook の掲示）だけ＝askId は None。"""
+    out = [(None, APPROVALS / f"{session}.json")]
+    pat = re.compile(re.escape(session) + r"\.([0-9a-f]{32})\.json")
+    try:
+        for f in APPROVALS.glob(f"{session}.*.json"):
+            m = pat.fullmatch(f.name)
+            if m:
+                out.append((m.group(1), f))
+    except OSError:
+        pass
+    return out
+
+
+def _is_bot_session(session):
+    """R126: 出勤の口の Bot（"bot-<id>"）。Bot の相談は承認の掲示板に置かない＝ここに掲示があっても読まない・書かない（不変条件 7）。"""
+    return isinstance(session, str) and session.startswith(office_door.SESSION_PREFIX)
+
+
+def pending_approvals(session, now=None, grace=0.0):
+    """R100-0: いまそのセッションが人間へ聞いていること**全部**（古い順）。
+    同じセッションで許可が 2 件並ぶことがある（並列のツール呼び出し・サブエージェント）。"""
+    if not _SESSION_RE.match(session or "") or _is_bot_session(session):
+        return []
+    now = now or time.time()
+    asks = [a for a in (_read_ask(session, ask_id, f, now, grace)
+                        for ask_id, f in _ask_postings(session)) if a]
+    asks.sort(key=lambda a: (a["ts"], a["askId"] or ""))
+    return asks
+
+
 def pending_approval(session, now=None, grace=0.0):
     """R86-H: いまそのセッションが**実際に**人間へ聞いていること（フックが publish した事実）。
 
     75秒ヒューリスティックは「止まっている＝聞かれているかもしれない」という推測にすぎず、
     ユーザーに『❗が出ているのに承認画面が無い』と言わせた原因だった。こちらは一次情報。
     掲示が無い/期限切れ/壊れている＝None（推測側の判定に委ねる＝旧セッションでも暗転しない）。
+    R100-0: 複数並んでいるときは**最古の 1 件**＋`askCount`（答える側は必ず askId で 1 件を指す）。
     """
-    if not _SESSION_RE.match(session or ""):
+    asks = pending_approvals(session, now, grace)
+    if not asks:
         return None
+    return dict(asks[0], askCount=len(asks))
+
+
+# R112-H: 掲示の questions の上限（hook と同じ値）。R126 から正本は office_common（出勤の口の相談も同じ値）
+ASK_Q_MAX, ASK_Q_LEN, ASK_OPT_MAX, ASK_OPT_LEN = (office_common.ASK_Q_MAX, office_common.ASK_Q_LEN,
+                                                  office_common.ASK_OPT_MAX, office_common.ASK_OPT_LEN)
+
+
+def clean_ask_questions(v):
+    """R112-H: 掲示の `questions`（AskUserQuestion の全部の問いと選択肢）を形で検証して写す。
+    `[{q: str 1..200, options: [str 1..40] ≤4, multi: 0|1}] 1..8 件` だけ通す。1 件でも形が違えば None（何も足さない
+    ＝問いの番号がずれた一部だけを見せない）。知らないキーは写さない。office_json の ask と中継の ask（relay_agent）が同じこれを通す。"""
+    if not isinstance(v, list) or not 0 < len(v) <= ASK_Q_MAX:
+        return None
+    out = []
+    for x in v:
+        if not isinstance(x, dict):
+            return None
+        q, ops, multi = x.get("q"), x.get("options"), x.get("multi")
+        if not (isinstance(q, str) and 0 < len(q) <= ASK_Q_LEN):
+            return None
+        if not (isinstance(ops, list) and len(ops) <= ASK_OPT_MAX
+                and all(isinstance(o, str) and 0 < len(o) <= ASK_OPT_LEN for o in ops)):
+            return None
+        if type(multi) is not int or multi not in (0, 1):
+            return None
+        out.append({"q": q, "options": list(ops), "multi": multi})
+    return out
+
+
+def _read_ask(session, ask_id, path, now, grace):
     try:
-        rec = json.loads((APPROVALS / f"{session}.json").read_text(encoding="utf-8"))
+        rec = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
     if not isinstance(rec, dict) or rec.get("session") != session:
         return None
-    now = now or time.time()
+    if (rec.get("askId") or None) != ask_id:
+        return None                      # 名前と中身の askId が食い違う掲示は信じない
     if float(rec.get("deadline") or 0) < now:
         return None                      # フックが死んだ後の掲示は幽霊
     try:
-        if now - (APPROVALS / f"{session}.json").stat().st_mtime > ASK_STALE:
+        if now - path.stat().st_mtime > ASK_STALE:
             return None                  # 心拍が止まった＝hook が kill された幽霊（R86-H2）
             # 移行: 配備前から待機中の旧 hook（心拍なし）も 10 秒で幽霊扱い＝その質問はターミナルで答える。
             # 次の PermissionRequest からは新 hook（毎回スクリプトを読み直す）が心拍を打つ。互換経路は作らない。
@@ -898,16 +1014,59 @@ def pending_approval(session, now=None, grace=0.0):
         return None
     kind = "question" if rec.get("kind") == "question" else "permission"
     opts = [str(o) for o in rec.get("options") or [] if isinstance(o, str)][:4]
+    # R102-11: hook が掲示に書いた問いの数・複数選択（整数だけ）。無い（旧 hook）なら transcript から推す
+    shape = {k: rec[k] for k, hi in (("qn", 100), ("multi", 2))
+             if kind == "question" and type(rec.get(k)) is int and 0 <= rec[k] < hi}
+    # R112-H: AskUserQuestion の全部の問いと選択肢（形を検証して写す・違う形は何も足さない）。
+    # 許可（Bash のコマンド全文）や計画の承認には付けない
+    qs = clean_ask_questions(rec.get("questions")) if (kind == "question" and rec.get("tool") == "AskUserQuestion") else None
+    if qs:
+        shape["questions"] = qs
     return {"tool": short(rec.get("tool") or "", 40), "kind": kind,
-            "title": short(rec.get("title") or "", 200), "options": opts,
-            "ts": float(rec.get("ts") or now)}
+            "title": short(rec.get("title") or "", 200), "options": opts, **shape,
+            "ts": float(rec.get("ts") or now), "askId": ask_id,
+            # R100-1b: hook の危険判定が「スマホから許可できる形」と言ったか（中継へは 0/1 だけ・中身は封書）。
+            # R102-2: review（全文を読んで 2 段）も 1。段と警告は封書（kind:"ask"）の中だけ
+            # R103-1: mac の段も全文が読めればスマホから（全文確認＋Face ID）
+            "remote": 1 if (kind == "permission" and rec.get("level") in ("remote", "review", "mac")
+                            and isinstance(rec.get("inputCanon"), str)) else 0}
 
 
-def write_approval_reply(session, behavior, message="", src="local"):
+def _ask_raw(session, ask_id, now=None):
+    """R100-1b: 生きている掲示 1 件の中身（inputCanon を含む・0600 のローカルファイル）。許可の検査と封書だけが読む。
+    生死の判定は _read_ask と同じ（deadline・心拍）＝ hook が kill された掲示に許可を書かない。"""
+    if (not _SESSION_RE.match(session or "") or _is_bot_session(session)
+            or not (isinstance(ask_id, str) and _ASK_ID_RE.fullmatch(ask_id))):
+        return None
+    now = now or time.time()
+    path = APPROVALS / f"{session}.{ask_id}.json"
+    if not _read_ask(session, ask_id, path, now, 0.0):
+        return None
+    try:
+        rec = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return rec if isinstance(rec, dict) and rec.get("askId") == ask_id else None
+
+
+def write_approval_reply(session, behavior, message="", *, src, ask_id, extra=None):
     """フックが待っている回答を置く。allow を通せるのは src="local"（Macの前の人間）だけ
-    ＝この関数がどこから呼ばれても、中継経由が実行許可に化けない（最終判定はフック側）。"""
+    ＝この関数がどこから呼ばれても、中継経由が実行許可に化けない（最終判定はフック側）。
+    R100-0: `src` と `ask_id` はキーワード専用・既定値なし（呼び出し側が必ず「誰が・どの 1 件に」を言う）。
+    ask_id=None は旧名 <session>.reply.json（移行窓の旧 hook 宛）＝remote からは書かない。
+    R126: Bot（"bot-<id>"）は拒む＝Bot の相談は掲示板に置かない・Bot への答えは言葉だけ（出勤の口の inbox）＝allow を渡す道が無い。"""
     if not _SESSION_RE.match(session or ""):
         raise ValueError("bad session")
+    if _is_bot_session(session):
+        raise ValueError("bot sessions have no approvals (answers go through office_door)")
+    if ask_id is None:
+        if src == "remote":
+            raise ValueError("remote reply needs askId")
+        name = f"{session}.reply.json"
+    elif isinstance(ask_id, str) and _ASK_ID_RE.fullmatch(ask_id):
+        name = f"{session}.{ask_id}.reply.json"
+    else:
+        raise ValueError("bad askId")
     APPROVALS.mkdir(parents=True, exist_ok=True)
     try:
         os.chmod(APPROVALS, 0o700)
@@ -915,11 +1074,19 @@ def write_approval_reply(session, behavior, message="", src="local"):
         pass
     rec = {"session": session, "behavior": "allow" if behavior == "allow" else "deny",
            "message": short(message or "", 2000), "src": src, "ts": time.time()}
-    tmp = APPROVALS / f".{session}.reply.tmp"
+    if ask_id:
+        rec["askId"] = ask_id
+    # R100-1b: remote の回答に添える照合値（hook が自分の入力から作り直した値と比べる）。決まったキーだけ。
+    # R114: mode（"tap"＝ON の間のタップ・Face ID 無し）＝hook は自分の再計算が remote／review でなければ拒否する
+    for k in ("inputSha", "device", "reqId", "mode"):
+        v = (extra or {}).get(k)
+        if isinstance(v, str) and len(v) <= 64:
+            rec[k] = v
+    tmp = APPROVALS / f".{name}.tmp"
     fd = os.open(str(tmp), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w", encoding="utf-8") as f:
         json.dump(rec, f, ensure_ascii=False)
-    os.replace(tmp, APPROVALS / f"{session}.reply.json")
+    os.replace(tmp, APPROVALS / name)
     return rec
 
 
@@ -965,6 +1132,27 @@ def _session_transcript(session):
     return None
 
 
+# R102-4: 合成のエラー行の種類（本文は持たない・enum だけ）。利用上限＝時間をおくかモデルを替える／会話の長さ＝/compact か
+# 新しいセッション／それ以外の API エラー（過負荷・レート・通信）＝「続けて」で再開できることが多い
+_ERR_LIMIT_RE = re.compile(r"reached your .{0,40}limit|usage limit|limit reached|out of (?:extra )?usage|"
+                           r"credit balance|usage credits", re.I)
+_ERR_CTX_RE = re.compile(r"prompt is too long|context (?:window|length)|too many tokens|input length", re.I)
+PERM_MODES = frozenset({"default", "acceptEdits", "plan", "bypassPermissions", "dontAsk", "auto"})
+_ERR_VERB = {
+    "limit": lambda: L("利用上限で停止", "stopped at the usage limit"),
+    "ctx": lambda: L("会話の長さの上限で停止", "stopped: conversation too long"),
+    "api": lambda: L("API エラーで停止", "stopped by an API error"),
+}
+
+
+def _api_error_kind(text):
+    if _ERR_LIMIT_RE.search(text or ""):
+        return "limit"
+    if _ERR_CTX_RE.search(text or ""):
+        return "ctx"
+    return "api"
+
+
 def parse_session(path, now):
     """1セッションのjsonl末尾から社員カード情報を作る"""
     mtime = path.stat().st_mtime
@@ -983,6 +1171,7 @@ def parse_session(path, now):
     parsed = []
     skill_events = []
     custom_title = None            # R85-1: 窓に custom-title 行が無ければ None（記憶を使う）
+    ai_title = None                # R123-A: 窓に ai-title 行が無ければ None（記憶を使う）
     perm_mode = None               # R86-F: 窓に permission-mode 行が無ければ None＝不明
     for ln in lines:
         try:
@@ -1006,6 +1195,11 @@ def parse_session(path, now):
             ct = d.get("customTitle")
             if isinstance(ct, str):
                 custom_title = short(ct, 30)
+        if t == "ai-title":
+            # R123-A: 自動タイトルは title に混ぜず aiTitle へ（表示側が title → aiTitle → プロジェクト名の順で使う）
+            at = d.get("aiTitle")
+            if isinstance(at, str):
+                ai_title = short(" ".join(at.split()), 40)
         if t in ("user", "assistant"):
             skill_events.append(d)
             parsed.append(d)
@@ -1016,6 +1210,7 @@ def parse_session(path, now):
         return None
 
     title = _remembered_title(str(path), custom_title, now, mtime)
+    ai_title = _remembered_title(str(path), ai_title, now, mtime, memory=_AI_TITLE_MEMORY)
     perm_mode = _remembered_perm_mode(str(path), perm_mode, now, mtime)
     skills = remembered_skills(str(path), skill_events, now, mtime)
     tasks = _remembered_tasks(str(path), task_lines, now, mtime)
@@ -1070,7 +1265,28 @@ def parse_session(path, now):
                 kind = "order"
                 break
 
-    if age < 25:
+    # R102-4: 最後の行で「止まった理由」を読む（本人「作業中なのに指示待ち」「止まっているのに分からない」）。
+    #   合成のエラー（isApiErrorMessage＝API エラー・利用上限・会話の長さの上限）→ err（種類の enum だけ・本文は持たない）
+    #   中断（Esc＝「[Request interrupted by user…」・Stop フックは走らない）→ interruptedAt（ターンの追跡がこれより前なら閉じたもの）
+    err = None
+    interrupted_at = 0.0
+    last = parsed[-1]
+    if last.get("type") == "assistant" and last.get("isApiErrorMessage") is True:
+        etext = " ".join(str(b.get("text") or "") for b in blocks(last)
+                         if isinstance(b, dict) and b.get("type") == "text")
+        err = {"k": _api_error_kind(etext), "ago": int(age)}
+        status_verb, status_target, kind = _ERR_VERB[err["k"]](), "", "idle"
+    elif last.get("type") == "user":
+        c = (last.get("message") or {}).get("content")
+        texts = [c] if isinstance(c, str) else [str(b.get("text") or "") for b in (c if isinstance(c, list) else [])
+                                               if isinstance(b, dict) and b.get("type") == "text"]
+        if any(t.startswith("[Request interrupted by user") for t in texts):
+            interrupted_at = transcript_event_time(last, 0.0) or mtime
+            status_verb, status_target, kind = L("中断しました", "interrupted"), "", "idle"
+
+    if err or interrupted_at:
+        state = "waiting" if age < 1800 else "resting"
+    elif age < 25:
         state = "working"
     elif age < 240 and kind in ("tool", "think", "order"):
         state = "working"
@@ -1143,6 +1359,11 @@ def parse_session(path, now):
         # （resting のままだとラウンジへ歩いて行き、❗の相手が休んでいるように見える）
         state = "waiting"
         if ask["kind"] == "question":
+            # R100-0（Codex レビュー）: 答える先は最古の掲示（ask.askId）＝表示する質問も同じ 1 件に揃える。
+            # transcript の質問（最新）が掲示と別物なら、掲示の質問文と選択肢を出す（見えている質問と違う要求へ答えさせない）。
+            norm = lambda x: " ".join(nfc(str(x or "")).split())    # noqa: E731
+            if question and ask["title"] and not norm(question).startswith(norm(ask["title"])[:40]):
+                question, question_options = ask["title"], None
             question = question or ask["title"]
             if not question_options and ask["options"]:
                 # ★形を必ず [{label, desc}] に揃える（掲示は素の文字列で持つ）。
@@ -1151,19 +1372,23 @@ def parse_session(path, now):
                 question_options = [{"label": o, "desc": ""} for o in ask["options"]]
         elif not approval_min:
             approval_min = max(1, int((now - ask["ts"]) // 60))
+        # 掲示されてからの分（質問・プランでは approvalMin が立たない＝スマホが「いま」「0分」と出していた）
+        ask["min"] = max(0, int((now - ask["ts"]) // 60))
+        if ask["kind"] == "question" and ask["tool"] == "AskUserQuestion" and "qn" not in ask:
+            shape = _question_shape(_pending_questions(parsed, blocks), ask["title"])
+            if shape:
+                ask["qn"], ask["multi"] = shape        # 2 問以上・複数選択は 1 タップで答えさせない（スマホ）
 
     minions = 0
-    subdir = path.parent / path.stem / "subagents"
-    if subdir.is_dir():
+    minions_live = 0
+    # 子 transcript の発見規則は office_term.subagent_files が正本（R113-B: スマホの kids と同じ規則）
+    for fp in office_term.subagent_files(path):
         try:
-            for root, _dirs, files in os.walk(subdir):
-                for fn in files:
-                    if fn.endswith(".jsonl"):
-                        try:
-                            if now - os.path.getmtime(os.path.join(root, fn)) < 900:
-                                minions += 1
-                        except OSError:
-                            pass
+            since = now - os.path.getmtime(fp)
+            if since < 900:
+                minions += 1
+            if since < MINIONS_LIVE:
+                minions_live += 1
         except OSError:
             pass
 
@@ -1175,6 +1400,8 @@ def parse_session(path, now):
         # R85-1: /rename のセッション名（無ければ""）。表示側が title || disp で名前を合成する。
         # disp・採番（N号）は無改変＝既存ピンを壊さない（設計= R85計画）。
         "title": title,
+        # R123-A: Claude Code の自動タイトル（無ければ""）。Mac の画面だけ＝中継には載せない（relay_agent._LOCAL_ONLY_ENTRY）
+        "aiTitle": ai_title,
         "age": int(age),
         "mtime": mtime,
         "state": state,
@@ -1182,10 +1409,15 @@ def parse_session(path, now):
         # テキストではなく分類なので中継へ流しても本文は漏れない。
         "kind": kind,
         "verb": status_verb,
+        # R110: 最後に呼んだ工具の名前（Bash/Edit/Read/Grep/WebFetch/TodoWrite …）。本文ではなく分類＝部屋の
+        # 「用事」（本棚へ・掲示板へ・机で打鍵）の根拠。言語に依らない（verb は表示用の訳語）。中継の allowlist には足さない。
+        "tool": short(last_tool_name, 40),
         "target": status_target,
         "feed": recent_feed,
         "skills": skills,
         "minions": minions,
+        # 直近 60 秒に書いた子だけ（minions は終わった子も 15 分数える＝「作業中」の根拠にはこちらを使う）
+        "minionsLive": minions_live,
         "pending": (INBOX / f"{path.stem}.json").exists(),
         # R86-D: 指示を今すぐ受け取れるか（Stop hook の待機が生きているか）。
         # 出勤中(SHOW_WINDOW=3h)と受信待機(hookの寿命)は別の窓なので、UIで正直に分ける。
@@ -1200,6 +1432,12 @@ def parse_session(path, now):
         # R86-H: 「推測」ではなく「いま聞かれている事実」。UIはこれがある時だけ
         # 承認/回答ボタンを出す（フックが待っていないのに押せると嘘になる）。
         employee["ask"] = ask
+    if err:
+        employee["err"] = err
+    if interrupted_at:
+        employee["interruptedAt"] = interrupted_at          # ローカルだけ（中継の allowlist に無い）＝ターンの追跡が読む
+    if perm_mode in PERM_MODES:
+        employee["permMode"] = perm_mode                    # R102-4: 端末の見出し（plan・自動で編集・確認なし）
     if question_options:
         employee["questionOptions"] = question_options
     if work is not None:
@@ -1287,6 +1525,7 @@ def observed_peak(current):
     ここで `_lock`（スレッドロック）は**取らない**: この関数は `office_json()` が `_lock` を握ったまま
     呼ぶ経路にあり、`threading.Lock` は再入できないので自分で自分を待って**サーバーごと止まる**
     （実際に固まった）。flock は open ごとに効くのでスレッド間の直列化もこれで足りる。
+    R115-S1 から走査は `_lock` の外（`_scan_lock` の中）で回る＝今は取っても固まらないが、要らないのは同じ。
     """
     try:
         cur = max(0, int(current))
@@ -1321,17 +1560,18 @@ def observed_peak(current):
         return max(_read(), cur)            # 書けなくても、この周の値は返す（画面は縮まない）
 
 
-def events_wired():
+def events_wired(event="Stop"):
     """R90-D5: イベント記録 hook（hooks/office-event.sh）が ~/.claude/settings.json に配線済みか。
     Stop に1つでも office-event.sh の entry があれば true（17 イベント全部の検査は install.sh の仕事）。
-    hook_installed() と同じく設定以外は読まない・壊れていれば false。"""
+    hook_installed() と同じく設定以外は読まない・壊れていれば false。
+    event: 別のイベントの配線を見る（PermissionRequest を拾えるか＝許可の保留が分かるか）。"""
     settings_file = _HOME / ".claude" / "settings.json"
     try:
         settings = json.loads(settings_file.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError):
         return False
     hooks = settings.get("hooks") if isinstance(settings, dict) else None
-    groups = hooks.get("Stop") if isinstance(hooks, dict) else None
+    groups = hooks.get(event) if isinstance(hooks, dict) else None
     if isinstance(groups, dict):
         groups = [groups]
     if not isinstance(groups, list):
@@ -1415,6 +1655,21 @@ def project_id_for(cwd, fallback=""):
     return hashlib.sha1(src.encode("utf-8")).hexdigest()[:12]
 
 
+def present_growth(growth, roster, employees):
+    """R123-C: growth.byProject を「いま居る人」の分だけにした**新しい** dict（growth_json の結果はキャッシュ＝書き換えない）。
+
+    byProject は timeline に一度でも出たプロジェクト全部（session 単位の既定では 1 セッション 1 件）を持ち、
+    使うほど際限なく太る（2026-11-09 実測 4,682 件・office_json 1.66 MB 中 1.59 MB・中継の荷物 231 KB 中 204 KB）。
+    読み手（一覧のレベル・スマホのレベル・レベルアップの通知・3D の祝い）は全部いま居る人の id だけを引く。
+    office（全体のレベル）・streak15 は全件から計算済みのまま。"""
+    present = set()
+    for row in [*(roster or []), *(employees or [])]:
+        if isinstance(row, dict):
+            present.update(v for v in (row.get("projectId"), row.get("session")) if isinstance(v, str) and v)
+    by = growth.get("byProject") if isinstance(growth.get("byProject"), dict) else {}
+    return {**growth, "byProject": {pid: row for pid, row in by.items() if pid in present}}
+
+
 def _session_brief(e):
     """内訳表示用の最小情報。本文・パスは**構造的に持たない**（redactionに頼らない）。"""
     return {
@@ -1447,7 +1702,8 @@ def group_by_project(employees, lang="ja", mode="project"):
         if e.get("external"):
             # 別Macの稼働体。まとめず1体1プロジェクトとして扱う（専用区画に置くため）。
             key = f"ext:{e.get('session', '')}"
-        elif mode == "session":
+        elif mode == "session" or e.get("vendor") == "bot":
+            # R126: Bot（出勤の口）は avatarMode=project でも常に 1 体 1 組（cwd が空＝同じ名前で畳まれるのを防ぐ）
             # R86-A: 1アバター=1セッション（ext: と同じ流儀の単独グループ）
             key = f"ses:{e.get('session', '')}"
         else:
@@ -1490,9 +1746,11 @@ def group_by_project(employees, lang="ja", mode="project"):
             "state": state,
             "kind": lead.get("kind", "idle"),
             "verb": lead.get("verb", ""),
+            "tool": lead.get("tool", ""),
             "target": lead.get("target", ""),
             "age": min(int(m.get("age") or 0) for m in members),
             "minions": sum(int(m.get("minions") or 0) for m in members),
+            "minionsLive": sum(int(m.get("minionsLive") or 0) for m in members),
             "pending": any(bool(m.get("pending")) for m in members),
             # R86-D: 1つでも受信待機していれば「届く」（sessionモードでは自分自身のみ）
             "listening": any(bool(m.get("listening")) for m in members),
@@ -1523,6 +1781,11 @@ def group_by_project(employees, lang="ja", mode="project"):
             proj["external"] = lead["external"]
         if lead.get("questionOptions"):
             proj["questionOptions"] = lead["questionOptions"]
+        # R102-4: 止まった理由（API エラー・上限・会話の長さ）と権限モードは代表の値（enum だけ）
+        if isinstance(lead.get("err"), dict):
+            proj["err"] = dict(lead["err"])
+        if lead.get("permMode") in PERM_MODES:
+            proj["permMode"] = lead["permMode"]
         # R69: work の counts はプロジェクト内の全セッションを合算する。
         # 代表(lead)だけを見ると、代表交代のたびにドーナツが急変して
         # 「タスクが完了した」ように見える（実測: 未着手8→2）。now/next/done の
@@ -1624,25 +1887,40 @@ def prune_inbox_litter(now=None):
                     f.unlink(); removed += 1
         except OSError:
             pass
+    # R126: 出勤の口（期限の切れた相談を閉じて Bot の未読に expired を 1 件・14 日を過ぎた未読を捨てる）。
+    # Bot が道具を呼ぶたびにも同じ掃除が走る＝ここは呼ばない Bot の分（数は removed に足さない＝ファイルを消した数ではない）
+    try:
+        office_door.sweep_all(_HOME, now)
+    except Exception:
+        pass
     return removed
 
 
 def scan_office():
     now = time.time()
     prune_inbox_litter(now)
+    # R102-4: 中継の配達員のプロセスでもイベントを読む（daemon ではスレッドが読むので何もしない）。OFFICE_EVENTS=0 は読まない
+    #（main() がスレッドを起こさない条件と同じ＝無効化の設定を同期の読み取りで破らない・別モデルレビュー）
+    refresh = getattr(office_events, "refresh", None) if office_events is not None else None
+    if refresh is not None and os.environ.get("OFFICE_EVENTS") != "0":
+        refresh(_HOME)
     config = load_config()
     global _LANG
     _LANG = office_lang(config)
-    bg = source_claude_bg.bg_index(_HOME, now)
+    bg = source_claude_bg.bg_index(_HOME, now, lang=_LANG)  # plan.md #23: detail は ja のときだけ通す
     agents = (source_claude_bg.agents_cli(_HOME, now)
               if os.environ.get("OFFICE_AGENTS_CLI") != "0" else {})
     sources = {
         "claude": {"fg": 0, "bg": 0, "agentsCli": bool(agents)},
         "codex": {"connected": False, "n": 0, "reason": "disabled"},
         "openclaw": {"connected": False},
+        # R126: 出勤の口。ok＝台帳が読めた・bots＝登録数・n＝載せた行・asks＝開いている相談（数だけ・中継には載せない）
+        "door": {"ok": True, "bots": 0, "n": 0, "asks": 0},
     }
     setup = {"hookInstalled": hook_installed(), "eventsWired": events_wired(),
              "approvalWired": approval_wired()}
+    # 許可の保留が記録に出る配線か（出ない配線で「道具が走っている」と言い切ると本物の許可待ちを隠す）
+    holds_seen = setup["eventsWired"] and events_wired("PermissionRequest")
     employees = []
     scan_dirs = PROJECTS.iterdir() if PROJECTS.is_dir() else ()
     for proj in scan_dirs:
@@ -1662,7 +1940,8 @@ def scan_office():
                 # 心拍だけが listening の正本なのでイベントでは上書きさせない。
                 if office_events is not None and not info.get("ask"):
                     listening = info["listening"]
-                    info = office_events.overlay(info, _HOME, now)
+                    info = office_events.overlay(info, _HOME, now, asks_wired=setup["approvalWired"],
+                                                 holds_seen=holds_seen)
                     if info.get("gone"): continue
                     info["listening"] = listening
             # R86-D: mtime のゲートを通っても、**中身**が SHOW_WINDOW より古ければ退勤扱い。
@@ -1696,6 +1975,19 @@ def scan_office():
     employees.extend(oc_emps)
     sources["openclaw"]["connected"] = bool(_oc_meta.get("connected"))
 
+    # R126: 出勤の口（登録した常駐 Bot・スクリプト＝session "bot-<id>"・vendor "bot"・external は付けない）。
+    # 行は office_door が作る（本文とパスの鍵は空・feed も空・名前は bot- の中で採番済み）。口のファイルが壊れていても
+    # オフィスは落とさない（例外は握る＝sources.door.ok が False）。R127: 中継には relay_agent の Bot 用の狭い allowlist で載る
+    #（名前・役・状態・verb の縮約・問いと選択肢・ask の id8＝不変条件 8 の例外）。sources.door は中継に出さない
+    try:
+        door_emps, door_meta = office_door.door_employees(_HOME, now, lang=_LANG, show_window=SHOW_WINDOW)
+        sources["door"] = {"ok": bool(door_meta.get("ok")), "bots": int(door_meta.get("bots") or 0),
+                           "n": len(door_emps), "asks": int(door_meta.get("asks") or 0)}
+    except Exception:
+        door_emps = []
+        sources["door"] = {"ok": False, "bots": 0, "n": 0, "asks": 0}
+    employees.extend(door_emps)
+
     source_config = config.get("sources")
     if not isinstance(source_config, dict):
         source_config = {}
@@ -1724,14 +2016,22 @@ def scan_office():
                   "answered": _today_answered(),      # R96-B: 今日答えた❗（daemon 側の一次情報＝端末ごとに数字が違わない）
                   "lastSentAgo": int(now - last_ts) if last_ts else None,
                   "capped": len(all_hist) >= 50}
+    # plan.md #13: disp が引けなかった古い行は `session[:8]`（生のIDの断片）を名前のように見せていた＝
+    # 「プロジェクト名(works)」形式の他の行と体裁が違う古い別形式の行として混ざって見えた（実データで確認）。
+    # まず現在のスキャンから名前を引き直し（セッションがまだ在籍していれば直る）、それも無ければ
+    # 生のID断片を出さずに行ごと「最近の指示」の対象から外す（正規の名前を言えないなら無言）。
     hist = []
     for h in reversed(all_hist[-12:]):
+        session = h.get("session", "")
+        disp = h.get("disp") or next((e["disp"] for e in employees if e["session"] == session), "")
+        if not disp:
+            continue
         hist.append({
-            "session": h.get("session", ""),
-            "disp": h.get("disp") or h.get("session", "")[:8],
+            "session": session,
+            "disp": disp,
             "text": h.get("text", ""),
             "ts": h.get("ts", 0),
-            "pending": (INBOX / f"{h.get('session','')}.json").exists(),
+            "pending": (INBOX / f"{session}.json").exists(),
         })
 
     # R50: 新UIが読む集約ビュー。employees[] は旧UIのために無改造で残す。
@@ -1776,13 +2076,20 @@ def scan_office():
     # R79-10 遠隔実行: 許可リスト（表示用の最小ビュー＝argv/cwd/envは載せない）と実行結果。
     # caps はUIの機能ゲート（旧Macでは▶実行ボタンを出さない＝版ズレ耐性）。
     recipes, _recipe_errors = office_actions.load_recipes()
+    devices_now = load_devices()
     actions_view = {
         "recipes": office_actions.recipes_public(recipes),
         "results": office_actions.results_public(),
         # R87: 会話ビューアは「封じられる Mac」かつ「本人が ON にした」ときだけ出す。
         # 使えない環境では機能ごと消す＝平文で送るフォールバックは存在しない。
         "caps": {"actions": 1, "ws": 1,
-                 "dialog": 1 if (dialog_seal.AVAILABLE and config.get("dialogRelay") is True) else 0},
+                 "dialog": 1 if (dialog_seal.AVAILABLE and config.get("dialogRelay") is True) else 0,
+                 # R100-1b: 封じられる ∧ ON の期限内 ∧ 有効な許可鍵が 1 本以上（relay_agent のプロセスで組む＝
+                 # 未再起動の旧い relay_agent からは出ない＝版ズレは自動で「出さない」側）
+                 "approve": office_approve.caps_approve(devices_now, dialog_seal.AVAILABLE)},
+        # R100-1b: ON か・有効な許可鍵の照合コード（秘密ではない）。端末は自分の fp があるかで「登録済みか」を知る
+        # R116-S1b: rk＝Mac で［延長］が押されて窓が開いている端末 id（スマホは自分の id があれば新しい秘密を求める）
+        "approve": {**office_approve.approve_public(devices_now), "rk": rekey_pending(devices_now)},
     }
     # R80: 中継の今日の使用量（未設定/古い＝None＝UIは何も出さない）
     relay_view = relay_usage()
@@ -1790,13 +2097,15 @@ def scan_office():
     last_events = office_events.recent(since_seq=event_seq - 1, limit=1) if event_seq else []
 
     # D8: local-only material for digest/XP; failures never affect office_json.
+    # R126: Bot（出勤の口）の稼働は自己申告＝セッションの稼働分・XP に混ぜない（Bot の数え方は R132 で別に足す）
     try:
         timeline = sys.modules.get("office_timeline")
         if timeline is not None:
             project_ids = {member["session"]: project["projectId"]
                            for project in roster for member in project["sessions"]}
             timeline.record_states([dict(e, projectId=project_ids.get(e["session"],
-                project_id_for(e.get("cwd", ""), e.get("dept", "")))) for e in employees], now)
+                project_id_for(e.get("cwd", ""), e.get("dept", "")))) for e in employees
+                if e.get("vendor") != "bot"], now)
     except Exception:
         pass
 
@@ -1816,6 +2125,7 @@ def scan_office():
     except Exception:
         growth = office_timeline.growth_from_events([])
     if isinstance(growth, dict):
+        growth = present_growth(growth, roster, employees)
         growth["maxSeen"] = observed_peak(len(employees))
 
     return {
@@ -1853,6 +2163,8 @@ def scan_office():
         },
         # rosterCounts は R85-2 で撤去（読者ゼロのデッドペイロードだった）
         "tasks": task_totals(roster),
+        # R102-5: Mac の前に人がいる（1）・いない（0）。読めなければキーごと無し
+        **({"macActive": ma} if (ma := mac_active(now)) is not None else {}),
     }
 
 
@@ -1860,6 +2172,31 @@ _cache = {"t": 0.0, "data": None}
 _OPENCLAW_CACHE_SEC = 60.0
 _openclaw_cache = {"at": None, "data": None}
 _lock = threading.Lock()
+# R115-S1: 走査（scan_office）は request thread のロックの外で回す。`_lock` は `_cache` と `_SCAN` の読み書きだけを守り、
+# 走査の single flight（同時に 1 本だけ）は `_scan_lock` が持つ（順序は常に _scan_lock → _lock・逆は取らない）。
+# _SWR（stale-while-revalidate）は main() が serve する間だけ True＝relay_agent・tests・--dump は従来どおり同期。
+_SWR = False
+# 古い値を返してよいのは、最後の走査が終わってから STALE_MAX 秒まで（UI・プローブの短い間隔をつなぐだけ）。それより後なら
+# 呼び手が走査を待つ＝60 秒おきの見張り（_watch_loop の ❗ 通知）や間を空けた 1 回の読みが、古いままの値を掴まない。
+STALE_MAX = 5.0
+_scan_lock = threading.Lock()
+# seq＝終わった走査の数（走査を待っていた呼び手が同じ 1 回の結果を受け取る印）・at＝最後の走査が終わった時刻・
+# busy＝裏の走査が予約/実行中・thread＝その thread（テストが join する）・wseq＝ローカルの書き込みの数（_mark_written）・
+# dseq＝今の値の走査を始めた時点の wseq（wseq と違えば、その値は書き込みの前＝古い値として返さない）・
+# fails＝失敗した走査の数（poke の待ちと追いかけが「待つ間に失敗した＝起こし直さない」を見る印・差だけを見る）・
+# slow＝SCAN_SLOW 秒を超えた走査の数
+_SCAN = {"seq": 0, "at": 0.0, "busy": False, "thread": None, "wseq": 0, "dseq": 0, "fails": 0, "slow": 0}
+_SCANNING = -1.0     # 走査中の _cache["t"]（古い扱い）。走査の間に t=0（無効化）が来たら、その結果を新鮮と言わない
+# R115-S1b: 走査が終わった（値・busy が変わった）合図。SSE の poke の前に新しい値を待つ _wait_fresh が使う（ロックは _lock）
+_scan_done = threading.Condition(_lock)
+POKE_FRESH_WAIT = 2.0
+# 反証 R115 #2: 走査し直しが POKE_FRESH_WAIT に間に合わずに先に送った poke は、走査し直しが終わったら同じ seq でもう 1 回送る
+# （UI は poke ごとに取り直す）。追うのは POKE_FOLLOW_WAIT 秒まで（UI のポーリングが 15 秒）・購読キューを TICK 秒おきに見る
+POKE_FOLLOW_WAIT = 15.0
+POKE_FOLLOW_TICK = 0.1
+# 反証 R115 #5: これを超えた走査は「office の走査が遅い」を 1 行ログに出して数える。1 秒おきのプローブは SWR の速い道
+# （STALE_MAX の内側＝前の値を即返す）しか通らず走査の遅さを測れない＝受け入れの「1 秒超 0 回」は走査の側で数える
+SCAN_SLOW = 1.0
 
 
 def _invalidate_cache():
@@ -1867,11 +2204,16 @@ def _invalidate_cache():
         _cache["t"] = 0.0
 
 
-_KEY_NAMES = frozenset({
-    "OPENAI_API_KEY", "X_BEARER_TOKEN", "OPENAI_ADMIN_KEY",
-    # R63: APIプロバイダ統合コスト（保存先・検証は既存経路のまま）
-    "OPENROUTER_API_KEY", "MOONSHOT_API_KEY", "DEEPSEEK_API_KEY", "GROQ_API_KEY",
-})
+def _mark_written():
+    """ローカルの書き込み（設定・送信履歴）の直後に **`_lock` の中で**呼ぶ。R115-S1: 次の office_json は書き込みの後に
+    始めた走査の値を返す（read-your-writes＝言語を切り替えた直後の画面が前の言語に戻らない）。古い値を返す SWR は
+    イベント（_invalidate_cache）と時間切れのときだけ。"""
+    _cache["t"] = 0.0
+    _SCAN["wseq"] += 1
+
+
+# R103-5: AI サービス・API の鍵の名前は provider_registry が正本（新しいプロバイダは表に 1 行足すだけで保存できる）
+_KEY_NAMES = frozenset({"OPENAI_API_KEY", "X_BEARER_TOKEN"}) | status_board.provider_registry.KEY_NAMES
 _KEY_VALUE = re.compile(r"^[A-Za-z0-9%_\-\.=/+]{20,300}$")
 
 
@@ -1957,58 +2299,50 @@ def keys_status():
             "ph": L_now("AAAA…（Bearer Token）", "AAAA… (Bearer token)"),
             "getFrom": "developer.x.com",
         },
-        {
-            "id": "openai_usage",
-            "label": L_now("OpenAI 使用金額（管理キー）", "OpenAI spend (admin key)"),
-            "mode": "key",
-            "connected": bool(key_values["OPENAI_ADMIN_KEY"]),
-            "masked": masked("OPENAI_ADMIN_KEY"),
-            "hint": L_now("organization の実請求額を取得します",
-                          "Fetches your organization's actual spend"),
-            "ph": "sk-admin-…",
-            "getFrom": "platform.openai.com/settings/organization/admin-keys",
-        },
-        # R63: APIプロバイダ（消費・残高の自動取得）
-        {
-            "id": "openrouter",
-            "label": L_now("OpenRouter（消費・上限）", "OpenRouter (spend & limit)"),
-            "mode": "key",
-            "connected": bool(key_values["OPENROUTER_API_KEY"]),
-            "masked": masked("OPENROUTER_API_KEY"),
-            "hint": L_now("当月消費とキー上限を自動取得します",
-                          "Fetches this month's spend and the key's limit"),
-            "ph": "sk-or-v1-…", "getFrom": "openrouter.ai/settings/keys",
-        },
-        {
-            "id": "moonshot",
-            "label": L_now("Kimi / Moonshot（残高）", "Kimi / Moonshot (balance)"),
-            "mode": "key",
-            "connected": bool(key_values["MOONSHOT_API_KEY"]),
-            "masked": masked("MOONSHOT_API_KEY"),
-            "hint": L_now("残高を自動取得します（国際版 api.moonshot.ai のキー）",
-                          "Fetches balance (international api.moonshot.ai key)"),
-            "ph": "sk-…", "getFrom": "platform.kimi.ai",
-        },
-        {
-            "id": "deepseek",
-            "label": L_now("DeepSeek（残高）", "DeepSeek (balance)"),
-            "mode": "key",
-            "connected": bool(key_values["DEEPSEEK_API_KEY"]),
-            "masked": masked("DEEPSEEK_API_KEY"),
-            "hint": L_now("残高を自動取得します", "Fetches balance"),
-            "ph": "sk-…", "getFrom": "platform.deepseek.com/api_keys",
-        },
-        {
-            "id": "groq",
-            "label": L_now("Groq（予算のみ）", "Groq (budget only)"),
-            "mode": "key",
-            "connected": bool(key_values["GROQ_API_KEY"]),
-            "masked": masked("GROQ_API_KEY"),
-            "hint": L_now("消費APIが無いため、⚡の予算欄で上限を手動設定して使います",
-                          "No spend API — set a manual budget in ⚡ instead"),
-            "ph": "gsk_…", "getFrom": "console.groq.com/keys",
-        },
+        # R103-5: AI サービス・API の行は provider_registry から作る（keyName＝保存する鍵の名前・kind・measures）
+        *[{"id": pr["id"], "label": L_now(*pr["panel"]), "mode": "key", "kind": pr["kind"],
+           "measures": list(pr["measures"]), "keyName": pr["key"],
+           "connected": bool(key_values[pr["key"]]), "masked": masked(pr["key"]),
+           "hint": L_now(*pr["hint"]), "ph": pr["ph"], "getFrom": pr["getFrom"],
+           "budget": pr["id"] in status_board.API_PROVIDER_IDS}
+          for pr in status_board.provider_registry.PROVIDERS],
     ]}
+
+
+_PROVIDER_TEST_AT = {}
+
+
+def provider_test(data):
+    """R103-5: POST /api/providers/test {id, value?}。保存の前に 1 回だけ相手へ問い合わせて「つながるか」を返す。
+    value 無し＝保存済みの鍵で。鍵は応答・ログに出さない（結果は ok と言葉だけ）。同じプロバイダは 3 秒に 1 回。"""
+    reg = status_board.provider_registry
+    pid = data.get("id") if isinstance(data, dict) else None
+    pr = reg.spec(pid) if isinstance(pid, str) else None
+    if not pr:
+        return False, "プロバイダが不正です", {}
+    value = data.get("value")
+    if value in (None, ""):
+        value = _office_key_line(pr["key"])[1]
+        if not value:
+            return False, L_now("鍵がまだ保存されていません", "No key saved yet"), {}
+    elif not isinstance(value, str) or not _KEY_VALUE.fullmatch(value):
+        return False, "キー値の形式が不正です", {}
+    now = time.time()
+    with _lock:
+        if now - _PROVIDER_TEST_AT.get(pid, 0) < 3:
+            return False, L_now("少し待ってからもう一度", "Wait a moment and try again"), {}
+        _PROVIDER_TEST_AT[pid] = now
+    fake = os.environ.get("OFFICE_FAKE_PROVIDER_TEST")      # テスト専用（UI スモークが外へ問い合わせない）: ok / fail
+    if fake in ("ok", "fail"):
+        ok, msg = (True, L_now("つながりました（テスト）", "Connected (test)")) if fake == "ok" else \
+            (False, reg.error_text("HTTP 401", L_now("ja", "en") == "ja"))
+    else:
+        try:
+            ok, msg = reg.test(pid, value, status_board._fetch_json, status_board.api_fetcher(pid), now,
+                               lang_ja=L_now("ja", "en") == "ja")
+        except Exception:                                   # 例外の本文（鍵を含みうる）は返さない・応答は必ず JSON
+            ok, msg = False, reg.error_text("", L_now("ja", "en") == "ja")
+    return True, "", {"result": {"ok": bool(ok), "message": msg}}
 
 
 def set_office_key(name, value):
@@ -2064,11 +2398,134 @@ def set_office_key(name, value):
 
 
 def office_json():
+    """いまの office（CACHE_SEC 秒のキャッシュ）。R115-S1: 走査の間 `_lock` を握らない（全 request thread が待っていた）。
+    新鮮 → そのまま返す／古くて前の値がある → daemon（_SWR）では裏で 1 本だけ走査を起こして前の値を即返す（鮮度は generatedAt）／
+    値が無い（冷間）・前の値がローカルの書き込みより前・STALE_MAX より古い・_SWR でない（relay_agent・tests・--dump）
+    → 呼び手が走査する（同時の呼び手は同じ 1 回の結果を受け取る）。"""
     with _lock:
-        if time.time() - _cache["t"] > CACHE_SEC or _cache["data"] is None:
-            _cache["data"] = scan_office()
-            _cache["t"] = time.time()
-        return _cache["data"]
+        data = _cache["data"]
+        now = time.time()
+        if data is not None and now - _cache["t"] <= CACHE_SEC:
+            return data
+        seq = _SCAN["seq"]
+        stale_ok = (_SWR and data is not None and _SCAN["dseq"] == _SCAN["wseq"]
+                    and now - _SCAN["at"] <= STALE_MAX)
+        kick = stale_ok and not _SCAN["busy"]
+        if kick:
+            _SCAN["busy"] = True
+    if not stale_ok:
+        return _scan_into_cache(seq)
+    if kick:
+        try:
+            th = threading.Thread(target=_revalidate, args=(seq,), name="office-scan", daemon=True)
+            _SCAN["thread"] = th
+            th.start()
+        except RuntimeError:                    # スレッドを起こせない＝前の値を返し、次の呼び出しで再試行
+            with _lock:
+                _SCAN["busy"] = False
+    return data
+
+
+def _scan_into_cache(seq, bg=False):
+    """走査して `_cache` に置き、その結果を返す（single flight＝走査は同時に 1 本）。走査を待っている間に別の走査が
+    終わったら（seq が進んだら）その結果を返す＝冷間の同時呼び出しは 1 回の走査を共有する（その走査の途中にイベントの
+    無効化が来ていても。無効化は次の呼び出しが拾う）。ただしローカルの書き込みより前に始めた走査の結果は共有しない。
+    走査の例外は前の値と時刻を保ったまま呼び手へ（fails を 1 つ進める）。SCAN_SLOW 秒を超えた走査は 1 行ログに出して
+    slow を数える（bg＝裏の走査・それ以外は呼び手が待った同期の走査）。"""
+    with _scan_lock:
+        with _lock:
+            data = _cache["data"]
+            if data is not None and _SCAN["dseq"] == _SCAN["wseq"] and (
+                    _SCAN["seq"] != seq or time.time() - _cache["t"] <= CACHE_SEC):
+                return data
+            before = _cache["t"]
+            _cache["t"] = _SCANNING
+            wseq = _SCAN["wseq"]
+        started = time.monotonic()
+        try:
+            data = scan_office()
+        except BaseException:
+            with _lock:
+                _SCAN["fails"] += 1
+                if _cache["t"] == _SCANNING:
+                    _cache["t"] = before
+                _scan_done.notify_all()
+            raise
+        took = time.monotonic() - started
+        with _lock:
+            done = time.time()
+            _cache["data"] = data
+            _SCAN.update(seq=_SCAN["seq"] + 1, at=done, dseq=wseq, slow=_SCAN["slow"] + int(took > SCAN_SLOW))
+            if _cache["t"] == _SCANNING:        # 走査の間に無効化（t=0）が来ていれば古いまま＝次の呼び出しで走査し直す
+                _cache["t"] = done
+            _scan_done.notify_all()
+    if took > SCAN_SLOW:
+        print(f"⚠ office の走査が遅い: {took:.2f} 秒（{'裏' if bg else '同期'}）", file=sys.stderr, flush=True)
+    return data
+
+
+def _revalidate(seq):
+    """裏の走査（_SWR のときだけ office_json が 1 本起こす）。失敗しても前の値は保ち、旗を戻して次の呼び出しで再試行する。"""
+    try:
+        _scan_into_cache(seq, bg=True)
+    except Exception as e:                      # noqa: BLE001 - 裏の走査は request thread を巻き込まない
+        print(f"⚠ office の裏の走査が失敗（前の値を返し続け、次の呼び出しで再試行）: {type(e).__name__}: {e}",
+              file=sys.stderr, flush=True)
+    finally:
+        with _lock:
+            _SCAN["busy"] = False
+            _scan_done.notify_all()
+
+
+def _wait_fresh(timeout):
+    """R115-S1b: SSE の poke（UI はこれを受けて /api/office を取り直す）の前に、無効化された値（t=0）・走査中（_SCANNING）が
+    走査し直されるのを待つ（最大 timeout 秒・走査が起きていなければ 1 本起こす）。office_events._ingest は「キャッシュを失効させて
+    から poke」の順を守る（Astra レビュー）＝poke の後の取り直しはイベントの後の値を受け取る、という約束を SWR でも保つ。
+    待つのは SSE の thread だけ（GET は待たせない）。時間切れだけで古い値（t>0）は待たない。旗 OFF は何もしない。
+    反証 R115 #1: 待つ間に走査が失敗したら（fails が進んだら）起こし直さずに False（再試行は次の GET）。前は失敗した走査を
+    期限まで起こし直し続けた＝走査が毎回落ちる状態（UTF-8 でない office_config.json・手編集の型の誤り）では poke 1 回で
+    数万回の走査とログ数 MB・CPU 1 コア。今、1 回の待ちで起こし直すのは「走査は成功したが、その途中に次の失効が来た」ときだけ。"""
+    if not _SWR:
+        return True
+    deadline = time.monotonic() + timeout
+    with _scan_done:
+        fails = _SCAN["fails"]
+        while _cache["t"] <= 0.0:
+            if _SCAN["fails"] != fails:
+                return False
+            if not _SCAN["busy"]:
+                _SCAN["busy"] = True
+                try:
+                    th = threading.Thread(target=_revalidate, args=(_SCAN["seq"],), name="office-scan", daemon=True)
+                    _SCAN["thread"] = th
+                    th.start()
+                except RuntimeError:
+                    _SCAN["busy"] = False
+                    return False
+            left = deadline - time.monotonic()
+            if left <= 0:
+                return False
+            _scan_done.wait(left)
+    return True
+
+
+def _scan_marks():
+    """(終わった走査の数, 失敗した走査の数)＝poke の追いかけ（_fresh_since）の起点。"""
+    with _lock:
+        return _SCAN["seq"], _SCAN["fails"]
+
+
+def _fresh_since(marks):
+    """反証 R115 #2: 時間切れで先に送った poke を追いかけるかの判定（SSE の thread が POKE_FOLLOW_TICK 秒おきに呼ぶ・走査は起こさない）。
+    True＝起点の後に走査が成功し、値が失効していない（t>0 は失効の後に始めた走査の値＝取り直しはイベントの後の値）／
+    False＝起点の後に走査が失敗した（追わない・再試行は次の GET）／None＝まだ。失敗が前の時刻（t>0）を戻しても成功とは言わない。"""
+    seq, fails = marks
+    with _lock:
+        if _SCAN["seq"] != seq and _cache["t"] > 0.0:
+            return True
+        if _SCAN["fails"] != fails:
+            return False
+        return None
 
 
 def external_openclaw_json(now=None):
@@ -2108,7 +2565,7 @@ def _record_instruction_history(session, text):
         tmp = HISTORY_FILE.with_name(f".{HISTORY_FILE.name}.tmp")
         tmp.write_text(json.dumps(h[-50:], ensure_ascii=False), encoding="utf-8")
         tmp.replace(HISTORY_FILE)
-        _cache["t"] = 0.0
+        _mark_written()
 
 
 # R90-D10: Codex CLI のセッション（session="cx-<thread id>"）への配達。
@@ -2213,10 +2670,21 @@ def _deliver_codex(session, text):
                        "Queued to Codex (read on its next turn)")
 
 
-def post_instruction(session, text):
+# R126: post_instruction の呼び手。local＝Mac の画面（/api/instruct・loopback＋CSRF）・relay＝スマホ（署名を確かめた中継の封筒）・
+# mcp＝セッション（MCP の office_instruct）。Bot（bot-）へ渡せるのは office_door.HUMAN_SRCS（local・R127 から relay も）だけ
+# ＝セッションの文を Bot に入れない。
+INSTRUCT_SRCS = ("local", "relay", "mcp")
+
+
+def post_instruction(session, text, *, src, req_id=None):
     """指示を投函（Stop hook の office-inbox-wait.sh が配達する）。
     R42.5: oc-宛（OpenClaw・別Mac）は office_inbox でなく OC_OUTBOX へ＝relay_agent が
-    中継の site=macmini キューへ署名転送する（バリデーション・履歴は両経路共通）。"""
+    中継の site=macmini キューへ署名転送する（バリデーション・履歴は両経路共通）。
+    R126: `src`（誰が投函したか）はキーワード専用・既定値なし（write_approval_reply と同じ流儀＝呼び忘れた経路が
+    黙って「人」にならない）。bot-（出勤の口の Bot）宛は口の inbox へ＝人の呼び手（office_door.HUMAN_SRCS）だけ。
+    R127: req_id は bot- 宛だけが使う 1 通ごとの冪等の id（relay_agent がスマホの封筒の端末と nonce から作る＝再配達で二重に入れない）。"""
+    if src not in INSTRUCT_SRCS:
+        raise ValueError(f"unknown instruction source: {src!r}")
     if not re.fullmatch(r"[a-zA-Z0-9-]{8,64}", session or ""):
         return False, "session id が不正です"
     text = (text or "").strip()
@@ -2226,6 +2694,21 @@ def post_instruction(session, text):
         return False, "指示が長すぎます(4000字まで)"
     if "\x00" in text:
         return False, "指示に使えない文字（NUL）が含まれています"
+    if _is_bot_session(session):
+        # R126: セッション（MCP）の文が「人の指示」として Bot に入り、のちに中継で外へ出るのを止める（構造で）。
+        # R127: スマホ（relay）も人＝相談が閉じているときの言葉は指示として口へ（開いている間は口が断る＝答えは id8 の枝だけ）。
+        if src not in office_door.HUMAN_SRCS:
+            office_door.audit_event("refuse", session[len(office_door.SESSION_PREFIX):], home=_HOME,
+                                    op="instruct", why="src", src=src)
+            return False, L_now("Bot へはセッション（MCP）からは指示できません（Mac の画面かスマホから）",
+                                "Bots take instructions only from a person (the Mac screen or the phone), not from sessions")
+        bot_id = office_door.bot_of_session(session)
+        if bot_id is None:
+            return False, "session id が不正です"
+        res = office_door.instruct(bot_id, text, src=src, home=_HOME, req_id=req_id, lang=office_lang())
+        if res.get("ok") and not res.get("dup"):          # 同じ封筒の再配達（dup）は履歴にも二度書かない
+            _record_instruction_history(session, text)
+        return bool(res.get("ok")), str(res.get("text") or "")
     if session.startswith("oc-"):
         OC_OUTBOX.mkdir(parents=True, exist_ok=True)
         name = f"{int(time.time() * 1000)}-000.json"
@@ -2254,6 +2737,78 @@ def post_instruction(session, text):
     tmp.rename(INBOX / f"{session}.json")
     _record_instruction_history(session, text)
     return True, "投函しました"
+
+
+def answer_bot(session, data):
+    """R127: Mac の質問カードから Bot（出勤の口）の相談へ答える（/api/approval/reply の bot- の枝）。→ (ok, msg, extra)。
+    言葉だけ＝behavior が "deny"（カードの文章の答え）以外は断る＝allow は 400（Bot は許可を出せない・不変条件 7・監査に refuse）。
+    答える相手は askId（32 桁）で 1 件に縛る＝表示していない相談・もう閉じた相談への答えは口が捨てて監査に残す（指示に落とさない）。
+    掲示板（office_approvals/）は読まない・書かない。選択肢の文は口が choice に解決する。"""
+    bot = session[len(office_door.SESSION_PREFIX):]
+    behavior = data.get("behavior")
+    if behavior not in (None, "", "deny"):
+        office_door.audit_event("refuse", bot, home=_HOME, op="answer", src="local",
+                                why="allow" if behavior == "allow" else "behavior")
+        return False, L_now("Bot には許可を出せません（答えは言葉だけ）",
+                            "A bot cannot be given permission (answer in words)"), {}
+    bot_id = office_door.bot_of_session(session)
+    if bot_id is None:
+        return False, "session id が不正です", {}
+    ask_id = data.get("askId")
+    if not (isinstance(ask_id, str) and office_door.ASK_ID_RE.fullmatch(ask_id)):
+        return False, L_now("画面を読み込み直してください（どの相談への答えか分かりません）",
+                            "reload the page (the answer does not name its question)"), {}
+    text = data.get("message")
+    res = office_door.answer(bot_id, ask_id, text if isinstance(text, str) else "", src="local",
+                             home=_HOME, lang=office_lang())
+    if not res.get("ok"):
+        return False, str(res.get("text") or ""), {}
+    with _lock:
+        _mark_written()           # 答えた直後の画面に、閉じた相談をもう出さない（read-your-writes）
+    extra = {"kind": "question", "askId": res.get("askId")}
+    if res.get("choice"):
+        extra["choice"] = res["choice"]
+    return True, L_now("答えを届けました", "answer delivered"), extra
+
+
+# ---- R128 #4: Bot パネル（⚙ の一覧・追加・削除・消音＝Mac の前の人だけ・正本= docs/door.md §10） ----
+# 一覧は GET /api/door/bots（loopback＋CSRF）。書き換えは下の 3 本の POST（_STRICT_POST＝loopback＋X-Office-Local＋Origin 必須）。
+# 中継（relay_agent）・MCP・Bot の道具には道が無い（Bot の登録・削除・消音は人の操作）。入力の検査と断りの理由は office_door
+#（code と人が読む文をそのまま返す）。office_json には載せない＝登録コマンドのパスも中継へ流れる経路が無い。
+DOOR_BOT_ROUTES = ("/api/door/bot/add", "/api/door/bot/remove", "/api/door/bot/mute")
+
+
+def door_bots_json(now=None):
+    """GET /api/door/bots の中身。{ok, ledger（台帳が読めたか）, max, bots:[{bot, session, name, role, added, lastSeen, age, ask,
+    unread, muted, mcp}]}。age＝最後に動いてからの秒（一度も動いていなければ None）・mcp＝その Bot を MCP として登録する 1 行
+    （office_door.mcp_command＝この daemon の python3 の実体と隣の mcp_office.py・valid_id を通った id だけ）。読むだけ。"""
+    now = time.time() if now is None else now
+    view = office_door.bots_overview(home=_HOME, now=now)
+    bots = []
+    for b in view["bots"]:
+        seen = b.get("lastSeen") or 0.0
+        bots.append(dict(b, age=max(0, int(now - seen)) if seen > 0 else None, mcp=office_door.mcp_command(b["bot"])))
+    return {"ok": True, "ledger": bool(view["ok"]), "max": view["max"], "bots": bots}
+
+
+def door_bot_post(route, data):
+    """POST /api/door/bot/{add,remove,mute} → (HTTP の番号, 返す JSON)。断りは 400 と {ok:false, code, error＝口の文}。
+    add＝{bot, name?, role?}（同じ id は名前と役の直し）・remove＝{bot}（状態と記録も消す）・mute＝{bot, on: true|false}。"""
+    lang = office_lang()
+    bot = data.get("bot")
+    if route == "/api/door/bot/add":
+        res = office_door.add_bot(bot, data.get("name"), data.get("role"), home=_HOME, lang=lang)
+        if res.get("ok"):
+            res["mcp"] = office_door.mcp_command(res["bot"])
+    elif route == "/api/door/bot/remove":
+        res = office_door.remove_bot(bot, home=_HOME, lang=lang)
+    else:
+        res = office_door.set_muted(bot, data.get("on"), home=_HOME, lang=lang)
+    if not res.get("ok"):
+        return 400, {"ok": False, "code": str(res.get("error") or "refused"), "error": str(res.get("text") or "")}
+    with _lock:
+        _mark_written()           # 直した直後の /api/office に今の登録と消音を出す（read-your-writes）
+    return 200, res
 
 
 # ---- ➕ 新しいプロジェクト起動（P1） ------------------------------------
@@ -2475,7 +3030,7 @@ def set_lang(value):
             return False, "office_config.json が読めません（壊れている可能性・手動確認を）"
         cfg["lang"] = value
         _write_config(cfg)
-        _cache["t"] = 0.0
+        _mark_written()
     return True, value
 
 
@@ -2494,8 +3049,12 @@ def set_dialog_relay(on):
             return False, "office_config.json が読めません（壊れている可能性・手動確認を）"
         cfg["dialogRelay"] = on
         _write_config(cfg)
-        _cache["t"] = 0.0
+        _mark_written()
     return True, on
+
+
+# R100-1a: 封書の種類（閉じた集合）。relay_agent の DLG_KINDS と同じ値（test_relay_agent がピン）。
+SEALED_KINDS = frozenset({"dialog", "term", "ask"})     # R100-1b: ask＝許可の全文（登録した端末だけ）
 
 
 def _dialog_sealed(data):
@@ -2511,24 +3070,32 @@ def _dialog_sealed(data):
     req_id = str(act.get("reqId") or "")
     session = str(act.get("session") or "")
     device = str(data.get("device_id") or "")[:32]
-    if (act.get("aioffice") != 1 or act.get("kind") != "dialog"
+    kind = act.get("kind")
+    # R100-1a: 封書の種類は閉じた集合（dialog＝会話ビュー／term＝ターミナル画面）。他は恒久拒否。
+    if (act.get("aioffice") != 1 or kind not in SEALED_KINDS
             or not dialog_seal.REQID_RE.match(req_id)):
         return False, "dialog request malformed", {"state": "denied"}
     if not _SESSION_ID_RE.fullmatch(session):
         return False, "bad session", {"state": "denied"}
     iat = int(time.time())
 
+    # R100-1a: ターミナル画面は数秒おきに要求する＝同じ端末の term 封書は最新 1 通だけ残す
+    # （MAX_LIVE=4 の枠を会話ビューと食い合わない）。R100-1b: 許可の全文（ask）も端末ごとに 1 通。
+    replace_key = f"{kind}:{device}" if kind in ("term", "ask") else None
+
     def refuse(err):
         bundle = {"v": 1, "id": req_id, "e": iat + dialog_seal.BUNDLE_TTL, "err": err}
-        dialog_seal.store_bundle(req_id, bundle)      # 端末に「理由」が届くように保存する
-        office_actions._audit({"kind": "dialog", "reqId": req_id, "device": device,
+        # 端末に「理由」が届くように保存する（許可の全文の理由は急ぎ＝中継の減速中でも届ける）
+        dialog_seal.store_bundle(req_id, bundle, replace_key=replace_key, urgent=kind == "ask")
+        office_actions._audit({"kind": kind, "reqId": req_id, "device": device,
                                "session": session, "ts": iat, "state": err})
         return True, err, {"bundle": bundle}
 
     if not dialog_seal.AVAILABLE:
         return refuse("unavailable")
     config = load_config()
-    if config.get("dialogRelay") is not True:
+    # R100-1b: 許可の全文は「会話を見せる」が OFF でも、スマホから許可が ON で登録済みの端末になら見せる（_ask_sealed の門）
+    if kind != "ask" and config.get("dialogRelay") is not True:
         return refuse("denied")
     dev = load_devices().get("devices", {}).get(device) if device else None
     if (not isinstance(dev, dict) or dev.get("revoked")
@@ -2540,9 +3107,22 @@ def _dialog_sealed(data):
         return True, "cached", {"bundle": known}
     if not created:
         return True, "pending", {"bundle": None}      # 封緘中（次の周で出る）
+    if kind == "ask":
+        return _ask_sealed(act, dev, device, req_id, session, iat, refuse, replace_key)
+    if session.startswith("cx-") or _is_bot_session(session):
+        # R113-B-I: Codex のセッションは term（ターミナル画面）だけ開ける＝rollout は office_term.session_page →
+        # source_codex_rollout が SQLite（読み取り専用）の rollout_path を ~/.codex/sessions 配下へ閉じ込めて読む。
+        # R128: 出勤の口の Bot（bot-）も term だけ＝記録（~/.claude/office_door/bot/<id>.log.jsonl）を source_door_log が
+        # id を確かめ・登録した Bot だけ・口のフォルダの中だけ読む（本文は封書の中だけ＝中継の平文に鍵を足さない）。
+        # transcript の検索（_session_transcript）は飛ばす。dialog（会話ビュー）は従来どおり notfound。
+        if kind == "term":
+            return _term_sealed(None, act, dev, device, req_id, session, iat, refuse, replace_key)
+        return refuse("notfound")
     p = _session_transcript(session)
     if not p:
         return refuse("notfound")
+    if kind == "term":
+        return _term_sealed(p, act, dev, device, req_id, session, iat, refuse, replace_key)
     depth = config.get("dialogRelayDepth", 0)
     depth = depth if isinstance(depth, int) and 0 <= depth <= 1 else 0
     nbytes = DIALOG_DEPTHS[depth][0]
@@ -2568,6 +3148,215 @@ def _dialog_sealed(data):
                            "session": session, "ts": iat, "state": "sealed",
                            "frames": bundle["n"], "clipped": page["clipped"]})
     return True, "sealed", {"bundle": bundle}
+
+
+_ACT_AFTER_RE = re.compile(r"^([1-9][0-9]{0,15}):([0-9a-f]{16})$")
+_ACT_BEFORE_RE = re.compile(r"^([1-9][0-9]{0,15}):([0-9a-f]{16}):([0-9]{1,4})$")
+_ACT_EMPTY = {"rows": [], "cur": None, "reset": True, "gap": False, "beg": None, "top": True}
+
+
+def activity_page(qs):
+    """R121: GET /api/session/activity のクエリ → (ok, 頁 | 400 の理由)。
+    session（形は _SESSION_ID_RE）・after=<off>:<h16>（差分）・before=<off>:<h16>:<i>（遡り）。カーソルの検算は office_term の
+    valid_after／valid_before が正本（ここは文字の形だけ）。未知 session・cx- の rollout・bot- の記録が引けない＝空の頁（200）。
+    R128: bot-（出勤の口の Bot）は transcript を探さず、office_term.session_page の bot- の分岐（source_door_log）で記録を読む。"""
+    session = (qs.get("session") or [""])[0]
+    if not _SESSION_ID_RE.fullmatch(session or ""):
+        return False, "bad session"
+    raw_after, raw_before = (qs.get("after") or [""])[0], (qs.get("before") or [""])[0]
+    after = before = None
+    if raw_after:
+        m = _ACT_AFTER_RE.fullmatch(raw_after)
+        if not m:
+            return False, "bad cursor"
+        after = {"off": int(m.group(1)), "h": m.group(2)}
+    if raw_before:
+        m = _ACT_BEFORE_RE.fullmatch(raw_before)
+        if not m or after is not None:
+            return False, "bad cursor"
+        before = {"off": int(m.group(1)), "h": m.group(2), "i": int(m.group(3))}
+    own = session.startswith("cx-") or _is_bot_session(session)   # 読み手が自分で閉じ込めて読む（Codex の rollout・Bot の記録）
+    path = None if own else _session_transcript(session)
+    if path is None and not own:
+        return True, dict(_ACT_EMPTY)
+    try:
+        page = office_term.session_page(session, path, after, office_actions.scrub_output, _COMMAND_NAME_RE,
+                                        before=before, home=_HOME)
+    except OSError:
+        return True, dict(_ACT_EMPTY)
+    if page is None:                                  # 遡りのカーソルが合わない（ファイルが差し替わった）＝遡りを止める
+        return True, {"rows": [], "older": True, "beg": None, "top": False, "reset": False, "gap": False, "cur": None}
+    return True, office_term.public(page)
+
+
+def _term_sealed(path, act, dev, device, req_id, session, iat, refuse, replace_key):
+    """R100-1a: ターミナル画面の 1 枚（差分カーソル付き）を封じる。行の組み立ては server/office_term.py（純関数）。
+    道具の引数と結果は scrub_output を通してから載せる（封書は中継対策・伏字は端末の盗難対策）。
+    R113-B-I: 頁は office_term.session_page で選ぶ（cx-＝Codex の rollout・bot-＝出勤の口の Bot の記録（R128）・path は None／
+    それ以外＝閉じ込め済みの transcript）。引けない・閉じ込めの外＝FileNotFoundError＝下の OSError で notfound。"""
+    try:
+        if act.get("before") is not None and act.get("after") is None:
+            # R104-2: 画面のいちばん上より前（開く前の行）を遡る。カーソルが合わない＝ファイルが差し替わった＝遡りを止める
+            page = office_term.session_page(session, path, None, office_actions.scrub_output, _COMMAND_NAME_RE,
+                                            before=act.get("before"), home=_HOME)
+            if page is None:
+                page = {"rows": [], "older": True, "beg": None, "reset": False, "gap": False, "cur": None}
+        else:
+            page = office_term.session_page(session, path, act.get("after"), office_actions.scrub_output,
+                                            _COMMAND_NAME_RE, home=_HOME)
+    except OSError:
+        return refuse("notfound")
+    page.update({"kind": "term", "v": 2, "session": session, "reqId": req_id, "iat": iat})
+    # R102-3: 収まらなければ office_term.shrink の順で縮める（R113-B: kids→差分を半分→従来相当→古い差分の本文→結果の本文を 2 行
+    # →古い方から半分落として gap）。回数は段の数に追従（直書きの 10 だと段を足したとき 1 行まで縮まずに toolarge）
+    step = 0
+    for _ in range(office_term.SHRINK_STEPS + 1):
+        try:
+            bundle = dialog_seal.seal(dev["secret"], device, req_id, session, office_term.public(page), iat=iat)
+            break
+        except ValueError as e:
+            if str(e) != "toolarge" or not office_term.shrink(page, step):
+                return refuse("toolarge")
+            step += 1
+    else:
+        return refuse("toolarge")
+    dialog_seal.store_bundle(req_id, bundle, replace_key=replace_key)
+    office_actions._audit({"kind": "term", "reqId": req_id, "device": device,
+                           "session": session, "ts": iat, "state": "sealed", "v": 2,
+                           "frames": bundle["n"], "rows": len(page["rows"]), "reset": page.get("reset"),
+                           "older": bool(page.get("older"))})
+    return True, "sealed", {"bundle": bundle}
+
+
+ASK_SEAL_ERR = {"off": "off", "not-enrolled": "unenrolled", "no-ask": "noask", "scope": "scope"}
+
+
+def _ask_project(session, ask):
+    """許可の範囲（登録時の projects）と突き合わせるプロジェクト ID＝掲示の cwd のフォルダ。"""
+    return project_id_for(str((ask or {}).get("cwd") or ""))
+
+
+def _ask_sealed(act, dev, device, req_id, session, iat, refuse, replace_key):
+    """R100-1b: 許可を待っている 1 件の全文（inputCanon）を、その端末の鍵で封じる。
+    門（office_approve.seal_gate）: ON・この端末のペアリングが有効（R118: 許可鍵は要らない）・掲示が生きている・範囲（projects）の中。
+    封じた事実（端末・askId・iat）を seen に積む＝許可は封じてから 180 秒以内（Mac の時計）しか受け付けない。"""
+    want = act.get("askId")
+    asks = pending_approvals(session)
+    raw = None
+    for a in asks:
+        if a.get("askId") and (want is None or a["askId"] == want):
+            raw = _ask_raw(session, a["askId"])
+            if raw:
+                break
+    gate = office_approve.seal_gate(device, session, raw, load_devices(), _ask_project, now=iat)
+    if gate:
+        return refuse(ASK_SEAL_ERR.get(gate, "denied"))
+    canon = raw.get("inputCanon") if isinstance(raw.get("inputCanon"), str) else ""
+    cwd = str(raw.get("cwd") or "")
+    page = {"kind": "ask", "session": session, "reqId": req_id, "iat": iat,
+            "askId": raw["askId"], "tool": short(str(raw.get("tool") or ""), 64),
+            "inputCanon": canon, "inputSha": str(raw.get("inputSha") or "") if canon else "",
+            "inputBytes": int(raw.get("inputBytes") or 0) if isinstance(raw.get("inputBytes"), int) else len(canon.encode("utf-8")),
+            "cwdBase": os.path.basename(cwd.rstrip("/"))[:80], "askTs": int(float(raw.get("ts") or 0)),
+            # R103-1: mac の段も全文があればそのまま（スマホは Face ID で許可・危険の理由を言葉で出す・R114 で全文を読む義務は廃止）。
+            # 全文が無い（読めない・大きすぎる）ときだけ "macOnly"＝本当に Mac だけで許可する形
+            "level": raw.get("level") if raw.get("level") in ("remote", "review", "mac") and canon else "mac",
+            "macOnly": 0 if canon else 1,
+            "reasons": [str(r)[:24] for r in (raw.get("reasons") or [])][:4],
+            "tags": [str(t)[:24] for t in (raw.get("tags") or [])][:12] if raw.get("level") in ("review", "mac") else [],
+            "agentId": str(raw.get("agentId") or "")[:64], "askCount": len(asks)}
+    try:
+        bundle = dialog_seal.seal(dev["secret"], device, req_id, session, page, iat=iat)
+    except ValueError:
+        return refuse("toolarge")
+    # 急ぎ: 人が「スマホで確認して許可」を押して待っている＝中継の自動減速（R80）でも保留しない
+    dialog_seal.store_bundle(req_id, bundle, replace_key=replace_key, urgent=True)
+    office_approve.mark_seen(device, raw["askId"], iat)
+    office_approve.audit({"kind": "sealed", "reqId": req_id, "device": device, "session": session,
+                          "askId": raw["askId"], "tool": page["tool"], "inputSha": page["inputSha"],
+                          "level": page["level"], "reasons": page["reasons"]})
+    return True, "sealed", {"bundle": bundle}
+
+
+def _relay_rp():
+    """WebAuthn の rpId と origin＝中継の URL（~/.claude/office_relay.json）。https か localhost だけ。"""
+    url, _tok = relay_config()
+    try:
+        from urllib.parse import urlsplit
+        u = urlsplit(url)
+    except ValueError:
+        return None
+    host = (u.hostname or "").lower()
+    if not host or (u.scheme != "https" and host != "localhost"):
+        return None
+    origin = f"{u.scheme}://{host}" + (f":{u.port}" if u.port else "")
+    return host, origin
+
+
+def _approve_remote(data):
+    """R100-1b: /api/approval/remote（relay_agent が apv- の封筒をそのまま回す）。(ok, msg, extra)。"""
+    env = data.get("envelope")
+    if not isinstance(env, dict):
+        return False, "envelope required", {}
+
+    def write_reply(session, ask_id, extra):
+        write_approval_reply(session, "allow", "", src="remote", ask_id=ask_id, extra=extra)
+
+    state, reason, info = office_approve.approve(
+        env, devices=load_devices(), verify=verify_envelope, rp=_relay_rp(), read_ask=_ask_raw,
+        write_reply=write_reply, project_of=_ask_project, home=str(_HOME), available=dialog_seal.AVAILABLE,
+        notify=_notify_security)
+    rid = info.get("reqId") or ""
+    if rid and office_actions.REQID_RE.match(rid) and reason not in ("replay", "bad-sig"):
+        label = L_now(f"{info.get('tool') or '操作'} の許可", f"Allow {info.get('tool') or 'action'}")
+        # R114: 方式（sig＝Face ID／tap＝ON の間のタップ）も控える（office_actions の監査に残る・公開ビューには載らない）
+        office_actions.register_result(rid, "approve", label, state, output=reason, device=info.get("device", ""),
+                                       mode=info.get("mode", ""))
+    return True, state, {"state": state, "reason": reason, "mode": info.get("mode", "")}
+
+
+def _approve_remote_set(data):
+    """R103-1: /api/approval/remote_set（relay_agent が rst- の封筒をそのまま回す）。スマホから ON/OFF（本人裁定 2026-10-02）。"""
+    env = data.get("envelope")
+    if not isinstance(env, dict):
+        return False, "envelope required", {}
+    state, reason, info = office_approve.remote_set(env, devices=load_devices(), verify=verify_envelope,
+                                                    rp=_relay_rp(), notify=_notify_security)
+    rid = info.get("reqId") or ""
+    if rid and office_actions.REQID_RE.match(rid) and reason not in ("replay", "bad-sig"):
+        label = (L_now("スマホから許可を ON", "Phone approvals on") if info.get("on")
+                 else L_now("スマホから許可を OFF", "Phone approvals off"))
+        office_actions.register_result(rid, "remote_set", label, state, output=reason or str(info.get("until") or ""),
+                                       device=info.get("device", ""))
+    return True, state, {"state": state, "reason": reason, "until": info.get("until", 0)}
+
+
+def _approve_enroll(data):
+    """R100-1b: /api/approve/enroll（relay_agent が enr- の封筒をそのまま回す）。R103-1 から Mac の確認は無い（即時有効・通知と監査だけ）。"""
+    env = data.get("envelope")
+    if not isinstance(env, dict):
+        return False, "envelope required", {}
+    # R103-1: Mac の確認ダイアログは出さない（本人裁定 2026-10-02「登録も ON もスマホだけで完結」）。通知と監査だけ
+    state, reason, fp = office_approve.enroll(
+        env, devices=load_devices(), verify=verify_envelope, rp=_relay_rp(), confirm=None,
+        notify=_notify_security)
+    sess = str(env.get("session") or "")
+    ticket = sess[4:] if sess.startswith("enr-") else ""
+    if ticket and office_actions.REQID_RE.match(ticket) and reason not in ("replay", "bad-sig"):
+        office_actions.register_result(ticket, "enroll", L_now("許可鍵の登録", "Approval key"), state,
+                                       output=reason or fp)
+    return True, state, {"state": state, "reason": reason}
+
+
+def approve_status():
+    """デスクトップの 📱 スマホ連携（loopback だけ）: ON の期限・端末ごとの許可鍵・今日の件数・中継の設定。"""
+    devs = load_devices()
+    return {"until": office_approve.remote_until(), "always": office_approve.REMOTE_ALWAYS,
+            "keys": office_approve.keys_local(devs), "today": office_approve.today_summary(),
+            # b4-mac: 登録の段階（受付の期限・Mac の確認待ち・直近の結果）＝Mac のモーダルが結果を知らせる
+            "enroll": office_approve.enroll_local(), "enrollTries": office_approve.ENROLL_TRIES,
+            "confirmWait": office_approve.ENROLL_CONFIRM_WAIT,
+            "relay": bool(_relay_rp()), "available": bool(dialog_seal.AVAILABLE)}
 
 
 PROJECT_ARCHES = frozenset(("phones", "cap", "beret", "pencil", "bowtie",
@@ -2672,7 +3461,7 @@ def set_avatar_style(avatar_id, scope, fields):
                     for old_id, _ in stale[:len(avatars) - AVATAR_STYLE_MAX]:
                         avatars.pop(old_id, None)
             _write_config(cfg)
-            _cache["t"] = 0.0
+            _mark_written()
         except (OSError, UnicodeError, json.JSONDecodeError):
             return False, "could not save office_config.json"
     return True, "saved"
@@ -2722,7 +3511,7 @@ def add_project(path, name, role, launch=False):
             # 先頭に挿入＝広いパターン(例: Downloads/works)より先にマッチさせる
             cfg["projects"] = {pattern: entry, **projects}
         _write_config(cfg)
-        _cache["t"] = 0.0
+        _mark_written()
     launched = launch_claude(str(p)) if launch else False
     return True, "登録しました", {
         "pattern": pattern, "existing": existing, "name": name, "launched": launched,
@@ -2738,6 +3527,17 @@ def add_project(path, name, role, launch=False):
 _SIG_LABEL = "aioffice-instruct"     # ドメイン分離ラベル（他用途のHMACと衝突させない）
 _SIG_V = 1                           # 署名プロトコルのバージョン
 DEVICE_TTL = 30 * 86400              # デバイス有効期限（30日）
+# R116-S1b つながりの延長（本人裁定 2026-10-26・計画 ~/.claude/plans/r116-s1b-pair-extend.md）: Mac の［延長］は REKEY_WINDOW の間だけ
+# 「作り直してよい」を出す。スマホが今の秘密で求めたら、新しい秘密（next）を今の秘密で封じて渡す＝新しい秘密は URL に一度も載らない。
+# スマホが next で署名した受領（ack）を返したら昇格し、古い秘密（prev）は取りこぼし防止に PREV_GRACE だけ受ける。台帳の書き手は daemon だけ。
+REKEY_WINDOW = 24 * 3600
+PREV_GRACE = 600
+REKEY_TARGET = "pair-rekey"          # 延長の封書の AAD の対象（スマホも同じ文字列で開く）
+
+
+# R100-1b 後（本人「オンにしても何時までかが出ない」）: 端末の台帳は専用の鍵で守る。全体の _lock は office_json の組み立て
+# （transcript の読み・外部の費用 API）が握り続けるので、📱 スマホ連携の一覧（prune_devices）が 7〜12 秒待たされていた。
+_devices_lock = threading.RLock()
 
 
 def load_devices():
@@ -2768,7 +3568,7 @@ def new_device(label):
     now = int(time.time())
     device_id = "d_" + secrets.token_hex(6)          # d_ + 12 hex
     secret = secrets.token_hex(32)                   # 64 hex = 256bit
-    with _lock:
+    with _devices_lock:
         d = load_devices()
         d.setdefault("devices", {})[device_id] = {
             "secret": secret, "label": label, "created": now,
@@ -2780,15 +3580,196 @@ def new_device(label):
 
 
 def revoke_device(device_id):
-    with _lock:
+    with _devices_lock:
         d = load_devices()
         rec = d.get("devices", {}).get(device_id)
         if not rec:
             return False
         rec["revoked"] = True
         rec["revoked_at"] = int(time.time())
+        for slot in ("next", "prev", "rekey_until"):   # R116-S1b: 延長の受け渡し中の秘密も一緒に捨てる
+            rec.pop(slot, None)
         save_devices(d)
+    office_approve.revoke_key(device_id)             # R100-1b: 端末を失効させたら許可鍵も
     return True
+
+
+def _next_expires(rec):
+    """R116-S1b: 受け渡し中の新しい秘密の期限（無い・壊れていれば 0）。"""
+    nxt = rec.get("next") if isinstance(rec, dict) else None
+    try:
+        return int(nxt.get("expires") or 0) if isinstance(nxt, dict) else 0
+    except (TypeError, ValueError):
+        return 0
+
+
+def _primary_live(rec, now):
+    """R116-S1b: 今の秘密が使えるか（失効でない・期限内・秘密の形が正しい）。延長の求めを封じるのはこれが真のときだけ。"""
+    if not isinstance(rec, dict) or rec.get("revoked"):
+        return False
+    try:
+        bytes.fromhex(rec["secret"])
+        return now <= int(rec.get("expires", 0))
+    except (KeyError, TypeError, ValueError):
+        return False
+
+
+def _device_live(rec, now):
+    """R116-S1b: 延長できる（＝まだ指示を送れる）端末か。今の秘密が期限内か、受け渡し中の新しい秘密（next）が生きている
+    （別モデルレビュー 2 巡目 medium: 受領が届かないまま元の期限を過ぎても、next の署名は受ける＝一覧は有効のまま・延長と失効を押せる）。"""
+    if _primary_live(rec, now):
+        return True
+    return (isinstance(rec, dict) and not rec.get("revoked")
+            and _only_next({"devices": {"x": rec}}, "x", now) is not None)
+
+
+def rekey_allow(device_id, now=None):
+    """R116-S1b: Mac の［延長］。その端末に REKEY_WINDOW の間だけ「作り直してよい」を出す（秘密はまだ作らない）。
+    (ok, msg, until)。失効・期限切れ・不明の端末は延ばせない。呼び手（/api/pair/extend）が物理確認・通知・監査をする。"""
+    now = int(now or time.time())
+    with _devices_lock:
+        d = load_devices()
+        rec = d.get("devices", {}).get(device_id) if isinstance(device_id, str) else None
+        if not _device_live(rec, now):
+            return False, L_now("延長できない端末です（失効・期限切れ・見つからない）",
+                                "This phone can't be extended (revoked, expired or unknown)"), 0
+        rec["rekey_until"] = now + REKEY_WINDOW
+        save_devices(d)
+    return True, L_now("延長を受け付けました（スマホでアプリを開くと完了します）",
+                       "Extension armed — open the app on the phone to finish"), now + REKEY_WINDOW
+
+
+def rekey_pending(devices=None, now=None):
+    """R116-S1b: office_json.actions.approve.rk（中継へ出る）＝延長の窓が開いている端末 id（秘密ではない・上限 8）。"""
+    now = int(now or time.time())
+    devs = (devices if devices is not None else load_devices()).get("devices", {})
+    out = []
+    for did, rec in devs.items():
+        try:
+            if _device_live(rec, now) and int(rec.get("rekey_until") or 0) > now:
+                out.append(did)
+        except (TypeError, ValueError):
+            continue
+    return sorted(out)[:8]
+
+
+def _only_next(devices, device_id, now):
+    """R116-S1b: next の秘密だけを持つ台帳の写し（受領が next で署名されたか＝新しい秘密を持っている証明か、を確かめる）。"""
+    rec = devices.get("devices", {}).get(device_id)
+    nxt = rec.get("next") if isinstance(rec, dict) else None
+    if not isinstance(nxt, dict) or rec.get("revoked"):
+        return None
+    try:
+        exp = int(nxt.get("expires", 0))
+        bytes.fromhex(nxt["secret"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    if now > exp:
+        return None
+    return {"devices": {device_id: {"secret": nxt["secret"], "expires": exp, "revoked": False}}}
+
+
+def _pair_rekey(data, now=None):
+    """R116-S1b: /api/pair/rekey（relay_agent が rky- の封筒をそのまま回す）。封筒は**ここで**確かめ直す（relay_agent を信じない）。
+    step "req": 今の秘密で署名された求め＋延長の窓が開いている → next を作る（あれば同じものを使う＝冪等）→ 今の秘密で封じて置く。
+    step "ack": next で署名された受領だけが昇格させる（今の秘密の ack は新しい秘密を持つ証明にならない）。(ok, msg, extra)。"""
+    now = int(now or time.time())
+    env = data.get("envelope") if isinstance(data, dict) else None
+    devices = load_devices()
+    ok, _reason, sess, text = verify_envelope(env, devices, now, 300)
+    if not ok or not re.fullmatch(r"rky-[0-9a-f]{32}", sess):
+        return False, "bad envelope", {"state": "denied"}
+    device = env["device_id"]
+    try:
+        act = json.loads(text)
+    except ValueError:
+        act = None
+    req_id = sess[4:]
+    if (not isinstance(act, dict) or act.get("aioffice") != 1 or act.get("kind") != "rekey"
+            or act.get("reqId") != req_id or act.get("step") not in ("req", "ack")):
+        return False, "bad rekey", {"state": "denied"}
+    if act["step"] == "ack":
+        return _rekey_done(env, device, req_id, now)
+    # 別モデルレビュー high 2: 新しい秘密（next）で署名された求め＝スマホはもう新しい秘密を持っている（受領が届かなかった）＝受領と同じく昇格
+    nview = _only_next(devices, device, now)
+    if nview is not None and verify_envelope(env, nview, now, 300)[0]:
+        return _rekey_done(env, device, req_id, now)
+    # step "req": 今の秘密（primary）で署名され、窓が開いているときだけ封じる
+    with _devices_lock:
+        d = load_devices()
+        rec = d.get("devices", {}).get(device)
+        primary = {"devices": {device: {"secret": rec.get("secret"), "expires": rec.get("expires"), "revoked": False}}} \
+            if _primary_live(rec, now) else None
+        if primary is None or not verify_envelope(env, primary, now, 300)[0]:
+            return False, "not current", {"state": "denied"}
+        try:
+            window = int(rec.get("rekey_until") or 0)
+        except (TypeError, ValueError):
+            window = 0
+        if window <= now:
+            return False, "not armed", {"state": "denied"}
+        nxt = rec.get("next")
+        if _only_next(d, device, now) is None or not re.fullmatch(r"[0-9a-f]{64}", str(nxt.get("secret"))):
+            # 無い・切れた・壊れた next は作り直す（有効な next は取り直しても同じものを渡す＝届いた方と食い違わない）
+            nxt = {"secret": secrets.token_hex(32), "expires": now + DEVICE_TTL, "created": now}
+            rec["next"] = nxt
+            save_devices(d)
+        secret, payload = rec["secret"], {"s": nxt["secret"], "e": int(nxt["expires"])}
+    # 別モデルレビュー high 1: 許可鍵の期限は求めの時点（鍵がまだ有効なうち）で新しい期限へ。受領が元の期限の後に届くと、昇格の時点では
+    # 鍵が切れていて延ばせず、approver が範囲つきの許可を全プロジェクトへ広げた。端末が昇格しなければ _device_ok が鍵ごと止める
+    office_approve.extend_key(device, payload["e"], now)
+    if not dialog_seal.AVAILABLE:
+        return False, "unavailable", {"state": "unavailable"}
+    bundle = dialog_seal.seal(secret, device, req_id, REKEY_TARGET, payload, iat=now)
+    dialog_seal.store_bundle(req_id, bundle, replace_key=f"rekey:{device}", urgent=True)
+    office_actions._audit({"kind": "rekey", "reqId": req_id, "device": device, "ts": now, "state": "sealed"})
+    return True, "sealed", {"state": "sealed"}
+
+
+def _rekey_done(env, device, req_id, now):
+    """R116-S1b: 受領（ack）と、新しい秘密で署名された求めの受け口。Mac が「済み」をスマホの今の秘密で封じて返す
+    （別モデルレビュー 3 巡目: スマホは状態や時刻から完了を推さず、この封書を開けたときだけ受領待ちを終える）。
+    - next で署名されている → next を今の秘密へ昇格（古い秘密は PREV_GRACE だけ受ける・許可鍵の期限も追う・通知と監査）→「済み」を新しい秘密で
+    - 今の秘密で署名され、受け渡し中の秘密が無い → もう昇格済み（スマホが「済み」を受け取り損ねた）→「済み」だけ返す（台帳は替えない）
+    - それ以外（受け渡し中なのに今の秘密の受領＝新しい秘密を持つ証明にならない・失効・知らない鍵）→ 何もしない
+    確かめ直しは台帳の鍵の中で（確かめた後に台帳が替わる隙を作らない）。"""
+    promoted = False
+    with _devices_lock:
+        d = load_devices()
+        rec = d.get("devices", {}).get(device)
+        view = _only_next(d, device, now)
+        if view is not None and verify_envelope(env, view, now, 300)[0]:
+            nxt = rec["next"]
+            old_secret, old_exp = rec.get("secret"), int(rec.get("expires") or 0)
+            rec["secret"], rec["expires"] = nxt["secret"], int(nxt["expires"])
+            rec["prev"] = {"secret": old_secret, "until": min(now + PREV_GRACE, max(old_exp, now))}
+            rec["extended_at"] = now
+            for slot in ("next", "rekey_until"):
+                rec.pop(slot, None)
+            save_devices(d)
+            promoted = True
+        elif not (view is None and _primary_live(rec, now) and verify_envelope(
+                env, {"devices": {device: {"secret": rec["secret"], "expires": rec["expires"], "revoked": False}}}, now, 300)[0]):
+            return True, "noop", {"state": "noop"}
+        secret, new_exp, label = rec["secret"], int(rec["expires"]), rec.get("label", "")
+        try:
+            armed = 1 if int(rec.get("rekey_until") or 0) > now else 0   # 新しい窓（もう一度［延長］）＝スマホはすぐ求めてよい
+        except (TypeError, ValueError):
+            armed = 0
+    if dialog_seal.AVAILABLE:
+        dialog_seal.store_bundle(req_id, dialog_seal.seal(secret, device, req_id, REKEY_TARGET,
+                                                          {"done": 1, "e": new_exp, "rk": armed}, iat=now),
+                                 replace_key=f"rekey:{device}", urgent=True)
+    if not promoted:
+        return True, "done", {"state": "done"}
+    office_approve.extend_key(device, new_exp, now)
+    office_actions._audit({"kind": "rekey", "device": device, "ts": now, "state": "extended", "expires": new_exp})
+    with _lock:
+        _mark_written()
+    md = time.strftime("%m/%d", time.localtime(new_exp)).lstrip("0").replace("/0", "/")
+    _notify_security(L_now(f"📱 スマホのつながりを延長しました（{md} まで）", f"📱 Phone pairing extended (until {md})"),
+                     label or device)
+    return True, "extended", {"state": "extended", "expires": new_exp}
 
 
 DEVICE_KEEP_DEAD = 7 * 86400      # 期限切れを台帳に残す期間
@@ -2803,10 +3784,11 @@ def prune_devices(now=None):
     有効なものには一切触らない（消すのは revoked と、期限切れから DEVICE_KEEP_DEAD 経過）。
     """
     now = int(now or time.time())
-    with _lock:
+    with _devices_lock:
         d = load_devices()
         devs = d.get("devices", {})
         dead = []
+        tidied = False
         for did, rec in devs.items():
             exp = int(rec.get("expires") or 0)
             if rec.get("revoked"):
@@ -2814,11 +3796,25 @@ def prune_devices(now=None):
                 # revoked_at を持たない旧レコードは即対象（もう使えないので残す意味がない）。
                 if now - int(rec.get("revoked_at") or 0) > DEVICE_KEEP_REVOKED:
                     dead.append(did)
-            elif exp and exp + DEVICE_KEEP_DEAD < now:
+            elif exp and max(exp, _next_expires(rec)) + DEVICE_KEEP_DEAD < now:
+                # R116-S1b（別モデルレビュー medium）: 新しい秘密（next）が生きている間は、元の期限から 7 日を過ぎても端末ごと消さない
+                #（受領を送れないまま長くオフラインだったスマホが戻ったとき unknown-device にしない）
                 dead.append(did)
+            # R116-S1b: 切れた延長の窓・受け渡し中の秘密・猶予の切れた古い秘密は項目ごと捨てる（壊れた形も捨てる）
+            for slot, lim in (("rekey_until", None), ("next", "expires"), ("prev", "until")):
+                if slot not in rec:
+                    continue
+                v = rec[slot]
+                try:
+                    stale = int(v if lim is None else v.get(lim, 0)) < now
+                except (AttributeError, TypeError, ValueError):
+                    stale = True
+                if stale:
+                    rec.pop(slot, None)
+                    tidied = True
         for did in dead:
             devs.pop(did, None)
-        if dead:
+        if dead or tidied:
             save_devices(d)
     return len(dead)
 
@@ -2828,21 +3824,69 @@ def list_devices():
     prune_devices()
     now = int(time.time())
     d = load_devices()
+    seen = load_device_seen()
     out = []
     for did, rec in d.get("devices", {}).items():
         expires = int(rec.get("expires") or 0)
+        last = rec.get("last_used", 0)
+        last = max(last if isinstance(last, (int, float)) and not isinstance(last, bool) else 0, seen.get(did, 0))
+        # R116-S1b（別モデルレビュー 2 巡目 medium）: 受け渡し中の新しい秘密（next）が生きていれば、元の期限を過ぎても有効
+        # （その秘密で指示を送れる＝画面から失効できないと困る）。残り日数は長い方の期限で数える
+        expires = max(expires, _next_expires(rec)) if _only_next({"devices": {"x": rec}}, "x", now) else expires
         state = ("revoked" if rec.get("revoked")
                  else "expired" if expires and expires <= now else "active")
+        # R116-S1b: 延長の進み具合（wait＝［延長］を押した・スマホがまだ求めていない／pending＝新しい秘密を渡した・受領待ち）
+        rekey = ""
+        if state == "active":
+            try:
+                armed = int(rec.get("rekey_until") or 0) > now
+            except (TypeError, ValueError):
+                armed = False
+            rekey = "pending" if isinstance(rec.get("next"), dict) else "wait" if armed else ""
         out.append({
             "device_id": did, "label": rec.get("label", ""),
             "created": rec.get("created", 0), "expires": expires,
-            "revoked": bool(rec.get("revoked")), "last_used": rec.get("last_used", 0),
+            "revoked": bool(rec.get("revoked")), "last_used": int(last),
             # 「どれが今も使える鍵か」が画面から分かること（29件全部が同じ「スマホ」表示で
             # 見分けられない状態だった）。日数は表示側の計算をサーバーに寄せる。
             "state": state, "daysLeft": max(0, (expires - now) // 86400) if expires else 0,
+            "rekey": rekey,
         })
     out.sort(key=lambda x: (x["state"] != "active", -x["created"]))
     return out
+
+
+DEVICE_SEEN_MAX = 200             # 「最後に使った時刻」を持つ端末の上限（古い順に捨てる＝ファイルが太り続けない）
+_DEVICE_ID_RE = re.compile(r"d_[0-9a-f]{12}")
+
+
+def load_device_seen():
+    """{device_id: 最後に署名を検証できた epoch 秒}。読めない・壊れている値は捨てる（一覧の飾りなので失敗は黙る）。"""
+    try:
+        d = json.loads(DEVICES_SEEN_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(d, dict):
+        return {}
+    return {k: int(v) for k, v in d.items()
+            if isinstance(k, str) and _DEVICE_ID_RE.fullmatch(k)
+            and isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0}
+
+
+def mark_device_used(device_id, now=None):
+    """端末の署名を検証できた時刻を控える（relay_agent が配達の前に呼ぶ・間引きは呼び手）。
+    秘密は書かない・0600・flock で daemon の読みと relay_agent の書きを直列化する。"""
+    if not isinstance(device_id, str) or not _DEVICE_ID_RE.fullmatch(device_id):
+        return False
+    now = int(now or time.time())
+    DEVICES_SEEN_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with _file_flock(DEVICES_SEEN_FILE):
+        d = load_device_seen()
+        d[device_id] = max(now, d.get(device_id, 0))
+        if len(d) > DEVICE_SEEN_MAX:
+            d = dict(sorted(d.items(), key=lambda kv: kv[1])[-DEVICE_SEEN_MAX:])
+        office_common.atomic_write_json(DEVICES_SEEN_FILE, d, mode=0o600)
+    return True
 
 
 def relay_config():
@@ -2936,19 +3980,33 @@ def verify_envelope(env, devices, now, window):
         expires = int(rec.get("expires", 0))
     except (TypeError, ValueError):
         return False, "bad-record", "", ""
-    if now > expires:
+    # R116-S1b: 延長の受け渡し中の新しい秘密（next・その期限まで）と、昇格の直後の古い秘密（prev・PREV_GRACE の間）も受ける。
+    # 失効は上で全部止めている。壊れた next/prev は無いものとして扱う（今の秘密の検証を巻き込まない）。
+    alts = []
+    for slot, lim in (("next", "expires"), ("prev", "until")):
+        alt = rec.get(slot)
+        if isinstance(alt, dict):
+            try:
+                if now <= int(alt.get(lim, 0)):
+                    alts.append(bytes.fromhex(alt["secret"]))
+            except (KeyError, TypeError, ValueError):
+                continue
+    if now > expires and not alts:
         return False, "expired", "", ""
     if abs(now - ts) > window:
         return False, "stale-ts", "", ""
-    try:
-        secret_key = bytes.fromhex(rec["secret"])
-    except (KeyError, TypeError, ValueError):
-        return False, "bad-record", "", ""
-    expect = hmac.new(secret_key, _canonical(d_id, sess, text, ts, nonce),
-                      hashlib.sha256).hexdigest()
-    if not hmac.compare_digest(expect, sig):
-        return False, "bad-sig", "", ""
-    return True, "ok", sess, text
+    keys = alts
+    if now <= expires:
+        try:
+            keys = [bytes.fromhex(rec["secret"])] + alts
+        except (KeyError, TypeError, ValueError):
+            return False, "bad-record", "", ""
+    canon = _canonical(d_id, sess, text, ts, nonce)
+    for secret_key in keys:
+        expect = hmac.new(secret_key, canon, hashlib.sha256).hexdigest()
+        if hmac.compare_digest(expect, sig):
+            return True, "ok", sess, text
+    return False, "bad-sig", "", ""
 
 
 # 最小静的ページ（旧: ページ全文の複製を内蔵→ドリフト源のため2026-07-14に廃止。
@@ -2982,6 +4040,18 @@ code{background:#f2f2f2;padding:.1rem .3rem}
 # DNSリバインディング/CSRF対策: 受け付けるHost/Originはループバックのみ
 _LOOPBACK_HOST = re.compile(r"^(127\.0\.0\.1|localhost|\[::1\]|::1)(:\d+)?$")
 _LOOPBACK_ORIGIN = re.compile(r"^https?://(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$")
+# R100-0: Origin 必須の POST（Handler._csrf_strict）。relay_agent が回す /api/dialog/sealed・/api/action/exec は
+# 封筒の署名で守る別経路なのでここに入れない。
+_STRICT_POST = ("/api/approval/reply", "/api/pair/new", "/api/pair/revoke",
+                # R116-S1b: つながりの延長（中継から指示を出せる期間を延ばす＝画面の操作だけ・物理確認と通知）
+                "/api/pair/extend",
+                "/api/recipes/set", "/api/config/dialog_relay",
+                # R100-1b: スマホから許可の ON・許可鍵の登録チケット・失効（画面の操作だけ）
+                "/api/config/remote_approve", "/api/approve/enroll_ticket", "/api/approve/revoke",
+                # R103-5: 接続テスト（鍵を相手へ送る＝画面の操作だけ）
+                "/api/providers/test",
+                # R128 #4: Bot パネル（Bot の登録・直し・削除・消音＝画面の操作だけ・DOOR_BOT_ROUTES と同じ 3 本＝test_door_panel がピン）
+                "/api/door/bot/add", "/api/door/bot/remove", "/api/door/bot/mute")
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -3031,26 +4101,210 @@ class Handler(BaseHTTPRequestHandler):
             last = current if raw_since[0] is None else min(int(raw_since[0]), current)
             send("hello", {"seq": current, "v": 2})
 
-            def poke(event):
-                nonlocal last
+            follow = None   # 反証 R115 #2: 走査し直しに間に合わずに先に送った poke の追いかけ（中身・走査の印・期限）
+
+            def poke(event, live=False):
+                nonlocal last, follow
                 if event["seq"] > last:
+                    marks = None
+                    # R115-S1b: ライブの poke で続きが積まれていない（連続の最後）なら、失効した値の走査し直しを待ってから
+                    # 知らせる（最大 POKE_FRESH_WAIT 秒）＝poke を受けた UI の取り直しが SWR の古い値を掴まない。
+                    # 間に合わない（遅い・失敗）ときは先に送り、この後に走査が成功したら同じ poke をもう 1 回送る
+                    if live and subscriber.empty() and not _wait_fresh(POKE_FRESH_WAIT):
+                        marks = _scan_marks()
                     # hook の追加フィールドや本文は SSE に載せない。
-                    send("poke", {key: event[key] for key in ("seq", "ts", "ev", "sid")})
+                    data = {key: event[key] for key in ("seq", "ts", "ev", "sid")}
+                    send("poke", data)
                     last = event["seq"]
+                    if live:        # 次のライブの poke が前の追いかけを引き継ぐ（その poke が自分で走査し直しを待つ）
+                        follow = None if marks is None else (data, marks, time.monotonic() + POKE_FOLLOW_WAIT)
 
             # 先に subscribe 済みなので、履歴取得との間のイベントもキューに残る。
             for event in office_events.recent(last, limit=office_events.RING):
                 poke(event)
             while True:
                 try:
-                    poke(subscriber.get(timeout=15))
+                    event = subscriber.get(timeout=15 if follow is None else POKE_FOLLOW_TICK)
                 except queue.Empty:
-                    self.wfile.write(b": ping\n\n")
-                    self.wfile.flush()
+                    if follow is None:
+                        self.wfile.write(b": ping\n\n")
+                        self.wfile.flush()
+                        continue
+                    fresh = _fresh_since(follow[1])     # 走査は起こさない（再試行は次の GET）
+                    if fresh:
+                        send("poke", follow[0])         # UI は poke ごとに取り直す（seq で重複を捨てない）
+                    if fresh is not None or time.monotonic() >= follow[2]:
+                        follow = None
+                    continue
+                poke(event, live=True)
         except (BrokenPipeError, ConnectionResetError, TimeoutError, socket.timeout, OSError):
             pass
         finally:
             office_events.unsubscribe(subscriber)
+
+    def _loopback(self):
+        return getattr(self, "client_address", ("",))[0] in ("127.0.0.1", "::1")
+
+    def _term_stream(self):
+        """R99: 端末 1 本の出力を SSE で流す。出力は**ここでしか外へ出ない**（保存も中継もしない）。
+        EventSource はヘッダを付けられないので、UI は /api/events と同じく fetch＋getReader で読む。"""
+        qs = parse_qs(self.path.partition("?")[2], keep_blank_values=True)
+        tid = (qs.get("id") or [""])[0]
+        if not re.fullmatch(r"[0-9a-f]{16}", tid or ""):
+            return self._deny(400, "bad id")
+        raw_from = (qs.get("from") or [""])[0]
+        if raw_from and not re.fullmatch(r"[0-9]{1,15}", raw_from):
+            return self._deny(400, "bad from")
+        term = office_pty.get(tid)
+        if term is None:
+            return self._deny(404, "no such terminal")
+        # from＝この視聴者が読み終えた通し番号。リングの中なら続きだけ（reset しない＝画面モードが残る）
+        backlog, start, reset, prefix, viewer = term.subscribe(int(raw_from) if raw_from else None)
+
+        def send(kind, payload):
+            self.wfile.write(f"event: {kind}\ndata: {payload}\n\n".encode("ascii"))
+            self.wfile.flush()
+
+        try:
+            self._send_sse_headers()
+            hello = {**term.public(), "from": start, "reset": reset}
+            if prefix:
+                hello["modes"] = office_pty.b64(prefix)   # 頭から流し直すときの画面モードの立て直し
+            send("hello", json.dumps(hello, separators=(",", ":")))
+            for i in range(0, len(backlog), 32768):
+                send("out", office_pty.b64(backlog[i:i + 32768]))
+            while not viewer.dropped:
+                try:
+                    # 3 秒ごとに ping＝切れた視聴者を早く見つけて枠を空ける（15 秒だと素早いタブ切替で
+                    # 古い購読が枠を埋め、見ている画面の更新が止まった）
+                    item = viewer.q.get(timeout=3)
+                except queue.Empty:
+                    self.wfile.write(b": ping\n\n")
+                    self.wfile.flush()
+                    continue
+                if item is None:
+                    break                            # 遅すぎて切られた＝UI が再接続して backlog から戻る
+                if isinstance(item, tuple):
+                    send("exit", json.dumps({"code": item[1]}))
+                    break
+                # 溜まっているぶんを 1 つにまとめて送る（全画面 TUI は細切れに大量に書く）
+                chunk = bytearray(item)
+                while len(chunk) < 65536:
+                    try:
+                        nxt = viewer.q.get_nowait()
+                    except queue.Empty:
+                        break
+                    if not isinstance(nxt, (bytes, bytearray)):
+                        viewer.q.put(nxt)            # exit / 切断の印は次の周で扱う
+                        break
+                    chunk += nxt
+                send("out", office_pty.b64(bytes(chunk)))
+        except (BrokenPipeError, ConnectionResetError, TimeoutError, socket.timeout, OSError):
+            pass
+        finally:
+            term.unsubscribe(viewer)
+
+    def _term_streams(self):
+        """R111-B0: 複数の端末（最大 MAX_TERMS 本）の出力を **1 本の SSE** で流す（多重化）。
+        なぜ多重化か: このサーバーは HTTP/1.0＝短い要求（/api/office・一覧・打鍵の POST・resize）も毎回 1 接続を
+        食う。ブラウザの同一オリジンは 6 本まで＝4 ペインを 1 本ずつ購読すると /api/events と合わせて 5 本が
+        塞がり、打鍵の POST が後ろで待つ。1 本に束ねれば長い接続はペイン数に依らず 2 本・スレッドも 1。
+
+        契約（単一の /api/term/stream に id を足しただけ・出力はここでしか外へ出ない＝保存も中継もしない）:
+          GET /api/term/streams?ids=<id>,<id>…&from=<id>:<n>,…（from は任意・ids に無い id の from は無視）
+          event: hello  data: {…term.public()（id を含む）, "from": n, "reset": bool, "modes"?: b64}
+          event: out    data: <id> <base64>          （JSON にしない＝id と空白 1 つ）
+          event: exit   data: {"id": <id>, "code": int|null}   （未知の id は 404 にせずこれだけ・code null）
+          : ping（3 秒）／全 id が exit したら閉じる／どれかの視聴者が切られたら接続ごと閉じる
+          （クライアントは全 id の from で繋ぎ直す＝単一 stream の再接続と同じ意味）。"""
+        qs = parse_qs(self.path.partition("?")[2], keep_blank_values=True)
+        raw_ids = qs.get("ids") or [""]
+        ids = raw_ids[0].split(",") if len(raw_ids) == 1 and raw_ids[0] else []
+        if (not 1 <= len(ids) <= office_pty.MAX_TERMS or len(set(ids)) != len(ids)
+                or not all(re.fullmatch(r"[0-9a-f]{16}", t) for t in ids)):
+            return self._deny(400, "bad ids")
+        raw_from = qs.get("from") or [""]
+        if len(raw_from) != 1:
+            return self._deny(400, "bad from")
+        froms = {}
+        for part in raw_from[0].split(",") if raw_from[0] else ():
+            m = re.fullmatch(r"([0-9a-f]{16}):([0-9]{1,15})", part)
+            if not m or m.group(1) in froms:
+                return self._deny(400, "bad from")
+            froms[m.group(1)] = int(m.group(2))
+        # 共有キュー 1 本＝(tid, item) を端末をまたいで到着順に積む（端末ごとの順序は FIFO が守る）
+        shared = queue.Queue(maxsize=office_pty.VIEWER_QUEUE * len(ids))
+        subs = {}          # tid → (term, viewer, backlog, start, reset, prefix)
+        try:
+            for tid in ids:
+                term = office_pty.get(tid)
+                if term is None:
+                    continue                         # 一覧との競合＝その id だけ exit null（接続全体は殺さない）
+                backlog, start, reset, prefix, viewer = term.subscribe(
+                    froms.get(tid), viewer=office_pty.mux_viewer(shared, tid))
+                subs[tid] = (term, viewer, backlog, start, reset, prefix)
+
+            def send(kind, payload):
+                self.wfile.write(f"event: {kind}\ndata: {payload}\n\n".encode("ascii"))
+                self.wfile.flush()
+
+            def send_exit(tid, code):
+                send("exit", json.dumps({"id": tid, "code": code}, separators=(",", ":")))
+
+            self._send_sse_headers()
+            for tid in ids:
+                if tid not in subs:
+                    send_exit(tid, None)
+                    continue
+                term, _viewer, backlog, start, reset, prefix = subs[tid]
+                hello = {**term.public(), "from": start, "reset": reset}
+                if prefix:
+                    hello["modes"] = office_pty.b64(prefix)
+                send("hello", json.dumps(hello, separators=(",", ":")))
+                for i in range(0, len(backlog), 32768):
+                    send("out", f"{tid} {office_pty.b64(backlog[i:i + 32768])}")
+            live = set(subs)                         # まだ exit が届いていない id
+            carry = None                             # まとめ送りで引いた「次の周で扱う」1 件
+            while live:
+                if any(subs[tid][1].dropped for tid in live):
+                    break                            # 遅すぎて切られた＝全 id の from で繋ぎ直してもらう
+                if carry is not None:
+                    item, carry = carry, None
+                else:
+                    try:
+                        item = shared.get(timeout=3)  # 3 秒ごとに ping（単一 stream と同じ）
+                    except queue.Empty:
+                        self.wfile.write(b": ping\n\n")
+                        self.wfile.flush()
+                        continue
+                tid, payload = item
+                if tid not in live:
+                    continue                         # exit の後に残った印（追い出しの None 等）
+                if payload is None:
+                    break                            # 追い出された／溢れた＝接続ごと閉じる
+                if isinstance(payload, tuple):
+                    send_exit(tid, payload[1])
+                    live.discard(tid)
+                    continue
+                # 同じ端末の出力が続く間だけ 1 つにまとめる。違う端末・exit を引いたら put で戻さず carry へ
+                # （戻すとキューの末尾に回り、その端末の後続より後になる＝順序が崩れる）
+                chunk = bytearray(payload)
+                while len(chunk) < 65536:
+                    try:
+                        nxt = shared.get_nowait()
+                    except queue.Empty:
+                        break
+                    if nxt[0] == tid and isinstance(nxt[1], (bytes, bytearray)):
+                        chunk += nxt[1]
+                    else:
+                        carry = nxt
+                        break
+                send("out", f"{tid} {office_pty.b64(bytes(chunk))}")
+        except (BrokenPipeError, ConnectionResetError, TimeoutError, socket.timeout, OSError):
+            pass
+        finally:
+            for term, viewer, *_ in subs.values():
+                term.unsubscribe(viewer)
 
     def _deny(self, code=403, msg="forbidden"):
         body = json.dumps({"ok": False, "error": msg}, ensure_ascii=False).encode("utf-8")
@@ -3068,6 +4322,19 @@ class Handler(BaseHTTPRequestHandler):
             return False
         origin = self.headers.get("Origin")
         return not origin or bool(_LOOPBACK_ORIGIN.match(origin))
+
+    def _csrf_strict(self):
+        """R100-0: 権限を動かす POST（承認への回答・スマホの登録/失効・遠隔実行の許可リスト・封書の ON）は
+        **Origin 必須**（loopback）＋ Sec-Fetch-Site があれば same-origin。
+        loopback＋X-Office-Local は「同じユーザーの任意のプロセス」であって「Mac の前の人間」ではない
+        （curl 1 本で付けられる）。Origin を要求すると、ブラウザの画面操作以外の素朴な呼び出しは止まる。
+        ★Origin も偽装はできる＝完全な境界ではない（docs/security-notes.md）。だから allow と登録は通知も出す。"""
+        if not self._csrf_ok():
+            return False
+        if not _LOOPBACK_ORIGIN.match(self.headers.get("Origin") or ""):
+            return False
+        site = self.headers.get("Sec-Fetch-Site")
+        return site is None or site == "same-origin"
 
     def _activity(self, route):
         if self.client_address[0] not in ("127.0.0.1", "::1") or not self._csrf_ok():
@@ -3099,6 +4366,18 @@ class Handler(BaseHTTPRequestHandler):
             if not self._csrf_ok():
                 return self._deny(403, "cross-site request blocked")
             return self._events()
+        if route in ("/api/term/list", "/api/term/stream", "/api/term/streams"):
+            # R99: 端末はこの Mac の前の人だけ（loopback＋CSRF）。中継・別オリジンからは届かない。
+            if not self._loopback() or not self._csrf_ok():
+                return self._deny(403, "cross-site request blocked")
+            if route == "/api/term/stream":
+                return self._term_stream()
+            if route == "/api/term/streams":
+                return self._term_streams()          # R111-B0: 複数の端末を 1 接続で（多重化）
+            # 一覧を取りに来た＝コックピットが開いている（見えていない端末も「見られている」に数える）
+            return self._send(200, json.dumps({"terms": office_pty.list_public(touch=True),
+                                               "max": office_pty.MAX_TERMS}).encode("utf-8"),
+                              "application/json; charset=utf-8")
         elif self.path.startswith("/api/office"):
             # M4: 他GETと同様CSRFゲートを掛ける。office_json は templates全文・recipes・
             # results.output・question本文を含み、かつ res_summary() が**ユーザーのAPIキーで
@@ -3108,11 +4387,33 @@ class Handler(BaseHTTPRequestHandler):
                 return self._deny(403, "cross-site request blocked")
             self._send(200, json.dumps(office_json(), ensure_ascii=False).encode("utf-8"),
                        "application/json; charset=utf-8")
+        elif route == "/api/diagnostics":
+            # R105: β の「診断情報をコピー」。数と状態だけ（本文・フォルダ名・プロジェクト名は入れない＝office_diag）。
+            # 見せてから本人が貼る＝テレメトリではない。ローカル UI 専用（office と同じ CSRF 境界）
+            if not self._csrf_ok():
+                return self._deny(403, "cross-site request blocked")
+            log_dir = next((d for d in (ROOT.parent / "logs", ROOT / "logs") if d.is_dir()), None)
+            # plan.md #5: この本文だけ _LANG（サーバーの設定言語）固定で、UIの表示言語（デモの既定=英語・
+            # 設定で切替えた言語）と食い違っていた。クライアントが今見ている言語を ?lang= で渡す
+            # （beta.js）。不正値・無指定はサーバーの既定（_LANG）へ落とす。
+            qs_lang = parse_qs(self.path.partition("?")[2]).get("lang", [""])[0]
+            office = office_json()                     # 先に読む＝設定の言語（_LANG）が反映されてから既定を決める
+            diag_lang = qs_lang if qs_lang in LANGS else (office.get("lang") if office.get("lang") in LANGS else _LANG)
+            text = office_diag.build(office, office_diag.collect_env(log_dir), diag_lang)
+            self._send(200, json.dumps({"text": text}, ensure_ascii=False).encode("utf-8"),
+                       "application/json; charset=utf-8")
         elif self.path.split("?", 1)[0] == "/api/external/openclaw":
             # 外部接続の器はローカルUI専用。office_jsonへは混ぜない。
             if not self._csrf_ok():
                 return self._deny(403, "cross-site request blocked")
             self._send(200, json.dumps(external_openclaw_json(), ensure_ascii=False).encode("utf-8"),
+                       "application/json; charset=utf-8")
+        elif route == "/api/door/bots":
+            # R128 #4: ⚙ の Bot パネルの一覧（名前・役・最後に動いた時刻・相談の有無・未読の数・消音・登録コマンド）。
+            # 名前と役は Bot の行と同じ（中継にも載る）が、登録コマンドはこの Mac のパスを含む＝ローカル UI 専用（loopback＋CSRF・office_json に載せない）
+            if not self._loopback() or not self._csrf_ok():
+                return self._deny(403, "cross-site request blocked")
+            self._send(200, json.dumps(door_bots_json(), ensure_ascii=False).encode("utf-8"),
                        "application/json; charset=utf-8")
         elif self.path.startswith("/api/pair/list"):
             # 端末一覧（secretは含まないが label/id を晒すので）別オリジンGETを弾く。
@@ -3125,6 +4426,12 @@ class Handler(BaseHTTPRequestHandler):
                                         "dialogRelay": cfg.get("dialogRelay") is True,
                                         "dialogAvailable": bool(dialog_seal.AVAILABLE)},
                                        ensure_ascii=False).encode("utf-8"),
+                       "application/json; charset=utf-8")
+        elif self.path.startswith("/api/approve/status"):
+            # R100-1b: スマホから許可の状態（許可鍵の照合コード・今日の件数）もローカル UI 専用
+            if not self._csrf_ok():
+                return self._deny(403, "cross-site request blocked")
+            self._send(200, json.dumps(approve_status(), ensure_ascii=False).encode("utf-8"),
                        "application/json; charset=utf-8")
         elif self.path.startswith("/api/keys/status"):
             # 接続情報とmaskedキーもローカルUI専用。pair/list と同じCSRF境界で守る。
@@ -3170,6 +4477,16 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, json.dumps({"ok": True, **page},
                                        ensure_ascii=False).encode("utf-8"),
                        "application/json; charset=utf-8")
+        elif self.path.split("?", 1)[0] == "/api/session/activity":
+            # R121: 作業ビュー（Claude Code アプリ型）の行＝スマホの封書 term と同じ office_term の行（伏字済み）を Mac へ。
+            # 門は /api/session/dialog と同じ（loopback+CSRF・office_json 非搭載＝中継へ流れる経路が無い）。未知 session は 200+空。
+            if not self._csrf_ok():
+                return self._deny(403, "cross-site request blocked")
+            ok, out = activity_page(parse_qs(self.path.split("?", 1)[1] if "?" in self.path else ""))
+            if not ok:
+                return self._deny(400, out)
+            self._send(200, json.dumps({"ok": True, **out}, ensure_ascii=False).encode("utf-8"),
+                       "application/json; charset=utf-8")
         elif self.path.split("?", 1)[0] == "/api/projects":
             # cwd を含むローカルパス一覧なので、別オリジンGETには公開しない。
             if not self._csrf_ok():
@@ -3214,12 +4531,52 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(404)
             self.end_headers()
 
+    def _term_post(self, route, data):
+        """R99: 端末の操作。do_POST の門（Host＋CSRF）を通ったあと、ここでも loopback を見る。"""
+        if not self._loopback():
+            return self._deny(403, "loopback required")
+
+        def reply(code, obj):
+            return self._send(code, json.dumps(obj, ensure_ascii=False).encode("utf-8"),
+                              "application/json; charset=utf-8")
+
+        if route == "/api/term/open":
+            argv, cwd, env, session, err = term_spec(data.get("kind"), data.get("projectId"))
+            if err:
+                code, msg = _TERM_ERRORS[err]
+                return reply(code, {"ok": False, "error": err, "message": msg})
+            term, err = office_pty.open_term(argv, cwd=cwd, env=env, cols=data.get("cols"),
+                                             rows=data.get("rows"), kind=data.get("kind"),
+                                             session=session, project_id=data.get("projectId") or None)
+            if term is None:
+                code, msg = _TERM_ERRORS[err]
+                return reply(code, {"ok": False, "error": err, "message": msg})
+            return reply(200, {"ok": True, "term": term.public()})
+        term = office_pty.get(data.get("id"))
+        if term is None:
+            return reply(404, {"ok": False, "error": "no_term", "message": "端末が見つかりません"})
+        if route == "/api/term/input":
+            raw = office_pty.unb64(data.get("data"))
+            if raw is None:
+                return reply(400, {"ok": False, "error": "bad_input"})
+            return reply(200, {"ok": term.write(raw)})
+        if route == "/api/term/resize":
+            return reply(200, {"ok": term.resize(data.get("cols"), data.get("rows"))})
+        if route == "/api/term/close":
+            office_pty.close(term.id)            # 止めて、一覧からも外す
+            return reply(200, {"ok": True})
+        return self._deny(404, "not found")
+
     def do_POST(self):
         if not self._host_ok():
             return self._deny(403, "invalid host")
         if not self._csrf_ok():
             return self._deny(403, "cross-site request blocked")
         route = self.path.split("?", 1)[0]
+        # 振り分けは self.path の前方一致（startswith）なので、判定も前方一致にそろえる
+        # （完全一致だと /api/pair/newX が Origin 無しで振り分けの枝に入った・R100-0 のレビュー）。
+        if route.startswith(_STRICT_POST) and not self._csrf_strict():
+            return self._deny(403, "browser origin required")
         try:
             n = int(self.headers.get("Content-Length", 0))
             body_limit = 100_000
@@ -3229,6 +4586,15 @@ class Handler(BaseHTTPRequestHandler):
         if not isinstance(data, dict):
             data = {}
         extra = {}
+        if route.startswith("/api/term/"):
+            return self._term_post(route, data)
+        if route in DOOR_BOT_ROUTES:
+            # R128 #4: Bot パネル（上の _STRICT_POST の門＝Origin 必須を通った後・ここでも loopback を見る）。断りは code と口の文
+            if not self._loopback():
+                return self._deny(403, "loopback required")
+            code, out = door_bot_post(route, data)
+            return self._send(code, json.dumps(out, ensure_ascii=False).encode("utf-8"),
+                              "application/json; charset=utf-8")
         if route == "/api/seen":
             if self.client_address[0] not in ("127.0.0.1", "::1"):
                 return self._deny(403, "loopback required")
@@ -3252,22 +4618,34 @@ class Handler(BaseHTTPRequestHandler):
             ok, msg = set_avatar_style(data.get("avatarId"), data.get("scope"), fields)
         elif self.path.startswith("/api/instruct"):
             try:
-                ok, msg = post_instruction(data.get("session", ""), data.get("text", ""))
+                ok, msg = post_instruction(data.get("session", ""), data.get("text", ""), src="local")
             except OSError:
                 # R90-D10: Codex への一時障害（応答なし・起動不能）。relay は残置して再試行するが、
                 # ローカル UI には正直に失敗を返す（例外を握って接続を切らない）
                 ok, msg = False, L_now("Codex が応答しません（少し待ってからもう一度）",
                                        "Codex did not respond (try again shortly)")
+        elif route == "/api/approval/reply" and _is_bot_session(str(data.get("session") or "")):
+            # R127: Bot（出勤の口）の相談への答え。掲示板は使わない＝言葉だけを口の inbox へ（allow は 400・askId で 1 件）
+            ok, msg, extra = answer_bot(str(data.get("session")), data)
         elif route == "/api/approval/reply":
             # R86-H: 止まっているセッションへ「いま」答える（指示ポストは**ターンが終わるまで
             # 届かない**ので、承認まちの相手には構造的に届かなかった＝ユーザー報告の本体）。
             # ここは loopback+CSRF 配下＝Macの前の人間なので、実行の許可(allow)も出せる。
             sess = str(data.get("session") or "")
-            ask = pending_approval(sess)
-            if not ask:
+            want = str(data.get("askId") or "") or None
+            asks = pending_approvals(sess)
+            # R100-0: 答える相手は askId で 1 件に決める（同じセッションで 2 件並ぶと、表示されていない方に
+            # allow が効いた＝実測）。askId 無しで通すのは、並んでいるのが移行窓の旧 hook の 1 件だけのとき。
+            ask = next((a for a in asks if a["askId"] == want), None)
+            if not asks:
                 ok, msg = False, L_now(
                     "そのセッションはいま何も聞いていません（もう答えられたか、承認フックが未配線です）",
                     "that session is not asking anything right now")
+            elif not ask:
+                ok, msg = False, (L_now("その要求はもう終わっています（表示を更新してください）",
+                                        "that request is already over (refresh the view)") if want
+                                  else L_now("画面を読み込み直してください（どの要求への回答か分かりません）",
+                                             "reload the page (the answer does not name its request)"))
             else:
                 behavior = "allow" if data.get("behavior") == "allow" else "deny"
                 text = str(data.get("message") or "")
@@ -3275,11 +4653,16 @@ class Handler(BaseHTTPRequestHandler):
                     ok, msg = False, L_now("回答の内容が空です", "empty answer")
                 else:
                     try:
-                        write_approval_reply(sess, behavior, text, src="local")
+                        write_approval_reply(sess, behavior, text, src="local", ask_id=ask["askId"])
+                        if behavior == "allow":
+                            # R100-0: 許可は必ず Mac に見える形で残す（同じユーザーの別プロセスが黙って allow を
+                            # 書いても気づける）。本文はローカルの通知だけ（中継には出ない）。
+                            _notify_security(L_now("✅ Mac で許可", "✅ Approved on the Mac"),
+                                             f"{ask['tool']}: {short(ask['title'], 60)}")
                         ok = True
                         msg = (L_now("許可しました", "approved") if behavior == "allow"
                                else L_now("回答を届けました", "answer delivered"))
-                        extra = {"kind": ask["kind"]}
+                        extra = {"kind": ask["kind"], "askId": ask["askId"]}
                     except (OSError, ValueError) as e:
                         ok, msg = False, str(e)
         elif route == "/api/terminal/focus":
@@ -3324,14 +4707,52 @@ class Handler(BaseHTTPRequestHandler):
                 ok = launch_claude(path)
                 msg = "Terminalを起動できませんでした"
         elif self.path.startswith("/api/pair/new"):
-            # secret を返すのは loopback+CSRF 済みのローカルUIのみ（_host_ok/_csrf_ok 配下）
-            dev = new_device(data.get("label", ""))
-            pu = pair_url(dev)
-            ok, msg = True, "発行しました"
-            extra = {**dev, "pairUrl": pu, "relayConfigured": bool(pu), "qrSvg": pair_qr_svg(pu)}
+            # secret を返すのは loopback+CSRF 済みのローカルUIのみ（_host_ok/_csrf_strict 配下）
+            # R100-0: スマホの登録は「中継から指示を出せる端末」を増やす操作＝Mac の前での物理確認と通知
+            # （同じユーザーの別プロセスが黙って端末を足せない）。
+            label = short(str(data.get("label") or ""), 40)
+            if not office_actions._confirm_local(
+                    L_now(f"📱 新しいスマホを登録しますか？\n{label or '（名前なし）'}",
+                          f"📱 Register a new phone?\n{label or '(unnamed)'}"),
+                    L_now("登録", "Register")):
+                ok, msg = False, L_now("Mac の確認でキャンセルされました", "cancelled on the Mac")
+            else:
+                dev = new_device(data.get("label", ""))
+                pu = pair_url(dev)
+                ok, msg = True, "発行しました"
+                extra = {**dev, "pairUrl": pu, "relayConfigured": bool(pu), "qrSvg": pair_qr_svg(pu)}
+                _notify_security(L_now("📱 スマホを登録しました", "📱 Phone registered"), label or dev.get("device_id", ""))
         elif self.path.startswith("/api/pair/revoke"):
             ok = revoke_device(data.get("device_id", ""))
             msg = "失効しました" if ok else "端末が見つかりません"
+        elif self.path.startswith("/api/pair/extend"):
+            # R116-S1b: つながりの延長＝中継から指示を出せる期間を延ばす操作＝新しい登録と同じく Mac の前での物理確認と通知。
+            # ここでは「作り直してよい」の窓を開くだけ（秘密は作らない）。スマホがアプリを開くと rk を見て求め、封書で受け取る。
+            dev_id = str(data.get("device_id") or "")
+            rec = load_devices().get("devices", {}).get(dev_id)
+            label = short(str((rec or {}).get("label") or dev_id), 40) if isinstance(rec, dict) else dev_id
+            if not _device_live(rec, int(time.time())):
+                ok, msg = False, L_now("延長できない端末です（失効・期限切れ・見つからない）",
+                                       "This phone can't be extended (revoked, expired or unknown)")
+            elif not office_actions._confirm_local(
+                    L_now(f"📱 このスマホのつながりを 30 日延長しますか？\n{label}",
+                          f"📱 Extend this phone's pairing by 30 days?\n{label}"),
+                    L_now("延長", "Extend")):
+                ok, msg = False, L_now("Mac の確認でキャンセルされました", "cancelled on the Mac")
+            else:
+                ok, msg, until = rekey_allow(dev_id)
+                if ok:
+                    extra = {"rekeyUntil": until}
+                    with _lock:
+                        _mark_written()
+                    office_actions._audit({"kind": "rekey", "device": dev_id, "ts": int(time.time()), "state": "armed"})
+                    _notify_security(L_now("📱 スマホの延長を受け付けました（スマホでアプリを開くと完了）",
+                                           "📱 Phone extension armed (open the app on the phone to finish)"), label)
+        elif self.path.startswith("/api/pair/rekey"):
+            # R116-S1b: relay_agent が rky- の封筒をそのまま回す。署名も段（req／ack）もここで確かめ直す（relay_agent を信じない）。
+            if self.client_address[0] not in ("127.0.0.1", "::1"):
+                return self._deny(403, "loopback required")
+            ok, msg, extra = _pair_rekey(data)
         elif self.path.startswith("/api/templates/set"):
             ok, msg = save_templates(data.get("templates"))
             if ok:
@@ -3359,6 +4780,52 @@ class Handler(BaseHTTPRequestHandler):
             if self.client_address[0] not in ("127.0.0.1", "::1"):
                 return self._deny(403, "loopback required")
             ok, msg, extra = _dialog_sealed(data)
+        elif self.path.startswith("/api/approval/remote_set"):
+            # R103-1: rst-（スマホから ON/OFF）。/api/approval/remote の前方一致より先に振り分ける
+            if self.client_address[0] not in ("127.0.0.1", "::1"):
+                return self._deny(403, "loopback required")
+            ok, msg, extra = _approve_remote_set(data)
+        elif self.path.startswith("/api/approval/remote"):
+            # R100-1b: relay_agent が apv- の封筒をそのまま回す。device_id も署名も**ここで**確かめ直す
+            # （relay_agent を信じない・office_approve.approve の 14 段）。allow を書くのはその最後だけ。
+            if self.client_address[0] not in ("127.0.0.1", "::1"):
+                return self._deny(403, "loopback required")
+            ok, msg, extra = _approve_remote(data)
+        elif self.path.startswith("/api/approve/enroll_ticket"):
+            if self.client_address[0] not in ("127.0.0.1", "::1"):
+                return self._deny(403, "loopback required")
+            dev_id = str(data.get("device") or "")
+            ok, msg, ticket = office_approve.new_ticket(dev_id, data.get("projects", "*"), load_devices())
+            if ok:
+                url, _tok = relay_config()
+                link = f"{url}/app/#v=1&enr={ticket}&d={dev_id}" if url else ""
+                extra = {"ticket": ticket, "link": link, "qrSvg": pair_qr_svg(link),
+                         "expires": int(time.time()) + office_approve.TICKET_TTL}
+        elif self.path.startswith("/api/approve/enroll"):
+            if self.client_address[0] not in ("127.0.0.1", "::1"):
+                return self._deny(403, "loopback required")
+            ok, msg, extra = _approve_enroll(data)
+        elif self.path.startswith("/api/approve/revoke"):
+            ok = office_approve.revoke_key(str(data.get("device") or ""))
+            msg = "失効しました" if ok else "許可鍵が見つかりません"
+        elif self.path.startswith("/api/config/remote_approve"):
+            # R100-1b: ON は Mac の前での物理確認（既定キャンセル・10 秒）＋通知。OFF は確認なし（いつでも止められる）。
+            # R118（本人裁定 2026-10-13「常に ON」）: ON は期限なし（hours は読まない）
+            if self.client_address[0] not in ("127.0.0.1", "::1"):
+                return self._deny(403, "loopback required")
+            on = data.get("on")
+            if on is True and not office_actions._confirm_local(
+                    # R116-S0: 同意の文の正本は office_approve.remote_on_consent（各行 120 字以下・例は classify と突き合わせ済み）
+                    office_approve.remote_on_consent(office_lang()),
+                    L_now("ON にする", "Turn on")):
+                ok, msg = False, L_now("Mac の確認でキャンセルされました", "cancelled on the Mac")
+            else:
+                ok, msg, until = office_approve.set_remote(on)
+                if ok:
+                    extra = {"until": until}
+                    _notify_security(L_now("📱 スマホから許可", "📱 Phone approvals"),
+                                     L_now("ON にしました（期限なし）", "turned on (no time limit)") if on is True
+                                     else L_now("OFF にしました", "turned off"))
         elif self.path.startswith("/api/config/dialog_relay"):
             if self.client_address[0] not in ("127.0.0.1", "::1"):
                 return self._deny(403, "loopback required")
@@ -3371,6 +4838,8 @@ class Handler(BaseHTTPRequestHandler):
             ok, msg, extra = _action_exec(data)
         elif self.path.startswith("/api/keys/set"):
             ok, msg = set_office_key(data.get("name"), data.get("value"))
+        elif self.path.startswith("/api/providers/test"):
+            ok, msg, extra = provider_test(data)                # R103-5: 接続テスト（Origin 必須・鍵は返さない）
         elif self.path.startswith("/api/lang"):
             ok, msg = set_lang(data.get("lang"))
             if ok:
@@ -3441,7 +4910,13 @@ class _OfficeHTTPServer(ThreadingHTTPServer):
     BrokenPipeError/ConnectionResetError のトレースバックを流し、**本物のエラーが
     その中に埋もれていた**（36件中36件がこれ）。切断は異常ではないので1行に畳む。
     それ以外の例外は今までどおり全文出す（握り潰さない）。
+
+    listen キュー（backlog）は 128（既定は 5）。macOS は溢れた接続に即座に RST を返し、ブラウザは UI の
+    ES モジュール（約 100 本）を HTTP/1.0（1 要求 1 接続）で一斉に取りに来る。負荷で accept が遅れると
+    ERR_CONNECTION_RESET → 動的 import が落ちて「Couldn't load the UI」で止まっていた
+    （2026-09-26 実測: 高負荷で 12 回中 2 回が起動失敗 → 128 で 12/12・リセット 0）。番人= tests/test_listen_backlog.py
     """
+    request_queue_size = 128
 
     def handle_error(self, request, client_address):
         exc = sys.exc_info()[1]
@@ -3544,16 +5019,71 @@ def save_templates(items):
 
 
 _RES_CACHE = {"ts": 0.0, "data": None}
+# R115-S3: 切れたキャッシュの更新（status_board の初回の全読み・外部 HTTPS＝プロバイダごとに最大 6 秒）を呼び手の外へ。
+# daemon と relay_agent の常駐の main() が True（relay_agent の配達ループも外部のタイムアウトで止まる＝スマホの許可の配達が遅れる）。
+# --once・--dump・tests は同期のまま。裏の更新は同時に 1 本だけ（_RES_BG・_RES_LOCK で守る・thread はテストが join する）
+_ASYNC_RES = False
+_RES_LOCK = threading.Lock()
+_RES_BG = {"busy": False, "thread": None}
+
+
+# R102-5: Mac の前に人がいるか（キーボード・マウスの無操作が MAC_ACTIVE_IDLE 秒未満）。いる間はスマホへ通知しない
+# （Worker の sendAttnPushes が office.macActive を見る）。ioreg の HIDIdleTime（ナノ秒）を 5 秒ごとに 1 回（1 回 約 7ms）。
+# 読めなければ None＝キーごと載せない（通知は従来どおり）。テストは OFFICE_FAKE_MAC_IDLE（秒）で差し替える。
+MAC_ACTIVE_IDLE = 120
+_MAC_ACTIVE = {"t": -1e9, "v": None}
+_HID_IDLE_RE = re.compile(r'"HIDIdleTime"\s*=\s*(\d+)')
+
+
+def mac_active(now=None):
+    fake = os.environ.get("OFFICE_FAKE_MAC_IDLE")
+    if fake is not None:
+        try:
+            return 1 if float(fake) < MAC_ACTIVE_IDLE else 0
+        except ValueError:
+            return None
+    now = time.time() if now is None else now
+    if 0 <= now - _MAC_ACTIVE["t"] < 5:
+        return _MAC_ACTIVE["v"]
+    v = None
+    try:
+        out = subprocess.run(["/usr/sbin/ioreg", "-c", "IOHIDSystem", "-d", "4", "-k", "HIDIdleTime"],
+                             capture_output=True, text=True, timeout=2).stdout
+        m = _HID_IDLE_RE.search(out or "")
+        if m:
+            v = 1 if int(m.group(1)) / 1e9 < MAC_ACTIVE_IDLE else 0
+    except (OSError, subprocess.SubprocessError, ValueError):
+        v = None
+    _MAC_ACTIVE.update(t=now, v=v)
+    return v
 
 
 def res_summary(now=None):
     """R82: office_json["res"] v2。旧キー(fiveHour/sevenDay/staleSec)は後方互換で温存し、
     providers[]（多プロバイダ最小ゲージ）を追加。60秒キャッシュ・fail-soft
-    （補助データが office_json 本体を殺さない）。"""
+    （補助データが office_json 本体を殺さない）。
+    R115-S3: キャッシュが切れていれば、_ASYNC_RES（daemon・relay_agent の常駐）では裏で 1 本だけ更新して旧値（無ければ None
+    ＝office-json.md の「取得不可時は null」）を即返す＝走査（と、その呼び手）が外部 HTTPS を待たない。旗 OFF は同期で更新する。"""
     now = time.time() if now is None else now
     cache = _RES_CACHE
     if now - cache["ts"] < 60:
         return cache["data"]
+    if not _ASYNC_RES:
+        return _res_refresh(now)
+    with _RES_LOCK:
+        if not _RES_BG["busy"] and now - cache["ts"] >= 60:     # 待つ間に裏の更新が終わっていたら起こし直さない
+            _RES_BG["busy"] = True
+            try:
+                th = threading.Thread(target=_res_refresh_bg, args=(now,), name="office-res", daemon=True)
+                _RES_BG["thread"] = th
+                th.start()
+            except RuntimeError:                # スレッドを起こせない＝旧値を返し、次の呼び出しで再試行
+                _RES_BG["busy"] = False
+    return cache["data"]
+
+
+def _res_refresh(now):
+    """res の値を作り直してキャッシュへ置く（外部 HTTPS を含みうる・例外は外へ出さない）。"""
     data = None
     try:
         data = status_board.claude_gauge_public(now)
@@ -3566,9 +5096,18 @@ def res_summary(now=None):
             data["providers"] = g["providers"]
     except Exception:
         pass
+    cache = _RES_CACHE
+    cache["data"] = data                        # 値を先に・時刻を後に（裏の更新の途中で読んだ呼び手が新しい時刻と古い値を組まない）
     cache["ts"] = now
-    cache["data"] = data
     return data
+
+
+def _res_refresh_bg(now):
+    try:
+        _res_refresh(now)
+    finally:
+        with _RES_LOCK:
+            _RES_BG["busy"] = False
 
 
 _LAUNCHABLE_CACHE = {"ts": 0.0, "data": []}
@@ -3631,6 +5170,95 @@ def _launch_target_for(project_id):
             return cwd0, p.get("title") or p.get("disp") or Path(cwd0).name
     return "", ""
 
+
+
+# ── R99 Phase 2: コックピットの本物の端末 ─────────────────────────────────────────────
+# 掟:
+#   - **argv はサーバーが組む**。クライアントが渡せるのは kind（shell/claude/codex）と projectId だけ
+#     ＝画面から任意のコマンドを起こす口は無い（起こした後に打つのは本人＝それが端末の仕事）。
+#   - cwd は projects_index に在る登録済みプロジェクトだけ（_launch_target_for＝launch/hire と同じ）。
+#     shell だけはプロジェクト無しでホームに開ける。
+#   - claude は `--session-id <uuid>` で起こす＝**どの端末がどのセッションかを推測でなく確定で持つ**
+#     （外で起きたセッションの pty は奪えないので、対応が取れるのはここで起こしたものだけ）。
+#   - 出力は office_pty のメモリにだけ在る。office_json にも /api/events にも載せない。
+#   - loopback+CSRF のみ（do_GET/do_POST の門＋ここでも loopback を見る）。中継からは届かない。
+TERM_KINDS = ("shell", "claude", "codex")
+
+
+def _login_shell():
+    """本人のログインシェル。OFFICE_PTY_SHELL（テスト注入口）> パスワードDB > /bin/zsh。"""
+    override = os.environ.get("OFFICE_PTY_SHELL")
+    if override:
+        return override if os.access(override, os.X_OK) else None
+    try:
+        import pwd
+        sh = pwd.getpwuid(os.getuid()).pw_shell
+    except (ImportError, KeyError):
+        sh = ""
+    if sh and os.path.isabs(sh) and os.access(sh, os.X_OK):
+        return sh
+    return "/bin/zsh" if os.access("/bin/zsh", os.X_OK) else None
+
+
+def _pty_env(bin_, shell):
+    """端末の子の env。_child_env（最小集合・秘密は渡さない）に、端末として要るものだけ足す。"""
+    env = _child_env(bin_)
+    user = os.environ.get("USER") or os.environ.get("LOGNAME") or ""
+    if not user:
+        try:
+            import pwd
+            user = pwd.getpwuid(os.getuid()).pw_name
+        except (ImportError, KeyError):
+            user = ""
+    env.update({"TERM": "xterm-256color", "COLORTERM": "truecolor",
+                "LANG": os.environ.get("LANG") or "en_US.UTF-8"})
+    if shell:
+        env["SHELL"] = shell
+    if user:
+        env["USER"] = env["LOGNAME"] = user
+    return env
+
+
+def term_spec(kind, project_id=None):
+    """(argv, cwd, env, session, error) を返す。error が空でなければ起こさない。純粋にほぼ決定的
+    （claude の session だけ新しい uuid）。argv にクライアント由来の文字列は 1 つも入らない。"""
+    if kind not in TERM_KINDS:
+        return None, None, None, None, "bad_kind"
+    cwd = ""
+    if project_id:
+        cwd, _label = _launch_target_for(str(project_id))
+    if not cwd and kind != "shell":
+        # claude/codex はプロジェクトの中でだけ起こす（どの仕事か分からないセッションを作らない）
+        return None, None, None, None, "no_project"
+    # シェルはフォルダが引き当てられなくてもホームで開く（Codex のセッションなど、
+    # projects_index に無いフォルダは普通に在る。そこで「開けない」にすると＋が死ぬ）
+    cwd = cwd or str(Path.home())
+    shell = _login_shell()
+    if kind == "shell":
+        if not shell:
+            return None, None, None, None, "no_shell"
+        return [shell, "-il"], cwd, _pty_env(None, shell), None, ""
+    if kind == "claude":
+        bin_ = _claude_bin()
+        if not bin_:
+            return None, None, None, None, "no_claude"
+        sid = str(uuid.uuid4())
+        return [bin_, "--session-id", sid], cwd, _pty_env(bin_, shell), sid, ""
+    bin_ = _codex_bin()
+    if not bin_:
+        return None, None, None, None, "no_codex"
+    return [bin_], cwd, _pty_env(bin_, shell), None, ""
+
+
+_TERM_ERRORS = {
+    "bad_kind": (400, "端末の種類が不正です"),
+    "no_project": (404, "プロジェクトが見つかりません（過去に開いたフォルダだけ起こせます）"),
+    "no_shell": (500, "ログインシェルが見つかりません"),
+    "no_claude": (404, "claude が見つかりません"),
+    "no_codex": (404, "codex が見つかりません"),
+    "too_many": (429, f"端末は同時に {office_pty.MAX_TERMS} 本までです"),
+    "spawn_failed": (500, "端末を起動できませんでした"),
+}
 
 # ── R90-D11: 雇う（新しいバックグラウンドセッションを起こす）＝ `claude --bg -n <name> "<prompt>"` ──
 # 掟:
@@ -3792,6 +5420,13 @@ def _action_exec(data):
     return False, "未対応のアクションです", {"state": "denied"}
 
 
+def _notify_security(title, body):
+    """R100-0: 許可・登録の通知。テスト／dev（OFFICE_HOME 注入）では鳴らさない（start_watcher と同じ掟）。"""
+    if os.environ.get("OFFICE_HOME") and not os.environ.get("OFFICE_FAKE_NOTIFY"):
+        return
+    notify_mac(title, body)
+
+
 def notify_mac(title, body):
     """macOS通知（fail-soft）。OFFICE_FAKE_NOTIFY はテスト注入口（ファイルへ追記）。"""
     fake = os.environ.get("OFFICE_FAKE_NOTIFY")
@@ -3813,38 +5448,170 @@ def notify_mac(title, body):
         pass                          # 通知はベストエフォート（本流を殺さない）
 
 
-def attention_diff(prev_ids, roster):
+def _bot_ask_id(prj):
+    """R127: Bot（出勤の口）の行が持つ開いている相談の askId（32 桁）。Bot でない・相談が無い・形が違えば None。"""
+    if prj.get("vendor") != "bot" and not _is_bot_session(prj.get("session")):
+        return None
+    ask = prj.get("ask")
+    aid = ask.get("askId") if isinstance(ask, dict) else None
+    return aid if isinstance(aid, str) and office_door.ASK_ID_RE.fullmatch(aid) else None
+
+
+def _attn_key(prj):
+    """❗ の鍵＝projectId（無ければ session）。R127: Bot の相談は askId も足す（Bot は 1 体 1 件＝同じ行の 2 件目は
+    鍵が変わらず「新しく待ち始めた」にならなかった＝答えた直後に次の相談が来ても鳴らす・数える）。
+    セッションの鍵は変えない（続けて出る許可の掲示のたびに鳴らさない・日報の数え方を変えない）。"""
+    key = prj.get("projectId") or prj.get("session") or ""
+    aid = _bot_ask_id(prj)
+    return f"{key}#{aid}" if aid else key
+
+
+def _quiet_sessions(employees):
+    """R128 #4: 消音の Bot（⚙ の Bot パネル＝台帳の muted）の session の集合。Mac の知らせ（新しい ❗・待たせすぎ・朝のまとめ）は
+    この Bot の相談では鳴らさない＝**鳴らさないだけ**（行・あなたの番・記録・日報の数には今までどおり出る）。
+    Bot の行（session "bot-<id>"・id は valid_id の形）の muted が真偽の True のものだけ（ほかの行に muted が付いていても効かない
+    ＝セッションは今までどおり鳴る）。"""
+    return frozenset(e["session"] for e in employees or []
+                     if isinstance(e, dict) and e.get("muted") is True and office_door.bot_of_session(e.get("session")))
+
+
+def attention_diff(prev_ids, roster, quiet=frozenset()):
     """❗（質問/承認まち）のエッジ検出。新規に待ち始めたプロジェクトだけ
     [{disp, question, approvalMin}] で返す（R53.2: 通知本文に質問プレビューを載せるため。
-    ローカルMacの通知＝transcript自体が手元にある前提なので本文露出はPWA Pushと別基準）。"""
-    cur = {}
+    ローカルMacの通知＝transcript自体が手元にある前提なので本文露出はPWA Pushと別基準）。
+    R127: 鍵は _attn_key（Bot の相談は askId つき）。
+    R128 #4: quiet（_quiet_sessions＝消音の Bot）の相談は知らせ（1 つ目の戻り値）に出さない。鍵の集合（2 つ目）には入れる
+    ＝消音を解いた瞬間に、前から開いている相談で鳴らさない（次の新しい相談から鳴る）。"""
+    cur, loud = {}, set()
     for prj in roster or []:
         if prj.get("question") or (prj.get("approvalMin") or 0) > 0:
-            cur[prj.get("projectId") or prj.get("session") or ""] = {
+            key = _attn_key(prj)
+            cur[key] = {
                 "disp": prj.get("disp") or "?",
                 "question": prj.get("question") or "",
                 "approvalMin": prj.get("approvalMin") or 0,
             }
-    new_ids = [pid for pid in cur if pid not in (prev_ids or set())]
+            if prj.get("session") not in quiet:
+                loud.add(key)
+    new_ids = [pid for pid in cur if pid not in (prev_ids or set()) and pid in loud]
     return [cur[pid] for pid in new_ids], set(cur)
+
+
+# R125: 秘書の芽（本人 2026-11-10「秘書の層を小さく試す」）。新しい ❗ の知らせ（attention_diff）と朝夕のまとめでは
+# 知らせていなかった 2 つだけを Mac に知らせる: ①エラーで止まった人（利用上限・API エラー・会話の長さの上限）＝止まった直後に 1 回
+# ②❗ を長く待たせている人＝NUDGE_WAIT_MIN の段ごとに 1 回。沈黙が既定（朝のまとめと同じ）: 同じ人の同じ段は 2 度鳴らさない・
+# 解消したら記憶を消す・最初の 1 回（daemon の起動直後）は今の状態を覚えるだけで鳴らさない。OFFICE_NUDGES=0 で止める。
+NUDGE_WAIT_MIN = (15, 60)
+NUDGE_ERR_FRESH_SEC = 600            # これより前に止まったエラーは「いま止まった」とは言わない（起動直後・古い残骸）
+
+
+def _nudge_wait_min(e):
+    """待たせている分（ui/core/kind.js の waitMinutes と同じ順: 掲示の分 → approvalMin → 質問なら最後に書いてからの分）。"""
+    ask = e.get("ask") if isinstance(e.get("ask"), dict) else {}
+    if isinstance(ask.get("min"), (int, float)) and ask["min"] >= 0:
+        return int(ask["min"])
+    if int(e.get("approvalMin") or 0) > 0:
+        return int(e["approvalMin"])
+    if e.get("question") or ask.get("kind") == "question":
+        return int((e.get("age") or 0) // 60)
+    return 0
+
+
+def secretary_nudges(memory, employees, quiet=frozenset()):
+    """→ (新しい記憶, [(題, 本文)])。memory=None は最初の 1 回＝覚えるだけ。純関数（通知は呼び出し側）。
+    R128 #4: quiet（_quiet_sessions＝消音の Bot）の分は知らせに出さない。記憶（段）は今までどおり進める＝消音を解いた瞬間に、
+    もう過ぎた段（15 分・60 分）で鳴らさない（次の段から鳴る）。"""
+    first = memory is None
+    memory = dict(memory or {})
+    out, alive = [], set()
+    err_word = {
+        "limit": L_now("利用上限に達して止まりました", "Stopped at the usage limit"),
+        "ctx": L_now("会話が長すぎて止まりました（/compact か新しいセッションへ）",
+                     "Stopped: the conversation is too long (/compact or a new session)"),
+        "api": L_now("API エラーで止まりました（もう一度頼むと続きます）",
+                     "Stopped on an API error (ask again to continue)"),
+    }
+    for e in employees or []:
+        sid = e.get("session") or ""
+        if not sid or e.get("external"):
+            continue
+        alive.add(sid)
+        name = short(e.get("title") or e.get("aiTitle") or e.get("disp") or "?", 30)
+        mem = dict(memory.get(sid) or {})
+        err = e.get("err") if isinstance(e.get("err"), dict) else None
+        kind = err.get("k") if err and err.get("k") in err_word else None
+        if kind and mem.get("err") != kind:
+            if not first and int(err.get("ago") or 0) <= NUDGE_ERR_FRESH_SEC and sid not in quiet:
+                out.append((f"⚠ {name}", err_word[kind]))
+            mem["err"] = kind
+        elif not kind:
+            mem.pop("err", None)
+        waiting = bool(e.get("question") or int(e.get("approvalMin") or 0) > 0 or e.get("ask"))
+        if waiting:
+            minutes = _nudge_wait_min(e)
+            stage = max([m for m in NUDGE_WAIT_MIN if minutes >= m], default=0)
+            if stage > int(mem.get("wait") or 0):
+                if not first and sid not in quiet:
+                    ask = e.get("ask") if isinstance(e.get("ask"), dict) else {}
+                    what = (short(e["question"], 80) if e.get("question")
+                            else L_now(f"許可を待っています: {ask.get('tool') or '?'}",
+                                       f"Waiting for approval: {ask.get('tool') or '?'}"))
+                    out.append((L_now(f"⏳ {name} が {minutes}分 待っています", f"⏳ {name} has waited {minutes}m"), what))
+                mem["wait"] = stage
+        else:
+            mem.pop("wait", None)
+        if mem:
+            memory[sid] = mem
+        else:
+            memory.pop(sid, None)
+    memory = {sid: m for sid, m in memory.items() if sid in alive}
+    return memory, out
+
+
+def _bot_answered(value, now_ts):
+    """R127: seen に控えた Bot の相談（{session:"bot-…", askId}）が、人の答えで閉じたか（口の状態の閉じ方＝読むだけ）。"""
+    bot_id = office_door.bot_of_session(value.get("session"))
+    try:
+        return bool(bot_id) and office_door.closed_how(bot_id, value.get("askId"), home=_HOME, now=now_ts) == "answered"
+    except Exception:                                     # 口が読めない＝数えない（日報を捏造しない・監視を止めない）
+        return False
 
 
 def _attn_track(seen, roster, now_ts):
     """❗の滞在時間トラッキング。seen に初見epochと質問元sessionを保持し、
-    解消した分の待たせ秒リストを返す。日報の「答えた❗・平均待たせ時間」の材料。"""
+    解消した分の待たせ秒リストを返す。日報の「答えた❗・平均待たせ時間」の材料。
+    R127: Bot（出勤の口）の相談は askId つきで控え（_attn_key）、消えたときは口が「人が答えた（answered）」と言う分だけ数える
+    ＝期限切れ・取り下げ・登録の取り消しは「答えた」に数えない（R126 は Bot を丸ごと数えなかった）。Bot の分は時間軸
+    （office_timeline）へは送らない（時間軸は Bot の行を持たない＝R126 の「Bot の稼働を混ぜない」・数え方の続きは R132）。"""
     cur = {}
     for prj in roster or []:
-        if prj.get("question") or (prj.get("approvalMin") or 0) > 0:
-            cur[prj.get("projectId") or prj.get("session") or ""] = prj.get("session", "")
+        if not (prj.get("question") or (prj.get("approvalMin") or 0) > 0):
+            continue
+        aid = _bot_ask_id(prj)
+        if aid:
+            cur[_attn_key(prj)] = (prj.get("session", ""), aid)
+        elif prj.get("vendor") != "bot" and not _is_bot_session(prj.get("session")):
+            cur[prj.get("projectId") or prj.get("session") or ""] = (prj.get("session", ""), None)
+        # askId の無い Bot の行（手組み・壊れた形）は控えない＝答えたかを口に確かめられないものは数えない
     new_seen = {pid: value for pid, value in (seen or {}).items() if pid in cur}
-    for pid, sid in cur.items():
-        new_seen.setdefault(pid, {"ts": now_ts, "session": sid} if sid else now_ts)
+    for pid, (sid, aid) in cur.items():
+        if aid:
+            new_seen.setdefault(pid, {"ts": now_ts, "session": sid, "askId": aid})
+        else:
+            new_seen.setdefault(pid, {"ts": now_ts, "session": sid} if sid else now_ts)
     # Accept the historical timestamp-only values too. With no known owner,
     # the writer resolves the existing ask span instead of using the new lead.
-    finished = [(pid, value.get("session", "") if isinstance(value, dict) else "",
-                 max(0.0, now_ts - (value["ts"] if isinstance(value, dict) else value)))
-                for pid, value in (seen or {}).items() if pid not in cur]
-    resolved = [waited for _, _, waited in finished]
+    finished, bots = [], []
+    for pid, value in (seen or {}).items():
+        if pid in cur:
+            continue
+        waited = max(0.0, now_ts - (value["ts"] if isinstance(value, dict) else value))
+        if isinstance(value, dict) and value.get("askId"):
+            if _bot_answered(value, now_ts):
+                bots.append(waited)
+            continue
+        finished.append((pid, value.get("session", "") if isinstance(value, dict) else "", waited))
+    resolved = [waited for _, _, waited in finished] + bots
     try:
         timeline = sys.modules.get("office_timeline")
         if timeline is not None:
@@ -3969,7 +5736,9 @@ def build_morning_report(office, now=None):
         if previous:
             done += previous["totals"].get("tasksDone", 0)
         day += timedelta(days=1)
-    waiting = _notification_projects(office, attention=True)
+    # R128 #4: 消音の Bot の相談は朝のまとめを鳴らす根拠にも、本文の待ち人にもしない（鳴らさないだけ＝画面には出ている）
+    quiet = _quiet_sessions(office.get("employees"))
+    waiting = [row for row in _notification_projects(office, attention=True) if row.get("session") not in quiet]
     new_attention = any(since < _notification_asked_at(row, now) <= now for row in waiting)
     if not done and not new_attention:
         # An ask can arise and be answered before 08:30. Query existence only,
@@ -4070,47 +5839,67 @@ def build_daily_report(office, date_label):
     return "🏢 今日のAIオフィス", body, "\n".join(lines) + "\n"
 
 
+def _watch_state():
+    """_watch_loop が周をまたいで持つ記憶。prev＝❗の鍵・seen＝R54 の❗の滞在時間（projectId→初見epoch＝日報の応答実績）・
+    nudge＝R125 秘書の芽（None＝最初の 1 回は覚えるだけ）・morning＝朝のまとめを済ませた日。"""
+    return {"prev": set(), "seen": {}, "nudge": None, "morning": None}
+
+
+def _watch_once(st, now_local=None):
+    """_watch_loop の 1 周（60 秒ごと）: ❗エッジ検出・秘書の芽（止まった人・待たせすぎ＝R125）・08:30 の未読まとめ・18 時以降の日報。
+    st（_watch_state）は呼び手が持ち回る＝例外で抜けても、そこまでに進めた記憶は残る（1 本のループだった頃と同じ）。
+    R128 #4: 消音の Bot（_quiet_sessions）の相談では新しい ❗・待たせすぎ・朝のまとめを鳴らさない（記憶には入れる＝解いても古い相談で
+    鳴らさない）。テストが 1 周だけ回せる（now_local で時刻を渡す＝朝のまとめと日報の時間帯に入らない時刻を選べる）。"""
+    office = office_json()
+    quiet = _quiet_sessions(office.get("employees"))
+    st["seen"], resolved = _attn_track(st["seen"], office.get("roster"), time.time())
+    if resolved:
+        _append_daily_stats(resolved, datetime.now().strftime("%Y-%m-%d"))
+    new_items, st["prev"] = attention_diff(st["prev"], office.get("roster"), quiet)
+    if new_items:
+        top = new_items[0]
+        extra = (L_now(f" ほか{len(new_items) - 1}件",
+                       f" (+{len(new_items) - 1} more)")
+                 if len(new_items) > 1 else "")
+        # 質問はプレビューを載せる＝通知だけで「何を聞かれているか」が分かる
+        what = (top["question"][:80] if top["question"]
+                else L_now(f"承認まち {top['approvalMin']}分",
+                           f"approval wait {top['approvalMin']}m"))
+        notify_mac(f"❗ {top['disp']}{extra}", what)
+    if os.environ.get("OFFICE_NUDGES", "1") not in ("0", "false"):
+        st["nudge"], nudges = secretary_nudges(st["nudge"], office.get("employees"), quiet)
+        if nudges:
+            title, body = nudges[0]
+            if len(nudges) > 1:
+                title += L_now(f" ほか{len(nudges) - 1}件", f" (+{len(nudges) - 1} more)")
+            notify_mac(title, body)
+    now_local = datetime.now() if now_local is None else now_local
+    day = now_local.strftime("%Y-%m-%d")
+    if now_local.hour == 8 and now_local.minute >= 30 and st["morning"] != day:
+        marker = DAILY_DIR / f"{day}.morning"
+        if not marker.exists():
+            report = build_morning_report(office, now=now_local.timestamp())
+            DAILY_DIR.mkdir(parents=True, exist_ok=True)
+            marker.touch()  # Also remember silence; later events get ordinary edge pushes.
+            if report:
+                notify_mac(*report)
+        st["morning"] = day
+    if now_local.hour >= DAILY_HOUR:
+        out = DAILY_DIR / f"{day}.md"
+        if not out.exists():
+            title, body, md = build_daily_report(office, day)
+            DAILY_DIR.mkdir(parents=True, exist_ok=True)
+            out.write_text(md, encoding="utf-8")
+            notify_mac(title, body)
+
+
 def _watch_loop():
-    """60秒ごとに❗エッジ検出・08:30の未読まとめ・18時以降の日報。"""
-    prev = set()
-    seen = {}      # R54: ❗の滞在時間（projectId→初見epoch）＝日報の応答実績
-    morning_day = None
+    """60秒ごとに _watch_once（❗エッジ検出・秘書の芽・08:30の未読まとめ・18時以降の日報）。監視は死なない。"""
+    st = _watch_state()
     while True:
         time.sleep(60)
         try:
-            office = office_json()
-            seen, resolved = _attn_track(seen, office.get("roster"), time.time())
-            if resolved:
-                _append_daily_stats(resolved, datetime.now().strftime("%Y-%m-%d"))
-            new_items, prev = attention_diff(prev, office.get("roster"))
-            if new_items:
-                top = new_items[0]
-                extra = (L_now(f" ほか{len(new_items) - 1}件",
-                               f" (+{len(new_items) - 1} more)")
-                         if len(new_items) > 1 else "")
-                # 質問はプレビューを載せる＝通知だけで「何を聞かれているか」が分かる
-                what = (top["question"][:80] if top["question"]
-                        else L_now(f"承認まち {top['approvalMin']}分",
-                                   f"approval wait {top['approvalMin']}m"))
-                notify_mac(f"❗ {top['disp']}{extra}", what)
-            now_local = datetime.now()
-            day = now_local.strftime("%Y-%m-%d")
-            if now_local.hour == 8 and now_local.minute >= 30 and morning_day != day:
-                marker = DAILY_DIR / f"{day}.morning"
-                if not marker.exists():
-                    report = build_morning_report(office, now=now_local.timestamp())
-                    DAILY_DIR.mkdir(parents=True, exist_ok=True)
-                    marker.touch()  # Also remember silence; later events get ordinary edge pushes.
-                    if report:
-                        notify_mac(*report)
-                morning_day = day
-            if now_local.hour >= DAILY_HOUR:
-                out = DAILY_DIR / f"{day}.md"
-                if not out.exists():
-                    title, body, md = build_daily_report(office, day)
-                    DAILY_DIR.mkdir(parents=True, exist_ok=True)
-                    out.write_text(md, encoding="utf-8")
-                    notify_mac(title, body)
+            _watch_once(st)
         except Exception as e:                      # noqa: BLE001 - 監視は死なない
             print(f"⚠ watch_loop: {e}", file=sys.stderr, flush=True)
 
@@ -4124,6 +5913,7 @@ def start_watcher():
 
 
 def main():
+    global _SWR, _ASYNC_RES
     import argparse
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=PORT)
@@ -4154,6 +5944,9 @@ def main():
     events_enabled = office_events is not None and os.environ.get("OFFICE_EVENTS") != "0"
     timeline = None
     try:
+        # R115-S1: serve の間だけ、走査を request thread の外へ（SWR）。S3: res の更新（外部 HTTPS）も裏へ（_ASYNC_RES）。
+        # 下の finally で戻す（main() を呼ぶテストへ旗を残さない）。--dump・relay_agent・tests は同期のまま
+        _SWR = _ASYNC_RES = True
         if os.environ.get("OFFICE_TIMELINE") != "0":
             try:
                 timeline = importlib.import_module("office_timeline")
@@ -4167,6 +5960,7 @@ def main():
     except KeyboardInterrupt:
         print("\n退勤しました。")
     finally:
+        _SWR = _ASYNC_RES = False
         if events_enabled:
             office_events.stop()
         if timeline is not None:

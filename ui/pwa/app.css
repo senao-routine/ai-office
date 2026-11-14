@@ -1,44 +1,203 @@
-/* HUD_TOKENS_BEGIN (generated: ui/hud-tokens.css) */
-/* HUDの共通正本。docs/art-direction.md §7。両画面への展開はgen_pwa_modules.py。 */
-:root {
-  --paper: #f4f4fb;
-  --paper-2: #ececf7;
-  --paper-3: #e3e3f2;
-  --glass: rgba(255,255,255,.72);
-  --glass-solid: #ffffff;
-  --line: rgba(96,82,170,.14);
-  --ink: #23213a;
-  --ink-2: #6c6890;
-  --ink-3: #9793b8;
-  --accent: #7c5cff;
-  --accent-2: #4f8dff;
-  --accent-chip: #eee9ff;
-  --accent-3d: #8f86e0;
-  --warn: #f5a524;
-  --warn-chip: #fff1dc;
-  --alert: #e0538a;
-  --alert-chip: #fde4ee;
-  --rest: #aab2d8;
-  --on-accent: #ffffff;
-  --radius-sm: 12px;
-  --radius: 18px;
-  --shadow: 0 12px 34px rgba(64,52,140,.12), 0 2px 6px rgba(64,52,140,.06);
-  --stage-bg: radial-gradient(90% 70% at 18% 6%, rgba(124,92,255,.14) 0%, rgba(124,92,255,0) 55%), radial-gradient(80% 60% at 88% 90%, rgba(79,141,255,.12) 0%, rgba(79,141,255,0) 58%), linear-gradient(180deg, #f6f5fc 0%, #eeeefb 100%);
+/* TERM_TOKENS_BEGIN (generated: ui/cockpit/palette.js TERM) */
+:root, .t-dark {
+  --t-bg: #0c0f0c;
+  --t-panel: #111511;
+  --t-panel-2: #1c261c;
+  --t-line: #2a342a;
+  --t-line-strong: #3a463a;
+  --t-line-soft: #1c241c;
+  --t-ink: #d8e0d8;
+  --t-ink-soft: #a9b5a9;
+  --t-ink-faint: #869286;
+  --t-accent: #39d353;
+  --t-on-accent: #0c0f0c;
+  --t-ok: #39d353;
+  --t-attn: #ce8a6c;
+  --t-warn: #d8ae67;
+  --t-danger: #ff6b5e;
+  --t-stage: #1a1d19;
+  --t-mono: "SF Mono", "Cascadia Code", ui-monospace, Menlo, Monaco, Consolas, "Hiragino Kaku Gothic ProN", "Hiragino Sans", monospace;
+  --t-sans: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif;
+  color-scheme: dark;
 }
-/* HUD_TOKENS_END */
+:root[data-theme="light"] {
+  --t-bg: #f3f1e8;
+  --t-panel: #eeebe0;
+  --t-panel-2: #ddd8c8;
+  --t-line: #c4bfad;
+  --t-line-strong: #a9a391;
+  --t-line-soft: #dcd8cb;
+  --t-ink: #1d231d;
+  --t-ink-soft: #465046;
+  --t-ink-faint: #535c51;
+  --t-accent: #1a6b2e;
+  --t-on-accent: #f3f1e8;
+  --t-ok: #1a6b2e;
+  --t-attn: #8a4f3b;
+  --t-warn: #69502d;
+  --t-danger: #b3261e;
+  --t-stage: #1a1d19;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: light) {
+  :root[data-theme-auto] {
+    --t-bg: #f3f1e8;
+    --t-panel: #eeebe0;
+    --t-panel-2: #ddd8c8;
+    --t-line: #c4bfad;
+    --t-line-strong: #a9a391;
+    --t-line-soft: #dcd8cb;
+    --t-ink: #1d231d;
+    --t-ink-soft: #465046;
+    --t-ink-faint: #535c51;
+    --t-accent: #1a6b2e;
+    --t-on-accent: #f3f1e8;
+    --t-ok: #1a6b2e;
+    --t-attn: #8a4f3b;
+    --t-warn: #69502d;
+    --t-danger: #b3261e;
+    --t-stage: #1a1d19;
+    color-scheme: light;
+  }
+}
+:root[data-theme="light"] .t-dark, :root[data-theme-auto] .t-dark {
+  --t-bg: #0c0f0c;
+  --t-panel: #111511;
+  --t-panel-2: #1c261c;
+  --t-line: #2a342a;
+  --t-line-strong: #3a463a;
+  --t-line-soft: #1c241c;
+  --t-ink: #d8e0d8;
+  --t-ink-soft: #a9b5a9;
+  --t-ink-faint: #869286;
+  --t-accent: #39d353;
+  --t-on-accent: #0c0f0c;
+  --t-ok: #39d353;
+  --t-attn: #ce8a6c;
+  --t-warn: #d8ae67;
+  --t-danger: #ff6b5e;
+  --t-stage: #1a1d19;
+  color-scheme: dark;
+}
+/* TERM_TOKENS_END */
+
+/* APP_TOKENS_BEGIN (generated: ui/app/style.css の .hud.ui-app) */
 :root {
+  --a-bg: #F7F6F3;
+  --a-side: #F1EFEA;
+  --a-surface: #FFFFFF;
+  --a-line: #E4E0D8;
+  --a-line-soft: #EEEBE5;
+  --a-ink: #1C1B19;
+  --a-ink-soft: #57534E;
+  --a-ink-faint: #6B665E;
+  --a-accent: #1F6B52;
+  --a-accent-soft: #E8F2EE;
+  --a-attn: #C2410C;
+  --a-attn-ink: #9A3412;
+  --a-attn-line: #F0D2C2;
+  --a-bubble: #F1EFEA;
+  --a-selected: #E4E0D8;
+  --a-idle: #D9D4CB;
+  --font-ui: -apple-system, "Hiragino Sans", "Hiragino Kaku Gothic ProN", sans-serif;
+  --t-sans: var(--font-ui);
+  --t-bg: var(--a-bg);
+  --t-panel: var(--a-surface);
+  --t-panel-2: var(--a-bubble);
+  --t-line: var(--a-line);
+  --t-line-soft: var(--a-line-soft);
+  --t-line-strong: var(--a-idle);
+  --t-ink: var(--a-ink);
+  --t-ink-soft: var(--a-ink-soft);
+  --t-ink-faint: var(--a-ink-faint);
+  --t-accent: var(--a-accent);
+  --t-on-accent: var(--a-surface);
+  --t-ok: var(--a-accent);
+  --t-attn: var(--a-attn);
+  --t-warn: var(--a-attn-ink);
+  --t-danger: var(--a-attn-ink);
+  color-scheme: light;
+}
+/* APP_TOKENS_END */
+
+/* PX_ICONS_BEGIN (generated: design/gen_icons.py) */
+/* 生成物: python3 design/gen_icons.py（手で直さない・--check で突き合わせ）。
+   1 ドット = 2px の box-shadow・色は currentColor＝置く側の color で決まる。 */
+[data-px]::before{content:"";display:block;flex:none;width:2px;height:2px;background:none;margin:0 calc(var(--px-w) - 2px) calc(var(--px-h) - 2px) 0;transform:translate(-2px,-2px);box-shadow:var(--px)}
+.px[data-px]{display:inline-block;vertical-align:middle;line-height:0}
+[data-px="bang"]{--px-w:22px;--px-h:22px;--px:2px 2px,4px 2px,6px 2px,8px 2px,10px 2px,12px 2px,14px 2px,16px 2px,18px 2px,20px 2px,22px 2px,2px 4px,22px 4px,2px 6px,12px 6px,22px 6px,2px 8px,12px 8px,22px 8px,2px 10px,12px 10px,22px 10px,2px 12px,12px 12px,22px 12px,2px 14px,22px 14px,2px 16px,12px 16px,22px 16px,2px 18px,22px 18px,2px 20px,4px 20px,6px 20px,8px 20px,10px 20px,12px 20px,14px 20px,16px 20px,18px 20px,20px 20px,22px 20px}
+[data-px="bell"]{--px-w:22px;--px-h:22px;--px:12px 2px,10px 4px,12px 4px,14px 4px,8px 6px,16px 6px,6px 8px,18px 8px,6px 10px,18px 10px,6px 12px,18px 12px,6px 14px,18px 14px,4px 16px,20px 16px,2px 18px,4px 18px,6px 18px,8px 18px,10px 18px,12px 18px,14px 18px,16px 18px,18px 18px,20px 18px,22px 18px,10px 22px,12px 22px,14px 22px}
+[data-px="bell-off"]{--px-w:22px;--px-h:22px;--px:2px 2px,12px 2px,4px 4px,10px 4px,12px 4px,14px 4px,6px 6px,8px 6px,16px 6px,6px 8px,8px 8px,18px 8px,6px 10px,10px 10px,18px 10px,6px 12px,12px 12px,18px 12px,6px 14px,14px 14px,18px 14px,4px 16px,16px 16px,20px 16px,2px 18px,4px 18px,6px 18px,8px 18px,10px 18px,12px 18px,14px 18px,16px 18px,18px 18px,20px 18px,22px 18px,20px 20px,22px 22px}
+[data-px="bolt"]{--px-w:22px;--px-h:22px;--px:14px 4px,16px 4px,12px 6px,14px 6px,10px 8px,12px 8px,8px 10px,10px 10px,6px 12px,8px 12px,10px 12px,12px 12px,14px 12px,16px 12px,18px 12px,14px 14px,16px 14px,12px 16px,14px 16px,10px 18px,12px 18px,8px 20px,10px 20px}
+[data-px="call"]{--px-w:22px;--px-h:22px;--px:10px 4px,12px 4px,14px 4px,10px 6px,12px 6px,14px 6px,10px 8px,12px 8px,14px 8px,10px 10px,12px 10px,14px 10px,10px 12px,12px 12px,14px 12px,12px 14px,10px 18px,12px 18px,14px 18px,10px 20px,12px 20px,14px 20px}
+[data-px="check"]{--px-w:22px;--px-h:22px;--px:20px 6px,18px 8px,16px 10px,2px 12px,14px 12px,4px 14px,12px 14px,6px 16px,10px 16px,8px 18px}
+[data-px="close"]{--px-w:22px;--px-h:22px;--px:4px 4px,20px 4px,6px 6px,18px 6px,8px 8px,16px 8px,10px 10px,14px 10px,12px 12px,10px 14px,14px 14px,8px 16px,16px 16px,6px 18px,18px 18px,4px 20px,20px 20px}
+[data-px="gear"]{--px-w:22px;--px-h:22px;--px:12px 2px,6px 4px,10px 4px,12px 4px,14px 4px,18px 4px,8px 6px,10px 6px,12px 6px,14px 6px,16px 6px,4px 8px,6px 8px,8px 8px,16px 8px,18px 8px,20px 8px,6px 10px,8px 10px,16px 10px,18px 10px,2px 12px,4px 12px,6px 12px,8px 12px,16px 12px,18px 12px,20px 12px,22px 12px,6px 14px,8px 14px,16px 14px,18px 14px,4px 16px,6px 16px,8px 16px,16px 16px,18px 16px,20px 16px,8px 18px,10px 18px,12px 18px,14px 18px,16px 18px,6px 20px,10px 20px,12px 20px,14px 20px,18px 20px,12px 22px}
+[data-px="help"]{--px-w:22px;--px-h:22px;--px:8px 4px,10px 4px,12px 4px,14px 4px,16px 4px,6px 6px,18px 6px,18px 8px,16px 10px,12px 12px,14px 12px,12px 14px,12px 18px}
+[data-px="key"]{--px-w:22px;--px-h:22px;--px:4px 8px,6px 8px,8px 8px,2px 10px,10px 10px,2px 12px,10px 12px,12px 12px,14px 12px,16px 12px,18px 12px,20px 12px,22px 12px,2px 14px,10px 14px,18px 14px,22px 14px,4px 16px,6px 16px,8px 16px,18px 16px,22px 16px}
+[data-px="ledger"]{--px-w:22px;--px-h:22px;--px:2px 4px,4px 4px,6px 4px,8px 4px,10px 4px,12px 4px,14px 4px,16px 4px,18px 4px,20px 4px,22px 4px,2px 6px,10px 6px,22px 6px,2px 8px,4px 8px,6px 8px,8px 8px,10px 8px,12px 8px,14px 8px,16px 8px,18px 8px,20px 8px,22px 8px,2px 10px,10px 10px,22px 10px,2px 12px,10px 12px,22px 12px,2px 14px,4px 14px,6px 14px,8px 14px,10px 14px,12px 14px,14px 14px,16px 14px,18px 14px,20px 14px,22px 14px,2px 16px,10px 16px,22px 16px,2px 18px,4px 18px,6px 18px,8px 18px,10px 18px,12px 18px,14px 18px,16px 18px,18px 18px,20px 18px,22px 18px}
+[data-px="list"]{--px-w:22px;--px-h:22px;--px:4px 6px,8px 6px,10px 6px,12px 6px,14px 6px,16px 6px,18px 6px,20px 6px,4px 12px,8px 12px,10px 12px,12px 12px,14px 12px,16px 12px,18px 12px,20px 12px,4px 18px,8px 18px,10px 18px,12px 18px,14px 18px,16px 18px,18px 18px,20px 18px}
+[data-px="moon"]{--px-w:22px;--px-h:22px;--px:10px 2px,12px 2px,14px 2px,16px 2px,6px 4px,8px 4px,4px 6px,4px 8px,2px 10px,2px 12px,2px 14px,4px 16px,4px 18px,22px 18px,6px 20px,8px 20px,18px 20px,20px 20px,10px 22px,12px 22px,14px 22px,16px 22px}
+[data-px="n01"]{--px-w:14px;--px-h:10px;--px:2px 2px,4px 2px,6px 2px,12px 2px,2px 4px,6px 4px,10px 4px,12px 4px,2px 6px,6px 6px,12px 6px,2px 8px,6px 8px,12px 8px,2px 10px,4px 10px,6px 10px,10px 10px,12px 10px,14px 10px}
+[data-px="n02"]{--px-w:14px;--px-h:10px;--px:2px 2px,4px 2px,6px 2px,10px 2px,12px 2px,14px 2px,2px 4px,6px 4px,14px 4px,2px 6px,6px 6px,10px 6px,12px 6px,14px 6px,2px 8px,6px 8px,10px 8px,2px 10px,4px 10px,6px 10px,10px 10px,12px 10px,14px 10px}
+[data-px="n03"]{--px-w:14px;--px-h:10px;--px:2px 2px,4px 2px,6px 2px,10px 2px,12px 2px,14px 2px,2px 4px,6px 4px,14px 4px,2px 6px,6px 6px,10px 6px,12px 6px,14px 6px,2px 8px,6px 8px,14px 8px,2px 10px,4px 10px,6px 10px,10px 10px,12px 10px,14px 10px}
+[data-px="n04"]{--px-w:14px;--px-h:10px;--px:2px 2px,4px 2px,6px 2px,10px 2px,14px 2px,2px 4px,6px 4px,10px 4px,14px 4px,2px 6px,6px 6px,10px 6px,12px 6px,14px 6px,2px 8px,6px 8px,14px 8px,2px 10px,4px 10px,6px 10px,14px 10px}
+[data-px="office"]{--px-w:22px;--px-h:22px;--px:4px 2px,6px 2px,8px 2px,10px 2px,12px 2px,14px 2px,16px 2px,18px 2px,20px 2px,4px 4px,20px 4px,4px 6px,8px 6px,12px 6px,16px 6px,20px 6px,4px 8px,20px 8px,4px 10px,8px 10px,12px 10px,16px 10px,20px 10px,4px 12px,20px 12px,4px 14px,8px 14px,12px 14px,16px 14px,20px 14px,4px 16px,20px 16px,4px 18px,12px 18px,20px 18px,4px 20px,12px 20px,20px 20px,2px 22px,4px 22px,6px 22px,8px 22px,10px 22px,12px 22px,14px 22px,16px 22px,18px 22px,20px 22px,22px 22px}
+[data-px="phone"]{--px-w:22px;--px-h:22px;--px:6px 2px,8px 2px,10px 2px,12px 2px,14px 2px,16px 2px,18px 2px,6px 4px,18px 4px,6px 6px,18px 6px,6px 8px,18px 8px,6px 10px,18px 10px,6px 12px,18px 12px,6px 14px,18px 14px,6px 16px,8px 16px,10px 16px,12px 16px,14px 16px,16px 16px,18px 16px,6px 18px,12px 18px,18px 18px,6px 20px,8px 20px,10px 20px,12px 20px,14px 20px,16px 20px,18px 20px}
+[data-px="play"]{--px-w:22px;--px-h:22px;--px:8px 4px,8px 6px,10px 6px,8px 8px,10px 8px,12px 8px,8px 10px,10px 10px,12px 10px,14px 10px,8px 12px,10px 12px,12px 12px,14px 12px,16px 12px,8px 14px,10px 14px,12px 14px,14px 14px,8px 16px,10px 16px,12px 16px,8px 18px,10px 18px,8px 20px}
+[data-px="plus"]{--px-w:22px;--px-h:22px;--px:12px 4px,12px 6px,12px 8px,12px 10px,4px 12px,6px 12px,8px 12px,10px 12px,12px 12px,14px 12px,16px 12px,18px 12px,20px 12px,12px 14px,12px 16px,12px 18px,12px 20px}
+[data-px="prompt"]{--px-w:22px;--px-h:22px;--px:4px 8px,6px 10px,8px 12px,6px 14px,4px 16px,14px 16px,16px 16px,18px 16px,20px 16px}
+[data-px="robot"]{--px-w:22px;--px-h:22px;--px:12px 4px,6px 6px,8px 6px,10px 6px,12px 6px,14px 6px,16px 6px,18px 6px,6px 8px,18px 8px,6px 10px,10px 10px,14px 10px,18px 10px,6px 12px,18px 12px,6px 14px,10px 14px,12px 14px,14px 14px,18px 14px,6px 16px,8px 16px,10px 16px,12px 16px,14px 16px,16px 16px,18px 16px,10px 18px,14px 18px}
+[data-px="roster"]{--px-w:22px;--px-h:22px;--px:10px 4px,12px 4px,14px 4px,8px 6px,16px 6px,8px 8px,16px 8px,10px 10px,12px 10px,14px 10px,6px 14px,8px 14px,10px 14px,12px 14px,14px 14px,16px 14px,18px 14px,4px 16px,20px 16px,4px 18px,20px 18px}
+[data-px="run"]{--px-w:22px;--px-h:22px;--px:2px 4px,4px 4px,6px 4px,8px 4px,10px 4px,12px 4px,14px 4px,16px 4px,18px 4px,20px 4px,22px 4px,2px 6px,22px 6px,2px 8px,10px 8px,22px 8px,2px 10px,10px 10px,12px 10px,22px 10px,2px 12px,10px 12px,12px 12px,14px 12px,22px 12px,2px 14px,10px 14px,12px 14px,22px 14px,2px 16px,10px 16px,22px 16px,2px 18px,22px 18px,2px 20px,4px 20px,6px 20px,8px 20px,10px 20px,12px 20px,14px 20px,16px 20px,18px 20px,20px 20px,22px 20px}
+[data-px="send"]{--px-w:22px;--px-h:22px;--px:2px 2px,2px 4px,4px 4px,2px 6px,6px 6px,8px 6px,2px 8px,10px 8px,12px 8px,2px 10px,14px 10px,16px 10px,2px 12px,18px 12px,20px 12px,22px 12px,2px 14px,14px 14px,16px 14px,2px 16px,10px 16px,12px 16px,2px 18px,6px 18px,8px 18px,2px 20px,4px 20px,2px 22px}
+[data-px="sound"]{--px-w:22px;--px-h:22px;--px:10px 4px,8px 6px,10px 6px,16px 6px,2px 8px,4px 8px,6px 8px,10px 8px,18px 8px,2px 10px,10px 10px,14px 10px,20px 10px,2px 12px,10px 12px,16px 12px,20px 12px,2px 14px,10px 14px,14px 14px,20px 14px,2px 16px,4px 16px,6px 16px,10px 16px,18px 16px,8px 18px,10px 18px,16px 18px,10px 20px}
+[data-px="sun"]{--px-w:22px;--px-h:22px;--px:12px 2px,4px 4px,12px 4px,20px 4px,6px 6px,18px 6px,10px 8px,12px 8px,14px 8px,8px 10px,16px 10px,2px 12px,4px 12px,6px 12px,8px 12px,16px 12px,18px 12px,20px 12px,22px 12px,8px 14px,16px 14px,10px 16px,12px 16px,14px 16px,6px 18px,18px 18px,4px 20px,12px 20px,20px 20px,12px 22px}
+[data-px="term"]{--px-w:22px;--px-h:22px;--px:2px 4px,4px 4px,6px 4px,8px 4px,10px 4px,12px 4px,14px 4px,16px 4px,18px 4px,20px 4px,22px 4px,2px 6px,22px 6px,2px 8px,6px 8px,22px 8px,2px 10px,8px 10px,22px 10px,2px 12px,10px 12px,22px 12px,2px 14px,8px 14px,22px 14px,2px 16px,6px 16px,12px 16px,14px 16px,16px 16px,18px 16px,22px 16px,2px 18px,22px 18px,2px 20px,4px 20px,6px 20px,8px 20px,10px 20px,12px 20px,14px 20px,16px 20px,18px 20px,20px 20px,22px 20px}
+[data-px="text"]{--px-w:22px;--px-h:22px;--px:4px 6px,6px 6px,8px 6px,10px 6px,12px 6px,14px 6px,16px 6px,18px 6px,20px 6px,4px 8px,12px 8px,20px 8px,12px 10px,12px 12px,12px 14px,12px 16px,10px 18px,12px 18px,14px 18px}
+[data-px="wordmark"]{--px-w:98px;--px-h:14px;--px:4px 2px,6px 2px,8px 2px,14px 2px,16px 2px,18px 2px,20px 2px,22px 2px,32px 2px,34px 2px,36px 2px,42px 2px,44px 2px,46px 2px,48px 2px,50px 2px,54px 2px,56px 2px,58px 2px,60px 2px,62px 2px,66px 2px,68px 2px,70px 2px,72px 2px,74px 2px,80px 2px,82px 2px,84px 2px,90px 2px,92px 2px,94px 2px,96px 2px,98px 2px,2px 4px,10px 4px,18px 4px,30px 4px,38px 4px,42px 4px,54px 4px,70px 4px,78px 4px,86px 4px,90px 4px,2px 6px,10px 6px,18px 6px,30px 6px,38px 6px,42px 6px,54px 6px,70px 6px,78px 6px,90px 6px,2px 8px,4px 8px,6px 8px,8px 8px,10px 8px,18px 8px,30px 8px,38px 8px,42px 8px,44px 8px,46px 8px,48px 8px,54px 8px,56px 8px,58px 8px,60px 8px,70px 8px,78px 8px,90px 8px,92px 8px,94px 8px,96px 8px,2px 10px,10px 10px,18px 10px,30px 10px,38px 10px,42px 10px,54px 10px,70px 10px,78px 10px,90px 10px,2px 12px,10px 12px,18px 12px,30px 12px,38px 12px,42px 12px,54px 12px,70px 12px,78px 12px,86px 12px,90px 12px,2px 14px,10px 14px,14px 14px,16px 14px,18px 14px,20px 14px,22px 14px,32px 14px,34px 14px,36px 14px,42px 14px,54px 14px,66px 14px,68px 14px,70px 14px,72px 14px,74px 14px,80px 14px,82px 14px,84px 14px,90px 14px,92px 14px,94px 14px,96px 14px,98px 14px}
+/* PX_ICONS_END */
+/* R101: 旧い名前（R78 から据え置いてきた --paper / --accent …）を端末の配色（--t-*）へ結び直す＝既存の規則を書き換えずに
+   色・角丸 0・影なしが全部に効く。.t-dark（部屋の窓の中）でも結び直す（var() は定義した要素で解決される＝:root だけだと
+   窓の中がライトの値のまま継承される）。 */
+:root, .t-dark {
+  --paper: var(--t-bg);
+  --paper-2: var(--t-panel);
+  --paper-3: var(--t-panel-2);
+  --glass: var(--t-panel);
+  --glass-solid: var(--t-panel);
+  --line: var(--t-line);
+  --ink: var(--t-ink);
+  --ink-2: var(--t-ink-soft);
+  --ink-3: var(--t-ink-faint);
+  --accent: var(--t-accent);
+  --accent-2: var(--t-accent);
+  --accent-chip: var(--t-panel-2);
+  --accent-3d: var(--t-accent);
+  --warn: var(--t-warn);
+  --warn-chip: var(--t-panel-2);
+  --alert: var(--t-attn);
+  --alert-chip: var(--t-panel-2);
+  --rest: var(--t-ink-faint);
+  --on-accent: var(--t-on-accent);
+  --radius-sm: 0;
+  --radius: 0;
+  --shadow: none;
+  --stage-bg: var(--t-bg);
   --sage: var(--accent);
   --amber: var(--warn);
-  --danger: var(--alert);
+  --danger: var(--t-danger);
   --muted: var(--ink-2);
+  --scrim: rgba(0, 0, 0, .55);
 }
+:root { --term-top: calc(224px + env(safe-area-inset-top)); --tab-height: 60px; }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html { overflow-x: hidden; }
 body {
   background: var(--paper); color: var(--ink);
-  font-family: -apple-system, "Hiragino Sans", system-ui, sans-serif;
-  font-size: 14px; line-height: 1.45;
-  padding-bottom: calc(80px + env(safe-area-inset-bottom));
+  font-family: var(--t-mono);
+  font-size: 14px; line-height: 1.5;
+  padding-bottom: calc(var(--tab-height) + env(safe-area-inset-bottom));
   -webkit-tap-highlight-color: transparent;
 }
 main { padding: 0; max-width: 640px; margin: 0 auto; }
@@ -77,6 +236,13 @@ textarea, input {
 .card .age { font-size: 11px; color: var(--ink-3); font-weight: 700; white-space: nowrap; }
 .card .age.fresh { color: var(--accent); }
 .card .mute { font-size: 11px; margin-left: 4px; }
+/* R104-1: 指示待ちの各行に、相手1人への返信と送信前の確認を置く。 */
+#list .idleactions { display: flex; flex-wrap: nowrap; gap: 6px; margin-top: 8px; }
+#list .idleactions button { flex: 1 1 0; width: auto; min-width: 44px; min-height: 44px; margin: 0; padding: 6px 8px; font-size: 12px; white-space: nowrap; color: var(--t-ink-soft); background: transparent; border-color: var(--t-line); }
+#list .idleconfirm { display: flex; align-items: center; gap: 6px; min-height: 44px; margin-top: 8px; border-top: 1px solid var(--t-line); }
+#list .idleconfirmtext { flex: 1; min-width: 0; font-size: 12px; overflow-wrap: anywhere; }
+#list .idleconfirm button { flex: none; width: auto; min-height: 44px; margin: 0; padding: 6px 8px; font-size: 12px; }
+#list .card.flash { background: var(--t-panel-2); border-color: var(--t-accent); }
 .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--rest); }
 .dot.working { background: var(--accent); }
 .dot.waiting { background: var(--warn); }
@@ -90,10 +256,14 @@ textarea, input {
 .mono.st-working { border-color: var(--accent); }
 .mono.st-waiting { border-color: var(--warn); }
 .mono.attn { border-color: var(--alert); }
+/* 道具の印（Claude/Codex/OpenClaw）。R113-B で一覧・シート・端末の見出しにも出す（同じ印）。形は既存の丸のまま＝§13.6 の「角丸」の禁止との
+   整合は別の判断（R113-B では変えない）。 */
 .vendor-dot { display: inline-block; width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--rest); border: 1px solid var(--line); }
+.shhead h3 .vendor-dot { margin-right: 6px; vertical-align: middle; }
 .vendor-claude { background: #e9e0d5; }
 .vendor-codex { background: #787676; }
 .vendor-openclaw { background: #bb4838; }
+.vendor-bot { background: #5d76a8; }
 .level { flex: none; border-radius: var(--radius-sm); padding: 0 4px; font-size: 11px; font-variant-numeric: tabular-nums; color: var(--accent); background: var(--accent-chip); white-space: nowrap; }
 .detail { display: block; color: var(--ink-2); font-size: 11px; font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dchip, .ocpill { flex: none; font-size: 11px; font-weight: 700; color: var(--warn); background: var(--warn-chip); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 0 8px; white-space: nowrap; }
@@ -102,29 +272,33 @@ textarea, input {
 .listenoff { background: var(--warn-chip); border: 1px solid var(--warn); border-radius: var(--radius-sm); padding: 12px; margin-bottom: 8px; font-size: 12.5px; overflow-wrap: break-word; }
 .sessrows { display: flex; flex-direction: column; gap: 4px; margin: 4px 0 8px; }
 .sessrow { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--ink-2); }
-.sessrow .sessid { font-family: ui-monospace, Menlo, monospace; font-size: 11px; color: var(--ink-3); }
+.sessrow .sessid { font-family: var(--t-mono); font-size: 11px; color: var(--ink-3); }
 .feed { margin-top: 8px; border-top: 1px solid var(--line); padding-top: 8px; display: flex; flex-direction: column; gap: 4px; }
 .feedline { font-size: 12.5px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .empty { color: var(--ink-2); text-align: center; padding: 40px 16px; }
 .setup { max-width: 520px; margin: 0 auto; padding: 16px; }
 .setup h2 { font-size: 18px; margin-bottom: 8px; }
 .setup p { color: var(--ink-2); margin-bottom: 12px; }
+/* R114-P: ペアリングの無いブラウザ（standalone でない）は「ホーム画面から」を先に。ペアリングの案内は押した後だけ */
+#su_home .hint { font-size: 12px; color: var(--t-ink-soft); }
+#setup #su_home_pair { width: 100%; min-height: 44px; margin: 4px 0 16px; }
 #sheetwrap, #logwrap, #runwrap, #lnwrap, #reswrap, #setwrap { position: fixed; inset: 0; z-index: 90; pointer-events: none; }
-#runwrap, #lnwrap, #reswrap { z-index: 112; }
+#runwrap, #lnwrap, #reswrap { z-index: 118; }
 #setwrap { z-index: 115; }
 #logwrap { z-index: 120; }
 #sheetwrap.open, #logwrap.open, #runwrap.open, #lnwrap.open, #reswrap.open, #setwrap.open { pointer-events: auto; }
-.mask { position: absolute; inset: 0; background: rgba(46,45,44,.32); opacity: 0; transition: opacity 120ms ease-out; }
+.mask { position: absolute; inset: 0; background: var(--scrim); opacity: 0; transition: opacity 120ms ease-out; }
 .open > .mask { opacity: 1; }
 .sheet {
   position: absolute; left: 0; right: 0; bottom: 0; background: var(--paper); color: var(--ink);
-  border: 1px solid var(--line); border-radius: 14px 14px 0 0;
+  border: 1px solid var(--line); border-radius: 0;
   padding: 16px 16px calc(16px + env(safe-area-inset-bottom)); box-shadow: var(--shadow);
   max-width: 640px; margin: 0 auto; max-height: 88dvh; overflow-y: auto;
   transform: translateY(110%); transition: transform 120ms ease-out;
 }
 .open > .sheet { transform: translateY(0); }
-.sheet::before { content: ""; display: block; width: 40px; height: 4px; border-radius: 10px; background: var(--paper-3); margin: 0 auto 12px; }
+/* R101: シートは下から出る「窓」＝つまみ（角丸の棒）は置かない */
+.sheet::before { content: none; }
 .sheet h3 { font-size: 18px; margin-bottom: 4px; }
 .sheet .who { color: var(--ink-2); font-size: 12.5px; }
 .shhead { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
@@ -144,6 +318,19 @@ textarea, input {
 .sheet .said { font-size: 12.5px; white-space: pre-wrap; max-height: 34vh; overflow: auto; }
 .sheet .saidq { background: var(--warn-chip); border-color: var(--warn); font-size: 14px; font-weight: 700; }
 #shsay { margin: 4px 0 12px; min-height: 44px; white-space: pre-wrap; }
+/* R103-4: 読む本文だけをスクロールし、書いた指示と送信操作は窓の下端に残す。 */
+#sheetwrap > .sheet { display: flex; flex-direction: column; padding: 0; overflow: hidden; }
+#sheetwrap .shhead { flex: none; margin: 0; padding: 12px 16px; border-bottom: 1px solid var(--t-line); }
+#shscroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 12px 16px; -webkit-overflow-scrolling: touch; }
+/* R104-1: 定型は本文の操作一覧から分けた、末尾まで送れる44pxの横1列。 */
+#sheettemplates.templatechips { display: flex; flex-wrap: nowrap; gap: 8px; max-width: 100%; margin-top: 8px; padding: 2px 2px 6px; overflow-x: auto; overscroll-behavior-x: contain; scroll-padding-inline: 2px; -webkit-overflow-scrolling: touch; }
+#sheettemplates .tpl { flex: none; width: auto; min-width: 44px; min-height: 44px; margin: 0; padding: 8px 12px; white-space: nowrap; font-size: 12px; }
+#shcompose { flex: none; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); border-top: 1px solid var(--t-line); background: var(--t-panel); }
+#shcompose #freetext { display: block; min-height: 64px; max-height: 96px; padding: 8px 10px; resize: none; font: 16px/1.4 var(--t-mono); background: var(--t-bg); color: var(--t-ink); border-color: var(--t-line); }
+#shactions { display: flex; align-items: stretch; gap: 8px; margin-top: 8px; }
+#shactions button { width: auto; min-height: 44px; margin: 0; padding: 8px 12px; font-size: 12.5px; }
+#shactions #sh_send { flex: 1 1 auto; }
+#shactions #sh_close { flex: none; }
 .logsheet { max-height: 94dvh; }
 #lgbody { margin: 4px 0 12px; }
 .lgline { font-size: 14px; color: var(--ink-2); padding: 12px 0; border-bottom: 1px solid var(--line); white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -157,41 +344,99 @@ textarea, input {
 /* id付きの詳細度で汎用buttonを上書き。全操作44px以上。 */
 #setwrap .seg button { width: auto; min-width: 44px; min-height: 44px; margin: 0; padding: 8px 12px; font-size: 12.5px; background: var(--paper-2); color: var(--ink-2); border-color: var(--line); }
 #setwrap .seg button.on { background: var(--accent); color: var(--on-accent); }
+/* 設定も四つのタブの一面。実行・起動の窓を閉じると、この面へ戻る。 */
+body.settings-open #setwrap { bottom: calc(var(--tab-height) + env(safe-area-inset-bottom)); }
+body.settings-open #setwrap > .mask { display: none; }
+body.settings-open #setwrap > .sheet {
+  inset: 0; max-height: none; max-width: 640px; border: 0;
+  padding: calc(16px + env(safe-area-inset-top)) 16px 20px;
+}
+#setwrap #st_title { font-size: 14px; font-weight: 500; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+#setwrap #st_title::before { content: "\2524 "; color: var(--ink-3); }
+#setwrap #st_title::after { content: " \251c"; color: var(--ink-3); }
+/* R103-3: 読む状態と、操作する設定を窓の題名で分ける。 */
+#st_status { border: 1px solid var(--t-line); background: var(--t-panel); padding: 10px 12px; margin-top: 12px; font-family: var(--t-mono); }
+#setwrap #st_status_title { font-size: 12.5px; font-weight: 500; color: var(--t-ink-soft); margin: 0 0 8px; }
+.st-state { font-size: 12.5px; line-height: 1.5; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.st-state.attn { color: var(--t-attn); }
+#setwrap .setgroup { margin-top: 20px; }
+#setwrap .setgroup > .sec { color: var(--t-ink-soft); font-size: 12.5px; font-weight: 500; margin: 0; }
+#setwrap .setgroup > .setrow:last-of-type { border-bottom-color: var(--t-line-soft); }
+#st_res_row .lb { font-size: 12.5px; font-weight: 500; }
+#st_apv_row.enrolled > div:first-child { display: none; }
+#st_apv_row.enrolled .seg { max-width: none; justify-content: flex-start; }
+#setwrap #st_pt_btn { background: transparent; font-size: 11px; padding: 8px; }
+#st_cs_details { margin: 8px 0 16px; }
+#st_cs_details summary { display: flex; align-items: center; min-height: 44px; font-size: 12.5px; color: var(--t-ink-soft); cursor: pointer; }
+#st_cs_details summary::before { content: "[ + ] "; white-space: pre; }
+#st_cs_details[open] summary::before { content: "[ - ] "; }
+#st_cs_note { font-size: 11px; color: var(--t-ink-soft); line-height: 1.5; margin-top: 4px; }
+#tb_set_dot { position: absolute; top: 6px; left: calc(50% + 13px); width: 6px; height: 6px; border-radius: 50%; background: var(--t-attn); }
+#st_run_row .hint { max-width: 34ch; }
 .setver { text-align: center; color: var(--ink-3); font-size: 11px; margin-top: 12px; }
 #note { position: fixed; left: 50%; bottom: calc(88px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 130; opacity: 0; transition: opacity 120ms ease-out; font-size: 12.5px; color: var(--on-accent); background: var(--accent); padding: 12px 16px; border-radius: var(--radius-sm); max-width: 90vw; text-align: center; box-shadow: var(--shadow); pointer-events: none; }
 #note.show { opacity: 1; }
 #note.err { background: var(--alert); }
 .topbar { position: sticky; top: 0; z-index: 20; background: var(--paper); }
 .hdr2 { background: var(--paper); display: flex; align-items: center; gap: 8px; padding: calc(8px + env(safe-area-inset-top)) 12px 8px; border-bottom: 1px solid var(--line); }
-.hdr2 .live { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex: none; }
+.hdr2 .live { width: 8px; height: 8px; border-radius: 0; background: var(--accent); flex: none; }
 .hdr2 .live.off { background: var(--rest); }
-.hdr2 .ttl { min-width: 0; flex: 1; display: flex; flex-direction: column; }
-.hdr2 .tname { font-size: 14px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.hdr2 .tsub { font-size: 11px; color: var(--ink-2); }
+/* R101: プロンプト行（<オフィス名>:~$ ▌）。カーソルは app.js の 530ms の刻み（keyframe を使わない）。 */
+.hdr2 .ttl { min-width: 0; flex: 1; display: flex; align-items: baseline; white-space: nowrap; }
+.hdr2 .tname { min-width: 0; font-size: 14px; font-weight: 700; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hdr2 .tps { flex: none; font-size: 14px; font-weight: 700; color: var(--accent); margin-left: 1px; }
+.hdr2 .cur { flex: none; display: inline-block; width: .6em; height: 1.05em; margin-left: .35em; background: var(--accent); align-self: center; }
+.hdr2 .cur.off { visibility: hidden; }
 #hstats { margin-left: auto; flex: none; display: flex; gap: 4px; }
 #hstats .hstat { display: inline-flex; align-items: center; gap: 4px; padding: 4px; font-size: 11px; color: var(--ink-2); white-space: nowrap; }
 #hstats .hstat b { font-size: 12.5px; color: var(--ink); font-variant-numeric: tabular-nums; }
 #hstats .hstat.attn b { color: var(--alert); }
-.hdr2 #ntog { width: 44px; min-width: 44px; min-height: 44px; margin: 0; padding: 8px; background: var(--paper); color: var(--ink); font-size: 18px; }
-.hdr2 #ntog.on { background: var(--accent-chip); }
+.hdr2 #ntog { display: inline-grid; place-items: center; width: 44px; min-width: 44px; min-height: 44px; margin: 0; padding: 0; background: var(--paper); color: var(--ink-2); border: 1px solid var(--line); }
+.hdr2 #ntog.on { background: var(--paper); color: var(--accent); border-color: var(--accent); }
 #deptbar { display: flex; gap: 8px; overflow-x: auto; white-space: nowrap; padding: 8px 12px; background: var(--paper); border-bottom: 1px solid var(--line); scrollbar-width: none; }
 #deptbar:empty { display: none; }
 #deptbar .deptchip { width: auto; flex: none; min-height: 44px; margin: 0; padding: 8px 12px; border: 1px solid var(--line); background: var(--paper); color: var(--ink-2); font-size: 12.5px; }
 #deptbar .deptchip.on { background: var(--accent-chip); border-color: var(--accent); color: var(--accent); }
-#tabbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 60; display: flex; gap: 8px; background: var(--paper); border-top: 1px solid var(--line); padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); }
-#tabbar button { flex: 1 1 0; width: auto; min-width: 44px; min-height: 56px; margin: 0; padding: 4px; background: var(--paper); color: var(--ink-2); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 11px; }
-#tabbar button .ic { font-size: 18px; line-height: 1; }
-#tabbar button.on { background: var(--accent-chip); color: var(--accent); border-color: var(--line); }
+#tabbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 60; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; background: var(--paper-2); border-top: 1px solid var(--line); padding: 0 8px env(safe-area-inset-bottom); }
+#tabbar button { position: relative; width: auto; min-width: 44px; height: var(--tab-height); min-height: 44px; margin: 0; padding: 6px 2px; background: transparent; color: var(--ink-3); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 11px; line-height: 1.35; border: 0; border-top: 2px solid transparent; }
+#tabbar button .ic { line-height: 0; }
+#tabbar button.on { background: var(--paper); color: var(--accent); border-top-color: var(--accent); }
+#tabbar #tb_wait_count { position: absolute; top: 6px; left: calc(50% + 13px); min-width: 1.6em; padding: 0 3px; color: var(--ink-3); background: var(--paper-2); border: 1px solid var(--line); font-size: 10px; font-variant-numeric: tabular-nums; }
+#tabbar #tb_wait.needs-you #tb_wait_count { color: var(--alert); border-color: var(--alert); }
 #banner { display: none; margin: 8px 12px; border-radius: var(--radius-sm); background: var(--alert-chip); border: 1px solid var(--alert); color: var(--alert); font-size: 12.5px; text-align: center; padding: 8px 12px; }
 body.off #banner { display: block; }
-body.off #room, body.off #list { filter: grayscale(.55); opacity: .62; }
-#list { padding: 12px; }
-/* officeは全画面3DにHUDを重ねる。ページの縦スクロールはリストだけ。 */
-html:has(#app:not(.hidden) #room:not(.hidden)),
-body:has(#app:not(.hidden) #room:not(.hidden)) { height: 100%; overflow: hidden; }
-body:has(#app:not(.hidden) #room:not(.hidden)) { padding-bottom: 0; }
-#room:not(.hidden) { position: fixed; inset: 0; z-index: 1; overflow: hidden; padding: 0; }
-#dock { position: absolute; left: 8px; right: 8px; bottom: var(--office-bottom, calc(80px + env(safe-area-inset-bottom))); z-index: 6; display: flex; flex-direction: column; gap: 8px; max-height: min(56dvh, calc(100dvh - var(--office-top, 68px) - var(--office-bottom, 80px) - 64px)); }
+body.off #room, body.off #wait, body.off #list { filter: grayscale(.55); opacity: .62; }
+#list { flex: 1 1 auto; min-height: 0; padding: 16px; overflow-y: auto; overscroll-behavior: contain; }
+/* R103-2a: プロンプト／選んだ面／四つのタブ。部屋・ミニカード・状態行は兄弟の面として分ける。 */
+html:has(#app:not(.hidden)), body:has(#app:not(.hidden)) { height: 100%; overflow: hidden; }
+body:has(#app:not(.hidden)) {
+  padding-bottom: 0; height: 100dvh; display: grid; grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
+  padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right);
+}
+body:has(#app:not(.hidden)) > .topbar { grid-row: 1; position: relative; }
+body:has(#app:not(.hidden)) > #app { grid-row: 2; min-height: 0; min-width: 0; max-width: none; width: 100%; display: flex; flex-direction: column; }
+body:has(#app:not(.hidden)) > #tabbar { grid-row: 3; position: relative; }
+/* R104-1: 題名と件数はプロンプトとロスターにある。窓の丈を部屋全景へ渡す。 */
+#officewin > .wtitle { display: none; }
+#officewin .wtitle::before { content: none; }
+#officewin .wtitle #wt_meta { margin-left: auto; font-size: 11px; color: var(--ink-2); white-space: nowrap; }
+#officewin .wtitle #wt_meta::after { content: none; }
+#dock { flex: none; display: flex; flex-direction: column; gap: 0; min-width: 0; max-height: var(--dock-max, none); overflow-y: auto; overscroll-behavior: contain; border-top: 1px solid var(--line); background: var(--paper); }
+/* あなた待ちは種類ごとの縦の一覧。本文・選択肢はこの面の幅で全文を折り返す。 */
+#wait:not(.hidden) { flex: 1 1 auto; min-height: 0; min-width: 0; display: flex; flex-direction: column; background: var(--paper); }
+#wait > .wtitle { flex: none; min-height: 44px; display: flex; align-items: center; padding: 8px 16px; font-size: 13px; font-weight: 500; border-bottom: 1px solid var(--line); }
+#attnwrap { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 0 16px 16px; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+#attncards .waitgroup { display: flex; align-items: center; min-height: 44px; margin: 8px 0 4px; font-size: 12px; font-weight: 400; color: var(--ink-2); }
+#wait .empty { padding: 32px 0; text-align: left; }
+/* ロボを一度押すと、部屋の下の独立した面に今の仕事と一つの主操作を出す。 */
+#minicard { flex: none; min-width: 0; padding: 8px 16px 12px; border-top: 1px solid var(--line); background: var(--paper-2); }
+#minihead { display: flex; align-items: center; gap: 8px; min-height: 44px; }
+#mininame { flex: 1 1 auto; min-width: 0; font-size: 14px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#ministate { flex: none; font-size: 11.5px; }
+#minicard #mini_close { flex: none; display: inline-grid; place-items: center; width: 44px; min-height: 44px; margin: 0; padding: 0; background: transparent; color: var(--ink-2); border: 1px solid var(--line); }
+#miniactivity { margin: 4px 0 12px; font-size: 13px; line-height: 1.5; color: var(--ink-2); overflow-wrap: anywhere; }
+#minicard #mini_open { min-height: 44px; margin: 0; padding: 8px 12px; font-size: 13px; }
 #attncards { display: none; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; }
 #attncards.on { display: block; }
 #attncards .attncard { margin: 0 0 8px; padding: 12px; }
@@ -201,12 +446,18 @@ body:has(#app:not(.hidden) #room:not(.hidden)) { padding-bottom: 0; }
 .attnname .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .attnkind { margin-top: 4px; font-size: 12.5px; color: var(--alert); }
 .attnq { margin-top: 8px; font-size: 12.5px; color: var(--ink); overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+/* 計画の承認の事実の行は「ここから送った言葉は…」まで読めるよう 3 行まで（シート・リスト・ログと同じ文言）。 */
+#attncards .attnq.planwait { -webkit-line-clamp: 3; }
 #attncards .attnmini { display: block; width: 100%; min-height: 44px; text-align: left; color: var(--ink); }
 .attnmini .attngo { float: right; color: var(--ink-2); font-size: 11px; }
 .attnoptions, .quickoptions { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
 .quickoptions { margin-bottom: 8px; }
 #app .qopt, #sheetwrap .qopt, #runwrap .qopt, #lnwrap .qopt { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; width: 100%; min-height: 44px; margin: 0; padding: 8px 12px; background: var(--paper); color: var(--ink); border: 1px solid var(--line); text-align: left; font-size: 12.5px; }
-.qopt .qopt-label, .qopt .qopt-desc { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* R99-P4-7: 選択肢のラベルはどの面（❗ドック・シート・実行／起動の一覧）でも切らずに全文を折り返す（390 のシートは約 27 字で
+   「…」になり、末尾だけ違う「残す／消す」を見分けられないまま 1 タップで送られた）。シートは縦にスクロールできる＝丈の制約は無い。
+   説明（desc）もシートでは折り返す。❗ドックの説明だけは 1 行（ドックの丈を守る）。門= pwa3d_smoke の _long_label_set。 */
+.qopt .qopt-label, .qopt .qopt-desc { display: block; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+#attncards .qopt .qopt-desc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .qopt .qopt-desc { color: var(--ink-2); font-size: 11px; font-weight: 400; }
 #rn_list .qopt, #ln_list .qopt { margin-bottom: 8px; }
 .attnactions { display: flex; gap: 8px; margin-top: 8px; }
@@ -214,10 +465,23 @@ body:has(#app:not(.hidden) #room:not(.hidden)) { padding-bottom: 0; }
 .attnsent { margin-top: 8px; color: var(--accent); font-size: 12.5px; }
 .attnnote { margin-top: 8px; color: var(--ink-2); font-size: 11px; }
 #attncards .attnmore { width: 100%; min-height: 44px; margin: 0 0 8px; padding: 8px 12px; background: var(--paper); color: var(--alert); border-color: var(--line); font-size: 12.5px; }
-.pushhint { padding: 12px; margin-bottom: 8px; }
-.phtext { font-size: 12.5px; }
-.phrow { display: flex; gap: 8px; margin-top: 8px; }
-#attncards .phrow button { flex: 1; width: auto; min-height: 44px; margin: 0; font-size: 12.5px; }
+/* R102-6: 通知の案内は 1 行（あなた待ちの欄を奪わない） */
+.pushhint { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; padding: 0 0 0 10px; border: 1px dashed var(--t-line); color: var(--t-ink-soft); }
+.phtext { flex: 1; min-width: 0; font-size: 11.5px; }
+.phrow { display: flex; gap: 0; margin: 0; flex: none; }
+#attncards .phrow button { flex: none; width: auto; min-width: 64px; min-height: 44px; margin: 0; padding: 4px 10px; font-size: 11.5px; border-width: 0 0 0 1px; }
+/* R102-6: あなた待ちが空のとき 1 行（INBOX ZERO） */
+#inboxzero { display: flex; align-items: center; gap: 8px; flex: none; min-height: 32px; margin: 0 0 6px; padding: 4px 10px;
+  border: 1px solid var(--t-line); background: var(--t-panel); font: 12px/1.3 var(--t-mono); color: var(--t-ink-soft); }
+#inboxzero[hidden] { display: none; }
+#inboxzero .px { color: var(--t-accent); }
+#inboxzero .iz-b { color: var(--t-accent); font-weight: 700; letter-spacing: .06em; white-space: nowrap; }
+#inboxzero .iz-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* R102-6: Last login（下の行に 15 秒） */
+#ticker .tk-login { flex: 1; min-width: 0; font: 12px/1.3 var(--t-mono); color: var(--t-accent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* R102-6: NO CARRIER（中継に届かないとき） */
+#banner .nocarrier { font-family: var(--t-mono); letter-spacing: .08em; }
+#banner .nc-t { margin-left: 8px; font-size: 11.5px; color: var(--t-ink-soft); }
 #infodock { flex: none; background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
 #ticker { display: flex; align-items: center; gap: 8px; min-height: 44px; width: 100%; margin: 0; padding: 8px 12px; background: var(--paper); color: var(--ink); text-align: left; border: 0; border-radius: 0; }
 #ticker:empty { display: none; }
@@ -226,15 +490,17 @@ body:has(#app:not(.hidden) #room:not(.hidden)) { padding-bottom: 0; }
 #ticker .tk-nm { flex: none; max-width: 32%; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #ticker .tk-act { flex: 1; min-width: 0; font-size: 12.5px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #ticker .tk-n { flex: none; font-size: 11px; color: var(--ink-2); }
-#scene3dwrap { position: absolute; inset: 0; overflow: hidden; background: var(--paper-2); }
+#scene3dwrap { position: relative; flex: 1 1 auto; min-height: 0; overflow: hidden; background: var(--t-stage); }
 #scene3dwrap, #scene3d { touch-action: none; }
-#scene3d { width: 100%; height: 100%; display: block; }
-#scene3d canvas { width: 100% !important; height: 100% !important; display: block; touch-action: manipulation; }
+#scene3d { position: relative; width: 100%; height: 100%; display: block; }
+/* R99-P4-6: 部屋はドット絵（ui/cockpit/room.js）。canvas は整数倍の実寸で置く（bootpx.js が位置と寸法を決める）＝
+   画面いっぱいへ引き伸ばすとドットがにじむ。地の色は bootpx.js が palette.js の部屋の地を #scene3dwrap に塗る */
+#scene3d canvas { position: absolute; display: block; image-rendering: pixelated; touch-action: manipulation; }
 #plates { position: absolute; inset: 0; pointer-events: none; }
 #emptyhint { position: absolute; left: 50%; top: 44%; transform: translate(-50%,-50%); z-index: 4; width: min(300px,80vw); padding: 16px; text-align: center; border-radius: var(--radius); background: var(--paper); border: 1px solid var(--line); box-shadow: var(--shadow); }
 #emptyhint .eh-t { font-size: 14px; font-weight: 700; margin-bottom: 8px; }
 #emptyhint .eh-s { font-size: 12.5px; color: var(--ink-2); }
-#topdock { position: absolute; left: 8px; right: 8px; top: var(--office-top, calc(68px + env(safe-area-inset-top))); z-index: 6; }
+#topdock { position: relative; padding: 4px 8px 0; }
 #roster { display: flex; gap: 8px; overflow-x: auto; padding: 4px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
 #roster:empty { display: none; }
 #roster .rchip { flex: none; width: 216px; min-width: 216px; min-height: 80px; margin: 0; padding: 12px; display: flex; align-items: center; text-align: left; gap: 8px; background: var(--paper); color: var(--ink); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
@@ -245,18 +511,17 @@ body:has(#app:not(.hidden) #room:not(.hidden)) { padding-bottom: 0; }
 #roster .gl { font-size: 11px; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #roster .rchip.attn { border-color: var(--alert); }
 #roster .rchip.sel { background: var(--accent-chip); border-color: var(--accent); }
-/* 対応中はロスターを1行へ圧縮。詳細・述語はDOMに残し、対応後に再表示。 */
-#room:has(#attncards.on) #roster .rchip { width: 178px; min-width: 178px; min-height: 44px; height: 44px; padding: 4px 8px; }
-#room:has(#attncards.on) #roster .mono { --asz: 24px; }
-#room:has(#attncards.on) #roster .detail,
-#room:has(#attncards.on) #roster .gl { display: none; }
-#plates .pin { position: absolute; transform: translateX(-50%); pointer-events: none; display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: var(--radius-sm); font-size: 11px; background: var(--paper); color: var(--ink); border: 1px solid var(--rest); }
+#plates .pin { position: absolute; transform: translateX(-50%); pointer-events: none; display: flex; align-items: center; justify-content: center; min-width: 20px; width: auto; padding: 0 3px; white-space: nowrap; height: 20px; border-radius: var(--radius-sm); font-size: 11px; background: var(--paper); color: var(--ink); border: 1px solid var(--rest); }
 /* 名札は44pxボタン規則の例外。既存の小型マーカーとして高さ20pxを明示。 */
 #plates .plate { position: absolute; transform: translateX(-50%); pointer-events: auto; display: flex; align-items: center; gap: 4px; width: 128px; min-width: 44px; max-width: 128px; height: 20px; min-height: 20px; margin: 0; padding: 0 4px; text-align: left; font-size: 11px; line-height: 18px; background: var(--paper); color: var(--ink); border: 1px solid var(--line); border-radius: var(--radius-sm); box-shadow: var(--shadow); }
 #plates .ptxt { flex: 1; min-width: 0; }
 #plates .detail { display: none; }
 #plates .phead { display: flex; align-items: center; gap: 4px; }
 #plates .nm { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#plates .pkind { flex: none; white-space: nowrap; font-size: 10px; color: var(--t-ink-soft); }
+#plates .pkind.k-working { color: var(--t-accent); }
+#plates .pkind.k-perm, #plates .pkind.k-question, #plates .pkind.k-plan, #plates .pkind.k-error { color: var(--t-attn); }
+#plates .pkind.k-stuck { color: var(--t-warn); }
 #plates .dot { width: 4px; height: 4px; }
 #plates .st-working .dot { background: var(--accent); }
 #plates .st-waiting .dot { background: var(--warn); }
@@ -265,6 +530,8 @@ body:has(#app:not(.hidden) #room:not(.hidden)) { padding-bottom: 0; }
 #plates .attn { border-color: var(--alert); }
 #plates .attn .dot { background: var(--alert); }
 #plates .plate.sel { border-color: var(--accent); background: var(--accent-chip); }
+/* R99-P4-L4: 狭い名札（ドット絵の部屋の ×2＝机の間隔 76px）はレベルを外して名前を残す（「ai…」「w…」の 2 文字まで削られていた） */
+#plates .plate.narrow .level { display: none; }
 #gaugebar { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; margin: 0; padding: 8px 12px; text-align: left; background: var(--paper); color: var(--ink); border: 0; border-top: 1px solid var(--line); border-radius: 0; }
 #gaugebar:empty { display: none; }
 #gaugebar .gg { flex: 1; display: grid; grid-template-columns: 1fr auto; grid-template-areas: "lb pct" "bar bar"; gap: 4px 8px; min-width: 0; align-items: center; }
@@ -274,6 +541,10 @@ body:has(#app:not(.hidden) #room:not(.hidden)) { padding-bottom: 0; }
 #gaugebar .gg-p, #gaugebar .gg-t { flex: none; max-width: 96px; display: block; }
 #gaugebar .tr, #rs_body .tr { border-radius: var(--radius-sm); background: var(--paper-3); overflow: hidden; }
 #gaugebar .tr i, #rs_body .tr i { display: block; height: 100%; background: var(--accent); }
+#gaugebar b .rem, #rs_body b .rem { font-size: 10px; font-weight: 500; color: var(--ink-2); margin: 0 1px; }
+#gaugebar .gg .lb { white-space: nowrap; text-overflow: ellipsis; overflow: hidden; min-width: 0; }
+#gaugebar .gg b { white-space: nowrap; }
+@media (max-width: 370px) { #gaugebar .gg b { font-size: 11px; } #gaugebar b .rem { font-size: 9px; } }
 #gaugebar .warn .tr i, #rs_body .warn .tr i { background: var(--warn); }
 #gaugebar .hot .tr i, #rs_body .hot .tr i { background: var(--alert); }
 #rs_body .rs-sec { font-size: 14px; font-weight: 700; margin: 12px 0 8px; }
@@ -285,21 +556,20 @@ body:has(#app:not(.hidden) #room:not(.hidden)) { padding-bottom: 0; }
 #rs_body .rs-chip { width: auto; min-height: 44px; margin: 0; background: var(--paper-2); color: var(--ink-2); border-color: var(--line); padding: 8px 12px; font-size: 12.5px; }
 #rs_body .rs-chip.on { background: var(--accent); color: var(--on-accent); }
 .chip { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
-.gesture { pointer-events: none; line-height: 1; }
-.card .gesture { position: absolute; top: 12px; right: 12px; font-size: 14px; }
 body.th-big { font-size: 18px; }
 body.th-big .card .nm { font-size: 18px; }
 body.th-big .card .st, body.th-big .feedline, body.th-big .sheet .feedbox .feedline, body.th-big .lgline, body.th-big #shsay { font-size: 18px; }
-@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; scroll-behavior: auto !important; } }
+body.motion-off *, body.motion-off *::before, body.motion-off *::after { transition: none !important; scroll-behavior: auto !important; }
 
 /* R87 dialog */
-#shdlg{margin:6px 0 10px;padding:10px 12px;border:1px solid var(--line,rgba(0,0,0,.12));border-radius:12px;max-height:44vh;overflow-y:auto;font-size:13px;line-height:1.5}
+#shdlg{margin:6px 0 10px;padding:10px 12px;border:1px solid var(--line);border-radius:0;max-height:44vh;overflow-y:auto;font-size:13px;line-height:1.5}
 #shdlg[hidden]{display:none}
 #shdlg .dlgm{margin:0 0 8px;white-space:pre-wrap;word-break:break-word}
-#shdlg .dlgm.u{color:var(--ink-2,#555)}
+#shdlg .dlgm.u{color:var(--ink-2)}
 #shdlg .dlgm .dlgr{display:inline-block;margin-right:6px;font-size:11px;font-weight:700;opacity:.7}
-#shdlg .dlgnote{font-size:11.5px;color:var(--ink-2,#555);margin-top:4px}
-#shdlg .dlgerr{font-size:12.5px;color:var(--alert,#c0483a);font-weight:700}
+#shdlg .dlgnote{font-size:11.5px;color:var(--ink-2);margin-top:4px}
+#shdlg .dlgerr{font-size:12.5px;color:var(--alert);font-weight:700}
 
 /* R96 pwa */
 #app .dchip, #sheetwrap .dchip, #banner .dchip { display: inline-block; max-width: 100%; padding: 4px 8px; font-size: 11px; line-height: 1.45; white-space: normal; overflow-wrap: anywhere; }
@@ -309,6 +579,9 @@ body.th-big .card .st, body.th-big .feedline, body.th-big .sheet .feedbox .feedl
 #app .dstate-stalled, #sheetwrap .dstate-stalled, #banner .dstate-stalled,
 #app .dstate-offline, #sheetwrap .dstate-offline, #banner .dstate-offline { color: var(--alert); background: var(--alert-chip); }
 #banner { padding: 4px 12px; }
+/* 端末の登録の期限（app.js の paintCredWarn）: 切れたら赤系・3 日前からは琥珀（意味色）。本文は textContent */
+#credwarn { margin: 8px 12px; padding: 8px 12px; font-size: 12.5px; line-height: 1.5; background: var(--paper-2); border: 1px solid var(--line); color: var(--warn); }
+#credwarn.expired { color: var(--alert); border-color: var(--alert); }
 #banner .dchip { border: 0; }
 #attncards .attnnav { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; padding: 0 4px; }
 #attncards .attncount { font-size: 12.5px; font-weight: 700; color: var(--ink-2); font-variant-numeric: tabular-nums; }
@@ -322,5 +595,1074 @@ body.th-big .card .st, body.th-big .feedline, body.th-big .sheet .feedbox .feedl
 #list .meta { flex-wrap: wrap; }
 #list .meta .dchip { order: 1; margin-left: 44px; }
 #roster .dchip { align-self: flex-start; }
-/* 圧縮中も配達状態は省略せず、保存済みの説明が折り返せる高さを確保する。 */
-#room:has(#attncards.on) #roster .rchip { height: auto; min-height: 64px; }
+/* R99-P4-6: ❗ の選択肢のラベルはどの形でも切らずに全文を折り返す（.qopt .qopt-label・上）。箱に入らないときのドックの高さ＝
+   app.js の fitAttnDock。R99-P4-7: 伸ばし切っても選択肢が全部は入らない画面（375×667 で 40 字 × 4 件 等）は、fitAttnDock が
+   選択肢を DOM から外して「選択肢 N 件を開く」（シートを選択肢の位置で開く）に差し替える＝一部だけ見える形を出さない。 */
+#attncards .attnoptsopen { display: block; width: 100%; min-height: 44px; margin: 8px 0 0; padding: 8px 12px; background: var(--paper); color: var(--ink); border: 1px solid var(--line); font-size: 12.5px; }
+
+
+/* R100-1a（本人「ターミナルっぽく、ちゃんと内容をスクロールして確認できるように」2026-09-29）: ターミナル画面。
+   行は全部 textContent（app.js の termRow）。結果の行は畳み、タップで開く。上へ戻している間は自動スクロールせず「↓ 新着 N」。 */
+#termwrap { position: fixed; top: var(--term-top); left: 0; right: 0; bottom: 0; z-index: 125; display: flex; flex-direction: column; background: var(--t-bg); color: var(--t-ink);
+  padding: 0 env(safe-area-inset-right) 0 env(safe-area-inset-left); border-top: 1px solid var(--t-line);
+  visibility: hidden; pointer-events: none; opacity: 0; transform: translateY(16px); transition: none; }
+#termwrap.open { visibility: visible; pointer-events: auto; opacity: 1; transform: translateY(0); transition: transform 160ms ease-out, opacity 160ms ease-out; }
+#sessionstrip { flex: none; display: flex; min-width: 0; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; border-bottom: 1px solid var(--t-line); background: var(--t-panel); -webkit-overflow-scrolling: touch; }
+#sessionstrip .sessionpick { flex: none; width: auto; min-width: 100px; max-width: 220px; min-height: 60px; margin: 0; padding: 8px 16px; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 4px; text-align: left; font-weight: 400; color: var(--t-ink-soft); background: transparent; border: 0; border-bottom: 2px solid transparent; }
+#sessionstrip .sessionpick.on, #sessionstrip .sessionpick[aria-pressed="true"] { color: var(--t-ink); background: var(--t-bg); border-bottom-color: var(--t-accent); }
+#sessionstrip .sessionname { max-width: 100%; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#sessionstrip .sessionstate { height: auto; padding: 0; border: 0; font-size: 11px; color: var(--t-ink-faint); background: transparent; }
+#sessionstrip .sessionstate .px { display: none; }
+#sessionstrip .sessionstate.k-working { color: var(--t-accent); }
+#sessionstrip .sessionstate.k-perm, #sessionstrip .sessionstate.k-question, #sessionstrip .sessionstate.k-plan, #sessionstrip .sessionstate.k-error { color: var(--t-attn); }
+#sessionstrip .sessionstate.k-stuck { color: var(--t-warn); }
+#termhead { flex: none; display: flex; align-items: center; gap: 8px; padding: 8px 12px 8px 16px; border-bottom: 1px solid var(--t-line); background: var(--t-bg); color: var(--t-ink); }
+#termname { min-width: 0; flex: 1 1 auto; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#termstate { flex: 0 1 auto; min-width: 0; flex-wrap: wrap; justify-content: flex-end; font-size: 11px; color: var(--t-ink-soft); }
+#termwrap #term_close { display: inline-grid; place-items: center; width: 44px; min-width: 44px; min-height: 44px; margin: 0; padding: 0; background: transparent; color: var(--t-ink-soft); border: 1px solid var(--t-line); }
+#termbody { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 16px; font: 12.5px/1.5 var(--t-mono); overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+#termbody .tl { margin: 0 0 4px; white-space: pre-wrap; overflow-wrap: anywhere; }
+#termbody .tl .tp { color: var(--t-ink-faint); }
+#termbody .tl.u { color: var(--t-ink); font-weight: 700; }
+#termbody .tl.u .tp { color: var(--t-accent); }
+#termbody .tl.a { color: var(--t-ink); }
+#termbody .tl.tool { color: var(--t-ink-soft); }
+#termbody .tl.tool b { color: var(--t-ink); font-weight: 700; }
+#termbody .tl.res { color: var(--t-ink-faint); }
+#termbody .tl.res.fold { cursor: pointer; }
+#termbody .tl.res.err { color: var(--t-danger); }
+#termbody .tl.q { color: var(--t-warn); }
+#termbody .tl.gap { display: block; color: var(--t-ink-faint); text-align: center; }  /* 案内の行は格子にしない（2ch の列で縦長になる） */
+#termwrap #termnew { position: absolute; right: 16px; bottom: calc(112px + env(safe-area-inset-bottom)); width: auto; min-height: 44px; margin: 0; padding: 4px 12px;
+  background: var(--t-panel-2); color: var(--t-accent); border: 1px solid var(--t-accent); font-size: 12px; }
+#termfoot { flex: none; padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); border-top: 1px solid var(--t-line); background: var(--t-panel); }
+#termnote { min-height: 1.4em; margin-bottom: 6px; font-size: 11.5px; color: var(--t-ink-soft); overflow-wrap: anywhere; }
+#termnote:empty { display: none; }
+#termnote.warn { color: var(--t-warn); }
+#termnote.err { color: var(--t-danger); }
+#termnote:has(#termnotetext) { display: flex; align-items: center; gap: 8px; }
+#termnotetext { flex: 1; min-width: 0; }
+#termwrap #termretry { width: auto; min-height: 44px; margin: 0; padding: 4px 10px; font: inherit; color: var(--t-ink); background: transparent; border: 1px solid var(--t-line); }
+#termwrap #termretry[hidden] { display: none; }
+#term_compose_lb { display: block; font-size: 12px; color: var(--t-ink); }
+#termto { margin: 2px 0 8px; font-size: 11px; color: var(--t-ink-faint); overflow-wrap: anywhere; }
+#termfoot .trow { display: flex; gap: 8px; align-items: flex-end; }
+#termwrap #termsay { flex: 1 1 auto; min-height: 44px; max-height: 120px; padding: 10px; font: 16px/1.4 var(--t-mono); background: var(--t-bg); color: var(--t-ink); border: 1px solid var(--t-line); resize: none; }
+#termwrap #term_send { width: auto; min-width: 72px; min-height: 44px; margin: 0; padding: 0 12px; background: var(--t-accent); color: var(--t-on-accent); border: 1px solid var(--t-accent); }
+/* R116-S0b: 押そうとした指の下で画面が差し替わった直後の透明の受け皿（app.js の tapCatch・ATTN_GUARD_MS の間だけ）。許可の窓（126）の上・トースト（130）の下 */
+#tapcatch { position: fixed; inset: 0; z-index: 128; }
+#st_apv_hint.ok { color: var(--accent); }
+#st_apv_hint.warn { color: var(--warn); }
+#st_apv_hint.err { color: var(--alert); }
+/* R113-A→R116-S1: 設定の ┤ 許可 ├ は 1 行（いまの状態）＋主ボタン 1 つ＋OFF のときだけ小さな 1h・4h。ふだんの ON と登録はカードの中 */
+#st_apv_main { flex-direction: column; align-items: stretch; gap: 8px; }
+#st_apv_now { font-size: 14px; font-weight: 700; line-height: 1.5; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+#st_apv_now.ph-none, #st_apv_now.ph-moved, #st_apv_now.ph-unknown { color: var(--t-attn); }
+#st_apv_main .hint { font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+#st_apv_main .seg { max-width: none; justify-content: stretch; }
+#setwrap #st_apv_main .seg #st_apv_go { width: 100%; min-height: 48px; padding: 10px 14px; font-size: 14px; font-weight: 700; background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+#setwrap #st_apv_main .seg #st_apv_go.sub { background: var(--paper-2); color: var(--ink); border-color: var(--line); }
+#setwrap #st_apv_main .seg #st_apv_go:disabled { opacity: .7; }
+/* ドット絵のアイコン（icons.css の生成物）の置き場: 大きさは生成物の --px-w/--px-h（1 ドット 2px）で決まる */
+#tabbar .ic.px, #termhead .px, #apvhead .px { color: inherit; }
+/* R116-S1 決裁カード（app.js の apvRender）: #apvwrap は置き場（#apvslot_*）へ移すだけ。1px の罫・角丸 0・影なし（§13.5）。
+   危険は 1px の朱の罫と薄い朱の地（左の帯にしない）・注意は琥珀の罫。命令の箱は 4 行（タブ 12 行）で切り、+N 行と［全文］（app.js が数える）。 */
+#apvpark { display: none; }
+#apvwrap { display: none; margin: 0 0 8px; padding: 10px 12px; background: var(--t-panel); color: var(--t-ink); border: 1px solid var(--t-line-strong); font: 12.5px/1.45 var(--t-mono); }
+#apvwrap.open { display: block; }
+#apvhead { display: flex; align-items: center; gap: 6px; min-width: 0; color: var(--t-attn); }
+#apvname { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--t-ink); }
+#apvmeta { flex: none; color: var(--t-ink-soft); font-size: 11.5px; white-space: nowrap; }
+#apvlevel { margin: 8px 0 0; padding: 4px 8px; border: 1px solid var(--t-warn); color: var(--t-ink); }
+#apvlevel[hidden] { display: none; }
+#apvlevel.lvdanger { border-color: var(--alert); background: color-mix(in srgb, var(--alert) 10%, transparent); }
+#apvview .apvtool { margin-top: 6px; color: var(--t-ink-soft); font-size: 11.5px; overflow-wrap: anywhere; }
+#apvview .apvbox { margin: 4px 0 0; padding: 6px 8px; white-space: pre-wrap; overflow-wrap: anywhere; word-break: normal; font: inherit; color: var(--t-ink);
+  background: var(--t-bg); border: 1px solid var(--t-line); max-height: calc(var(--apv-lines, 4) * 1.45em); overflow: hidden; }
+#apvview .apvbox.full, #apvview .apvrest { max-height: min(50vh, 420px); overflow-y: auto; overscroll-behavior: contain; }
+/* 端末の中（#apvslot_term・横分割では真ん中の列）: カードは置き場ごと縮み、中でスクロールする＝［許可］［拒否］は下に貼りつく
+   （R116-S1 の別モデルレビュー 2 巡＋390×844 の実寸: 本文が 32px まで潰れ、カードと返信欄が引き出しの下端を越えて「次の一手」の帯の下へ潜った）。
+   カードがある間は返信欄を畳む（カードの［拒否して指示…］と同じ口）・本文は min(96px, 18vh) を残す・全文は箱の中でなく置き場ごとスクロール。
+   横分割の右の列（幅 143px〜）にはカードを置かない（844×390 でボタンが 1 文字ずつ折り返して縦に伸び、固定のドックの下へ潜った） */
+#apvslot_term { flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+#apvslot_term #apvacts { position: sticky; bottom: 0; z-index: 1; margin: 8px -12px 0; padding: 8px 12px; background: var(--t-panel); border-top: 1px solid var(--t-line); }
+#apvslot_term #apvview .apvbox.full, #apvslot_term #apvview .apvrest { max-height: none; overflow: visible; }
+#termwrap:has(#apvslot_term > #apvwrap.open) #termfoot { display: none; }
+#termwrap:has(#apvslot_term > #apvwrap.open) #termbody { flex: 1 0 min(96px, 18vh); }
+#apvview .apvmore { display: flex; align-items: center; gap: 8px; }
+#apvview .apvmore:empty { display: none; }
+#apvview .apvplus { color: var(--t-ink-soft); font-size: 11.5px; }
+#apvview .apvfullbtn { width: auto; min-height: 44px; margin: 0; padding: 0 12px; font-size: 12px; }
+#apvview .apvrest .ak { margin-top: 6px; color: var(--t-ink-soft); font-size: 11px; }
+#apvview .apvrest .av { margin: 2px 0 0; padding: 6px 8px; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; background: var(--t-bg); border: 1px solid var(--t-line); }
+#apvview .apvrest[hidden] { display: none; }
+#apvview .apvload { margin-top: 4px; color: var(--t-ink-soft); }
+#apvwhy { margin-top: 6px; color: var(--t-warn); }
+#apvnote { margin-top: 6px; font-size: 11.5px; color: var(--t-ink-soft); overflow-wrap: anywhere; }
+#apvwhy:empty, #apvnote:empty { display: none; }
+#apvnote.err { color: var(--t-danger); }
+#apvacts { display: flex; gap: 8px; margin-top: 8px; }
+#apvacts[hidden] { display: none; }
+#apvacts button { flex: 1 1 auto; width: auto; min-width: 0; min-height: 44px; margin: 0; padding: 8px 6px; font-size: 12.5px; }
+#apvwrap #apv_allow, #apvwrap #apv_fix { flex: 2 1 auto; background: var(--t-accent); color: var(--t-on-accent); border: 1px solid var(--t-accent); font-weight: 700; }
+#apvwrap #apv_allow:disabled { background: transparent; color: var(--t-ink-faint); border-color: var(--t-line); }
+#apvwrap #apv_fix:disabled { opacity: .7; }
+#apvwrap #apv_allow[hidden], #apvwrap #apv_fix[hidden] { display: none; }
+#apvwrap #apvdeny, #apvwrap #apvdenysend { background: transparent; color: var(--t-danger); border: 1px solid var(--t-danger); }
+#apvdenybox { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+#apvdenybox[hidden] { display: none; }
+#apvdenytext { flex: 1 1 auto; min-width: 0; min-height: 44px; padding: 8px; font: 16px/1.4 var(--t-mono); background: var(--t-bg); color: var(--t-ink); border-color: var(--t-line); }
+#apvwrap #apvdenysend { flex: none; width: auto; min-height: 44px; margin: 0; padding: 0 10px; font-size: 12px; }
+#apvdenyundo { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 44px; margin-top: 8px; font-size: 12.5px; color: var(--t-ink-soft); }
+#apvdenyundo[hidden] { display: none; }
+#apvwrap #apvdenycancel { flex: none; width: auto; min-height: 44px; margin: 0; padding: 0 12px; font-size: 12px; }
+#apvslot_home #apvwrap { margin: 8px 0 0; }
+#apvslot_term #apvwrap { margin: 0; border-width: 1px 0 0; }
+body.apv-home #officewait { display: none !important; }
+/* あなた待ちタブ・横の右の列: 焦点でない許可は 1 行（押すとその件がカードに） */
+.apvrow { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; margin: 0 0 8px; padding: 6px 12px; text-align: left; font-weight: 400;
+  background: var(--paper); border: 1px solid var(--line); color: var(--ink); }
+.apvrow strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.apvrow .apvrowt { flex: none; margin-left: auto; color: var(--ink-3); font-size: 11.5px; font-family: var(--t-mono); }
+#attncards .apvrow .attnsent { margin-top: 0; color: var(--accent); font-family: inherit; }
+#st_apv_on_row { padding: 0 0 8px; }
+#setwrap #st_apv_on_row .seg button { font-size: 12px; }
+
+/* R103-2a: オフィスを見ている間、窓に別の面を重ねない。端末を開くと窓を全景の上帯へ縮める。 */
+#room:not(.hidden) {
+  position: relative; flex: 1 1 auto; min-height: 0; min-width: 0; overflow: hidden; padding: 0;
+  display: flex; flex-direction: column; --win-min: 198px;
+}
+#room > #topdock { order: 0; flex: none; min-width: 0; }
+#room > #officewin { order: 1; flex: 1 1 auto; min-width: 0; min-height: var(--win-min); display: flex; flex-direction: column; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+#room > .empty { order: 3; margin: 8px 12px; }
+body.term-open #room:not(.hidden) { flex: none; height: var(--term-room-height, 198px); --win-min: 0px; }
+body.term-open #room > #officewin { min-height: 0; }
+body.term-open #topdock, body.term-open #rosterband, body.term-open #deptbar,
+body.term-open #minicard, body.term-open #dock, body.term-open #emptyhint, body.term-open #no3d { display: none; }
+#no3d { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; font-size: 12.5px; color: var(--ink-2); }
+#no3d button { width: auto; min-height: 44px; margin: 0; padding: 0 16px; }
+/* R102-8: 部屋を起動できなかった理由（スクリーンショットで原因が分かる・選んでコピーできる） */
+#no3d .n3why { font: 11px/1.4 var(--t-mono); color: var(--t-ink-faint); overflow-wrap: anywhere; user-select: text; -webkit-user-select: text; }
+
+/* 右上の言葉のチップ（❗ の記号だけだった）。当たりは 44・枠は 30。許可・質問・計画は朱、止まっている? は琥珀、指示待ちは地 */
+.hdr2 .ttl { flex: 1 1 0; min-width: 48px; }
+#hstats { margin-left: auto; flex: 0 1 auto; min-width: 0; display: flex; align-items: center; gap: 2px; overflow: hidden; }
+#hstats .ichip { flex: none; display: inline-flex; align-items: center; width: auto; min-width: 0; min-height: 44px; margin: 0; padding: 0 2px;
+  background: transparent; color: var(--ink-2); border: 0; font-size: 12px; }
+#hstats .ichip .ib { display: inline-flex; align-items: center; gap: 4px; height: 30px; padding: 0 8px; border: 1px solid var(--line); white-space: nowrap; }
+#hstats .ichip b { color: var(--ink); font-variant-numeric: tabular-nums; }
+#hstats .ichip .ig { font-family: var(--t-mono); color: var(--ink-3); }
+#hstats .ichip.k-perm .ib, #hstats .ichip.k-question .ib, #hstats .ichip.k-plan .ib, #hstats .ichip.k-error .ib { color: var(--alert); border-color: var(--alert); background: var(--alert-chip); }
+#hstats .ichip.k-perm b, #hstats .ichip.k-question b, #hstats .ichip.k-plan b, #hstats .ichip.k-error b { color: var(--alert); }
+#hstats .ichip.k-stuck .ib { color: var(--warn); border-color: var(--warn); }
+#hstats .ichip.k-stuck b { color: var(--warn); }
+#hstats .ichip.nw .w { display: none; }
+#hstats .calm { padding: 0 6px; font-size: 11px; color: var(--ink-3); white-space: nowrap; }
+
+/* ロスター帯は 1 行（モノグラム＋名前＋状態の語）。述語・配達状態・レベルは一覧とシートへ（DOM には残す） */
+#topdock { padding: 0; border-bottom: 1px solid var(--line); background: var(--paper); }
+#roster { gap: 0; padding: 0; align-items: stretch; }
+#roster .rchip { width: auto; min-width: 0; max-width: 232px; height: 44px; min-height: 44px; padding: 0 12px 0 8px; gap: 6px;
+  background: transparent; color: var(--ink); border: 0; border-right: 1px solid var(--line); border-bottom: 2px solid transparent; box-shadow: none; }
+#roster .rchip .mono { --asz: 20px; }
+#roster .rtxt { flex-direction: row; align-items: center; gap: 6px; }
+#roster .rhead { gap: 6px; }
+#roster .nm { flex: 0 1 auto; max-width: 128px; font-size: 12.5px; }
+#roster .detail, #roster .gl, #roster .level, #roster .dchip, #roster .vendor-dot { display: none; }
+#roster .skw { flex: none; font-size: 11px; color: var(--ink-3); white-space: nowrap; }
+#roster .skw.k-working { color: var(--accent); }
+#roster .skw.k-perm, #roster .skw.k-question, #roster .skw.k-plan, #roster .skw.k-error { color: var(--alert); }
+#roster .skw.k-stuck { color: var(--warn); }
+#roster .rchip.attn { border-color: var(--line); background: var(--alert-chip); }
+#roster .mut { flex: none; padding: 0 3px; font-size: 10.5px; line-height: 1.4; color: var(--warn); border: 1px solid var(--warn); white-space: nowrap; }
+#roster .rchip.sel { background: var(--paper-2); border-bottom-color: var(--accent); }
+
+/* あなた待ちのカード: 名前・状態の語・待ち時間／全文／選択肢（1タップ＋2秒）／操作 */
+#attncards.on { display: block; overflow: visible; }
+#attncards .attnnav { display: flex; align-items: center; gap: 4px; min-height: 36px; margin: 0; padding: 0 4px 0 8px; background: var(--paper-2); border-bottom: 1px solid var(--line); }
+#attncards .attncount { flex: 1 1 auto; font-size: 12px; font-weight: 700; color: var(--alert); padding: 0; border: 0; background: none; }
+#attncards .attncount::before { content: "\2524 "; color: var(--ink-3); font-weight: 400; }
+#attncards .attncount::after { content: " \251c"; color: var(--ink-3); font-weight: 400; }
+#attncards .attnprev, #attncards .attnnext { flex: none; width: 44px; min-width: 44px; min-height: 44px; height: 44px; margin: 0; padding: 0; font-size: 16px; line-height: 1;
+  background: transparent; color: var(--ink); border: 0; border-left: 1px solid var(--line); }
+#attncards .attncard { margin: 0 0 12px; padding: 12px; background: var(--paper); border: 1px solid var(--line); box-shadow: none; border-radius: 0; }
+#attncards .attncard.flash { background: var(--alert-chip); }
+#attncards .attnhead { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+#attncards .attnname { flex: 1 1 calc(100% - 32px); min-width: 0; width: auto; min-height: 44px; margin: 0; padding: 0; display: flex; align-items: center;
+  background: transparent; color: var(--ink); border: 0; font-size: 14px; font-weight: 700; text-align: left; }
+#attncards .attnhead > .ktag { margin-left: 32px; }
+#attncards .attnname .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ktag { flex: none; display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 6px; font-size: 11.5px; white-space: nowrap; border: 1px solid var(--line); color: var(--ink-2); }
+.ktag.k-perm, .ktag.k-question, .ktag.k-plan, .ktag.k-error { color: var(--alert); border-color: var(--alert); background: var(--alert-chip); }
+.ktag.k-stuck { color: var(--warn); border-color: var(--warn); }
+#attncards .attnage { flex: none; font-size: 11px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+#attncards .attnkind { display: none; }
+#attncards .attnq, #attncards .attnq.planwait { display: block; margin-top: 8px; font-size: 13px; line-height: 1.5; color: var(--ink); overflow: visible; -webkit-line-clamp: unset; }
+#attncards .attnq .tp { color: var(--ink-3); font-family: var(--t-mono); }
+#attncards .attnq b { font-family: var(--t-mono); }
+#attncards .attncard > .dchip { margin-top: 6px; }
+#attncards .attnoptions { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+#attncards .attnoptions .qopt { flex-direction: row; align-items: center; gap: 10px; min-height: 44px; padding: 6px 12px 6px 10px; }
+#attncards .qopt .qopt-n { flex: none; min-width: 1.2em; font-family: var(--t-mono); color: var(--accent); font-weight: 700; }
+/* ラベル・推奨・説明は全文を折り返して読む。 */
+#attncards .qopt .qopt-t { flex: 1 1 auto; min-width: 0; display: block; line-height: 1.4; }
+#attncards .qopt .qopt-t > * { display: inline; margin-right: 6px; }
+#attncards .qopt .qopt-desc { white-space: normal; overflow: visible; text-overflow: clip; }
+.qopt .qopt-rec { display: inline-block; align-self: flex-start; padding: 0 4px; font-size: 10.5px; line-height: 1.4; color: var(--accent); border: 1px solid var(--accent); }
+#attncards .qpend { display: flex; align-items: center; gap: 8px; margin-top: 8px; padding: 6px 6px 6px 12px; border: 1px solid var(--accent); background: var(--accent-chip); }
+#attncards .qpend .qpt { flex: 1 1 auto; min-width: 0; font-size: 12.5px; color: var(--ink); overflow-wrap: anywhere; }
+#attncards .qpend .qundo { flex: none; width: auto; min-height: 44px; margin: 0; padding: 0 16px; }
+#attncards .attnactions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+#attncards .attnactions button { flex: 1 1 auto; width: auto; min-width: 72px; min-height: 44px; margin: 0; padding: 8px 12px; font-size: 12.5px; }
+#attncards .attnactions .apvgo { flex-basis: 100%; }
+#attncards .attnactions .deny { color: var(--alert); border-color: var(--alert); background: transparent; }
+#attncards .attnactions .attnghost { flex-basis: 100%; min-height: 44px; font-size: 12px; }
+#attncards .attnsent { margin-top: 8px; font-size: 12px; color: var(--accent); }
+#attncards .pushhint { margin: 0; border: 0; border-bottom: 1px solid var(--line); }
+
+/* R104-1: 同期と残り枠は44pxの状態の1行。棒はリソースの窓に集める。 */
+#infodock { border: 0; border-top: 1px solid var(--line); border-radius: 0; box-shadow: none; background: var(--paper); }
+#ticker { min-height: 44px; max-height: 44px; padding: 4px 12px; gap: 0; overflow-x: auto; overflow-y: hidden; white-space: nowrap; scrollbar-width: none; -webkit-overflow-scrolling: touch; font: 11px/1.35 var(--t-mono); }
+#ticker::-webkit-scrollbar { display: none; }
+#ticker .tk-sync, #ticker .tk-sep, #ticker .tk-login { flex: none; white-space: nowrap; }
+#ticker .tk-sync { color: var(--ink-2); }
+#ticker .tk-sync.off { color: var(--warn); }
+#ticker .tk-sep { white-space: pre; color: var(--ink-3); }
+#ticker .tk-login { min-width: auto; overflow: visible; font: inherit; }
+#ticker #gaugebar { flex: none; display: inline-flex; align-items: center; gap: 0; width: auto; min-width: 0; min-height: 0; margin: 0; padding: 0; border: 0; font: inherit; }
+#ticker #gaugebar .gg { flex: none; display: inline-flex; align-items: baseline; gap: 4px; min-width: 0; }
+#ticker #gaugebar .lb, #ticker #gaugebar b, #ticker #gaugebar b .rem { font: inherit; white-space: nowrap; overflow: visible; }
+#ticker #gaugebar .warn b { color: var(--warn); }
+#ticker #gaugebar .hot b { color: var(--alert); }
+
+/* 登録の期限の案内は 1 行（押すと設定）。窓を削らない */
+#credwarn { margin: 0; padding: 0 12px; min-height: 36px; display: flex; align-items: center; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border: 0; border-bottom: 1px solid var(--line); cursor: pointer; }
+#credwarn[hidden] { display: none; }
+#credwarn.expired { border-color: var(--line); background: var(--alert-chip); }
+/* ×1 の部屋（狭い窓）の印は小さく（ロボ 12×16 を隠さない） */
+#plates.tiny .pin { height: 14px; min-width: 14px; padding: 0 2px; font-size: 9px; line-height: 12px; }
+/* ===== R102-3 ターミナル画面＝Claude Code の文法（本人「Claude Code のセッションみたいに」「よりターミナルに近づけて」）=====
+   行は 2 列の格子（記号 2ch＋本文）。❯ 人・● AI と道具（点の色＝実行中は薄く・成功は緑・失敗は朱）・⎿ 結果・差分は行番号と ± の地。 */
+#termbody .tl { display: grid; grid-template-columns: 2ch minmax(0, 1fr); column-gap: 4px; margin: 0 0 6px; }
+#termbody .tl > .tm { color: var(--t-ink-faint); }
+#termbody .tl > .tb { min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+#termbody .tl .tl { margin: 2px 0 0; }                         /* 道具の中に入った結果（⎿） */
+#termbody .tl.u { padding: 4px 6px; margin-left: -6px; background: var(--t-panel); font-weight: 400; }
+#termbody .tl.u > .tm { color: var(--t-accent); font-weight: 700; }
+#termbody .tl.u.cmd > .tb { color: var(--t-ink-soft); }
+#termbody .tl.a > .tm { color: var(--t-ink); }
+#termbody .tl.a.err > .tb, #termbody .tl.a.err > .tm { color: var(--t-danger); }
+#termbody .tl.tool > .tm { color: var(--t-ink-faint); }
+#termbody .tl.tool.ok > .tm { color: var(--t-accent); }
+#termbody .tl.tool.bad > .tm { color: var(--t-danger); }
+#termbody .tl.tool.idle > .tm { color: var(--t-ink-soft); }
+#termbody .tl.tool .th b { color: var(--t-ink); font-weight: 700; }
+#termbody .tl.tool .th { color: var(--t-ink-soft); }
+#termbody .tl.tool .tsub { color: var(--t-ink-faint); }
+#termbody .tl.res > .tm { color: var(--t-ink-faint); }
+#termbody .tl.res { color: var(--t-ink-soft); }
+#termbody .tl.res.err { color: var(--t-danger); }
+#termbody .tres .tx { white-space: pre-wrap; }
+/* R113-B（本人裁定 2026-10-08「そのまま表示される設計に」）: 複数行の Bash の入力と長い結果は等幅の pre ブロック。横は折り返す（横スクロールを出さない・
+   393 幅の門＝pwa3d_smoke の _r113b_pins）。区切りは hairline の罫と地の明度差（§13.5）＝地は面 1 段（panel。ライトでは bg より一段暗く、
+   ダークは bg より暗い段が palette に無いので同じ panel の段）。失敗の出力の「…（中略 N 行）…」は薄い 1 行。 */
+#termbody .tpre { display: block; box-sizing: border-box; max-width: 100%; min-width: 0; margin: 4px 0 0; padding: 6px 8px; border: 1px solid var(--t-line);
+  background: var(--t-panel); font: inherit; white-space: pre-wrap; overflow-wrap: anywhere; }
+#termbody .tpre .tln, #termbody .tpre .tmid { display: block; }
+#termbody .tpre .tmid { color: var(--t-ink-faint); }
+#termbody .tcmd .tpre { color: var(--t-ink); }
+#termbody .tleft { margin: 2px 0 0; color: var(--t-ink-faint); }
+#termbody .tmore { display: block; width: auto; min-height: 44px; margin: 2px 0 0; padding: 0; background: transparent; color: var(--t-ink-faint);
+  border: 0; font: inherit; text-align: left; }
+#termbody .tdiff { margin-top: 4px; border: 1px solid var(--t-line); background: var(--t-panel); font-size: 12px; }
+#termbody .tdiff .dl { display: grid; grid-template-columns: var(--dnw, 4ch) 2ch minmax(0, 1fr); white-space: pre-wrap; overflow-wrap: anywhere; color: var(--t-ink-soft); }
+#termbody .tdiff .dn { color: var(--t-ink-faint); text-align: right; padding-right: 4px; }
+/* R113-B: 差分は行頭の +／− だけで示す（地の色の帯は使わない）。記号の色は意味色（足した＝ok・消した＝danger） */
+#termbody .tdiff .dl.add, #termbody .tdiff .dl.del { color: var(--t-ink); }
+#termbody .tdiff .dl.add .ds { color: var(--t-ok); }
+#termbody .tdiff .dl.del .ds { color: var(--t-danger); }
+#termbody .tdiff .dl.skip { color: var(--t-ink-faint); }
+#termbody .tdiff .tmore, #termbody .tdiff .tleft { padding: 0 8px; }
+/* R113-B: サブエージェントの行（kids）は畳んで 1 行・開くと同じ行の文法で hairline の箱の中に */
+#termbody .tkids { margin: 2px 0 0; }
+#termbody .tkidsbody { margin: 2px 0 0; padding: 6px 8px; border: 1px solid var(--t-line-soft); }
+#termbody .ttodo .td { display: grid; grid-template-columns: 2ch minmax(0, 1fr); }
+#termbody .ttodo .td.done .tt { color: var(--t-ink-faint); text-decoration: line-through; }
+#termbody .ttodo .td.now .tt { color: var(--t-ink); font-weight: 700; }
+#termbody .tl.think, #termbody .tl.turn, #termbody .tl.sys { color: var(--t-ink-faint); }
+#termbody .tl.think { font-size: 11.5px; }                   /* R113-B: 考えは印だけ（回数と字数）の小さな行 */
+#termbody .tl.q > .tm { color: var(--t-warn); }
+#termbody .tqb { padding: 4px 8px; border: 1px solid var(--t-warn); }
+#termbody .tqo { color: var(--t-ink-soft); }
+/* 質問・許可の q 行でそのまま答え、端末の本文に配達の進み具合を残す。 */
+#termbody .qactions { display: flex; flex-wrap: wrap; align-items: stretch; gap: 8px; margin-top: 8px; white-space: normal; }
+#termbody .qactions .qopt { display: flex; flex: 1 1 100%; flex-direction: column; align-items: flex-start; gap: 4px; width: 100%; min-height: 44px; margin: 0; padding: 8px; border: 1px solid var(--t-line); background: var(--t-panel); color: var(--t-ink); text-align: left; font: 12.5px/1.5 var(--t-mono); }
+#termbody .qactions .qopt-label { overflow-wrap: anywhere; }
+#termbody .qactions .qopt-desc { color: var(--t-ink-soft); font-size: 11.5px; }
+#termbody .qactions .qopt.ro { cursor: default; border-style: dashed; color: var(--t-ink-soft); }
+#termbody .qactions .quickoptions, #termbody .qactions .qmulti { flex: 1 1 100%; margin: 0; }
+#termbody .qactions .qfree, #termbody .qactions .tanswer-send, #termbody .qactions > button { width: auto; min-height: 44px; margin: 0; padding: 8px; font: 12.5px/1.4 var(--t-mono); background: transparent; color: var(--t-ink); border: 1px solid var(--t-line); }
+#termbody .qactions .tanswerbox { display: flex; flex: 1 1 100%; gap: 8px; min-width: 0; }
+#termbody .qactions .tanswer { width: auto; flex: 1 1 160px; min-width: 0; min-height: 44px; max-height: 88px; padding: 8px; resize: none; font: 16px/1.4 var(--t-mono); background: var(--t-bg); color: var(--t-ink); border: 1px solid var(--t-line); }
+#termbody .qactions .tanswer-send { flex: none; background: var(--t-accent); color: var(--t-on-accent); border-color: var(--t-accent); }
+#termbody .qactions .tanswer-moved { flex: 1 1 100%; color: var(--t-warn); font-size: 11.5px; }
+#termbody .tplan { min-width: 0; }
+#termbody .tplan-h { color: var(--t-accent); font-size: 11.5px; }
+#termbody .tplan-body { margin: 4px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; color: var(--t-ink); }
+#termbody .tplan-more { width: auto; min-height: 44px; margin: 6px 0 0; padding: 0 8px; font: 12px/1.4 var(--t-mono); background: transparent; color: var(--t-ink); border: 1px solid var(--t-line); }
+#termbody .tl.tolder { color: var(--t-ink-faint); }
+.planread { margin-top: 8px; }
+#termbody .tl.tsend { color: var(--t-ink-soft); }
+#termbody .tl.tsend .tsendtext { color: var(--t-ink); }
+#termbody .tl.tsend .tsendstate { margin-left: 8px; font-size: 11.5px; color: var(--t-ink-soft); }
+#termbody .tl.tsend[data-send-state="delivered"] .tsendstate { color: var(--t-accent); }
+#termbody .tl.tsend[data-send-state="expired"] .tsendstate { color: var(--t-warn); }
+#termbody .tl.tsend[data-send-state="failed"] .tsendstate, #termbody .tl.tsend[data-send-state="failed"] > .tm { color: var(--t-danger); }
+#termbody .tl.tsend .tsendretry { display: inline-block; width: auto; min-height: 44px; margin: 0 0 0 8px; padding: 0 8px; font: 12px/1.4 var(--t-mono); background: transparent; color: var(--t-danger); border: 1px solid var(--t-danger); }
+#termbody .tl.tsep { display: block; text-align: center; color: var(--t-ink-faint); margin: 8px 0; }
+#termbody .toff { margin: 8px 0 12px; padding: 10px 12px; border: 1px solid var(--t-line); background: var(--t-panel); color: var(--t-ink); }
+#termbody .toff .toh { font-weight: 700; margin-bottom: 4px; }
+#termbody .toff .tob { color: var(--t-ink-soft); font-size: 12px; }
+/* R113-B: 「最近の動き」の履歴（会話を見せるが OFF のとき）にも端末と同じ理由の文 */
+#lgbody .lgoff { margin: 12px 0 0; padding: 10px 12px; border: 1px solid var(--t-line); background: var(--t-panel); color: var(--t-ink); }
+#lgbody .lgoff .toh { font-weight: 700; margin-bottom: 4px; }
+#lgbody .lgoff .tob { color: var(--t-ink-soft); font-size: 12px; overflow-wrap: anywhere; }
+#termlive { flex: none; display: flex; align-items: center; gap: 6px; min-height: 30px; padding: 2px 12px; font: 12.5px/1.4 var(--t-mono);
+  color: var(--t-ink-soft); border-top: 1px solid var(--t-line); background: var(--t-bg); }
+#termlive:empty { display: none; }
+#termlive .sp { display: inline-block; width: 1.2ch; color: var(--t-accent); }
+#termlive.k-perm .sp, #termlive.k-question .sp, #termlive.k-plan .sp, #termlive.k-error .sp { color: var(--t-danger); }
+#termlive.k-stuck .sp { color: var(--t-warn); }
+#termstate { display: inline-flex; align-items: center; gap: 6px; }
+#termstate .tcnt { color: var(--t-ink-soft); font-size: 11px; }
+/* R102-4: 権限モード（Claude Code の入力欄の下の行と同じ情報）。計画モードは緑・確認なしは琥珀（意味色） */
+#termstate .tmode { font-size: 11px; color: var(--t-ink-soft); border: 1px solid var(--t-line); padding: 0 5px; white-space: nowrap; }
+#termstate .tmode.pm-plan { color: var(--t-accent); border-color: var(--t-accent); }
+#termstate .tmode.pm-bypassPermissions { color: var(--t-warn); border-color: var(--t-warn); }
+/* 「最近の動き」もターミナルの文法（古い順・最新が下・● の行） */
+#lgbody.tlog { font: 12.5px/1.45 var(--t-mono); }
+#lgbody.tlog .lgsec { color: var(--t-ink-faint); margin: 10px 0 4px; font-weight: 400; }
+#lgbody.tlog .tlg { display: grid; grid-template-columns: 2ch minmax(0, 1fr); column-gap: 4px; margin: 0 0 4px; }
+#lgbody.tlog .tlg .tm { color: var(--t-ink-faint); }
+#lgbody.tlog .tlg.a .tm { color: var(--t-ink); }
+#lgbody.tlog .tlg.q .tm { color: var(--t-warn); }
+#lgbody.tlog .tlg .tb { white-space: pre-wrap; overflow-wrap: anywhere; }
+/* リストのカードにも状態の語の札（❗・📨 の記号の代わり） */
+#list .card .meta .ktag { margin-left: 4px; }
+/* B1: シートの「停止」は塗らない（カードの「拒否」と同じ輪郭の危険色）。「許可は Mac で」「承認は Mac で」は押せる形でなく文字の行（理由を添える） */
+#quickbtns .deny { color: var(--alert); border-color: var(--alert); background: transparent; }
+#attncards .attnactions .attnmac, #quickbtns .attnmac { flex-basis: 100%; width: 100%; min-height: 0; margin: 0; padding: 4px 0 0; background: transparent; border: 0; color: var(--ink-2); font-size: 12px; line-height: 1.5; }
+.attnmac b { margin-right: 8px; font-family: var(--t-mono); color: var(--ink); }
+.attnmac .why { color: var(--ink-3); }
+/* B1: データの更新でカードの人が替わった直後（600ms）は送る操作を受けない＝薄く見せる */
+#attncards .attncard.settling .attnactions, #attncards .attncard.settling .attnoptions, #attncards .attncard.settling .qpick { opacity: .5; }
+/* B1: 2 問以上・複数選択の質問は選択肢を見せるだけ（1 タップで送らない）＝R112-P から問いの中身（ask.questions）が無い古い Mac だけ */
+.qmulti { margin-top: 8px; font-size: 12px; line-height: 1.5; color: var(--ink-2); }
+#app .qopt.ro, #sheetwrap .qopt.ro { cursor: default; border-style: dashed; color: var(--ink-2); }
+/* R112-P: 問いごとに選ぶ（番号つきの問い・単一は ( )／(*)・複数は [ ]／[x]・選んだ行は accent の罫と一段上の地）。
+   全部の問いに選ぶまで「この答えを送る」は押せない（理由「あと N 問」を上に小さく） */
+.qpick { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
+.qpick .qpq + .qpq { border-top: 1px solid var(--t-line); padding-top: 8px; }
+.qpick .qpq-h { display: flex; align-items: baseline; gap: 8px; font-size: 13px; line-height: 1.5; color: var(--t-ink); }
+.qpick .qpq-h .qopt-n { flex: none; min-width: 1.2em; color: var(--t-accent); font-weight: 700; }
+.qpick .qpq-t { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.qpick .qpq-m { flex: none; padding: 0 4px; font-size: 11px; color: var(--t-ink-soft); border: 1px solid var(--t-line); white-space: nowrap; }
+.qpick .qpq-o { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+#app .qpick .qpo, #sheetwrap .qpick .qpo, #termbody .qactions .qpick .qpo { display: flex; flex-direction: row; align-items: center; gap: 10px; width: 100%; min-height: 44px; margin: 0; padding: 6px 12px 6px 10px;
+  background: var(--t-panel); color: var(--t-ink); border: 1px solid var(--t-line); text-align: left; font-size: 12.5px; font-weight: 400; }
+#app .qpick .qpo.on, #sheetwrap .qpick .qpo.on, #termbody .qactions .qpick .qpo.on { background: var(--t-panel-2); border-color: var(--t-accent); }
+.qpick .qpo .qpo-mk { flex: none; font-family: var(--t-mono); color: var(--t-ink-soft); white-space: pre; }
+.qpick .qpo.on .qpo-mk { color: var(--t-accent); font-weight: 700; }
+.qpick .qpo .qopt-t { flex: 1 1 auto; min-width: 0; display: block; line-height: 1.4; }
+.qpick .qpo .qopt-t > * { display: inline; margin-right: 6px; }
+.qpick .qpick-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.qpick .qpleft { order: -1; flex-basis: 100%; font-size: 11.5px; color: var(--t-ink-soft); }
+#app .qpick .qpick-foot button, #sheetwrap .qpick .qpick-foot button, #termbody .qactions .qpick .qpick-foot button { flex: 1 1 auto; width: auto; min-width: 72px; min-height: 44px; margin: 0; padding: 8px 12px; font-size: 12.5px; }
+#app .qpick .qpsend:disabled, #sheetwrap .qpick .qpsend:disabled, #termbody .qactions .qpick .qpsend:disabled { opacity: 1; background: var(--t-panel-2); color: var(--t-ink-faint); border-color: var(--t-line); }
+#sheetwrap .quickoptions .qwrite { margin: 0; }
+#setwrap .setrow.pick { background: var(--t-panel-2); }
+
+/* ===== B2 磨き（2026-10-01・スマホの実写の洗い出し）===== */
+/* トースト: 緑の塗りの塊をやめて hairline の板（地は面・文字は本文・エラーは文字と罫だけ朱）。位置は noteDock が状態の行とタブの上へ置く */
+#note { color: var(--ink); background: var(--paper); border: 1px solid var(--line); box-shadow: none; border-radius: 0; padding: 8px 12px; }
+#note.err { background: var(--paper); color: var(--alert); border-color: var(--alert); }
+/* 空の部屋の案内: 窓は常に暗い（.t-dark）＝文字も窓の中の色で解く（ライトで暗い地に暗い字＝1.2:1 だった） */
+#emptyhint { color: var(--ink); box-shadow: none; border-radius: 0; }
+/* 右上: アイコンを外した形（全部のチップが同じ「語＋数」）・畳んだ「他 N」 */
+#hstats.noic .ichip .px, #hstats.noic .ichip .ig { display: none; }
+#hstats .ichip[hidden] { display: none; }
+#hstats .ichip { padding: 0 1px; }
+#hstats .ichip .ib { padding: 0 6px; }
+/* あなた待ちの ‹ › のフォーカス枠は内側に（上下で切れて緑の縦線 2 本＝禁止の側線に見えた） */
+#attncards .attnnav button:focus-visible { outline-offset: -2px; }
+/* 再ペアリング（解除）: 塗らずに朱の文字と輪郭（ダークで白字×朱の塗り 2.79:1 だった） */
+#setwrap #st_rp_btn { background: transparent; color: var(--danger); border: 1px solid var(--danger); }
+#termlive .sp.sp-ic { display: inline-flex; align-items: center; width: auto; }
+@media (max-height: 500px) {
+  #sheetwrap .shhead { padding: 8px 12px; }
+  #shscroll { padding: 8px 12px; }
+  #shcompose { padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); }
+  #shcompose #freetext { height: 44px; min-height: 44px; max-height: 44px; }
+}
+/* シートのセッション内訳: 状態の語の札・押せる行（その本の端末） */
+.sessrow { min-height: 32px; }
+button.sessrow { width: 100%; min-height: 44px; margin: 0; padding: 4px 8px; display: flex; justify-content: flex-start; text-align: left; font-weight: 400; font-size: 12.5px; background: var(--paper-2); color: var(--ink-2); border: 1px solid var(--line); }
+.sessrow .ktag { height: 20px; }
+.sessrow .sessx { font-size: 11px; color: var(--ink-3); white-space: nowrap; }
+.sessrow .sessage { margin-left: auto; font-size: 11px; color: var(--ink-3); white-space: nowrap; }
+.sessrow .sessgo { flex: none; color: var(--accent); font-family: var(--t-mono); }
+/* リストの配達状態: 「保存」は名前の行の短い札（説明は title とシート） */
+#list .meta .dchip.short { order: 0; margin-left: 0; padding: 0 6px; }
+/* 誰もいないときのリスト: 次にすること */
+#list .emptycta { text-align: left; padding: 20px 16px; border: 1px solid var(--line); background: var(--paper); }
+.emptycta .ec-t { font-weight: 700; color: var(--ink); margin-bottom: 6px; }
+.emptycta .ec-s { font-size: 12.5px; color: var(--ink-2); margin-bottom: 12px; }
+.emptycta .ec-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; }
+.emptycta button.sub { width: auto; min-height: 44px; padding: 0 16px; }
+/* 名札は中身の幅（上限は paintPlates が maxWidth で渡す）・ティッカーは名前の全文を先に取る */
+#plates .plate { width: auto; }
+#ticker .tk-nm { max-width: 55%; }
+/* 低い横画面: タブと端末の余白を詰め、44pxの当たりを保つ。 */
+@media (orientation: portrait) and (max-height: 700px) {
+  #app:has(#minicard:not([hidden])) #topdock { display: none; }
+}
+@media (orientation: landscape) and (max-height: 500px) {
+  :root { --tab-height: 44px; }
+  .hdr2 { padding-top: env(safe-area-inset-top); padding-bottom: 0; }
+  #tabbar button { flex-direction: row; gap: 4px; padding: 0 2px; }
+  #tabbar #tb_wait_count { position: static; }
+  #sessionstrip .sessionpick { min-height: 44px; padding: 2px 12px; gap: 0; }
+  #termhead { padding: 0 8px 0 12px; }
+  #termfoot { padding: 6px 12px calc(6px + env(safe-area-inset-bottom)); }
+  #termnote { margin-bottom: 4px; }
+  #term_compose_lb, #termto { display: inline; font-size: 11px; }
+  #termto { margin-left: 8px; }
+  #termfoot .trow { margin-top: 4px; }
+  #termbody { padding: 8px 12px; }
+  /* 低い横向きのオフィスは部屋と状態行を左右に分け、全景の丈を残す。 */
+  body:not(.term-open):not(.split-office):has(#app:not(.hidden) #room:not(.hidden)) > #app {
+    display: grid; grid-template-columns: minmax(190px, 1fr) minmax(0, .8fr); grid-template-rows: minmax(0, 1fr);
+  }
+  body:not(.term-open):not(.split-office):has(#app:not(.hidden) #room:not(.hidden)) #room { grid-row: 1; grid-column: 1; }
+  body:not(.term-open):not(.split-office):has(#app:not(.hidden) #room:not(.hidden)) #officewin { min-height: 0; }
+  body:not(.term-open):not(.split-office):has(#app:not(.hidden) #room:not(.hidden)) #dock { grid-row: 1; grid-column: 2; align-self: start; border-top: 0; border-left: 1px solid var(--line); }
+  body.off:not(.term-open):not(.split-office):has(#app:not(.hidden) #room:not(.hidden)) #topdock { display: none; }
+  /* ミニカードは部屋と横に分け、状態行は両方の下に残す。 */
+  body:not(.term-open):not(.split-office):has(#app:not(.hidden) #minicard:not([hidden])) > #app {
+    display: grid; grid-template-columns: minmax(190px, 1fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto;
+  }
+  body:not(.term-open):not(.split-office):has(#app:not(.hidden) #minicard:not([hidden])) #room { grid-row: 1; grid-column: 1; }
+  body:not(.term-open):not(.split-office):has(#app:not(.hidden) #minicard:not([hidden])) #officewin { min-height: 0; }
+  body:not(.term-open):not(.split-office):has(#app:not(.hidden) #minicard:not([hidden])) #topdock { display: none; }
+  body:not(.term-open):not(.split-office):has(#app:not(.hidden) #minicard:not([hidden])) #minicard { grid-row: 1; grid-column: 2; min-height: 0; overflow-y: auto; border-top: 0; border-left: 1px solid var(--line); }
+  body:not(.term-open):not(.split-office):has(#app:not(.hidden) #minicard:not([hidden])) #dock { grid-row: 2; grid-column: 1 / -1; border-top: 1px solid var(--line); border-left: 0; }
+  #list .daysum { display: flex; align-items: baseline; gap: 16px; overflow-x: auto; white-space: nowrap; padding: 8px 12px; scrollbar-width: none; }
+  #list .daysum > * { flex: none; margin: 0; }
+}
+
+/* R103-2b: 部屋の下の一件と「次の一手」。どちらも窓に重ねず、兄弟の面に置く。 */
+:root { --next-height: 52px; }
+#officewait {
+  flex: 0 1 auto; min-height: 0; min-width: 0; max-height: var(--officewait-max, none); overflow-y: auto; overscroll-behavior: contain; display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 8px;
+  padding: 0 12px 8px; border-top: 1px solid var(--line); background: var(--paper);
+}
+#officewait > .wtitle { grid-column: 1 / -1; display: flex; align-items: center; min-height: 28px; font-size: 12px; font-weight: 400; color: var(--ink-2); }
+.officewaithead { grid-column: 1; display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 22px; }
+.officewaitname { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; }
+.officewaitsummary { grid-column: 1; min-width: 0; margin: 2px 0 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-2); font-size: 12px; }
+.officewaitactions { grid-column: 2; grid-row: 2 / span 2; align-self: center; display: flex; align-items: center; gap: 6px; }
+#officewait .officewaitactions button { flex: none; width: auto; min-height: 44px; margin: 0; padding: 0 8px; font-size: 12px; white-space: nowrap; }
+#officewait .officewaitmore { color: var(--ink-2); background: var(--paper); border-color: var(--line); font-weight: 400; }
+#nextbar {
+  position: relative; z-index: 126; flex: none; display: flex; align-items: center; gap: 8px; min-width: 0; min-height: var(--next-height);
+  margin-top: auto; padding: 4px 12px; border-top: 1px solid var(--line); background: var(--paper);
+}
+#nextbar .nextprompt { flex: none; color: var(--accent); font-size: 18px; }
+#nextbar #nextinput { flex: 1 1 auto; min-width: 0; min-height: 44px; padding: 8px 10px; font-size: 16px; background: var(--paper-2); color: var(--ink); }
+#nextinput::placeholder { color: var(--ink-3); opacity: 1; }
+#nextinput:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+#nextpanel {
+  position: absolute; left: 0; right: 0; bottom: 100%; z-index: 140; max-height: min(440px, calc(100dvh - 160px)); min-height: 0;
+  display: flex; flex-direction: column; border: 1px solid var(--line); background: var(--paper); color: var(--ink);
+}
+#nextpanel > .wtitle { flex: none; min-height: 44px; display: flex; align-items: center; gap: 8px; padding-left: 12px; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--ink-2); }
+#nexttitle { flex: 1; min-width: 0; }
+#nextpanel #nextclose { width: 44px; min-width: 44px; min-height: 44px; margin: 0; padding: 0; background: transparent; color: var(--ink-2); border: 0; border-left: 1px solid var(--line); }
+#nextresults { position: relative; flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+#nextresults .nextrow {
+  display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 8px; row-gap: 1px; width: 100%; min-width: 0; min-height: 52px;
+  margin: 0; padding: 6px 12px; text-align: left; font-size: 12px; font-weight: 400; background: var(--paper); color: var(--ink); border: 0; border-bottom: 1px solid var(--t-line-soft);
+}
+#nextresults .nextrow.on { background: var(--paper-2); }
+#nextresults .nextrow.on .nextverb { color: var(--ink); }
+#nextresults .nextrow:focus-visible { outline-offset: -2px; }
+.nextverb { grid-row: 1 / span 2; align-self: center; color: var(--accent); }
+.nextwho { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.nextdetail { grid-column: 2; min-width: 0; color: var(--ink-2); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#nextresults > .nextempty { padding: 16px 12px; text-align: left; font-size: 12px; }
+#nextconfirm { flex: none; display: flex; align-items: center; gap: 6px; min-height: 52px; padding: 4px 6px 4px 12px; border-top: 1px solid var(--line); background: var(--paper-2); }
+.nextconfirmtext { flex: 1; min-width: 0; font-size: 12px; overflow-wrap: anywhere; }
+#nextconfirm button { flex: none; width: auto; min-height: 44px; margin: 0; padding: 0 8px; font-size: 12px; }
+body.term-open:not(.split-office):has(#nextbar:not(.hidden)) #termwrap { bottom: calc(var(--tab-height) + var(--next-height) + env(safe-area-inset-bottom)); }
+body.term-open:not(.split-office) #officewait { display: none; }
+/* 詳細・許可・設定の窓が開いた間は、その窓をコマンド欄より手前に置く。 */
+body:has(#sheetwrap.open, #logwrap.open, #runwrap.open, #lnwrap.open, #reswrap.open, #setwrap.open) #nextbar { z-index: 60; pointer-events: none; }
+#splitwait, #splitempty { display: none; }
+
+/* 700px 未満の横向きは縦の並びのまま。新しい箱で暗黙の格子行を作らず、左の窓を全景の丈に保つ。 */
+@media (orientation: landscape) and (max-width: 699px) and (max-height: 500px) {
+  body { --next-height: 44px; }
+  #nextbar { min-height: 44px; padding-top: 0; padding-bottom: 0; }
+  body:not(.term-open):not(.split-office):has(#app:not(.hidden) #room:not(.hidden)) > #app { display: flex; flex-direction: column; overflow-y: auto; overscroll-behavior: contain; }
+  body:not(.term-open):not(.split-office):has(#app:not(.hidden) #room:not(.hidden)) #room { flex: 1 0 184px; height: auto; --win-min: 184px; }
+  body:not(.term-open):not(.split-office):has(#app:not(.hidden) #room:not(.hidden)) #topdock { display: none; }
+  body:not(.term-open):not(.split-office):has(#app:not(.hidden) #room:not(.hidden)) #officewin { min-height: 184px; }
+  body:not(.term-open):not(.split-office):has(#app:not(.hidden) #room:not(.hidden)) #officewin > .wtitle { height: 24px; }
+  body:not(.term-open):not(.split-office):has(#app:not(.hidden) #room:not(.hidden)) #dock { align-self: stretch; border-left: 0; border-top: 1px solid var(--line); }
+  body:not(.term-open):not(.split-office):has(#app:not(.hidden) #minicard:not([hidden])) #minicard { border-left: 0; border-top: 1px solid var(--line); }
+  body:not(.term-open):not(.split-office):has(#app:not(.hidden) #room:not(.hidden)) #nextbar { position: sticky; bottom: 0; }
+}
+
+/* R121: セッションの読む面。部屋・名簿の字と配置には掛けない。 */
+#termbody.act { font: 14.5px/1.75 var(--t-sans); background: var(--t-panel); }
+#termsummary.act { flex: none; display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 8px 12px; border-bottom: 1px solid var(--t-line-soft); font-size: 12px; line-height: 1.5; }
+#termsummary.act[data-kind="working"] .term-summary-state { color: var(--t-accent); }
+#termsummary.act[data-kind="perm"] .term-summary-state, #termsummary.act[data-kind="question"] .term-summary-state { color: var(--t-attn); }
+#termbody.act .tstart, #termbody.act .tolder { text-align: center; }
+#termbody.act .qactions .qopt, #termbody.act .qactions .qfree, #termbody.act .qactions .tanswer-send, #termbody.act .qactions .tanswer { font-family: var(--t-sans); }
+#termbody.act .qactions .qopt-desc { font-size: 12px; }
+#termbody.act .tl.tsend { display: block; align-self: flex-end; max-width: 86%; margin: 0; padding: 10px 14px; border-radius: 14px; background: var(--t-panel-2); font: 14px/1.65 var(--t-sans); }
+#termbody.act .tl.tsend > .tm { display: none; }
+#termbody.act .tl.tsend .tsendstate { display: block; margin: 4px 0 0; font: 11.5px/1.5 var(--t-mono); }
+@media (max-width: 600px) {
+  #termbody.act { padding: 14px 16px; }
+  #termsummary.act { gap: 6px 8px; }
+  #termbody.act .act-user { max-width: 92%; }
+}
+
+/* ACTIVITY_BEGIN (generated: ui/hud/activity.css) */
+/* css-vars-from: ui/cockpit/style.css, ui/pwa/app.css */
+/* R121: 共有の作業ビュー。gen_pwa_modules.py が Mac と PWA の印の間へ展開する。 */
+/* R121: 作業ビューの字の大きさは 3 段（--act-fs-body／meta／small）。スマホは既定の値（下の fallback）・Mac は cockpit の style.css が
+   R110 の 4 段の token（⚙「文字の大きさ」に従う）へ結ぶ＝コックピットの文字の段の門（cockpit_smoke の R110）を外さない。 */
+.act {
+  --act-bg: var(--cp-bg, var(--t-bg));
+  --act-panel: var(--cp-panel, var(--t-panel));
+  --act-panel-2: var(--cp-panel-2, var(--t-panel-2));
+  --act-line: var(--cp-line, var(--t-line));
+  --act-line-soft: var(--cp-line-soft, var(--t-line-soft));
+  --act-line-strong: var(--cp-line-strong, var(--t-line-strong));
+  --act-ink: var(--cp-ink, var(--t-ink));
+  --act-ink-soft: var(--cp-ink-soft, var(--t-ink-soft));
+  --act-ink-faint: var(--cp-ink-faint, var(--t-ink-faint));
+  --act-accent: var(--cp-accent, var(--t-accent));
+  --act-attn: var(--cp-alert, var(--t-attn));
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  padding: 18px 22px 12px;
+  color: var(--act-ink);
+  background: var(--act-panel);
+  font-family: var(--t-sans);
+  font-size: var(--act-fs-body, 14.5px);
+  line-height: 1.75;
+  overflow-wrap: anywhere;
+  overflow-anchor: none;
+}
+.act > * { flex-shrink: 0; min-width: 0; }
+.act [hidden] { display: none !important; }
+.act button, .act input { font: inherit; }
+.act button { cursor: pointer; }
+.act .act-group-head, .act .act-step-head, .act .act-more { width: auto; min-height: 0; margin: 0; border-radius: 0; font-weight: 400; letter-spacing: normal; }
+.act button:focus-visible, .act input:focus-visible { outline: 1px solid var(--act-accent); outline-offset: 3px; }
+.act .act-user { align-self: flex-end; max-width: 86%; padding: 10px 14px; border-radius: 14px; background: var(--act-panel-2); font-size: var(--act-fs-body, 14px); line-height: 1.65; }
+.act .act-user-text { white-space: pre-wrap; }
+.act .act-clamp { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.act .act-user-command { padding: 5px 12px; }
+.act .act-command-chip { font-family: var(--t-mono); font-size: var(--act-fs-small, 12.5px); }
+.act .act-text p, .act .act-question-text p { margin: 0 0 .65em; white-space: pre-wrap; }
+.act .act-text p:last-child, .act .act-question-text p:last-child { margin-bottom: 0; }
+.act .act-heading { font-weight: 600; }
+.act code { font-family: var(--t-mono); font-size: var(--act-fs-small, 12.5px); background: var(--act-panel-2); padding: 1px 5px; }
+.act .act-name { padding: 0; background: none; white-space: pre-wrap; }
+.act .act-list { margin: .4em 0; padding-inline-start: 1.5em; }
+.act .act-group { color: var(--act-ink-faint); font-size: var(--act-fs-meta, 13.5px); }
+.act .act-group-head, .act .act-step-head { display: block; width: 100%; padding: 0; border: 0; background: none; color: inherit; text-align: start; line-height: 1.65; }
+.act .act-group-head:hover, .act .act-more:hover { color: var(--act-ink); }
+.act .act-file { color: var(--act-ink-soft); font-family: var(--t-mono); font-size: var(--act-fs-small, 12.5px); }
+.act .act-add { color: var(--act-accent); font-family: var(--t-mono); }
+.act .act-rem { color: var(--act-attn); font-family: var(--t-mono); }
+.act .act-chevron { display: inline-block; font-size: var(--act-fs-small, 10px); color: var(--act-ink-faint); }
+.act .act-steps { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; padding: 10px 0 0 12px; border-top: 1px solid var(--act-line-soft); }
+.act .act-step-head { display: flex; align-items: baseline; gap: 9px; color: var(--act-ink-soft); }
+.act .act-mark { flex: none; font-size: var(--act-fs-small, 11px); white-space: nowrap; }
+.act .act-mark-ok, .act .act-mark-run { color: var(--act-accent); }
+.act .act-mark-err, .act .act-mark-int, .act .act-error { color: var(--act-attn); }
+.act .act-description { min-width: 0; }
+.act .act-step-head > .act-description { flex: 1; }
+.act .act-duration { flex: none; color: var(--act-ink-faint); font-family: var(--t-mono); font-size: var(--act-fs-small, 12px); white-space: nowrap; }
+.act .act-step-body { margin: 7px 0 4px 20px; }
+.act .act-pre, .act .act-diff { margin: 4px 0; padding: 8px 10px; border: 1px solid var(--act-line-soft); background: var(--act-bg); color: var(--act-ink-soft); font-family: var(--t-mono); font-size: var(--act-fs-small, 12px); line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+.act .act-table { overflow-x: auto; white-space: pre; }
+.act .act-more { display: block; padding: 3px 0; border: 0; background: none; color: var(--act-ink-faint); font-size: var(--act-fs-small, 12px); line-height: 1.5; text-align: start; }
+.act .act-user > .act-more { margin-top: 4px; }
+.act .act-diffline { display: grid; grid-template-columns: minmax(3ch, max-content) 1ch minmax(0, 1fr); gap: 8px; }
+.act .act-lineno { color: var(--act-ink-faint); text-align: end; }
+.act .act-source { color: var(--act-ink-soft); white-space: pre-wrap; }
+.act .act-kids { margin-top: 7px; }
+.act .act-kids-body { display: flex; flex-direction: column; gap: 10px; padding-top: 8px; }
+.act .act-card { padding: 12px 14px; border: 1px solid var(--act-line-strong); border-radius: 12px; background: var(--act-panel); }
+.act .act-card-title { display: block; margin-bottom: 6px; font-size: var(--act-fs-meta, 13.5px); }
+.act .act-question-text { font-size: var(--act-fs-body, 14px); }
+.act .act-options { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; color: var(--act-ink-soft); font-size: var(--act-fs-meta, 13px); }
+.act .act-option { display: flex; align-items: baseline; flex-wrap: wrap; gap: 7px; }
+.act .act-option-number { color: var(--act-ink-faint); font-family: var(--t-mono); font-size: var(--act-fs-small, 12px); }
+.act .act-chip { display: inline-block; padding: 1px 8px; border: 1px solid var(--act-line); border-radius: 999px; color: var(--act-ink-soft); font-family: var(--t-mono); font-size: var(--act-fs-small, 11.5px); line-height: 1.6; }
+.act .act-user > .act-chip { margin-top: 5px; }
+.act .act-recommended { color: var(--act-accent); }
+.act .act-live { display: flex; align-items: baseline; gap: 10px; color: var(--act-ink-soft); font-size: var(--act-fs-body, 14px); }
+.act .act-dots { display: inline-flex; align-self: center; flex: none; gap: 3px; }
+.act .act-dots i { width: 5px; height: 5px; border-radius: 999px; background: var(--act-accent); }
+.act .act-dots i:nth-child(2) { opacity: .6; }
+.act .act-dots i:nth-child(3) { opacity: .3; }
+.act .act-note, .act .act-time { color: var(--act-ink-faint); font-size: var(--act-fs-small, 12px); }
+.act .act-time { align-self: stretch; padding-top: 8px; border-top: 1px solid var(--act-line-soft); text-align: center; font-family: var(--t-mono); }
+.act .act-pending { border-style: dashed; }
+.act .act-pending .act-card-title { color: var(--act-attn); }
+.act .act-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.act .act-actions button { width: auto; min-height: 36px; margin: 0; padding: 6px 12px; border: 1px solid var(--act-line-strong); background: var(--act-panel-2); color: var(--act-ink); font-size: var(--act-fs-meta, 13px); }
+.act .act-actions .act-primary { border-color: var(--act-accent); background: var(--act-accent); color: var(--act-bg); font-weight: 600; }
+/* R128: 出勤の口の Bot の記録。報告は種類の札（注意だけ attn の字）と題・人の言葉は吹き出しの下に答え／指示の札・
+   出勤の変化と相談の閉じ方（期限切れ・取り下げ）は吹き出しでも本文でもない 1 行。色は字の明度差だけ（帯・影・絵文字は使わない） */
+.act .act-text .act-report-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; margin: 0 0 .4em; white-space: normal; }
+.act .act-report-title { font-weight: 600; }
+.act .act-report-kind.act-report-warn { color: var(--act-attn); }
+.act .act-event { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; color: var(--act-ink-soft); font-size: var(--act-fs-meta, 13px); line-height: 1.6; }
+.act .act-event-word { color: var(--act-ink); font-weight: 600; white-space: nowrap; }
+.act .act-event-text { min-width: 0; }
+.act .act-event-expired .act-event-word, .act .act-event-withdrawn .act-event-word { color: var(--act-ink-soft); font-weight: 400; white-space: normal; }
+/* ACTIVITY_END */
+
+
+/* R122: ホーム／会話／オフィスは Mac と同じ紙の配色。既存の許可・返信の中身はそのまま、置き場と字だけを変える。
+   見本の角丸: カード16px、部屋18px、名簿の上端20px、入力22px、操作12px。旧い端末装飾には広げない。 */
+body.pwa-app {
+  --radius: 16px;
+  --radius-sm: 12px;
+  --tab-height: 60px;
+  --term-top: 0px;
+  background: var(--a-bg);
+  color: var(--a-ink);
+  font-family: var(--t-sans);
+  font-size: 15px;
+  line-height: 1.6;
+}
+body.pwa-app:has(#app:not(.hidden)) { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; }
+body.pwa-app > .topbar { grid-column: 1; grid-row: 1; }
+body.pwa-app > #app { grid-column: 1; grid-row: 2; }
+body.pwa-app > #tabbar { grid-column: 1; grid-row: 3; }
+body.pwa-app .hdr2 { gap: 10px; padding: calc(12px + env(safe-area-inset-top)) 18px 10px; border: 0; background: var(--a-bg); }
+body.pwa-app .hdr2 .live { width: 9px; height: 9px; border-radius: 999px; }
+body.pwa-app .hdr2 .tname { font-size: 20px; line-height: 1.4; }
+body.pwa-app .hdr2 .tps, body.pwa-app .hdr2 .cur { display: none; }
+body.pwa-app #hstats .ichip { font-size: 11.5px; }
+body.pwa-app #hstats .ichip .ib { padding: 0 6px; border-radius: 999px; border-color: transparent; }
+body.pwa-app #hstats .ichip .ig { display: none; }
+body.pwa-app .hdr2 #ntog { border: 0; border-radius: 12px; background: var(--a-surface); }
+body.pwa-app #deptbar { display: none; }
+body.pwa-app #home { min-height: 0; min-width: 0; width: 100%; max-width: 760px; margin-inline: auto; padding: 4px 14px 16px; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+body.pwa-app #homeoffice { display: flex; flex-direction: column; flex: none; height: 230px; min-height: 230px; margin: 0 0 14px; overflow: hidden; border: 1px solid var(--a-line); border-radius: 16px; background: var(--a-surface); cursor: pointer; }
+body.pwa-app #homeoffice:focus-visible { outline: 2px solid var(--a-accent); outline-offset: 2px; }
+body.pwa-app #homepreview { display: flex; flex: 1 1 auto; min-height: 0; position: relative; overflow: hidden; }
+body.pwa-app #homepreview > #officewin { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; border: 0; }
+body.pwa-app #homepreview #officewin > .wtitle { display: none; }
+body.pwa-app #homeoffice_meta { display: flex; flex: none; justify-content: space-between; align-items: center; gap: 8px; min-height: 42px; padding: 8px 14px; color: var(--a-ink-soft); font-size: 12.5px; }
+body.pwa-app #homeoffice_meta > :last-child { color: var(--a-accent); font-weight: 500; white-space: nowrap; }
+body.pwa-app #home #wait:not(.hidden) { display: block; min-height: 0; background: transparent; margin-bottom: 14px; }
+body.pwa-app #home #wait > .wtitle { min-height: 0; margin: 0 4px 8px; padding: 0; border: 0; color: var(--a-attn); font-size: 13px; font-weight: 700; }
+body.pwa-app #home #attnwrap { overflow: visible; padding: 0; }
+body.pwa-app #home #attncards { overflow: visible; }
+body.pwa-app #home #attncards .attnnav { min-height: 36px; margin-bottom: 8px; padding: 0; border: 0; background: transparent; }
+body.pwa-app #home #attncards .waitgroup { min-height: 28px; margin: 6px 4px; }
+body.pwa-app #home #attncards .attncard { margin: 0 0 8px; padding: 14px; border: 1px solid var(--a-attn-line); border-radius: 16px; background: var(--a-surface); }
+body.pwa-app #home #attncards .attnname { font-size: 15px; }
+body.pwa-app #home #attncards .attnq { font-size: 14px; line-height: 1.6; color: var(--a-ink-soft); }
+body.pwa-app #home #attncards .attnactions { gap: 8px; margin-top: 10px; }
+body.pwa-app #home #attncards .attnactions button { font-size: 14px; border-radius: 12px; }
+body.pwa-app #home #attncards .attnmore { border-radius: 12px; }
+body.pwa-app #home #wait .empty { padding: 10px 4px; font-size: 13px; color: var(--a-ink-faint); }
+body.pwa-app #home #apvwrap { border: 1px solid var(--a-attn-line); border-radius: 16px; background: var(--a-surface); padding: 14px; }
+body.pwa-app #home #apvacts button { border-radius: 12px; font-size: 14px; }
+body.pwa-app #recent > h2 { margin: 0 4px 8px; color: var(--a-ink-soft); font-size: 13px; font-weight: 700; }
+body.pwa-app #recent > #list { display: block; padding: 0; overflow: hidden; border: 1px solid var(--a-line); border-radius: 16px; background: var(--a-surface); }
+body.pwa-app #list .recentrow { display: flex; align-items: flex-start; gap: 12px; min-width: 0; width: 100%; min-height: 66px; margin: 0; padding: 12px 14px; border: 0; border-bottom: 1px solid var(--a-line-soft); border-radius: 0; background: transparent; color: var(--a-ink); text-align: left; font-weight: 400; }
+body.pwa-app #list .recentrow:last-child { border-bottom: 0; }
+body.pwa-app #list .recentrow:active { background: var(--a-side); }
+body.pwa-app .recentdot { display: block; flex: none; width: 9px; height: 9px; margin-top: 7px; border-radius: 999px; background: var(--a-idle); }
+body.pwa-app .recentrow[data-kind="working"] .recentdot, body.pwa-app .recentdot.working { background: var(--a-accent); }
+body.pwa-app .recentrow[data-kind="perm"] .recentdot, body.pwa-app .recentrow[data-kind="question"] .recentdot,
+body.pwa-app .recentrow[data-kind="plan"] .recentdot, body.pwa-app .recentrow[data-kind="error"] .recentdot,
+body.pwa-app .recentdot.attn { background: var(--a-attn); }
+body.pwa-app .recentcopy { display: flex; flex: 1; flex-direction: column; gap: 2px; min-width: 0; }
+body.pwa-app .recentname { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; font-weight: 500; }
+body.pwa-app .recentline { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--a-ink-soft); font-size: 13.5px; line-height: 1.5; }
+body.pwa-app .recentrow[data-kind="perm"] .recentline, body.pwa-app .recentrow[data-kind="question"] .recentline { color: var(--a-attn-ink); }
+body.pwa-app .recenttime { flex: none; color: var(--a-ink-faint); font-size: 12px; line-height: 1.7; white-space: nowrap; font-variant-numeric: tabular-nums; }
+body.pwa-app #tabbar { grid-template-columns: repeat(3, minmax(0, 1fr)); background: var(--a-surface); border-color: var(--a-line); padding: 4px 8px env(safe-area-inset-bottom); }
+body.pwa-app #tabbar button { height: 52px; padding: 4px 2px; gap: 3px; border: 0; background: transparent; color: var(--a-ink-soft); font-size: 11.5px; border-radius: 0; font-weight: 400; }
+body.pwa-app #tabbar button.on { background: transparent; color: var(--a-accent); font-weight: 700; }
+body.pwa-app #tabbar #tb_wait_count { min-width: 16px; height: 16px; padding: 0 4px; display: grid; place-items: center; border: 0; border-radius: 999px; background: var(--a-attn); color: var(--a-surface); font-size: 10px; }
+body.pwa-app #tabbar #tb_wait.needs-you #tb_wait_count { color: var(--a-surface); }
+body.pwa-app #room:not(.hidden) { height: auto; min-height: 0; flex: 1; padding: 4px 12px 0; overflow-y: auto; }
+body.pwa-app #room > #officewin { order: 0; flex: none; min-height: 240px; height: min(380px, 46dvh); overflow: hidden; border: 1px solid var(--a-line); border-radius: 18px; }
+body.pwa-app #room > #officewin > .wtitle { display: none; }
+body.pwa-app #room > #topdock { display: block; order: 2; margin: 12px -12px 0; padding: 14px 14px 12px; border-top: 1px solid var(--a-line); border-bottom: 0; border-radius: 20px 20px 0 0; background: var(--a-surface); }
+body.pwa-app #room #roster { flex-direction: column; gap: 0; overflow: visible; padding: 0; }
+body.pwa-app #room #roster .rchip { display: flex; align-items: center; gap: 12px; width: 100%; max-width: none; min-width: 0; min-height: 60px; height: auto; margin: 0; padding: 8px 4px; border: 0; border-bottom: 1px solid var(--a-line-soft); border-radius: 0; background: transparent; color: var(--a-ink); }
+body.pwa-app #room #roster .rchip:last-child { border-bottom: 0; }
+body.pwa-app #room #roster .rchip::before { content: ""; flex: none; width: 9px; height: 9px; border-radius: 999px; background: var(--a-idle); }
+body.pwa-app #room #roster .rchip[data-kind="working"]::before { background: var(--a-accent); }
+body.pwa-app #room #roster .rchip.attn::before { background: var(--a-attn); }
+body.pwa-app #room #roster .rchip .mono, body.pwa-app #room #roster .skw { display: none; }
+body.pwa-app #room #roster .rtxt { display: flex; flex: 1; flex-direction: column; align-items: stretch; gap: 2px; min-width: 0; }
+body.pwa-app #room #roster .rhead { min-width: 0; }
+body.pwa-app #room #roster .nm { flex: 1; max-width: none; font-size: 15px; font-weight: 500; text-align: left; }
+body.pwa-app #room #roster .detail { display: block; font-size: 13px; text-align: left; color: var(--a-ink-soft); }
+body.pwa-app #room #roster .attn .detail { color: var(--a-attn-ink); }
+body.pwa-app #office_modes { display: flex; align-items: center; justify-content: flex-end; flex: none; max-width: none; gap: 0; margin: 0 0 10px; padding: 3px; border-radius: 999px; background: var(--a-selected); }
+body.pwa-app #office_modes button { flex: 1; width: auto; min-height: 44px; margin: 0; padding: 0 16px; border: 0; border-radius: 999px; background: transparent; color: var(--a-ink-soft); font-size: 13px; font-weight: 400; }
+body.pwa-app #office_modes button[aria-pressed="true"], body.pwa-app #office_modes button.on { background: var(--a-surface); color: var(--a-ink); font-weight: 500; }
+body.pwa-app #dock { display: none; }
+body.pwa-app #officewait, body.pwa-app #splitwait, body.pwa-app #nextbar { display: none !important; }
+body.pwa-app #minicard { margin: 8px 12px; border: 1px solid var(--a-line); border-radius: 16px; background: var(--a-surface); }
+body.pwa-app #termwrap, body.pwa-app.term-open:not(.split-office):has(#nextbar:not(.hidden)) #termwrap { inset: 0; min-width: 0; width: auto; background: var(--a-surface); color: var(--a-ink); }
+body.pwa-app #termwrap #sessionstrip { display: none; }
+body.pwa-app #termhead { display: flex; flex: none; align-items: center; gap: 6px; padding: calc(10px + env(safe-area-inset-top)) 10px 10px; border-bottom: 1px solid var(--a-line-soft); background: var(--a-surface); }
+body.pwa-app #termheading { display: flex; flex: 1; flex-direction: column; gap: 2px; min-width: 0; }
+body.pwa-app #termname { flex: none; font-size: 16px; font-weight: 700; }
+body.pwa-app #termstate { flex: none; justify-content: flex-start; gap: 6px; font-size: 12.5px; color: var(--a-ink-soft); }
+body.pwa-app #termwrap #term_close { display: grid; flex: none; width: 44px; min-height: 44px; margin: 0; padding: 0; border: 0; border-radius: 12px; background: transparent; color: var(--a-ink); }
+body.pwa-app #termwrap #term_close .px { display: none; }
+body.pwa-app #termwrap #term_close::before { content: "‹"; font-size: 30px; font-weight: 400; line-height: 1; }
+body.pwa-app #termsummary.act { padding: 6px 16px; background: var(--a-surface); }
+body.pwa-app #termbody.act { min-height: 0; padding: 16px 16px 10px; background: var(--a-surface); font-size: 15px; }
+body.pwa-app #termlive { padding: 8px 16px; background: var(--a-surface); border: 0; font-family: var(--t-sans); font-size: 13.5px; }
+body.pwa-app #termfoot { flex: none; padding: 8px 12px calc(12px + env(safe-area-inset-bottom)); border-top: 1px solid var(--a-line-soft); background: var(--a-surface); }
+body.pwa-app #term_compose_lb { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+body.pwa-app #termto { margin: 0 4px 6px; color: var(--a-ink-faint); font-size: 12px; }
+body.pwa-app #termfoot .trow { align-items: flex-end; gap: 8px; padding: 8px; border: 1px solid var(--a-idle); border-radius: 22px; background: var(--a-surface); }
+body.pwa-app #termwrap #termsay { flex: 1; min-width: 0; min-height: 44px; max-height: 120px; padding: 8px; border: 0; border-radius: 0; background: transparent; color: var(--a-ink); font: 16px/1.6 var(--t-sans); }
+body.pwa-app #termwrap #term_send { flex: none; width: auto; min-width: 44px; min-height: 44px; margin: 0; padding: 0 12px; border: 0; border-radius: 999px; background: var(--a-accent); color: var(--t-on-accent); font-size: 14px; }
+body.pwa-app #termnote { font-family: var(--t-sans); }
+body.pwa-app #termwrap #termnew { border-radius: 999px; }
+body.pwa-app.settings-open #setwrap > .sheet { background: var(--a-bg); }
+body.pwa-app #setwrap #st_title { font-size: 20px; font-weight: 700; }
+body.pwa-app #setwrap #st_title::before, body.pwa-app #setwrap #st_title::after { content: none; }
+body.pwa-app #st_status { border-radius: 16px; background: var(--a-surface); font-family: var(--t-sans); }
+body.pwa-app #setwrap .setrow .hint { font-size: 12px; }
+body.pwa-app #setwrap .seg button { border-radius: 12px; }
+body.pwa-app .sheet { border-radius: 18px 18px 0 0; }
+body.pwa-app .mono { border-radius: 12px; }
+body.pwa-app.th-big .recentname { font-size: 18px; }
+body.pwa-app.th-big .recentline, body.pwa-app.th-big #termbody.act { font-size: 18px; }
+@media (max-width: 370px) {
+  body.pwa-app .hdr2 { padding-inline: 14px; }
+  body.pwa-app #hstats .ichip .ib { padding-inline: 3px; }
+  body.pwa-app #hstats .ichip { font-size: 10.5px; }
+  body.pwa-app #homeoffice_meta { padding-inline: 10px; font-size: 11.5px; }
+}
+@media (orientation: landscape) and (max-height: 500px) {
+  body.pwa-app #termhead { padding-top: 4px; padding-bottom: 4px; }
+  body.pwa-app #termsummary, body.pwa-app #termlive, body.pwa-app #termto { display: none; }
+  body.pwa-app #termfoot { padding-top: 4px; padding-bottom: calc(4px + env(safe-area-inset-bottom)); }
+  body.pwa-app #termfoot .trow { padding: 2px 6px; }
+
+}
+
+/* R122: the office roster uses the shared one-line summary, with no duplicate status row. */
+body.pwa-app #room #roster .gl { display: none; }
+body.pwa-app #office_notice { flex: none; padding: 6px 12px; color: var(--a-attn-ink); background: var(--a-selected); font-size: 12px; }
+
+body.pwa-app #scene3d[data-renderer="3d"] canvas { image-rendering: auto; }
+
+body.pwa-app #office_modes { order: -1; }
+
+body.pwa-app #tabbar #tb_wait_count { position: absolute; top: 4px; left: calc(50% + 12px); }
+body.pwa-app #tabbar #tb_wait:not(.needs-you) #tb_wait_count { display: none; }
+
+
+/* R122 差戻し: 低い横画面は、窓を viewport の割合で伸ばさず、ヘッダーとタブの間の領域に収める。
+   旧 R102-1 と同じ別面を保つ。切替は窓の上角、許可とミニカードは右の列。状態行が戻っても最後の auto 行で丈を差し引く。 */
+@media (orientation: landscape) and (max-height: 500px) {
+  body.pwa-app { --tab-height: 44px; }
+  body.pwa-app .hdr2 { min-height: 44px; padding: env(safe-area-inset-top) 12px 0; }
+  body.pwa-app .hdr2 .tname { font-size: 18px; }
+  body.pwa-app #tabbar { padding-top: 0; }
+  body.pwa-app #tabbar button { height: 44px; min-height: 44px; flex-direction: row; padding: 0 2px; }
+  body.pwa-app:not(.term-open):not(.split-office):has(#app:not(.hidden) #room:not(.hidden)) > #app {
+    display: grid; grid-template-columns: minmax(190px, 1fr) minmax(0, .8fr); grid-template-rows: minmax(0, 1fr) auto;
+    min-height: 0; overflow: hidden;
+  }
+  body.pwa-app:not(.term-open):not(.split-office):has(#app:not(.hidden) #room:not(.hidden)) #room {
+    grid-column: 1; grid-row: 1; position: relative; flex: 1 1 0; height: 100%; min-height: 0; max-height: 100%;
+    padding: 0 6px 0 12px; overflow: hidden;
+  }
+  body.pwa-app:not(.term-open):not(.split-office):has(#app:not(.hidden) #room:not(.hidden)) #room > #officewin {
+    flex: 1 1 auto; width: 100%; height: 100%; min-height: 0; max-height: 100%; margin: 0;
+  }
+  body.pwa-app #room > #office_modes {
+    position: absolute; top: 4px; right: 10px; z-index: 5; width: auto; margin: 0; padding: 0; background: var(--a-surface);
+  }
+  body.pwa-app #room > #office_modes button { flex: none; min-height: 44px; padding: 0 12px; font-size: 12px; }
+  body.pwa-app #room > #topdock { display: none; }
+  body.pwa-app #app > #apvslot_home { grid-column: 2; grid-row: 1; min-width: 0; min-height: 0; max-height: 100%; padding: 0 12px 0 6px; overflow-y: auto; overscroll-behavior: contain; }
+  body.pwa-app #apvslot_home > #apvwrap { margin-top: 0; }
+  body.pwa-app #app > #dock { grid-column: 1 / -1; grid-row: 2; min-height: 0; }
+  body.pwa-app #app > #minicard { grid-column: 2; grid-row: 1; min-height: 0; max-height: 100%; margin: 0 12px 0 6px; overflow-y: auto; }
+  body.pwa-app:not(.term-open):not(.split-office):has(#app:not(.hidden) #minicard:not([hidden])) > #app {
+    grid-template-rows: minmax(0, auto) minmax(0, 1fr) auto;
+  }
+  body.pwa-app:not(.term-open):not(.split-office):has(#app:not(.hidden) #minicard:not([hidden])) #room { grid-row: 1 / span 2; }
+  body.pwa-app:not(.term-open):not(.split-office):has(#app:not(.hidden) #minicard:not([hidden])) #minicard { max-height: min(180px, 100%); }
+  /* 長い近況はこの別面でスクロールし、44pxの主操作を下端に残す。 */
+  body.pwa-app #minicard #mini_open { position: sticky; bottom: 0; z-index: 1; }
+  body.pwa-app:not(.term-open):not(.split-office):has(#app:not(.hidden) #minicard:not([hidden])) #apvslot_home { grid-row: 2; }
+  body.pwa-app:not(.term-open):not(.split-office):has(#app:not(.hidden) #minicard:not([hidden])) #dock { grid-row: 3; }
+  /* ホームでは左に230pxのオフィスと最近、右に「あなたの番」。左をスクロールしても右の許可の操作を残す。 */
+  body.pwa-app #home { display: grid; grid-template-columns: minmax(190px, .8fr) minmax(0, 1.2fr); grid-template-rows: auto auto; gap: 8px 12px; height: 100%; min-height: 0; padding: 0 12px 4px; overflow-y: auto; }
+  body.pwa-app #homeoffice { grid-column: 1; grid-row: 1; height: 230px; min-height: 230px; margin: 0; }
+  body.pwa-app #homeoffice_meta { min-height: 32px; padding: 4px 10px; font-size: 11.5px; }
+  /* 最近は入れ子のスクロールにしない（ホーム全体が 1 本でスクロール）。入れ子にすると低い横向きで最近の箱の丈が 0 近くまで縮み、
+     行が箱の外に切れて押せなかった（pwa3d_smoke の R99-P4-5 横 5 形・#list .recentrow のクリックが 30 秒待ち） */
+  body.pwa-app #home > #recent { grid-column: 1; grid-row: 2; min-height: 0; }
+  body.pwa-app #home > #wait:not(.hidden) { display: flex; flex-direction: column; grid-column: 2; grid-row: 1 / span 2; position: sticky; top: 0; align-self: start; height: calc(100dvh - 94px - env(safe-area-inset-top) - env(safe-area-inset-bottom) - var(--pwa-status-height, 0px)); min-height: 0; margin: 0; }
+  body.pwa-app #home #wait > .wtitle { flex: none; margin-bottom: 4px; }
+  body.pwa-app #home #attnwrap { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+  body.pwa-app #home #apvwrap.open { display: flex; flex-direction: column; max-height: calc(100dvh - 124px - env(safe-area-inset-top) - env(safe-area-inset-bottom) - var(--pwa-status-height, 0px)); padding: 8px 10px; }
+  body.pwa-app #home #apvhead, body.pwa-app #home #apvlevel, body.pwa-app #home #apvwhy,
+  body.pwa-app #home #apvnote, body.pwa-app #home #apvacts, body.pwa-app #home #apvdenybox, body.pwa-app #home #apvdenyundo { flex: none; }
+  body.pwa-app #home #apvview { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+  body.pwa-app #home #apvacts { margin-top: 6px; }
+}
+/* 道具の印は名前の直前の要素。状態は次の行へ置き、印だけの行を作らない。 */
+body.pwa-app #termheading:has(> #termvendor) { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 6px; align-items: center; }
+body.pwa-app #termheading > #termvendor { grid-column: 1; grid-row: 1; margin: 0; }
+body.pwa-app #termheading:has(> #termvendor) > #termname { grid-column: 2; grid-row: 1; }
+body.pwa-app #termheading:has(> #termvendor) > #termstate { grid-column: 1 / -1; grid-row: 2; }
+
+
+/* R122 差戻し: 同期・残り枠・Last login は同じ44pxの状態行に残す。内容と資源への入口は既存の ticker が担当する。 */
+body.pwa-app { --pwa-status-height: 44px; }
+body.pwa-app #app > #dock { display: flex; flex: 0 0 var(--pwa-status-height); height: var(--pwa-status-height); min-height: var(--pwa-status-height); max-height: var(--pwa-status-height); margin: 0; padding: 0; overflow: hidden; border: 0; background: var(--a-bg); }
+body.pwa-app.term-open #app > #dock { display: none; }
+body.pwa-app #dock > #inboxzero { display: none; }
+body.pwa-app #dock > #infodock { flex: 1; min-width: 0; height: 44px; border: 0; border-radius: 0; background: var(--a-bg); }
+body.pwa-app #infodock > #ticker { display: flex; width: 100%; height: 44px; min-height: 44px; max-height: 44px; margin: 0; padding: 4px 12px; border: 0; border-top: 1px solid var(--a-line); border-radius: 0; background: var(--a-bg); color: var(--a-ink-soft); overflow-x: auto; overflow-y: hidden; white-space: nowrap; font: 11px/1.35 var(--t-mono); }
+/* 通常の縦画面も、状態行を引いた room の実寸を上限にする。切替50pxと下余白10pxは部屋の窓の外。 */
+body.pwa-app #room > #officewin { min-height: 0; max-height: calc(100% - 60px); }
+/* 人を押したときは名簿の代わりに独立したミニカードを使い、room からはみ出した窓の上に置かない。 */
+body.pwa-app #app:has(> #minicard:not([hidden])) #room:not(.hidden) { min-height: 0; overflow: hidden; }
+body.pwa-app #app:has(> #minicard:not([hidden])) #room > #topdock { display: none; }
+body.pwa-app #app > #minicard { flex: none; }
+/* 保存の意味と期限は title に残す。行には短い札だけ置き、名前と近況の2行を押し縮めない。 */
+body.pwa-app #list .recentdelivery.dchip.mute { flex: none; align-self: center; max-width: 64px; margin: 0; padding: 1px 5px; border: 1px solid var(--a-line); border-radius: 12px; background: var(--a-side); color: var(--a-ink-soft); font-size: 10.5px; line-height: 1.5; font-weight: 400; white-space: nowrap; }
+@media (orientation: landscape) and (max-height: 500px) {
+  body.pwa-app:not(.term-open):not(.split-office):has(#app:not(.hidden) #room:not(.hidden)) #dock { align-self: stretch; border: 0; }
+}
+/* R122-P2 検収（pwa3d_smoke の R102-1・低い横向き 568×320／667×325／568×340）: 部屋の窓は ×1（184×160）が入る丈を守る（R102-1 の掟）。
+   下の情報の帯は部屋の列に入れず右の列へ（横幅いっぱいだと窓の丈を 44px 食って窓が 109px＝ロボが窓の外に出た）。
+   ［3D｜ドット絵］は部屋の上に重ねず窓の上の細い帯に（重ねるとロボを覆った＝covered at office_mode_3d）。 */
+@media (orientation: landscape) and (max-height: 500px) {
+  body.pwa-app:not(.term-open):not(.split-office):has(#app:not(.hidden) #room:not(.hidden)) #room { grid-row: 1 / -1; display: flex; flex-direction: column; }
+  body.pwa-app:not(.term-open):not(.split-office):has(#app:not(.hidden) #room:not(.hidden)) > #app { grid-template-rows: minmax(0, 1fr) auto; }
+  body.pwa-app:not(.term-open):not(.split-office):has(#app:not(.hidden) #room:not(.hidden)) #app > #apvslot_home { grid-column: 2; grid-row: 1; }
+  body.pwa-app:not(.term-open):not(.split-office):has(#app:not(.hidden) #room:not(.hidden)) #app > #dock { grid-column: 2; grid-row: 2; align-self: end; }
+  body.pwa-app:not(.term-open):not(.split-office):has(#app:not(.hidden) #room:not(.hidden)) #room > #office_modes {
+    position: static; order: -1; align-self: flex-end; flex: none; margin: 2px 0 4px; padding: 2px;
+  }
+  body.pwa-app:not(.term-open):not(.split-office):has(#app:not(.hidden) #room:not(.hidden)) #room > #office_modes button { min-height: 36px; }
+}
+
+/* ===== R133: スマホの整理（本人 2026-11-13「スマホ用のレイアウトがちゃんと整っていない」）=====
+   実データ（20 人・許可待ち 3）を 390×844 で撮って洗い出した。R122 は端末の作法（R101〜）の上に明るい配色を重ねただけで、
+   等幅の行・角ばった札・全員ぶんの黒い名札・右に寄せて 2 段に折れる設定の行が残っていた。ここで §14 の作法へそろえる。
+   名札の決まり（選んだ人＋あなたの番・最大 4 枚）は app.js の paintPlates。 */
+
+/* 名札: 白い丸い札（Mac の .app-room-label と同じ形）。部屋の窓は暗い配色の枠の中＝色は --a-* で取り直す。高さ 20 は据え置き（44px の例外） */
+body.pwa-app #plates .plate { gap: 5px; height: 20px; min-height: 20px; padding: 0 8px; border: 1px solid var(--a-line); border-radius: 999px; background: var(--a-surface); color: var(--a-ink); font: 500 11px/18px var(--t-sans); box-shadow: none; }
+body.pwa-app #plates .plate .dot, body.pwa-app #plates .plate .level { display: none; }
+body.pwa-app #plates .plate .pkind { display: none; font-size: 10.5px; font-weight: 700; color: var(--a-attn); }
+body.pwa-app #plates .plate.attn { border-color: var(--a-attn-line); color: var(--a-attn-ink); }
+body.pwa-app #plates .plate.attn .pkind { display: inline; }
+body.pwa-app #plates .plate.sel { z-index: 2; border-color: var(--a-accent); background: var(--a-surface); }
+
+/* 許可のカード: 角丸のカード・本文は sans。命令の箱だけ等幅（行数の切り方 --apv-lines × 1.45em は変えない） */
+body.pwa-app #apvwrap { padding: 14px; border: 1px solid var(--a-attn-line); border-radius: 16px; background: var(--a-surface); color: var(--a-ink); font: 13.5px/1.55 var(--t-sans); }
+body.pwa-app #apvhead { gap: 8px; }
+body.pwa-app #apvname { font-size: 15px; font-weight: 600; }
+body.pwa-app #apvmeta { font-size: 12px; color: var(--a-ink-faint); }
+body.pwa-app #apvview .apvtool { font: 12px/1.45 var(--t-mono); }
+body.pwa-app #apvview .apvbox, body.pwa-app #apvview .apvrest .av { border-color: var(--a-line-soft); border-radius: 12px; background: var(--a-bg); font: 12.5px/1.45 var(--t-mono); }
+body.pwa-app #apvlevel { border-radius: 12px; }
+body.pwa-app #apvwhy { color: var(--a-attn-ink); }
+body.pwa-app #apvacts button, body.pwa-app #apvwrap #apvdenysend, body.pwa-app #apvwrap #apvdenycancel, body.pwa-app #apvview .apvfullbtn { border-radius: 12px; font-size: 14px; }
+body.pwa-app #apvdenytext { border-radius: 12px; font-family: var(--t-sans); }
+/* オフィスのタブ（縦）: カードは部屋と状態の行の間に、左右の余白つきで置く（角の無い箱が画面幅いっぱいに貼りついていた）。横向きは右の列＝既存の置き方のまま */
+@media (orientation: portrait) {
+  body.pwa-app #app > #apvslot_home { flex: none; min-width: 0; padding: 0 12px; }
+}
+body.pwa-app #apvslot_home #apvwrap { margin: 8px 0; }
+/* 会話の中（返信欄の代わり）: 上の罫だけの帯のまま */
+body.pwa-app #apvslot_term #apvwrap { margin: 0; border-width: 1px 0 0; border-radius: 0; border-color: var(--a-line); }
+
+/* オフィスのタブ: 人の一覧はホームの「最近」と同じカード（部屋の下に白い面が画面幅で貼りつき、カードと重なって見えた） */
+body.pwa-app #room > #topdock { margin: 12px 0; padding: 0; overflow: hidden; border: 1px solid var(--a-line); border-radius: 16px; background: var(--a-surface); }
+body.pwa-app #room #roster .rchip { min-height: 62px; padding: 10px 14px; }
+body.pwa-app #room #roster .rchip:active { background: var(--a-side); }
+body.pwa-app #room #roster .rchip.sel { background: var(--a-accent-soft); }
+body.pwa-app #room #roster .dchip { flex: none; align-self: center; margin: 0; padding: 1px 6px; border: 1px solid var(--a-line); border-radius: 999px; background: var(--a-side); color: var(--a-ink-soft); font-size: 10.5px; line-height: 1.5; font-weight: 400; white-space: nowrap; }
+
+/* ホーム: 種類の小見出し・1 行の許可・状態の札・通知の案内 */
+body.pwa-app #home #attncards .waitgroup { min-height: 0; margin: 14px 4px 6px; font-size: 12px; font-weight: 600; color: var(--a-ink-faint); }
+body.pwa-app #home #attncards .waitgroup:first-child { margin-top: 2px; }
+body.pwa-app .apvrow { gap: 10px; min-height: 52px; margin: 0 0 8px; padding: 8px 14px; border: 1px solid var(--a-line); border-radius: 16px; background: var(--a-surface); color: var(--a-ink); font-size: 14px; }
+body.pwa-app .apvrow strong { flex: 1; font-size: 14.5px; font-weight: 500; }
+body.pwa-app .apvrow .apvrowt { margin-left: 0; color: var(--a-ink-faint); font: 12px/1.4 var(--t-sans); }
+body.pwa-app .ktag { height: 22px; padding: 0 8px; border-color: var(--a-line); border-radius: 999px; font-size: 11.5px; }
+body.pwa-app .ktag.k-perm, body.pwa-app .ktag.k-question, body.pwa-app .ktag.k-plan, body.pwa-app .ktag.k-error { border-color: var(--a-attn-line); background: transparent; color: var(--a-attn-ink); }
+body.pwa-app #attncards .attncount::before, body.pwa-app #attncards .attncount::after { content: none; }
+body.pwa-app .pushhint, body.pwa-app #attncards .pushhint { margin: 0 0 12px; padding: 4px 4px 4px 14px; border: 1px solid var(--a-line-soft); border-radius: 16px; background: transparent; color: var(--a-ink-soft); font-size: 12.5px; }
+body.pwa-app .pushhint button { border-radius: 12px; font-size: 13px; }
+
+/* 状態の 1 行（同期・残り枠）: 等幅をやめて本文の字。高さ 44 は当たりのために残す */
+body.pwa-app #infodock > #ticker { padding-inline: 18px; border-top-color: var(--a-line-soft); color: var(--a-ink-faint); font: 12px/1.4 var(--t-sans); }
+body.pwa-app #ticker .tk-sync { color: var(--a-ink-soft); }
+body.pwa-app #ticker .tk-sep { color: var(--a-idle); }
+
+/* 設定: 組ごとに 1 枚のカード・見出しはカードの中の小さな字・3 択は見出しの下に等幅で並べる（右に寄せると 2 段に折れ、説明が 3 文字幅に細った） */
+body.pwa-app #st_status { margin-top: 12px; padding: 14px 16px; border: 1px solid var(--a-line); }
+body.pwa-app #setwrap #st_status_title, body.pwa-app #setwrap .setgroup > .sec { margin: 0 0 6px; color: var(--a-ink-faint); font-size: 12px; font-weight: 600; }
+body.pwa-app .st-state { font-size: 13.5px; line-height: 1.7; }
+body.pwa-app #setwrap .setgroup, body.pwa-app #setwrap > .sheet > .setrow { margin-top: 12px; padding: 12px 16px 2px; border: 1px solid var(--a-line); border-radius: 16px; background: var(--a-surface); }
+body.pwa-app #setwrap > .sheet > .setrow { padding: 6px 16px; }
+body.pwa-app #setwrap .setrow { border-bottom: 1px solid var(--a-line-soft); }
+body.pwa-app #setwrap .setgroup > .setrow:last-child { border-bottom-color: transparent; }
+body.pwa-app #setwrap > .sheet > .setrow { border-bottom: 1px solid var(--a-line); }
+body.pwa-app #setwrap .setgroup > .setrow:has(+ details) { border-bottom-color: var(--a-line-soft); }
+body.pwa-app #setwrap .setrow .lb { font-size: 15px; font-weight: 500; }
+body.pwa-app #setwrap .setrow .hint { color: var(--a-ink-faint); line-height: 1.55; }
+body.pwa-app #setwrap .seg button { border-color: var(--a-line); background: var(--a-surface); color: var(--a-ink-soft); font-size: 13px; }
+body.pwa-app #setwrap .seg button.on { border-color: var(--a-accent); background: var(--a-accent); color: var(--t-on-accent); }
+body.pwa-app #setwrap .setrow:has(> .seg > button:nth-child(3)) { flex-direction: column; align-items: stretch; gap: 10px; }
+body.pwa-app #setwrap .setrow:has(> .seg > button:nth-child(3)) > .seg { flex-wrap: nowrap; max-width: none; }
+body.pwa-app #setwrap .setrow:has(> .seg > button:nth-child(3)) > .seg button { flex: 1 1 0; min-width: 0; padding-inline: 4px; }
+body.pwa-app #st_cs_details { padding: 4px 0 10px; }
+body.pwa-app #st_cs_details summary { min-height: 44px; display: flex; align-items: center; color: var(--a-ink-soft); font-size: 13px; }
+body.pwa-app #st_cs_details summary::before { content: "＋ "; }
+body.pwa-app #st_cs_details[open] summary::before { content: "－ "; }
+body.pwa-app #setwrap #st_close { margin-top: 16px; border-radius: 12px; }
+/* 許可のカードが下に出ている間は、部屋の窓を残りの丈いっぱいにする（人の一覧が 40px だけ覗いて切れて見えた）。一覧は部屋ごと送ると出る */
+@media (orientation: portrait) {
+  body.pwa-app #app:has(> #apvslot_home > #apvwrap.open) #room > #officewin { height: calc(100% - 60px); }
+}
+/* 名簿の「保存」（受信待機していない人）: ホームの最近と同じ静かな札（朱の角ばった枠は注意に見えた） */
+body.pwa-app #room #roster .mut { flex: none; align-self: center; padding: 1px 7px; border: 1px solid var(--a-line); border-radius: 999px; background: var(--a-side); color: var(--a-ink-soft); font-size: 10.5px; line-height: 1.5; }
+/* 会話の見出し: 戻るの矢印と名前の間をあける（道具の印が矢印に貼りついていた） */
+body.pwa-app #termhead { gap: 10px; }
+/* ドット絵の部屋は窓を画面幅いっぱいに（左右の余白 12px と罫で窓が 366px になり、×2 の部屋＝368px が入らず ×1 の小さな部屋に落ちていた） */
+@media (orientation: portrait) {
+  body.pwa-app #room:has(#scene3d[data-renderer="pixel"]) > #officewin { margin-inline: -12px; border-inline: 0; border-radius: 0; }
+}
+
+/* ===== R134: 広い画面（開いた Duo・iPad）＝ PC 版（Mac の明るい 3 列・ui/app）と同じ並び（本人 2026-11-14「iPhone Duo を開いたら
+   パソコン版が表示されてほしい」）=====
+   形の正本はここ（--wide＝0／2／3）。app.js の syncWide がこの値を読み、body に .wide・.wide2・.wide3 を付ける（JS に寸法を書かない）。
+   3 列（幅 860 以上・高さ 600 以上＝開いて横 890×626・iPad 横）: 左＝あなたの番と一覧（足元に状態の行と設定）・中央＝会話・右＝オフィスと人の一覧。
+   2 列（幅 600 以上・高さ 600 以上＝開いて縦 626×890・iPad 縦）: 左＝一覧・右＝会話。オフィスは会話の見出しの［オフィス］で右の列に重ねて開く。
+   どちらも下のタブは出さない。閉じた形（466×678・678×466）と普通のスマホは今までどおり（3 画面＋下のタブ）。
+   旧 R103 の横分割（左に部屋・真ん中に端末・右に待ちの列）と R119（3 列の左を広く）は撤去した＝この節が置き換え。 */
+:root { --wide: 0; }
+@media (min-width: 600px) and (min-height: 600px) { :root { --wide: 2; } }
+@media (min-width: 860px) and (min-height: 600px) { :root { --wide: 3; } }
+#dock_set, #term_office, #officehead, #office_close { display: none; }
+body.pwa-app.wide { --wide-left: clamp(240px, 24vw, 264px); --wide-right: clamp(296px, calc(100vw - 600px), 404px); }
+body.pwa-app.wide:has(#app:not(.hidden)) {
+  grid-template-columns: var(--wide-left) minmax(0, 1fr) var(--wide-right);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+body.pwa-app.wide2:has(#app:not(.hidden)) { grid-template-columns: var(--wide-left) minmax(0, 1fr); }
+/* 左の列: 見出し（名前と通知・2 段目に状態の語のチップ）→ あなたの番と一覧 → 足元に状態の行と設定（PC の左の列と同じ置き方） */
+body.pwa-app.wide:has(#app:not(.hidden)) > .topbar { grid-column: 1; grid-row: 1; min-width: 0; background: var(--a-side); border-right: 1px solid var(--a-line); }
+body.pwa-app.wide .hdr2 { flex-wrap: wrap; row-gap: 0; padding: calc(12px + env(safe-area-inset-top)) 12px 4px 16px; background: var(--a-side); }
+body.pwa-app.wide .hdr2 .tname { font-size: 18px; }
+body.pwa-app.wide #hstats { order: 3; flex: 1 1 100%; margin-left: -6px; }
+body.pwa-app.wide:has(#app:not(.hidden)) > #app { display: contents; }
+body.pwa-app.wide #home { grid-column: 1; grid-row: 2; min-height: 0; max-width: none; margin: 0; padding: 4px 12px 16px; background: var(--a-side); border-right: 1px solid var(--a-line); }
+body.pwa-app.wide #homeoffice { display: none; }
+body.pwa-app.wide #recent > #list { border: 0; border-radius: 0; background: transparent; overflow: visible; }
+body.pwa-app.wide #list .recentrow { min-height: 52px; padding: 8px 10px; border: 1px solid transparent; border-radius: 12px; }
+body.pwa-app.wide #list .recentrow.is-selected { border-color: var(--a-line); background: var(--a-surface); }
+body.pwa-app.wide #app > #dock { grid-column: 1; grid-row: 3; flex: none; flex-direction: column; height: auto; max-height: none; background: var(--a-side); border-top: 1px solid var(--a-line); border-right: 1px solid var(--a-line); }
+body.pwa-app.wide #dock > #infodock { flex: none; background: transparent; }
+body.pwa-app.wide #infodock > #ticker { padding-inline: 16px; border-top: 0; background: transparent; }
+body.pwa-app.wide #dock > #dock_set { display: flex; align-items: center; gap: 10px; flex: none; width: 100%; min-height: 44px; margin: 0; padding: 0 16px; border: 0; border-top: 1px solid var(--a-line-soft); border-radius: 0; background: transparent; color: var(--a-ink-soft); font-size: 14px; font-weight: 400; text-align: left; }
+body.pwa-app.wide #dock_set .px { color: var(--a-ink-faint); }
+/* 左の列（幅 240px〜）の許可のカード: 見出しを 2 段に（名前が「案‥」まで詰まった）。命令の箱・ボタンはスマホと同じ */
+body.pwa-app.wide #apvslot_wait #apvhead { flex-wrap: wrap; row-gap: 2px; }
+body.pwa-app.wide #apvslot_wait #apvname { flex: 1 1 0; }
+body.pwa-app.wide #apvslot_wait #apvmeta { flex: 1 1 100%; padding-left: 30px; }
+body.pwa-app #dock_set_dot { width: 6px; height: 6px; border-radius: 999px; background: var(--a-attn); }
+body.pwa-app.wide #app > #minicard, body.pwa-app.wide #app > #apvslot_home, body.pwa-app.wide > #tabbar { display: none; }
+/* 中央: 選んだセッションの会話（作業ビュー）と入力欄。戻るは出さない（一覧がいつも見えている）。会話が無いときだけ案内 */
+body.pwa-app.wide > #termwrap {
+  position: relative; inset: auto; z-index: 1; grid-column: 2; grid-row: 1 / -1; min-width: 0; min-height: 0; padding: 0; border: 0;
+  visibility: visible; pointer-events: auto; opacity: 1; transform: none; transition: none; background: var(--a-surface);
+}
+body.pwa-app.wide3 > #termwrap { border-right: 1px solid var(--a-line); }
+body.pwa-app.wide > #termwrap:not(.open) > :not(#splitempty) { display: none; }
+body.pwa-app.wide #termwrap > #splitempty:not([hidden]) { display: flex; flex: 1; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 24px; text-align: center; color: var(--a-ink-faint); font-size: 14px; }
+body.pwa-app.wide #splitempty > .wtitle { color: var(--a-ink); font-size: 15px; font-weight: 600; }
+body.pwa-app.wide #termwrap #term_close { display: none; }
+body.pwa-app.wide #termhead { padding: calc(12px + env(safe-area-inset-top)) 12px 10px 20px; }
+body.pwa-app.wide2 #termhead > #term_office { display: inline-flex; align-items: center; gap: 6px; flex: none; width: auto; min-height: 44px; margin: 0; padding: 0 12px; border: 1px solid var(--a-line); border-radius: 12px; background: var(--a-surface); color: var(--a-ink); font-size: 13px; font-weight: 500; }
+body.pwa-app.wide2 #term_office .px { color: var(--a-accent); }
+/* 右: オフィス（見出し・3D｜ドット絵・部屋の窓）→ すぐ下に人の一覧（PC の右の列のカードと同じ順）。2 列では右の列に重ねる窓 */
+body.pwa-app.wide #room:not(.hidden) {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-content: start; gap: 10px; min-width: 0; min-height: 0; height: auto; max-height: none; margin: 0;
+  padding: calc(12px + env(safe-area-inset-top)) 12px 16px; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; background: var(--a-bg);
+}
+body.pwa-app.wide3 #room:not(.hidden) { grid-column: 3; grid-row: 1 / -1; }
+body.pwa-app.wide #room > #officehead { display: contents; }
+body.pwa-app.wide #officetitle { grid-column: 1; grid-row: 1; align-self: center; margin: 0; padding-left: 4px; color: var(--a-ink); font-size: 14px; font-weight: 600; }
+body.pwa-app.wide #room > #office_modes { grid-column: 2; grid-row: 1; align-self: center; margin: 0; }
+body.pwa-app.wide #room > #office_modes button { padding: 0 14px; white-space: nowrap; }
+body.pwa-app.wide #room > #officewin { grid-column: 1 / -1; grid-row: 2; height: clamp(220px, 44dvh, 340px); min-height: 0; max-height: none; margin: 0; border: 1px solid var(--a-line); border-radius: 16px; }
+body.pwa-app.wide #room:has(#scene3d[data-renderer]) > #officewin { margin-inline: 0; border-inline: 1px solid var(--a-line); border-radius: 16px; }
+body.pwa-app.wide #room > #topdock { display: block; grid-column: 1 / -1; grid-row: 3; margin: 0; }
+body.pwa-app.wide #room > .empty { grid-column: 1 / -1; margin: 0; }
+body.pwa-app.wide2 #room:not(.hidden) {
+  position: fixed; z-index: 80; top: 0; right: 0; bottom: 0; left: calc(var(--wide-left) + env(safe-area-inset-left)); grid-template-columns: minmax(0, 1fr) auto auto;
+  padding-right: calc(12px + env(safe-area-inset-right)); padding-bottom: calc(16px + env(safe-area-inset-bottom)); border-left: 1px solid var(--a-line);
+}
+body.pwa-app.wide2 #officehead > #office_close { display: inline-flex; grid-column: 3; grid-row: 1; align-self: center; align-items: center; justify-content: center; width: auto; min-width: 44px; min-height: 44px; margin: 0; padding: 0 12px; border: 1px solid var(--a-line); border-radius: 12px; background: var(--a-surface); color: var(--a-ink); font-size: 13px; font-weight: 500; }
+/* 設定は左の足元の［設定］から重ねて開く（下のタブの面ではない）＝暗幕つきの 1 枚 */
+body.pwa-app.wide.settings-open #setwrap { bottom: 0; }
+body.pwa-app.wide.settings-open #setwrap > .mask { display: block; }
+body.pwa-app.wide.settings-open #setwrap > .sheet { inset: 16px 0; max-width: 600px; max-height: none; margin: 0 auto; border: 1px solid var(--a-line); border-radius: 16px; }
+
+/* R134: 封書の会話が無いとき（取り寄せの途中・要約だけ）の一行要約も作業ビューの作法で（等幅の端末の行をやめる）。等幅は命令とコードだけ */
+body.pwa-app #termbody .tl.tsum, body.pwa-app #termbody .tl.gap.tinit { font-family: var(--t-sans); }
+body.pwa-app #termbody .tl.tsum { display: flex; align-items: baseline; gap: 10px; margin: 0 0 8px; color: var(--a-ink-soft); font-size: 14px; line-height: 1.6; }
+body.pwa-app #termbody .tl.tsum > .tm { flex: none; color: var(--a-ink-faint); font-size: 9px; line-height: 1; }
+body.pwa-app #termbody .tl.tsum > .tb { min-width: 0; }
+body.pwa-app #termbody .tl.gap.tinit { margin: 0 0 12px; color: var(--a-ink-faint); font-size: 12.5px; line-height: 1.6; }
+body.pwa-app #termbody .toff { margin: 0 0 14px; padding: 12px 14px; border: 1px solid var(--a-line); border-radius: 12px; background: var(--a-bg); color: var(--a-ink); font-family: var(--t-sans); font-size: 14px; line-height: 1.6; }
+body.pwa-app #termbody .toff .tob { color: var(--a-ink-soft); font-size: 13px; }
+/* 要約の状態で末尾に出る「いま聞いていること」（許可・質問・計画）も作業ビューのカード（.act-question）と同じ形に。「?」の印と警告色の枠をやめる */
+body.pwa-app #termbody .tl.q.tliveq { display: block; margin: 4px 0 12px; font-family: var(--t-sans); font-size: 14px; line-height: 1.6; }
+body.pwa-app #termbody .tl.q.tliveq > .tm { display: none; }
+body.pwa-app #termbody .tl.q.tliveq .tqb { padding: 12px 14px; border: 1px solid var(--a-attn-line); border-radius: 12px; background: var(--a-surface); color: var(--a-ink); }
+body.pwa-app #termbody .tl.q.tliveq .qactions .qopt, body.pwa-app #termbody .tl.q.tliveq .qactions .qfree,
+body.pwa-app #termbody .tl.q.tliveq .qactions .tanswer-send, body.pwa-app #termbody .tl.q.tliveq .qactions .tanswer { font-family: var(--t-sans); border-radius: 12px; }

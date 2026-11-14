@@ -1,0 +1,101 @@
+/* css-vars-from: ui/cockpit/style.css, ui/pwa/app.css */
+/* R121: 共有の作業ビュー。gen_pwa_modules.py が Mac と PWA の印の間へ展開する。 */
+/* R121: 作業ビューの字の大きさは 3 段（--act-fs-body／meta／small）。スマホは既定の値（下の fallback）・Mac は cockpit の style.css が
+   R110 の 4 段の token（⚙「文字の大きさ」に従う）へ結ぶ＝コックピットの文字の段の門（cockpit_smoke の R110）を外さない。 */
+.act {
+  --act-bg: var(--cp-bg, var(--t-bg));
+  --act-panel: var(--cp-panel, var(--t-panel));
+  --act-panel-2: var(--cp-panel-2, var(--t-panel-2));
+  --act-line: var(--cp-line, var(--t-line));
+  --act-line-soft: var(--cp-line-soft, var(--t-line-soft));
+  --act-line-strong: var(--cp-line-strong, var(--t-line-strong));
+  --act-ink: var(--cp-ink, var(--t-ink));
+  --act-ink-soft: var(--cp-ink-soft, var(--t-ink-soft));
+  --act-ink-faint: var(--cp-ink-faint, var(--t-ink-faint));
+  --act-accent: var(--cp-accent, var(--t-accent));
+  --act-attn: var(--cp-alert, var(--t-attn));
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  padding: 18px 22px 12px;
+  color: var(--act-ink);
+  background: var(--act-panel);
+  font-family: var(--t-sans);
+  font-size: var(--act-fs-body, 14.5px);
+  line-height: 1.75;
+  overflow-wrap: anywhere;
+  overflow-anchor: none;
+}
+.act > * { flex-shrink: 0; min-width: 0; }
+.act [hidden] { display: none !important; }
+.act button, .act input { font: inherit; }
+.act button { cursor: pointer; }
+.act .act-group-head, .act .act-step-head, .act .act-more { width: auto; min-height: 0; margin: 0; border-radius: 0; font-weight: 400; letter-spacing: normal; }
+.act button:focus-visible, .act input:focus-visible { outline: 1px solid var(--act-accent); outline-offset: 3px; }
+.act .act-user { align-self: flex-end; max-width: 86%; padding: 10px 14px; border-radius: 14px; background: var(--act-panel-2); font-size: var(--act-fs-body, 14px); line-height: 1.65; }
+.act .act-user-text { white-space: pre-wrap; }
+.act .act-clamp { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.act .act-user-command { padding: 5px 12px; }
+.act .act-command-chip { font-family: var(--t-mono); font-size: var(--act-fs-small, 12.5px); }
+.act .act-text p, .act .act-question-text p { margin: 0 0 .65em; white-space: pre-wrap; }
+.act .act-text p:last-child, .act .act-question-text p:last-child { margin-bottom: 0; }
+.act .act-heading { font-weight: 600; }
+.act code { font-family: var(--t-mono); font-size: var(--act-fs-small, 12.5px); background: var(--act-panel-2); padding: 1px 5px; }
+.act .act-name { padding: 0; background: none; white-space: pre-wrap; }
+.act .act-list { margin: .4em 0; padding-inline-start: 1.5em; }
+.act .act-group { color: var(--act-ink-faint); font-size: var(--act-fs-meta, 13.5px); }
+.act .act-group-head, .act .act-step-head { display: block; width: 100%; padding: 0; border: 0; background: none; color: inherit; text-align: start; line-height: 1.65; }
+.act .act-group-head:hover, .act .act-more:hover { color: var(--act-ink); }
+.act .act-file { color: var(--act-ink-soft); font-family: var(--t-mono); font-size: var(--act-fs-small, 12.5px); }
+.act .act-add { color: var(--act-accent); font-family: var(--t-mono); }
+.act .act-rem { color: var(--act-attn); font-family: var(--t-mono); }
+.act .act-chevron { display: inline-block; font-size: var(--act-fs-small, 10px); color: var(--act-ink-faint); }
+.act .act-steps { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; padding: 10px 0 0 12px; border-top: 1px solid var(--act-line-soft); }
+.act .act-step-head { display: flex; align-items: baseline; gap: 9px; color: var(--act-ink-soft); }
+.act .act-mark { flex: none; font-size: var(--act-fs-small, 11px); white-space: nowrap; }
+.act .act-mark-ok, .act .act-mark-run { color: var(--act-accent); }
+.act .act-mark-err, .act .act-mark-int, .act .act-error { color: var(--act-attn); }
+.act .act-description { min-width: 0; }
+.act .act-step-head > .act-description { flex: 1; }
+.act .act-duration { flex: none; color: var(--act-ink-faint); font-family: var(--t-mono); font-size: var(--act-fs-small, 12px); white-space: nowrap; }
+.act .act-step-body { margin: 7px 0 4px 20px; }
+.act .act-pre, .act .act-diff { margin: 4px 0; padding: 8px 10px; border: 1px solid var(--act-line-soft); background: var(--act-bg); color: var(--act-ink-soft); font-family: var(--t-mono); font-size: var(--act-fs-small, 12px); line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+.act .act-table { overflow-x: auto; white-space: pre; }
+.act .act-more { display: block; padding: 3px 0; border: 0; background: none; color: var(--act-ink-faint); font-size: var(--act-fs-small, 12px); line-height: 1.5; text-align: start; }
+.act .act-user > .act-more { margin-top: 4px; }
+.act .act-diffline { display: grid; grid-template-columns: minmax(3ch, max-content) 1ch minmax(0, 1fr); gap: 8px; }
+.act .act-lineno { color: var(--act-ink-faint); text-align: end; }
+.act .act-source { color: var(--act-ink-soft); white-space: pre-wrap; }
+.act .act-kids { margin-top: 7px; }
+.act .act-kids-body { display: flex; flex-direction: column; gap: 10px; padding-top: 8px; }
+.act .act-card { padding: 12px 14px; border: 1px solid var(--act-line-strong); border-radius: 12px; background: var(--act-panel); }
+.act .act-card-title { display: block; margin-bottom: 6px; font-size: var(--act-fs-meta, 13.5px); }
+.act .act-question-text { font-size: var(--act-fs-body, 14px); }
+.act .act-options { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; color: var(--act-ink-soft); font-size: var(--act-fs-meta, 13px); }
+.act .act-option { display: flex; align-items: baseline; flex-wrap: wrap; gap: 7px; }
+.act .act-option-number { color: var(--act-ink-faint); font-family: var(--t-mono); font-size: var(--act-fs-small, 12px); }
+.act .act-chip { display: inline-block; padding: 1px 8px; border: 1px solid var(--act-line); border-radius: 999px; color: var(--act-ink-soft); font-family: var(--t-mono); font-size: var(--act-fs-small, 11.5px); line-height: 1.6; }
+.act .act-user > .act-chip { margin-top: 5px; }
+.act .act-recommended { color: var(--act-accent); }
+.act .act-live { display: flex; align-items: baseline; gap: 10px; color: var(--act-ink-soft); font-size: var(--act-fs-body, 14px); }
+.act .act-dots { display: inline-flex; align-self: center; flex: none; gap: 3px; }
+.act .act-dots i { width: 5px; height: 5px; border-radius: 999px; background: var(--act-accent); }
+.act .act-dots i:nth-child(2) { opacity: .6; }
+.act .act-dots i:nth-child(3) { opacity: .3; }
+.act .act-note, .act .act-time { color: var(--act-ink-faint); font-size: var(--act-fs-small, 12px); }
+.act .act-time { align-self: stretch; padding-top: 8px; border-top: 1px solid var(--act-line-soft); text-align: center; font-family: var(--t-mono); }
+.act .act-pending { border-style: dashed; }
+.act .act-pending .act-card-title { color: var(--act-attn); }
+.act .act-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.act .act-actions button { width: auto; min-height: 36px; margin: 0; padding: 6px 12px; border: 1px solid var(--act-line-strong); background: var(--act-panel-2); color: var(--act-ink); font-size: var(--act-fs-meta, 13px); }
+.act .act-actions .act-primary { border-color: var(--act-accent); background: var(--act-accent); color: var(--act-bg); font-weight: 600; }
+/* R128: 出勤の口の Bot の記録。報告は種類の札（注意だけ attn の字）と題・人の言葉は吹き出しの下に答え／指示の札・
+   出勤の変化と相談の閉じ方（期限切れ・取り下げ）は吹き出しでも本文でもない 1 行。色は字の明度差だけ（帯・影・絵文字は使わない） */
+.act .act-text .act-report-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; margin: 0 0 .4em; white-space: normal; }
+.act .act-report-title { font-weight: 600; }
+.act .act-report-kind.act-report-warn { color: var(--act-attn); }
+.act .act-event { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; color: var(--act-ink-soft); font-size: var(--act-fs-meta, 13px); line-height: 1.6; }
+.act .act-event-word { color: var(--act-ink); font-weight: 600; white-space: nowrap; }
+.act .act-event-text { min-width: 0; }
+.act .act-event-expired .act-event-word, .act .act-event-withdrawn .act-event-word { color: var(--act-ink-soft); font-weight: 400; white-space: normal; }

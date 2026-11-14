@@ -56,11 +56,11 @@ test("pxpose: 壊れた入力でも表の中のコマを返す", () => {
   }
 });
 
-test("コマ表とベンダーの数（42 セル＝14 × 3）", () => {
+test("コマ表とベンダーの数（56 セル＝14 × 4）", () => {
   assert.equal(CELL_COUNT, 14);
   assert.equal(new Set(CELLS).size, 14);
-  assert.deepEqual(VENDORS, ["claude", "codex", "openclaw"]);
-  assert.equal(CELL_COUNT * VENDORS.length, 42);
+  assert.deepEqual(VENDORS, ["claude", "codex", "openclaw", "bot"]);
+  assert.equal(CELL_COUNT * VENDORS.length, 56);
   assert.equal(vendorCell("Codex"), "codex");
   assert.equal(vendorCell("gemini"), "claude");
   assert.equal(vendorCell(undefined), "claude");

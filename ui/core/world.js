@@ -60,7 +60,7 @@ export function buildWorld(office) {
     minions: Number(p.minions) || 0,
     age: Number(p.age) || 0,
     external: p.external || null,
-    // R98: ベンダー（claude / codex / openclaw / other）。リプレイの世界にも要る＝ここで正規化する。
+    // R98: ベンダー（claude / codex / openclaw / bot / other）。リプレイの世界にも要る＝ここで正規化する。
     vendor: vendorOf(p),
     sessions: Array.isArray(p.sessions) ? p.sessions : [],
     feed: Array.isArray(p.feed) ? p.feed : [],
@@ -128,10 +128,10 @@ function fromEmployee(e) {
  * - max 文字で省略（既定60）
  */
 /**
- * ベンダー名を 4 語に正規化する（claude / codex / openclaw / other）。
+ * ベンダー名を 5 語に正規化する（claude / codex / openclaw / bot / other）。
  * 未搬送なら external の有無で決める（外部連携＝OpenClaw・それ以外は Claude）。
  */
-const VENDORS = ["claude", "codex", "openclaw"];
+const VENDORS = ["claude", "codex", "openclaw", "bot"];
 
 export function vendorOf(p) {
   const direct = String(p?.vendor || "").toLowerCase();
@@ -199,12 +199,19 @@ const GLOSS = {
   resting: { ja: "☕ ひと休み中", en: "☕ Taking a break" },
 };
 
+/** 日本語（ひらがな・カタカナ・漢字・半角カナ）を1文字でも含むか。real-data-readonly-04 の切り分けに使う。 */
+const hasJapanese = (s) => /[぀-ヿ㐀-鿿ｦ-ﾟ]/.test(s);
+
 /**
  * エージェントの「今何してます?」一言。優先順:
  * ①work.now（タスク管理由来＝既に人間語の作業名）を最優先
  * ②verb×対象のパターンでカテゴリ判定（ja/enどちらのverbでも判定できる）
  * ③どれにも当たらなければ tidy 済みの生1行（従来表示）へフォールバック
  * 生のコマンド/パスはシート（詳細面）だけに出す、が使い分けの掟。
+ * R106-21: ③のフォールバックは、UIが日本語でも raw（verb×target）が英語そのままだと
+ * 翻訳されずに台帳へ混じって見えた（real-data-readonly-04）。日本語の文字が1つも無ければ
+ * 生のまま出さず、既知の定型（作業中/指示待ち）へ倒す（UI が英語のとき・raw に日本語が
+ * 混じっているときは、従来どおり raw をそのまま出す＝実データの情報を無言で消さない）。
  */
 export function activityGloss(a, lang = "ja") {
   if (!a) return "";
@@ -213,9 +220,12 @@ export function activityGloss(a, lang = "ja") {
   if (now) return "📋 " + tidyActivity(now, 42);
   const kind = activityKind(a);
   if (kind) return L(kind);
+  const fallback = a.state === "working" ? L("run") : L("waiting");
   const raw = `${String(a.verb || "").trim()} ${a.target || ""}`.trim();
   const tidied = tidyActivity(raw, 42);
-  return tidied || (a.state === "working" ? L("run") : L("waiting"));
+  if (!tidied) return fallback;
+  if (lang !== "en" && !hasJapanese(tidied)) return fallback;
+  return tidied;
 }
 
 /** ❗＝承認まち or 未回答の質問。UIの最優先表示の判定はここ1箇所に集約する。 */

@@ -142,10 +142,12 @@ class ProjectsIndexTests(unittest.TestCase):
         # R90-D12: "v" はスキーマ版（docs/office-json.md が正本・中継 allowlist にも入っている）。
         # R97-D: "app" は**動いているコードの版**（正本= server/office_version.py）。"v" とは別物で、
         # 中継の allowlist には**入れない**（新フィールドは既定でスマホに載せない）。
+        # R102-5: macActive（Mac の前に人がいるか・0/1 だけ）。ioreg が読めない環境ではキーごと無い＝有れば 0/1 であることを見る
+        self.assertIn(data.get("macActive", 0), (0, 1))
         self.assertEqual({"v", "app", "officeName", "employees", "history", "today", "generatedAt", "setup",
                           "counts", "lang", "avatarMode", "roster", "tasks",
                           "actions", "relay", "res", "launchable", "templates", "sources", "events", "growth"},
-                         set(data))
+                         set(data) - {"macActive"})
         self.assertEqual(data["v"], 2)
         self.assertEqual(set(data["app"]), {"version"})   # 版だけ。パスやビルド情報を足さない
         self.assertNotIn("projects", data)

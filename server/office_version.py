@@ -12,7 +12,7 @@
 
 注意: office_json の `"v": 2` は**データ形式の版**で、これとは別の寿命を持つ別の数（docs/office-json.md）。
 """
-VERSION = "2.1.0"
+VERSION = "3.0.0"
 
 if __name__ == "__main__":
     print(VERSION)

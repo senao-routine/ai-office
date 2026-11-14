@@ -98,6 +98,33 @@ function baseArchetype(agent) {
   return { kind: "generic", tint: PASTELS[h % PASTELS.length], acc: null };
 }
 
+/**
+ * R110-S2: 俯瞰の部屋（ui/cockpit/room.js）の職業＝頭の小道具と机の小物を決める（ui/core/pxtop.js の TOP_ARCH_TILES・
+ * TOP_DESK_TILES の鍵）。3D の archetypeFor（殻の色と 3D のアクセサリ）とは別の関数＝iso の絵は変えない。
+ * 規則（ARCHETYPE_RULES）と先勝ちの順は同じ。当てる文字列は段ごとに広げる（前の段で当たれば後ろは見ない）:
+ *   1. name・role・dept（3D と同じ）
+ *   2. projectName と cwd の**末尾のフォルダ名だけ**（cwd が無ければ projectKey の `cwd:` の後ろ。親のフォルダ名＝
+ *      ユーザー名や「develop」で職業を決めない）
+ *   3. work.now[0]（いまの作業の 1 行目）
+ * どれにも当たらなければ "generic"（何も付けない＝嘘の帽子を被せない）。カスタマイズの arch・殻の色は読まない。
+ * @param {object} agent world の agent か台帳の行
+ * @returns {string} ARCHETYPE_RULES の職業の名前か "generic"
+ */
+export function roomArchetype(agent) {
+  if (!agent || typeof agent !== "object") return "generic";
+  const str = (v) => (typeof v === "string" ? v : "");
+  const cwd = str(agent.cwd) || (str(agent.projectKey).startsWith("cwd:") ? str(agent.projectKey).slice(4) : "");
+  const tail = cwd.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || "";
+  const now = Array.isArray(agent.work?.now) ? str(agent.work.now[0]) : "";
+  const stages = [[agent.name, agent.role, agent.dept], [agent.projectName, tail], [now]];
+  for (const parts of stages) {
+    const text = parts.map(str).filter(Boolean).join(" ");
+    if (!text) continue;
+    for (const [kind, re] of ARCHETYPE_RULES) if (re.test(text)) return kind;
+  }
+  return "generic";
+}
+
 /** Shared verb/target classification for activityGloss and actFor (ja/en). */
 export function activityKind(a) {
   if (!a) return null;

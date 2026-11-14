@@ -7,7 +7,7 @@ const root = new URL("../", import.meta.url);
 registerHooks({ resolve(specifier, context, next) {
   return next(specifier.startsWith("/ui/") ? new URL(specifier.slice(1), root).href : specifier, context);
 } });
-const { boardFromWorld, departmentBoard } = await import("../ui/hud/board.js");
+const { boardFromWorld, departmentBoard, mutedSessions } = await import("../ui/hud/board.js");
 const { buildWorld } = await import("../ui/core/world.js");
 const T = (key, ...args) => `${key}${args.length ? ":" + args.join(",") : ""}`;
 
@@ -176,6 +176,18 @@ test("boardFromWorld: 再生の途中で始まった/終わったセッション
   // イベントが無い相手（eventSids に無い）は従来どおり補う
   const filled = boardFromWorld(past, T, live, new Set(["lead"]));
   assert.deepEqual(filled[0].sessions.map((s) => s.session).sort(), ["late", "lead"]);
+});
+
+test("R128 #4: mutedSessions は bot- の行（id の形）の muted が true のものだけ・buildWorld（スマホと共有）には載せない", () => {
+  const office = { employees: [
+    { session: "bot-quiet1", vendor: "bot", muted: true }, { session: "bot-loud01", vendor: "bot", muted: false },
+    { session: "bot-str001", vendor: "bot", muted: "true" }, { session: "s-claude-1", vendor: "claude", muted: true },
+    { session: "bot-X", vendor: "bot", muted: true }, { session: "bot-a; rm", vendor: "bot", muted: true }, null, "x"] };
+  assert.deepEqual([...mutedSessions(office)], ["bot-quiet1"]);
+  assert.deepEqual([...mutedSessions(null)], []);
+  assert.deepEqual([...mutedSessions({ employees: "x" })], []);
+  const rows = { employees: office.employees.filter((e) => e && typeof e === "object") };
+  assert.equal(buildWorld(rows).agents.some((a) => Object.hasOwn(a, "muted")), false, "buildWorld に muted を足した（スマホの束が変わる）");
 });
 
 test("boardFromWorld: live の情報が無くても落ちない", () => {

@@ -72,9 +72,14 @@ class SealTest(unittest.TestCase):
     def test_the_wire_never_carries_the_conversation(self):
         page = {"messages": [{"role": "user", "text": "アメックスの請求書を確認して"}]}
         b = ds.seal(SECRET, DEV, REQ, SESS, page)
-        wire = json.dumps(b, ensure_ascii=False)
+        # 暗号文（b64 で約 11,000 字）は乱数なので、4 文字の語（role）が偶然現れる（約 0.07%・2026-09-30 の verify で実際に赤）。
+        # 封の外側（b 以外）は文字列で、b は復号前のバイト列で見る（平文の JSON の断片がそのまま入っていないこと）
+        wire = json.dumps({k: v for k, v in b.items() if k != "b"}, ensure_ascii=False)
+        raw = ds.unb64u(b["b"])
         for leak in ("アメックス", "請求書", SESS, "messages", "role"):
             self.assertNotIn(leak, wire, leak)
+        for leak in ("アメックス", "請求書", SESS, '"messages"', '"role"'):
+            self.assertNotIn(leak.encode("utf-8"), raw, leak)
         self.assertEqual(set(b) - {"v", "id", "s", "i", "e", "n", "c", "b", "err"}, set())
 
     def test_length_only_leaks_in_8kb_steps(self):
@@ -206,6 +211,31 @@ class SharedBundlesTest(unittest.TestCase):
         self.assertIsNone(ds.live_bundle(rid))
         ds.sweep()
         self.assertEqual(json.loads(ds.BUNDLES_FILE.read_text())["bundles"], [])
+
+    def test_urgent_marks_cross_the_process_boundary_and_leave_with_their_bundle(self):
+        """許可の全文（ask）とその理由は急ぎ＝中継の減速中でも relay_agent（別プロセス）が送れるように印をファイルで渡す。
+        印は封書の外（ファイルの "urgent"）＝封書の閉じたキー集合は変えない。"""
+        a, b = "a" * 32, "b" * 32
+        ds.store_bundle(a, self._bundle(a), replace_key="ask:dev", urgent=True)
+        ds.store_bundle(b, self._bundle(b))
+        self._forget_memory()                                    # ＝relay_agent 側
+        self.assertEqual(ds.urgent_ids(), {a})
+        self.assertEqual(sorted(ds.live_bundles()[0]), sorted(self._bundle(a)))   # 封書そのものに印は無い
+        # 同じ端末の次の許可の全文に置き換わったら、古い印は残らない
+        c = "c" * 32
+        ds.store_bundle(c, self._bundle(c), replace_key="ask:dev", urgent=True)
+        self.assertEqual(ds.urgent_ids(), {c})
+        self.assertEqual(json.loads(ds.BUNDLES_FILE.read_text())["urgent"], [c])
+        # 期限切れの掃除でも印は封書と一緒に消える
+        rows = json.loads(ds.BUNDLES_FILE.read_text())
+        for row in rows["bundles"]:
+            if row["id"] == c:
+                row["e"] = int(time.time()) - 1
+        ds.BUNDLES_FILE.write_text(json.dumps(rows))
+        self._forget_memory()
+        ds.sweep()
+        self.assertEqual(ds.urgent_ids(), set())
+        self.assertNotIn("urgent", json.loads(ds.BUNDLES_FILE.read_text()))
 
     def test_the_file_is_capped(self):
         for i in range(ds.MAX_LIVE + 3):

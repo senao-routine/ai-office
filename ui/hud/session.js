@@ -6,9 +6,10 @@ import { frozen, now } from "/ui/platform/clock.js";
 /**
  * ctx: root（.offline を付ける先＝様式のルート。CSS は .hud.offline を見る。shell に付けると
  *      セレクタが永遠にマッチしない＝実際にサイレント故障していた）, shell, T, DEMO,
- *      apply(office), onOffline(offline)＝再描画など様式側の追随, tray, blocked()＝深リンクを無視する条件
+ *      apply(office), onOffline(offline)＝再描画など様式側の追随, tray, blocked()＝深リンクを無視する条件,
+ *      lang()＝今の UI 表示言語（デモ到着時に敷き直す・R106-6）
  */
-export function init({ root, shell, T, DEMO, apply, onOffline, tray, getWorld, blocked }) {
+export function init({ root, shell, T, DEMO, apply, onOffline, tray, getWorld, blocked, lang }) {
   let lastDataMono = null;
   const dataAge = (t) => (lastDataMono === null ? null : Math.max(0, Math.round(t - lastDataMono)));
   const offBar = shell.querySelector("#offbar");
@@ -62,7 +63,15 @@ export function init({ root, shell, T, DEMO, apply, onOffline, tray, getWorld, b
     loadDemo: async () => {
       try {
         const res = await fetch("/ui/demo/world.json", { headers: { "X-Office-Local": "1" } });
-        if (res.ok) apply(await res.json());
+        if (res.ok) {
+          const data = await res.json();
+          // R106-6: デモは world.json の固定値 lang:"en" のまま apply() に渡っていたので、apply() の
+          // `if (built.lang !== lang()) setLang(built.lang)` が、訪問者のブラウザ言語（navigator.language
+          // 判定／保存済み設定）で既に正しく開いていた画面を無条件に英語へ強制していた。デモの構成（世界の
+          // データ自体）はそのまま、表示言語だけ今の UI の言語に合わせて敷き直す（apply() 自体は変えない＝
+          // ライブデータでサーバー設定の言語に追随する既存の仕掛けは壊さない）。
+          apply({ ...data, lang: lang ? lang() : data.lang });
+        }
       } catch { /* fallthrough */ }
       if (!getWorld()) {
         try { apply(await getOffice()); } catch { /* オフラインでも空画面のまま起動 */ }

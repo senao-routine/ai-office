@@ -1,0 +1,5 @@
+{"type": "permission-mode", "permissionMode": "plan", "cwd": "/Users/test/demo-project", "gitBranch": "main"}
+{"type": "user", "message": {"role": "user", "content": "続きを実装して"}, "cwd": "/Users/test/demo-project", "gitBranch": "main"}
+{"type": "assistant", "message": {"role": "assistant", "content": [{"type": "tool_use", "id": "toolu_1", "name": "Bash", "input": {"command": "npm test"}}]}, "cwd": "/Users/test/demo-project", "gitBranch": "main"}
+{"type": "user", "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_1", "content": "ok"}]}, "cwd": "/Users/test/demo-project", "gitBranch": "main"}
+{"type": "assistant", "isApiErrorMessage": true, "message": {"role": "assistant", "model": "<synthetic>", "content": [{"type": "text", "text": "You've reached your Fable limit. Switch to another model, or manage usage credits at claude.ai/settings/usage"}]}, "cwd": "/Users/test/demo-project", "gitBranch": "main"}

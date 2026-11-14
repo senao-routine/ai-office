@@ -20,7 +20,7 @@ fi
 if [ -z "$OFFICE_PY" ]; then
   for OFFICE_PY_CAND in /usr/bin/python3 "$(command -v python3 2>/dev/null || true)"; do
     [ -n "$OFFICE_PY_CAND" ] && [ -x "$OFFICE_PY_CAND" ] || continue
-    "$OFFICE_PY_CAND" -c 'import json,sys' >/dev/null 2>&1 || continue
+    "$OFFICE_PY_CAND" -I -c 'import json,sys' >/dev/null 2>&1 || continue
     OFFICE_PY="$OFFICE_PY_CAND"
     mkdir -p "${OFFICE_PY_CACHE%/*}" 2>/dev/null || true
     printf '%s' "$OFFICE_PY" 2>/dev/null > "$OFFICE_PY_CACHE" || true
@@ -35,7 +35,7 @@ if [ -z "$OFFICE_PY" ]; then
   exit 0
 fi
 IN=$(cat 2>/dev/null || true)
-SID=$(printf '%s' "$IN" | "$OFFICE_PY" -c 'import json,sys
+SID=$(printf '%s' "$IN" | "$OFFICE_PY" -I -c 'import json,sys
 try: print(json.load(sys.stdin).get("session_id",""))
 except Exception: print("")' 2>/dev/null)
 case "$SID" in *[!a-zA-Z0-9-]*|"") exit 0;; esac
@@ -63,7 +63,7 @@ for _ in $(seq 1 "$LOOPS"); do
   if [ -f "$MSGF" ]; then
     # R79: ttl 切れは配達しない（閉じたセッション宛の指示が数時間後に突然実行されるのを防ぐ）。
     # 期限切れ・壊れたJSONは空文字を返し、下で rm されて静かに消える。
-    TXT=$("$OFFICE_PY" -c 'import json,sys,time
+    TXT=$("$OFFICE_PY" -I -c 'import json,sys,time
 try:
     d = json.load(open(sys.argv[1]))
     ttl = float(d.get("ttl") or 0)

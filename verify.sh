@@ -12,14 +12,38 @@ NG=0
 UI_SKIPPED=0
 ng(){ echo "  ✗ $1"; NG=$((NG+1)); }
 ok(){ echo "  ✓ $1"; }
+# R99 Phase 0-C: 節ごとの経過秒を測る。**基準線が無いまま「増分 ≤ +60s」を門にしていた**ので、
+# まず測る。`sec` を各節の頭で呼ぶと、前の節の秒数が logs/verify-runs.jsonl に 1 行積まれる。
+# 失敗しても検証を止めない（計測が本体を壊さない）。VERIFY_TIMING=0 で黙る。
+VT_START=$(date +%s); VT_LAST=$VT_START; VT_NAME=""; VT_LOG="$(pwd)/logs/verify-runs.jsonl"
+VT_RUN="$(date +%Y%m%dT%H%M%S)"
+sec(){
+  [ "${VERIFY_TIMING:-1}" = "1" ] || return 0
+  local now; now=$(date +%s)
+  if [ -n "$VT_NAME" ]; then
+    mkdir -p "$(dirname "$VT_LOG")" 2>/dev/null || true
+    printf '{"run":"%s","section":"%s","sec":%s}\n' "$VT_RUN" "$VT_NAME" "$((now-VT_LAST))" >> "$VT_LOG" 2>/dev/null || true
+  fi
+  VT_NAME="$1"; VT_LAST=$now
+}
+vt_end(){
+  [ "${VERIFY_TIMING:-1}" = "1" ] || return 0
+  sec ""
+  local total=$(($(date +%s)-VT_START))
+  printf '{"run":"%s","section":"__total__","sec":%s,"ng":%s,"ui_skipped":%s}\n' \
+    "$VT_RUN" "$total" "${NG:-0}" "${UI_SKIPPED:-0}" >> "$VT_LOG" 2>/dev/null || true
+  echo "  ⏱ 所要 $((total/60)) 分 $((total%60)) 秒（節ごとの内訳= logs/verify-runs.jsonl）"
+}
 # 中断・失敗時も一時サーバー/一時dirを必ず片付ける（孤児:4797が次回の嘘greenを生むのを防ぐ）
 SPID="" DPID="" VHOME="" HDIR="" DTMP="" DHOME="" MHOME=""
 trap '[ -n "$SPID" ] && kill $SPID 2>/dev/null; [ -n "$DPID" ] && kill $DPID 2>/dev/null;
       rm -rf "$VHOME" "$HDIR" "$DTMP" "$DHOME" "$MHOME" 2>/dev/null' EXIT
 
+sec "1/8"
 echo "▶ 1/8 構文チェック (py_compile)"
 python3 -m py_compile server/*.py tools/*.py tests/*.py 2>&1 && ok "全ファイル構文OK" || ng "構文エラー"
 
+sec "2/8"
 echo "▶ 2/8 stdlib番人 (server/ は標準ライブラリのみ)"
 python3 tools/check_stdlib.py server/*.py || ng "server/ に外部依存が混入"
 # tools/office_send.py も stdlib のみ（office_server は同梱の許可モジュール）
@@ -45,6 +69,7 @@ if bad:
 print("  ✓ シェル変数展開の罠なし（$VAR+全角）")
 SHVAR
 
+sec "2c"
 echo "▶ 2c 素の Mac の python3 で server/ が動く（配布先で死なない）"
 # 2026-09-17 の実測: office_events.py の注釈 2 行（PEP 604 の `dict | None`）だけで
 # office_server / mcp_office / relay_agent / office_timeline が 3.9.6 で import できず、
@@ -55,7 +80,7 @@ if [ -x /usr/bin/python3 ]; then
   P39TMP="$(mktemp -d)"
   if OFFICE_HOME="$P39TMP" /usr/bin/python3 -c "
 import sys; sys.path.insert(0, 'server')
-import office_server, mcp_office, relay_agent, office_timeline, office_events" >/dev/null 2>&1; then
+import office_server, mcp_office, relay_agent, office_timeline, office_events, office_door, source_door_log" >/dev/null 2>&1; then
     ok "素の Mac の python3（$(/usr/bin/python3 -V 2>&1 | cut -d' ' -f2)）で server/ が import できる"
   else
     ng "素の Mac の python3 で server/ が import できない（配布先で起動しない）"
@@ -76,13 +101,14 @@ else
   echo "  ℹ /usr/bin/python3 が無い環境（配布先の検査は省略）"
 fi
 
+sec "2b"
 echo "▶ 2b 新UI(R50) の層と core ユニット"
 # 層lint: ui/core が DOM/通信/時刻/乱数に触っていないこと＝core を node だけでテストできる前提を守る番人
 python3 tools/js_layer_lint.py || ng "R50 層lint 違反（core の逆流）"
 # R90: 未定義の CSS 変数は CSS がエラーにせず黙って無視する＝カードの背景だけ透明、のような
 # 「目で見るまで分からない壊れ方」になる（2026-09-08 にダイジェストのカードで実発生）。
 python3 tools/css_var_lint.py || ng "R90 CSS変数lint 違反（未定義の var()）"
-python3 tools/mjs_wire_lint.py || ng "R90 配線lint（tests/*.mjs が走っていない）"
+python3 tools/mjs_wire_lint.py || ng "R90 配線lint（tests/*.mjs・スモークが走っていない／golden の表 3 か所がずれている）"
 if command -v node >/dev/null 2>&1; then
   # R90: presentation 側（ui/iso・ui/hud・ui/platform）の node テスト。
   # ★ここに**全部**列挙する。R90 で6本作ったのに、sound だけ配線して残り5本（33件）が
@@ -91,13 +117,28 @@ if command -v node >/dev/null 2>&1; then
   #   巻き込まないため。足したらこの行に足す。
   node --test tests/sound.test.mjs tests/hire_onboarding.test.mjs tests/hud_growth_frozen.test.mjs \
     tests/iso_acts.mjs tests/iso_floor_ao.mjs tests/iso_growth.test.mjs tests/rigbot.test.mjs tests/stream.test.mjs \
-    tests/dialog_seal_kat.mjs tests/iso_no_fake_glow.test.mjs tests/hud_ids.test.mjs tests/hud_board_replay.test.mjs \
-    || ng "R90 presentation の node テスト（音・雇う・成長・所作・床AO・ティア・配信・封書KAT・fake glow 非復活・HUD の DOM 契約）"
+    tests/dialog_seal_kat.mjs tests/iso_no_fake_glow.test.mjs tests/hud_ids.test.mjs tests/hud_board_replay.test.mjs tests/hud_send_ask.test.mjs tests/term_input.test.mjs \
+    tests/pxroom_tiles.test.mjs tests/activity.test.mjs tests/activity_view.test.mjs tests/activity_feed.test.mjs tests/cockpit_fixture.test.mjs tests/cockpit_room.test.mjs tests/cockpit_cells.test.mjs \
+    tests/pwa_bootpx_contract.test.mjs tests/press_hold.test.mjs \
+    || ng "R90 presentation の node テスト（音・雇う・成長・所作・床AO・ティア・配信・封書KAT・fake glow 非復活・HUD の DOM 契約・端末の入力・cockpit の家具の表とドット・cockpit の固定ワールド・cockpit の席の帳簿・PWA の起動契約・押している間は描き直さない）"
   UIJS_NG=0
   for F in $(find ui -name '*.js' -not -path 'ui/vendor/*' 2>/dev/null); do
     node --check "$F" >/dev/null 2>&1 || { echo "    構文エラー: $F"; UIJS_NG=1; }
   done
   [ "$UIJS_NG" = "0" ] && ok "新UI JS 構文" || ng "新UI JS 構文エラー"
+  # R99-A3: design/ の受入ゲート（委譲先が書いたドットの「作り方」の掟）。書いてあっても
+  # どこからも呼ばれていなかった。node --check を中で使うので node の分岐の内側に置く。
+  # 何をどのファイルで見るかの正本は `python3 design/check.py --list`。ここに掟を書き写さない
+  # （写しは見ていない範囲まで守られているように読める＝第 1 波の検収で、design/ だけを見る番号が
+  # 製品の ui/cockpit まで守っているように読めると指摘された）。
+  # design/ は公開物に無い（tools/_publish_excludes.sh）。開発ツリー（tools/publish_snapshot.sh が在る＝公開物・配布物から除外している。CLAUDE.md は受け取った人が /init で作りうるので印にしない）では必須＝消えたら赤
+  if [ -d design ]; then
+    python3 design/check.py || ng "R99 design ゲート違反（直し方は上の各行）"
+  elif [ -f tools/publish_snapshot.sh ]; then
+    ng "R99 design/ が無い（開発ツリーでは design ゲートは必須）"
+  else
+    echo "  ⚠ design/ は公開物に含めない＝design ゲートは省略"
+  fi
   if ls ui/core/*.test.js >/dev/null 2>&1; then
     UT=$(node --test ui/core/*.test.js 2>&1)
     if echo "$UT" | grep -qE '^ℹ fail 0$'; then
@@ -110,20 +151,33 @@ else
   echo "  - node なし → 新UIのJS検査を省略"
 fi
 
+sec "2f"
 echo "▶ 2f 配布物（zip / tar.gz）の除外が効いている"
 # R97-D: 公開リポと配布物で除外リストがずれると、片方だけから内部物が漏れる。
 # 正本は tools/_publish_excludes.sh の 1 本で、両方がそれを食う（--check は HEAD を見るだけ＝速い）。
 bash tools/pack_release.sh --check || ng "配布物の除外に取りこぼしがある（bash tools/pack_release.sh --check）"
+# 2026-10-04: wrangler のキャッシュ（Cloudflare のアカウントのメールと ID）が demo/.wrangler として追跡され、公開リポと配布 zip に入っていた。
+# どの階層の .wrangler も追跡しない（.gitignore）＝追跡されていたら赤
+if git ls-files | grep -q -E '(^|/)\.wrangler/'; then
+  ng "wrangler のキャッシュが git に追跡されている（git rm --cached <path>・.gitignore の .wrangler/）"
+else
+  ok "wrangler のキャッシュ（アカウントの情報）は追跡されていない"
+fi
 
+sec "2e"
 echo "▶ 2e 版が 1 箇所から波及している（server/office_version.py が正本）"
 python3 tools/check_version.py || ng "版の食い違い（tools/check_version.py）"
 
+sec "2d"
 echo "▶ 2d JS 側の KAT とパリティ（wrangler 不要・毎回走る）"
 # R97-B: この 7 本は node だけで走るのに RUN_RELAY=1 の裏に居た＝**既定の verify では一度も走らなかった**。
 # CLAUDE.md 不変条件 #10「署名 canonical と KAT は Python/JS 両側」を、Python 側（▶4）だけが守っている状態だった。
 # JS↔Python 署名パリティ＋APP_HTML canonical 検査（node のみ・node_modules不要＝クローン直後でも走る）
 if command -v node >/dev/null 2>&1; then
   node tests/js_sign_kat.mjs && ok "JS署名KAT一致 (canonical相互運用)" || ng "JS署名KAT不一致"
+  # R100-1b: スマホから許可の内側の署名（apvCanonical・challenge）を Python と同じ固定値で
+  node tests/approve_kat.mjs >/dev/null && ok "R100-1b スマホ許可 KAT 一致（app.js の apvCanonical・challenge）" \
+    || ng "R100-1b スマホ許可 KAT 不一致（node tests/approve_kat.mjs で詳細）"
   # R65: PWAへ移植した gloss が正本 ui/core/world.js と同一出力（片方だけ直すと落ちる）
   node tests/gloss_parity.mjs >/dev/null 2>&1 && ok "R65 gloss parity (PWA↔core 同一出力)" || ng "R65 gloss parity 不一致 (node tests/gloss_parity.mjs で詳細)"
   # R80-A11: ❗の「最優先の1件」がMacとスマホで一致すること（順序の正本を2つ持たない）
@@ -142,6 +196,7 @@ fi
 
 node tests/relay_usage_lint.mjs && ok "中継の使用量: 書込経路がすべて計上される" || ng "中継の使用量に数えていない書込経路がある（node tests/relay_usage_lint.mjs）"
 
+sec "3/8"
 echo "▶ 3/8 office_config.json 検証"
 # R80 Phase4: アセット検査（sprite実在/PNGマジック/寸法）は退役＝assets/ ごと撤去した。
 # 3D UIは ui/iso/tex/*.webp（▶3bのmodules番人が守る）だけを読む。ここはconfigの構造のみ。
@@ -159,7 +214,8 @@ if bad:
 print(f"  ✓ config OK ({len(projects)}プロジェクト)")
 EOF
 
-echo "▶ 3b PWA同梱物 (modules_data.js / app_html.js が ui/ と一致・git追跡・worker構文)"
+sec "3b"
+echo "▶ 3b PWA同梱物 (通常束・3D遅延束・シェルが ui/ と一致・git追跡・worker構文)"
 # R79: スプライト同梱(sprites_data.js)は全廃＝アバターはモノグラム・シーンは3D ESM。
 # 生成物 relay/src/modules_data.js は worker.js が static import する＝未生成/未追跡だと
 # クリーンclone/CIで wrangler deploy が丸ごと失敗し既存relay全ルートが落ちる。
@@ -171,14 +227,43 @@ if [ $? = 0 ]; then
 else
   echo "$PXOUT" | sed 's/^/  /'; ng "R98 ドット絵 lint（16×24・色数・枠・42セル・PNG禁止）"
 fi
-if python3 tools/gen_pwa_modules.py --check >/dev/null 2>&1; then
-  ok "modules_data.js / app_html.js が ui/ と一致 (PWA 3Dシーン・シェル)"
+# R99 Phase 3: 俯瞰の部屋（cockpit）のドットの門（px_lint 第 2 モード）。値は正本を node で評価して読む。
+# 何を見るかの正本は tools/px_lint.py の docstring の①〜⑦（ここに掟を書き写さない）。所要 約 0.1 秒（実測 0.08〜0.09 秒）。
+# 回帰（わざと欠けたコマ・ずれた寸法・余ったタイル・PNG で赤）は tests/test_px_lint_cockpit.py（unittest で回る）
+# 正本を node で評価する門＝ほかの node の門（▶2b・▶2d）と同じく node が無ければ省略と出す（理由の分からない赤にしない）
+if command -v node >/dev/null 2>&1; then
+  PXCOUT="$(python3 tools/px_lint.py --cockpit 2>&1)"
+  if [ $? = 0 ]; then
+    echo "$PXCOUT" | sed 's/^/  /'
+  else
+    echo "$PXCOUT" | sed 's/^/  /'; ng "R99 cockpit ドット lint（寸法の三点一致・3 ベンダー×全コマ・歩行の差・タイルの外形・配置表・契約と会議室の開口・画像 0）"
+  fi
 else
-  ng "PWA同梱物 ドリフト/未生成 → python3 tools/gen_pwa_modules.py で再生成しコミット"
+  echo "  ⚠ node 無し → R99 cockpit ドット lint を省略（正本を node で評価する門）"
+fi
+if PWA_GEN_OUT=$(python3 tools/gen_pwa_modules.py --check 2>&1); then
+  ok "modules_data.js / modules_3d.js / app_html.js が ui/ と一致"
+else
+  # 理由を捨てない（3D の混入・閉包の欠けは再生成しても直らない＝理由が要る）
+  echo "$PWA_GEN_OUT" | grep '✗' | sed 's/^/    /'
+  ng "PWA同梱物 ドリフト/未生成/中身の掟違反（上の行）→ 直してから python3 tools/gen_pwa_modules.py で再生成しコミット"
 fi
 git ls-files --error-unmatch relay/src/modules_data.js >/dev/null 2>&1 \
   && ok "modules_data.js git追跡済み" \
   || ng "modules_data.js が未追跡 → git add relay/src/modules_data.js"
+git ls-files --error-unmatch relay/src/modules_3d.js >/dev/null 2>&1 \
+  && ok "modules_3d.js git追跡済み" \
+  || ng "modules_3d.js が未追跡 → git add relay/src/modules_3d.js（実装担当は git 操作をせず人間へ引継ぎ）"
+# R99-P4-7: PWA のホーム画面のアイコン（コードで描く PNG）と地の色は tools/gen_pwa_icons.py が正本から作る
+# （絵= ui/cockpit/cells.js の claude.idle0・地= PWA のヘッダーの色）。worker.js が static import する＝未追跡だと clone の deploy が落ちる
+if python3 tools/gen_pwa_icons.py --check >/dev/null 2>&1; then
+  ok "pwa_icons.js が正本と一致（ホーム画面のアイコン・地の色・app.html の meta と link）"
+else
+  ng "PWA アイコンのドリフト → python3 tools/gen_pwa_icons.py で再生成しコミット"
+fi
+git ls-files --error-unmatch relay/src/pwa_icons.js >/dev/null 2>&1 \
+  && ok "pwa_icons.js git追跡済み" \
+  || ng "pwa_icons.js が未追跡 → git add relay/src/pwa_icons.js"
 git ls-files --error-unmatch relay/src/app_html.js >/dev/null 2>&1 \
   && ok "app_html.js git追跡済み" \
   || ng "app_html.js が未追跡 → git add relay/src/app_html.js"
@@ -205,8 +290,10 @@ else
   echo "  - node無し → worker.js構文チェック省略"
 fi
 # R90-H: サイズゲート。PWA 同梱物とテクスチャは「増えても気づかない」種類の退行なので上限を機械で固定。
-#   modules_data.js raw ≤ 3.5MB / gzip ≤ 1.2MB（R96-D で 2.5MB/900KB から拡張＝Tripo 生成什器の PWA 同梱分。
-#   PWA に載せる物は ui/iso/gen/manifest.json の pwa:true だけ・残りは null スタブ）。
+#   modules_data.js raw ≤ 800KB / gzip ≤ 200KB（R99-P4-6 で PWA の部屋を 3D からドット絵へ＝3D の一式を外した。
+#   実測 raw 380,925B / gzip 102,719B〔2026-09-26〕。3D（約 1MB）が戻れば必ず赤。旧の上限は 3.5MB/1.2MB）。
+#   R122: 3D は別束 modules_3d.js。実測およそ raw 2.9MB / gzip 1.24MB に余裕を持たせ 3.4MB / 1.5MB。
+#   通常束の上限は据え置き＝ドット絵を選んだ端末へ 3D の転送を混ぜない。
 #   ui/iso*/tex は合計 ≤ 600KB・1枚 ≤ 80KB（GPT-Image デカールを足すときの天井）。
 #   ui/iso/gen/*.js（生成什器）は 1 点 ≤ 160KB・合計 ≤ 3.5MB（デスクトップはローカル配信＝転送は初回だけ）。
 python3 - <<'EOF' || NG=$((NG+1))
@@ -217,9 +304,18 @@ m = root / "relay/src/modules_data.js"
 if m.is_file():
     raw = m.read_bytes()
     gz = len(gzip.compress(raw, 6))
-    if len(raw) > 3_500_000: bad.append(f"modules_data.js raw {len(raw)//1024}KB > 3500KB")
-    if gz > 1_200_000: bad.append(f"modules_data.js gzip {gz//1024}KB > 1200KB")
+    if len(raw) > 800_000: bad.append(f"modules_data.js raw {len(raw)//1024}KB > 800KB")
+    if gz > 200_000: bad.append(f"modules_data.js gzip {gz//1024}KB > 200KB（3D が PWA に戻っていないか）")
     print(f"  ✓ modules_data.js サイズ raw {len(raw)//1024}KB / gzip {gz//1024}KB")
+m3 = root / "relay/src/modules_3d.js"
+if m3.is_file():
+    raw3 = m3.read_bytes()
+    gz3 = len(gzip.compress(raw3, 6))
+    if len(raw3) > 3_400_000: bad.append(f"modules_3d.js raw {len(raw3)}B > 3400000B")
+    if gz3 > 1_500_000: bad.append(f"modules_3d.js gzip {gz3}B > 1500000B")
+    print(f"  ✓ modules_3d.js サイズ raw {len(raw3)}B / gzip {gz3}B（別束・初回3D表示で読込）")
+else:
+    bad.append("modules_3d.js が無い")
 for d in sorted(root.glob("ui/iso*/tex")):
     files = [p for p in d.iterdir() if p.is_file()]
     total = sum(p.stat().st_size for p in files)
@@ -243,18 +339,43 @@ EOF
 # ▶3d scene_sync --check は R52 旧UI削除で退役。office_scene.json＋/api/layout＋
 # test_scene_geometry.py も R80 Phase4 で撤去済み（3Dの間取り正本= ui/core/nav.js）
 
+sec "4/8"
 echo "▶ 4/8 ユニットテスト (状態推定ゴールデン他)"
 # 1回だけ走らせて、出力と終了コードの両方を取る（従来は表示用と判定用で**2回**回しており、
 # 32秒×2の無駄に加えて「1回目green・2回目だけ落ちる」フレークを自ら作っていた）。
 _ut_log="$(mktemp -t aioffice_unittest)"
-python3 -m unittest discover -s tests -q >"$_ut_log" 2>&1
+# R100-0: unittest は**一時 HOME** で回す。従来は実 ~/.claude に書いていた（discover が先に office_server を
+# import すると office_actions のパスが実 HOME で固まり、test_office_actions の監査・結果が本物の
+# office_actions_audit.jsonl（3.4MB）へ追記されていた・2026-09-29 に実測）。OFFICE_HOME だけでは
+# tearDown で pop するテストの後に実 HOME へ戻る＝HOME ごと差し替える。
+# 番人: 実 ~/.claude の「人間の操作でしか変わらない」ファイルの mtime・サイズが動いたら赤。
+# 監査ログ（office_actions_audit.jsonl）は本番デーモンが会話閲覧・ターミナル画面のたびに書く＝番人に入れると
+# スマホを触っただけで赤になる。監査はテスト側の番人（tests/test_office_actions.py の _ensure_tmp_home）で守る。
+_ut_home="$(mktemp -d -t aioffice_ut_home)"
+_ut_guard() {
+  for _f in office_action_results.json office_devices.json office_recipes.json \
+            office_license.json office_license_signing.json office_secrets office_relay.json office_templates.json \
+            office_remote_approve.json office_approve_keys.json office_door/bots.json; do
+    stat -f "%N %m %z" "$HOME/.claude/$_f" 2>/dev/null || echo "$_f -"
+  done
+}
+_ut_before="$(_ut_guard)"
+HOME="$_ut_home" OFFICE_HOME="$_ut_home" python3 -m unittest discover -s tests -q >"$_ut_log" 2>&1
 _ut_rc=$?
+_ut_after="$(_ut_guard)"
+rm -rf "$_ut_home"
 tail -2 "$_ut_log" | sed 's/^/  /'
 if [ "$_ut_rc" != "0" ]; then
   grep -E "^(FAIL|ERROR):" "$_ut_log" | head -5 | sed 's/^/  /'
   ng "unittest失敗（詳細: ${_ut_log}）"
 else
   rm -f "$_ut_log"
+fi
+if [ "$_ut_before" != "$_ut_after" ]; then
+  diff <(echo "$_ut_before") <(echo "$_ut_after") | grep '^>' | sed 's/^/  /'
+  ng "unittest が実 ~/.claude を書き換えた（テストが一時 HOME の外へ書いている。同時刻に Mac で遠隔実行・ペアリングをした場合は誤検知）"
+else
+  ok "unittest は実 ~/.claude を書き換えていない（一時 HOME）"
 fi
 
 # テストポート: 既定4797（台帳）。dev.sh の fixtureサーバー等が使用中なら空きポートへ退避する。
@@ -266,6 +387,7 @@ if [ -n "$SQUATTER" ]; then
   TPORT=$(python3 -c 'import socket;s=socket.socket();s.bind(("127.0.0.1",0));print(s.getsockname()[1]);s.close()')
   echo "  ℹ :4797 は使用中 (PID $SQUATTER: $(ps -o command= -p "$SQUATTER" | head -c 90)) → :$TPORT で検査"
 fi
+sec "5/8"
 echo "▶ 5/8 起動スモーク (フィクスチャHOME・:$TPORT)"
 VHOME=$(python3 tests/make_home.py)
 LAUNCH_MARKER="$VHOME/claude_launch.marker"
@@ -273,6 +395,7 @@ mkdir -p "$VHOME/data"
 # 2026-08-10 ライセンス廃止: 機能ゲートが無いので鍵無しで全機能が使える（誰でも即開始）。
 OFFICE_HOME="$VHOME" OFFICE_CONFIG="$VHOME/office_config.json" OFFICE_PICK_DIR="$VHOME/pickme" \
   OFFICE_DATA="$VHOME/data" OFFICE_FAKE_LAUNCH="$LAUNCH_MARKER" OFFICE_FAKE_CODEX="$VHOME/codex_queue.marker" OFFICE_FAKE_HIRE="$VHOME/hire.marker" \
+  OFFICE_FAKE_CONFIRM=ok OFFICE_FAKE_NOTIFY="$VHOME/notify.txt" \
   python3 server/office_server.py --port $TPORT >/dev/null 2>&1 &
 SPID=$!
 sleep 1.2
@@ -291,6 +414,8 @@ for e in emps:
 print(f"  ✓ /api/office スキーマOK (社員{len(emps)})")
 EOF
 H_LOCAL='-H X-Office-Local:1'
+# R100-0: 権限を動かす POST（承認への回答・スマホの登録/失効・許可リスト・封書の ON）は Origin 必須
+H_ORIGIN="Origin: http://127.0.0.1:$TPORT"
 # R90-D9: ローカル読み出し API と seen の CSRF 境界。
 CODE=$(curl -s --max-time 3 -o /dev/null -w "%{http_code}" $H_LOCAL "http://127.0.0.1:$TPORT/api/digest")
 [ "$CODE" = "200" ] && ok "/api/digest (200)" || ng "/api/digest 失敗 (code=$CODE)"
@@ -375,26 +500,36 @@ CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:$TPORT/api/office
 CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "X-Office-Local: 1" http://127.0.0.1:$TPORT/api/office)
 [ "$CODE" = "200" ] && ok "M4 GET /api/office ヘッダ有り200" || ng "M4 /api/office 正常系失敗 (code=$CODE)"
 # R86-H: 承認・質問への回答経路（掲示が無ければ開かない・CSRF配下・allowはローカルのみ）
+# R100-0: 掲示と回答は 1 件ごと（<session>.<askId>.json）・回答 API は askId で 1 件を指す・Origin 必須（ブラウザの画面から）
 mkdir -p "$VHOME/.claude/office_approvals"
-RES=$(curl -s -X POST http://127.0.0.1:$TPORT/api/approval/reply $H_LOCAL \
-  -H "Content-Type: application/json" -d '{"session":"sess-verify0001","behavior":"allow"}')
+ASK_V="0123456789abcdef0123456789abcdef"
+RES=$(curl -s -X POST http://127.0.0.1:$TPORT/api/approval/reply $H_LOCAL -H "$H_ORIGIN" \
+  -H "Content-Type: application/json" -d "{\"session\":\"sess-verify0001\",\"behavior\":\"allow\",\"askId\":\"$ASK_V\"}")
 echo "$RES" | python3 -c 'import sys,json; d=json.load(sys.stdin); assert d["ok"] is False, d' \
   && ok "R86-H 掲示が無いセッションへは回答できない（押せて届かない嘘を作らない）" \
   || ng "R86-H 掲示無しなのに回答を受理した: $(echo "$RES" | head -c 80)"
-python3 -c 'import json,sys,time; p=sys.argv[1]; json.dump({"session":"sess-verify0001","tool":"Bash","kind":"permission","title":"git push","options":[],"ts":time.time(),"deadline":time.time()+600,"pid":1}, open(p,"w"))' \
-  "$VHOME/.claude/office_approvals/sess-verify0001.json"
-RES=$(curl -s -X POST http://127.0.0.1:$TPORT/api/approval/reply $H_LOCAL \
+python3 -c 'import json,sys,time; p,a=sys.argv[1:3]; json.dump({"session":"sess-verify0001","askId":a,"tool":"Bash","kind":"permission","title":"git push","options":[],"ts":time.time(),"deadline":time.time()+600,"pid":1}, open(p,"w"))' \
+  "$VHOME/.claude/office_approvals/sess-verify0001.$ASK_V.json" "$ASK_V"
+CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://127.0.0.1:$TPORT/api/approval/reply $H_LOCAL \
+  -H "Content-Type: application/json" -d "{\"session\":\"sess-verify0001\",\"behavior\":\"allow\",\"askId\":\"$ASK_V\"}")
+[ "$CODE" = "403" ] && ok "R100-0 回答APIは Origin 必須（X-Office-Local だけの curl は403）" || ng "R100-0 Origin無しの回答が通った (code=$CODE)"
+RES=$(curl -s -X POST http://127.0.0.1:$TPORT/api/approval/reply $H_LOCAL -H "$H_ORIGIN" \
   -H "Content-Type: application/json" -d '{"session":"sess-verify0001","behavior":"allow"}')
+echo "$RES" | python3 -c 'import sys,json; d=json.load(sys.stdin); assert d["ok"] is False, d' \
+  && ok "R100-0 askId の無い回答は受け付けない（どの 1 件か分からない）" \
+  || ng "R100-0 askId 無しの回答を受理した: $(echo "$RES" | head -c 80)"
+RES=$(curl -s -X POST http://127.0.0.1:$TPORT/api/approval/reply $H_LOCAL -H "$H_ORIGIN" \
+  -H "Content-Type: application/json" -d "{\"session\":\"sess-verify0001\",\"behavior\":\"allow\",\"askId\":\"$ASK_V\"}")
 echo "$RES" | python3 -c 'import sys,json; d=json.load(sys.stdin); assert d["ok"], d' \
-  && [ -f "$VHOME/.claude/office_approvals/sess-verify0001.reply.json" ] \
-  && python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["behavior"]=="allow" and d["src"]=="local", d' \
-     "$VHOME/.claude/office_approvals/sess-verify0001.reply.json" \
-  && ok "R86-H 許可: reply(allow/local) を実ファイルで書く" || ng "R86-H 許可の書き込み失敗: $RES"
+  && [ -f "$VHOME/.claude/office_approvals/sess-verify0001.$ASK_V.reply.json" ] \
+  && python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["behavior"]=="allow" and d["src"]=="local" and d["askId"]==sys.argv[2], d' \
+     "$VHOME/.claude/office_approvals/sess-verify0001.$ASK_V.reply.json" "$ASK_V" \
+  && ok "R86-H 許可: reply(allow/local/askId) を実ファイルで書く" || ng "R86-H 許可の書き込み失敗: $RES"
 CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://127.0.0.1:$TPORT/api/approval/reply \
   -H "Content-Type: application/json" -d '{"session":"sess-verify0001","behavior":"allow"}')
 [ "$CODE" = "403" ] && ok "R86-H 回答APIのCSRFガード (ヘッダ無403)" || ng "R86-H 回答API CSRF失敗 (code=$CODE)"
-rm -f "$VHOME/.claude/office_approvals/sess-verify0001.json" \
-      "$VHOME/.claude/office_approvals/sess-verify0001.reply.json"
+rm -f "$VHOME/.claude/office_approvals/sess-verify0001.$ASK_V.json" \
+      "$VHOME/.claude/office_approvals/sess-verify0001.$ASK_V.reply.json"
 # R86-B: 会話ビューア＝本文を返す唯一の経路（office_json非搭載・CSRF配下・未知=200空・不正=400）
 DLG=$(curl -s -H "X-Office-Local: 1" "http://127.0.0.1:$TPORT/api/session/dialog?session=sess-verify0001")
 echo "$DLG" | python3 -c 'import sys,json; d=json.load(sys.stdin); assert d["ok"] and len(d["messages"])>=1 and d["messages"][0]["role"] in ("user","ai"), d' \
@@ -423,6 +558,25 @@ a,b=d0["messages"],d2["messages"]
 assert len(b)>=len(a) and (not a or a==b[-len(a):]), "深いdepthが浅いdepthのsuffixでない"
 ' "$D0" "$D2" && ok "R86-C dialog 深いdepthは浅いdepthのsuffix (置換で会話が飛ばない)" \
   || ng "R86-C dialog suffix性が破れている"
+# R121: 作業ビューの行（office_term の行＝スマホの封書 term と同じ形）。門は dialog と同じ（CSRF 配下・未知=200 空・不正=400）
+ACT=$(curl -s -H "X-Office-Local: 1" "http://127.0.0.1:$TPORT/api/session/activity?session=sess-verify0001")
+echo "$ACT" | python3 -c 'import sys,json; d=json.load(sys.stdin); assert d["ok"] and d["rows"] and d["reset"] is True and d["cur"]["off"]>0 and all("k" in r for r in d["rows"]), d' \
+  && ok "R121 activity 正常200+rows+cur" || ng "R121 activity 取得失敗: $(echo "$ACT" | head -c 80)"
+CUR=$(echo "$ACT" | python3 -c 'import sys,json; c=json.load(sys.stdin)["cur"]; print("%d:%s" % (c["off"], c["h"]))')
+ACT2=$(curl -s -H "X-Office-Local: 1" "http://127.0.0.1:$TPORT/api/session/activity?session=sess-verify0001&after=$CUR")
+echo "$ACT2" | python3 -c 'import sys,json; d=json.load(sys.stdin); assert d["ok"] and d["rows"]==[] and d["reset"] is False, d' \
+  && ok "R121 activity after=cur は差分（新しい行なし・reset なし）" || ng "R121 activity の差分が不正: $(echo "$ACT2" | head -c 80)"
+CODE=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:$TPORT/api/session/activity?session=sess-verify0001")
+[ "$CODE" = "403" ] && ok "R121 activity CSRFガード (ヘッダ無403)" || ng "R121 activity CSRF失敗 (code=$CODE)"
+ACT3=$(curl -s -H "X-Office-Local: 1" "http://127.0.0.1:$TPORT/api/session/activity?session=sess-nothere99")
+echo "$ACT3" | python3 -c 'import sys,json; d=json.load(sys.stdin); assert d["ok"] and d["rows"]==[], d' \
+  && ok "R121 activity 未知session=200+空" || ng "R121 activity 未知sessionの応答が不正"
+BADA=0
+for Q in "session=..%2Fevil" "session=sess-verify0001&after=0:zz" "session=sess-verify0001&before=1:abc"; do
+  CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "X-Office-Local: 1" "http://127.0.0.1:$TPORT/api/session/activity?$Q")
+  [ "$CODE" = "400" ] || { BADA=1; echo "    ! $Q → $CODE"; }
+done
+[ "$BADA" = 0 ] && ok "R121 activity 形式不正の session・カーソル=400" || ng "R121 activity 不正な問い合わせを受理した"
 curl -s http://127.0.0.1:$TPORT/ | grep -q "AI Office" && ok "GET / 200+HTMLマーカー" || ng "トップページ異常"
 # R52: 旧UIは削除済み＝?ui=legacy でも新UI(boot.html)が返ること（旧ページの残骸を配らない）
 curl -s http://127.0.0.1:$TPORT/ | grep -q 'id="bootstate"' \
@@ -456,10 +610,14 @@ CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://127.0.0.1:$TPORT/ap
   -H "Content-Type: application/json" -d '{"path":123,"name":"x"}')
 [ "$CODE" = "400" ] && ok "P1 型不正パス拒否 (400)" || ng "P1 型不正パス拒否失敗 (code=$CODE)"
 # P3: スマホ連携ペアリングAPI（new→list secret無→revoke／台帳600／CSRF）
-R=$(curl -s -X POST http://127.0.0.1:$TPORT/api/pair/new $H_LOCAL -H "Content-Type: application/json" -d '{"label":"iPhoneテスト"}')
+CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://127.0.0.1:$TPORT/api/pair/new $H_LOCAL -H "Content-Type: application/json" -d '{"label":"x"}')
+[ "$CODE" = "403" ] && ok "R100-0 pair/new は Origin 必須（X-Office-Local だけの curl は403）" || ng "R100-0 Origin無しで pair/new が通った (code=$CODE)"
+R=$(curl -s -X POST http://127.0.0.1:$TPORT/api/pair/new $H_LOCAL -H "$H_ORIGIN" -H "Content-Type: application/json" -d '{"label":"iPhoneテスト"}')
 DID=$(echo "$R" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("device_id",""))' 2>/dev/null)
 echo "$R" | grep -q '"secret"' && echo "$R" | grep -q "/app#" && [ -n "$DID" ] \
   && ok "P3 pair/new (device+secret+pairUrl返却)" || ng "P3 pair/new失敗: $R"
+grep -q "iPhoneテスト" "$VHOME/notify.txt" 2>/dev/null \
+  && ok "R100-0 スマホの登録は Mac に通知（物理確認を通った後）" || ng "R100-0 登録の通知が無い"
 # P6: 中継設定済み(make_homeがoffice_relay.jsonをseed)なので pair/new は QR SVG も返す
 echo "$R" | python3 -c 'import sys,json; s=json.load(sys.stdin).get("qrSvg",""); sys.exit(0 if s.startswith("<svg") and "<path" in s else 1)' 2>/dev/null \
   && ok "P6 pair/new QR SVG生成 (vendored segno)" || ng "P6 QR SVG欠落: $(echo "$R" | head -c 120)"
@@ -470,7 +628,7 @@ echo "$L" | grep -q "$DID" && ! echo "$L" | grep -q '"secret"' \
   && ok "P3 pair/list (secret伏字)" || ng "P3 pair/list secret露出orDevice欠落: $L"
 CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:$TPORT/api/pair/list)
 [ "$CODE" = "403" ] && ok "P3 pair/list CSRFガード (ヘッダ無403)" || ng "P3 pair/list CSRF失敗 (code=$CODE)"
-curl -s -X POST http://127.0.0.1:$TPORT/api/pair/revoke $H_LOCAL -H "Content-Type: application/json" -d "{\"device_id\":\"$DID\"}" >/dev/null
+curl -s -X POST http://127.0.0.1:$TPORT/api/pair/revoke $H_LOCAL -H "$H_ORIGIN" -H "Content-Type: application/json" -d "{\"device_id\":\"$DID\"}" >/dev/null
 curl -s $H_LOCAL http://127.0.0.1:$TPORT/api/pair/list | python3 -c 'import sys,json; ds=json.load(sys.stdin)["devices"]; sys.exit(0 if ds and ds[0]["revoked"] else 1)' \
   && ok "P3 pair/revoke (revoked=true)" || ng "P3 pair/revoke 効かず"
 CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://127.0.0.1:$TPORT/api/pair/new \
@@ -494,10 +652,20 @@ CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://127.0.0.1:$TPORT/ap
 [ "$CODE" = "200" ] && grep -q '^OPENAI_API_KEY=' "$VHOME/.claude/office_secrets" \
   && ok "keys/set (200+office_secrets行生成)" || ng "keys/set失敗 (code=$CODE)"
 
+# R105: β の診断情報。ヘッダ無しは 403・ローカル UI からは数と状態だけ（パス・本文を含まない）
+CODE=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:$TPORT/api/diagnostics)
+[ "$CODE" = "403" ] && ok "diagnostics CSRFガード (ヘッダ無403)" || ng "diagnostics CSRF失敗 (code=$CODE)"
+DIAG=$(curl -s $H_LOCAL http://127.0.0.1:$TPORT/api/diagnostics)
+if echo "$DIAG" | python3 -c 'import json,sys; t=json.load(sys.stdin)["text"]; assert "AI Office" in t and "/Users/" not in t and "sess-" not in t, t' 2>/dev/null; then
+  ok "diagnostics: 版と数だけ（パス・セッション ID なし）"
+else
+  ng "diagnostics の中身が想定外: ${DIAG:0:200}"
+fi
+
 # 2026-08-10 ライセンス廃止: 鍵が無くても有料だった機能（中継/pair/コスト）が全員に開く。
 CODE=$(curl -s -o /dev/null -w "%{http_code}" $H_LOCAL http://127.0.0.1:$TPORT/api/status_board)
 [ "$CODE" = "200" ] && ok "ライセンス廃止: 鍵無しで status_board 200" || ng "status_boardが開かない (code=$CODE)"
-CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://127.0.0.1:$TPORT/api/pair/new $H_LOCAL \
+CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://127.0.0.1:$TPORT/api/pair/new $H_LOCAL -H "$H_ORIGIN" \
   -H "Content-Type: application/json" -d '{"label":"nolic"}')
 [ "$CODE" = "200" ] && ok "ライセンス廃止: 鍵無しで pair/new 200" || ng "pair/newが開かない (code=$CODE)"
 CODE=$(curl -s -o /dev/null -w "%{http_code}" $H_LOCAL http://127.0.0.1:$TPORT/api/external/openclaw)
@@ -515,12 +683,19 @@ p.parent.mkdir(parents=True, exist_ok=True)
 p.write_text(json.dumps(raw), encoding="utf-8")
 EOF
 sleep 2.2
-API=$(curl -s -H "X-Office-Local: 1" http://127.0.0.1:$TPORT/api/office)
+# R115-S1: daemon は時間切れの後の GET に前の値を即返し、裏で走査し直す（stale-while-revalidate）＝1 回目は設置の前の
+# 値のことがある。裏の走査が終わるまで最大 3 秒だけ読み直す（下の断定は前と同じ）
+for _r423 in $(seq 1 15); do
+  API=$(curl -s -H "X-Office-Local: 1" http://127.0.0.1:$TPORT/api/office)
+  echo "$API" | python3 -c 'import sys,json; d=json.load(sys.stdin); sys.exit(0 if sum(e.get("external")=="openclaw" for e in d["employees"])==3 else 1)' 2>/dev/null && break
+  sleep 0.2
+done
 echo "$API" | python3 -c 'import sys,json; d=json.load(sys.stdin); oc=[e for e in d["employees"] if e.get("external")=="openclaw"]; assert len(oc)==3, [e.get("session") for e in d["employees"]]; assert all(e["session"].startswith("oc-") and e["lastSaid"]=="" and e["cwd"]=="" for e in oc), oc; print("  ✓ R42.3 oc-社員3体がoffice_jsonへマージ (本文フィールドは空)")' \
   || ng "R42.3 oc-社員マージ失敗: $(echo "$API" | head -c 200)"
 rm -f "$VHOME/.claude/openclaw_status.json"
 sleep 2.2
 
+sec "6/8"
 echo "▶ 6/8 受信フックのパイプテスト"
 HDIR=$(mktemp -d)
 mkdir -p "$HDIR/.claude/office_inbox"
@@ -550,6 +725,7 @@ EVOUT=$(printf '%s' '{not json' | OFFICE_HOME="$HDIR" bash hooks/office-event.sh
   && ok "イベント記録 hook: 壊れた入力は無出力 exit 0（追記なし）" || ng "イベント記録 hook: 壊れ入力の扱いが不正 (rc=$EVRC)"
 rm -rf "$HDIR"
 
+sec "7/8"
 echo "▶ 7/8 UIスモーク (Playwright)"
 # UIスモーク用Playwright Python: env(VENV_PY) > verify.local(gitignore・ローカル環境固有) > リポ内venv > playwright入りシステムpython
 [ -f verify.local ] && . ./verify.local
@@ -601,6 +777,19 @@ elif [ -x "$VENV_PY" ] && "$VENV_PY" -c 'import playwright' >/dev/null 2>&1 \
   # R50 P6: 操作系（❗回答/コンポーズが office_inbox へ実投函されるか＝配達経路入口の機械証明）
   run_ui "R50 操作系スモーク" "$VENV_PY" tests/ui_ops_smoke.py
   run_ui "R98 台帳（pixel）スモーク" "$VENV_PY" tests/pixel_smoke.py
+  run_ui "R99 コックピット スモーク" "$VENV_PY" tests/cockpit_smoke.py
+  run_ui "R122 明るい画面（会話・送信・許可・部屋・4 形状）" "$VENV_PY" tests/app_smoke.py
+  # 2026-11-14: 本番で口（Bot）を 1 往復させる道具（tools/dogfood_door.py）を一時 home の daemon で回す＝画面が変わっても道具が黙って腐らない
+  run_ui "出勤の口の 1 往復（本番で回す道具の自己検査）" "$VENV_PY" tools/dogfood_door.py --self-test
+  # R99-P4-3: 形状の門（iPad 縦横・折りたたみ・スマホを has_touch＋touchscreen.tap で開き直し、❗ に答えられるかを見る）
+  run_ui "R99 コックピット 形状の門（live 8 形状＋デモ 2 形状）" "$VENV_PY" tests/cockpit_shapes_smoke.py
+  run_ui "R99 コックピット 端末（本物の pty）" "$VENV_PY" tests/cockpit_term_smoke.py
+  # R106: PC 版を 5 つの視点で実際に使って（dogfood）見つけ、再現できた不具合の門（動き＝自動で次へ・空の状態・オフライン検知 等／見た目と入力＝キーボードの移動・複数行の指示・絞り込み・並べ替え 等）
+  run_ui "R106 コックピットの動き（dogfood）" "$VENV_PY" tests/cockpit_r106_logic_smoke.py
+  run_ui "R106 コックピットの見た目と入力（dogfood）" "$VENV_PY" tests/cockpit_r106_ui_smoke.py
+  run_ui "R110 コックピットの見た目" "$VENV_PY" tests/cockpit_r110_ui_smoke.py
+  run_ui "R111 コックピットの配置（入れ替え・境目・保存）" "$VENV_PY" tests/cockpit_r111_layout_smoke.py
+  run_ui "R111 コックピットのペイン（分割・多重化・保存）" "$VENV_PY" tests/cockpit_r111_panes_smoke.py
   # R50: 管理フロー（➕新プロジェクト=config反映+起動マーカー / 📱ペアリング=台帳発行+失効）
   run_ui "R50 管理フロースモーク" "$VENV_PY" tests/ui_admin_smoke.py
   # R50提案2b: 初回体験（空オフィス導線・hook未設定バナー・?demo=1同梱world+投函ブロック）
@@ -619,34 +808,81 @@ elif [ -x "$VENV_PY" ] && "$VENV_PY" -c 'import playwright' >/dev/null 2>&1 \
   # R50: 新UIのビジュアル回帰。自前でサーバーを立て /api/office を fixture で差し替えるので
   # 実セッションの状態に左右されない。バックエンドは SwiftShader 固定（実測でビット一致）。
   # R90-S1: 製品の見た目は iso（方向C）1本。
+  # ★rc はパイプの直後に RC_SHOT へ取る。ng の引数の中で ${PIPESTATUS[0]} を読むと、直前の [ の
+  #   終了コード（常に 1）が表示される（判定は正しいが exit の表示が嘘になる・R99 で揃えた）。
+  "$VENV_PY" tools/ui_shot.py --style app --check | sed 's/^/  /'
+  RC_SHOT=${PIPESTATUS[0]}
+  [ "$RC_SHOT" = "0" ] || ng "R122 明るい画面のビジュアル回帰失敗 (exit $RC_SHOT)"
   "$VENV_PY" tools/ui_shot.py --style iso --check | sed 's/^/  /'
-  [ "${PIPESTATUS[0]}" = "0" ] || ng "R90 新UI(iso)ビジュアル回帰失敗 (exit ${PIPESTATUS[0]})"
+  RC_SHOT=${PIPESTATUS[0]}
+  [ "$RC_SHOT" = "0" ] || ng "R90 新UI(iso)ビジュアル回帰失敗 (exit $RC_SHOT)"
   # R90-U5: 配信モード（HUD 全隠し・字幕帯・❗バッジ・balanced フィット）。
   # 既定画面と別 golden なので、HUD を触った変更が配信を壊しても気づける。
   "$VENV_PY" tools/ui_shot.py --style iso --query "stream=1" --check | sed 's/^/  /'
-  [ "${PIPESTATUS[0]}" = "0" ] || ng "R90 配信モードのビジュアル回帰失敗 (exit ${PIPESTATUS[0]})"
+  RC_SHOT=${PIPESTATUS[0]}
+  [ "$RC_SHOT" = "0" ] || ng "R90 配信モードのビジュアル回帰失敗 (exit $RC_SHOT)"
   # R90-V7: 22体（本人の実運用と同数）の XL ティア。M だけ見ていると席あふれ・通路・
   # 名札の密集が回帰しても気づけない（本番で実際に踏んだ）。
   "$VENV_PY" tools/ui_shot.py --style iso --world xl22 --name xl22 --check | sed 's/^/  /'
-  [ "${PIPESTATUS[0]}" = "0" ] || ng "R90 XLティア(22体)ビジュアル回帰失敗 (exit ${PIPESTATUS[0]})"
+  RC_SHOT=${PIPESTATUS[0]}
+  [ "$RC_SHOT" = "0" ] || ng "R90 XLティア(22体)ビジュアル回帰失敗 (exit $RC_SHOT)"
   # R98-W1: 第 2 の様式 pixel（フロア帯 × 台帳）。iso と同じ fixture・別 golden＝HUD 分離の両側を見張る。
   # ★パイプの直後に PIPESTATUS を見る（間に別のパイプを挟むと前の門が消える＝別モデルレビューで実際に踏んだ）
   "$VENV_PY" tools/ui_shot.py --style pixel --check | sed 's/^/  /'
-  [ "${PIPESTATUS[0]}" = "0" ] || ng "R98 台帳(pixel)ビジュアル回帰失敗 (exit ${PIPESTATUS[0]})"
+  RC_SHOT=${PIPESTATUS[0]}
+  [ "$RC_SHOT" = "0" ] || ng "R98 台帳(pixel)ビジュアル回帰失敗 (exit $RC_SHOT)"
   # R98-W2: 22 プロジェクトの帯（机の pitch 16・ベンダー 3 種が並ぶ密度）。9 体だけ見ていると
   # 机あふれ・重なり・ベンダーの描き分けが回帰しても気づけない（iso の xl22 と同じ理由）。
   "$VENV_PY" tools/ui_shot.py --style pixel --world xl22 --name pixel_xl22 --check | sed 's/^/  /'
-  [ "${PIPESTATUS[0]}" = "0" ] || ng "R98 帯(22体)ビジュアル回帰失敗 (exit ${PIPESTATUS[0]})"
+  RC_SHOT=${PIPESTATUS[0]}
+  [ "$RC_SHOT" = "0" ] || ng "R98 帯(22体)ビジュアル回帰失敗 (exit $RC_SHOT)"
   # R98-W3: iPad 縦（834×1112）。狭い画面では部屋が縮んで倍率を保つ＝ここが ×1 に落ちると
   # ロボが 16×24 の実寸になり「何をしているか」が読めない（形状の門は pixel_smoke と二本立て）。
-  # この 1 枚だけ差分が 0.000% にならない（見出し「AIオフィス」の 1 文字の輪郭が 7px 揺れる＝
-  # この幅での字送りの丸め。帯そのものはビット一致）。閾値 0.5% に対して 0.002% なので見張りは効く。
+  # この 1 枚は 0.000% にならない: 2026-09-24 の実測で 0.318〜0.320%（閾値 0.5% に対して余裕は約 0.18%）。
+  # HEAD の木でも 0.320%＝golden（09-20 撮影）の後の環境の文字の縁のずれが画面全体に散ったもので、
+  # 撮るたびに ❗トレイの角が数画素揺れる分（golden-update SKILL に記録）もここに乗る。
+  # 撮り直せば文字の縁の分は消える（トレイの角の揺れは残る・撮り直しは見た目の変更と同じコミットで）。
   "$VENV_PY" tools/ui_shot.py --style pixel --world xl22 --viewport 834x1112 --name pixel_834x1112 --check | sed 's/^/  /'
-  [ "${PIPESTATUS[0]}" = "0" ] || ng "R98 帯(iPad 縦)ビジュアル回帰失敗 (exit ${PIPESTATUS[0]})"
+  RC_SHOT=${PIPESTATUS[0]}
+  [ "$RC_SHOT" = "0" ] || ng "R98 帯(iPad 縦)ビジュアル回帰失敗 (exit $RC_SHOT)"
+  # R99-A1: 第 3 の様式 cockpit（俯瞰ドット絵 × 台帳 × 端末 × 一覧）。golden は撮ってあったのに
+  # ここで照合していなかった＝部屋の絵が壊れても機械が黙っていた。ui_shot は全画面 0.5% に加えて
+  # 部屋の canvas をビット一致で見る（全画面の門ではポーズ 1 つの違いが見えない・tools/ui_shot.py の
+  # STRICT_REGIONS・R/G/B のどれか 1 つでも違えば数える）。
+  "$VENV_PY" tools/ui_shot.py --style cockpit --check | sed 's/^/  /'
+  RC_SHOT=${PIPESTATUS[0]}
+  [ "$RC_SHOT" = "0" ] || ng "R99 コックピットのビジュアル回帰失敗 (exit $RC_SHOT)"
+  # R99 Phase 3: 部屋が詰まった絵（22 プロジェクト＝机が埋まり、受付に確認待ちの列と standby が並ぶ）。
+  # basic の 9 体だけでは受付の列の詰め方と standby の並びが回帰しても写らない（iso/pixel の xl22 と同じ理由）。
+  "$VENV_PY" tools/ui_shot.py --style cockpit --world xl22 --name cockpit_xl22 --check | sed 's/^/  /'
+  RC_SHOT=${PIPESTATUS[0]}
+  [ "$RC_SHOT" = "0" ] || ng "R99 コックピット(22 プロジェクト)ビジュアル回帰失敗 (exit $RC_SHOT)"
+  # R99 Phase 3: サーバーが実際に出す語彙を全部揃え、部屋に全員が入る固定ワールド
+  # （tests/fixtures/world/cockpit.json・正本は tools/gen_cockpit_fixture.py）。basic/xl22 には語彙が
+  # ほとんど無く、ポーズを足しても golden は「その人が居ない絵」を撮るだけ。何が揃っているかの番人は
+  # ▶2b の node テスト（cockpit の固定ワールド）。あふれ（ピーク）の証明は cockpit_peak.json でそちらが持つ。
+  # ★テストのファイル名は node --test の行にだけ書く（配線 lint は行頭 # のコメント行は読まないが、
+  #   行末のコメントやメッセージの中の名前は字面で数える＝名前があるだけで「配線済み」になる）。
+  "$VENV_PY" tools/ui_shot.py --style cockpit --world cockpit --name cockpit_fx --check | sed 's/^/  /'
+  RC_SHOT=${PIPESTATUS[0]}
+  [ "$RC_SHOT" = "0" ] || ng "R99 コックピット(固定ワールド)ビジュアル回帰失敗 (exit $RC_SHOT)"
+  # R110: 本人の画面（32 インチ 4K・見た目 1920×1080）＝部屋が ×4 になり受付が部屋の下に来る形。1440×900 の cockpit.png は
+  # 端末 80 桁を守るため ×3 のまま＝×4 の骨格 A はこの 1 枚でしか機械に固定されない。
+  "$VENV_PY" tools/ui_shot.py --style cockpit --world cockpit --viewport 1920x1080 --name cockpit_1920x1080 --check | sed 's/^/  /'
+  RC_SHOT=${PIPESTATUS[0]}
+  [ "$RC_SHOT" = "0" ] || ng "R110 コックピット(1920×1080・部屋 ×4)ビジュアル回帰失敗 (exit $RC_SHOT)"
+  # R99-A1: design/ のモック（委譲の作業場）を 4 形状で実際に開き、台帳と端末が潰れていないかを測る。
+  # 文字列だけ見る design/check.py では配置の事故（1280×640 で台帳 1px）を通してしまう。所要 約 2 秒。
+  if [ -d design ]; then
+    run_ui "R99 design モックの配置（4 形状）" "$VENV_PY" design/measure.py
+  elif [ -f tools/publish_snapshot.sh ]; then
+    ng "R99 design/ が無い（開発ツリーでは design モックの配置の門は必須）"
+  fi
   # R90: 方向Cの参照画像で較正した3D品質ゲート（docs/art-direction.md）。
   # R93-M1'（2026-09-14）: 常設ゲートを glass（G1 ラベンダー・グラスロフト）へ。c は retired（tools/style_score.py）。
   "$VENV_PY" tools/style_score.py --profile glass tests/artifacts/ui_iso_scene.png | sed 's/^/  /'
-  [ "${PIPESTATUS[0]}" = "0" ] || ng "R90 3D品質ゲート未達 (iso/方向C) (exit ${PIPESTATUS[0]})"
+  RC_SHOT=${PIPESTATUS[0]}
+  [ "$RC_SHOT" = "0" ] || ng "R90 3D品質ゲート未達 (iso/方向C) (exit $RC_SHOT)"
 else
   echo "  - Playwright/Chromium venvなしまたは起動不可 → 省略（検収側で要実行）"
   UI_SKIPPED=1   # R95: worktree には verify.local が無く黙って省略される＝最終行で ⚠ を出す（SKIP_UI=1 の明示とは区別）
@@ -656,6 +892,7 @@ fi
 kill $SPID 2>/dev/null; wait $SPID 2>/dev/null
 rm -rf "$VHOME"
 
+sec "8/8"
 echo "▶ 8/8 実データカナリア (トランスクリプト形式の変更検知)"
 python3 - <<'EOF' || ng "カナリア失敗＝形式変更の疑い (docs/transcript-format.md 参照)"
 import json, os, subprocess, sys, time
@@ -668,9 +905,11 @@ if not recent:
 out = subprocess.run(["python3", "server/office_server.py", "--dump"],
                      capture_output=True, text=True, timeout=60)
 emps = json.loads(out.stdout)["employees"]
-n = len(emps)
-assert n > 0, "実データで社員0人"
-print(f"  ✓ 実データカナリア OK (社員{n}人検出)")
+# R126: 数えるのは Claude のセッションだけ。Codex・OpenClaw・出勤の口の Bot が居ると、transcript の形が変わって
+# Claude が 0 人になっても「1 人以上いる」で通ってしまう（この門の仕事は transcript の形の変化を見つけること）
+n = sum(1 for e in emps if e.get("vendor") == "claude")
+assert n > 0, "実データで Claude のセッション 0 人"
+print(f"  ✓ 実データカナリア OK (Claude のセッション{n}人検出・全体{len(emps)}人)")
 
 # R86-F 偽陽性カナリア: ❗「承認まち」は**人間に聞き得るツール**でしか立ってはいけない。
 # 従来は「最後がtool_useのまま75秒」だけで立て、走っているだけのBashを承認まちと誤報していた
@@ -732,8 +971,14 @@ try:
             updated = datetime.datetime.fromisoformat(state["updatedAt"].replace("Z", "+00:00"))
             if time.time() - updated.timestamp() >= 3 * 3600:
                 continue
-            assert state["state"] in {"working", "blocked", "done", "failed", "stopped"}, "未知のstate"
-            for key in ("sessionId", "linkScanPath"):
+            # 2026-09-23: Claude Code の bg ジョブに "running" が増えた（実測・このカナリアが検出）。
+            # 語彙が増えたら足す＝**黙って通さない**のがこの門の仕事。
+            assert state["state"] in {"working", "running", "blocked", "done", "failed", "stopped"}, \
+                f"未知のstate: {state['state']}"
+            # 2026-10-09: 起動の前に blocked で止まった bg ジョブ（transcript をまだ作っていない）は linkScanPath の鍵が無い
+            # （実測・このカナリアが検出）。読み手（server/source_claude_bg.py）は欠けを空として扱う＝blocked の欠けだけ許す。
+            keys = ("sessionId",) if state["state"] == "blocked" and state.get("linkScanPath") is None else ("sessionId", "linkScanPath")
+            for key in keys:
                 assert isinstance(state.get(key), str) and state[key].strip(), f"{key} が空"
             count += 1
         if not count:
@@ -794,19 +1039,62 @@ EOF
   esac
 done
 
+# R99-P4: 証拠列の分類の見張り。9/21〜9/23 は Bash が 1 日 1,400〜3,000 件あったのに hook の分類（git:commit／test）が
+# 0 件のまま誰も気づかなかった（配備後に「分類件数 > 0」を見る手段が無かった）。本番の記録を読むだけ・本文なし。
+# 本番の状態なので赤にはしない（木の欠陥ではない）。代わりに最終行の直前にも ⚠ を出す（▶8 の途中だけだと読み飛ばす）。
+EVIDENCE_WARN=0
+_ev_out=$(python3 tools/evidence_watch.py 2>&1)
+case $? in
+  0) ok "$_ev_out" ;;
+  3) echo "  - $_ev_out" ;;
+  4) echo "  ⚠ $_ev_out"; EVIDENCE_WARN=1 ;;
+  *) ng "証拠列の分類の見張りが落ちた（python3 tools/evidence_watch.py で再現・例外にパスが載りうるので本文は出さない）" ;;
+esac
+
+sec "9"
 echo "▶ 9 中継E2E (P2・任意=RUN_RELAY=1のとき。通常は 4/8 の relay_agent 単体テストがロジックを担保)"
+# R99-P4-5: 中継E2Eが検査した中身（Worker＝relay/src と DO の束縛＝relay/wrangler.jsonc、PWA の原本＝ui/pwa）の指紋。
+# 前回 OK の後でここが 1 バイトでも変わったら、既定の verify を**赤**にする（⚠ だと 8 日放置された実績）。
+# 内容のハッシュなので、checkout で触れただけ・元に戻しただけなら赤にしない。
+relay_tree_fp(){
+  python3 - <<'PYEOF'
+import hashlib, os
+h = hashlib.sha256()
+def eat(p):
+    h.update(p.encode("utf-8") + b"\0")
+    with open(p, "rb") as f:
+        h.update(f.read())
+    h.update(b"\0")
+for base in ("relay/src", "ui/pwa"):
+    for dp, dns, fns in os.walk(base):
+        dns[:] = sorted(d for d in dns if not d.startswith(".") and d != "__pycache__")
+        for fn in sorted(f for f in fns if not f.startswith(".")):
+            eat(os.path.join(dp, fn))
+if os.path.exists("relay/wrangler.jsonc"):
+    eat("relay/wrangler.jsonc")
+else:
+    h.update(b"relay/wrangler.jsonc\0<missing>\0")
+print(h.hexdigest())
+PYEOF
+}
 if [ "${RUN_RELAY:-}" = "1" ]; then
   if [ ! -d relay/node_modules ]; then
     ng "中継E2E要求(RUN_RELAY=1)だが relay/node_modules 無し（cd relay && npm install）"
   else
+    # 指紋は E2E の**前**に取る（約 2 分の実行中に編集が入ると、E2E が見ていない中身を「通った」と記録してしまう）
+    RELAY_FP0=$(relay_tree_fp)
     KAT_ALREADY=1 bash tests/relay_e2e.sh 2>&1 | tee /tmp/relay_e2e_out.txt | sed 's/^/  /'
     if [ "${PIPESTATUS[0]}" != "0" ]; then
       ng "中継E2E失敗"
     elif grep -q "Playwright無し→PWAスモーク省略" /tmp/relay_e2e_out.txt; then
       # スモークを省いた回で日時を更新すると「PWA を検査した」ことになってしまう（別モデルレビュー）
       echo "  ⚠ PWAスモークを省いた回なので鮮度は更新しない（VENV_PY に Playwright 入りの python を渡す）"
+    elif [ "$(relay_tree_fp)" != "$RELAY_FP0" ]; then
+      echo "  ⚠ 中継E2Eの実行中に relay/src・relay/wrangler.jsonc・ui/pwa が変わったので鮮度は記録しない（もう一度 RUN_RELAY=1 で通す）"
     else
       mkdir -p tests/artifacts && date +%s > tests/artifacts/.relay_e2e_ok   # 最後に通った日時（gitignore）
+      echo "$RELAY_FP0" > tests/artifacts/.relay_e2e_ok.tree                # E2E が検査した中身の指紋（前後で一致を確かめた値）
+      ok "中継E2Eの鮮度を記録した（指紋 ${RELAY_FP0:0:12}…）"
     fi
     rm -f /tmp/relay_e2e_out.txt
   fi
@@ -814,15 +1102,33 @@ else
   echo "  - RUN_RELAY=1 で wrangler dev を使うE2Eを実行（例: RUN_RELAY=1 bash \"AI Office/verify.sh\"）"
   # R96-D3: この経路（PWA 3D スモークを含む）が赤いまま気づかれずに 1 日以上進んだ実績がある
   #（撤去した setTheme をスモークが呼び続けて例外死。通常の verify では走らないので見えなかった）。
-  # 落とすと wrangler の無い環境で全員止まるので、鮮度だけ知らせる。
+  # 記録が無い（wrangler の無い環境・worktree・公開クローン）は ⚠ のまま＝全員は止めない。
+  # R99-P4-5: 記録があるのに、その後で relay/src・relay/wrangler.jsonc・ui/pwa が変わっていたら**赤**（PWA と Worker の変更は
+  # 既定の verify では誰も検査していない＝そのまま commit・配備できてしまう。前回 OK から 8 日の実績）。
   if [ -f tests/artifacts/.relay_e2e_ok ]; then
     RELAY_AGO=$(( ( $(date +%s) - $(cat tests/artifacts/.relay_e2e_ok) ) / 86400 ))
-    [ "$RELAY_AGO" -ge 3 ] && echo "  ⚠ 中継E2Eを最後に通してから ${RELAY_AGO} 日。配備の前に RUN_RELAY=1 で 1 回通すこと"
+    if [ -f tests/artifacts/.relay_e2e_ok.tree ]; then
+      if [ "$(relay_tree_fp)" != "$(cat tests/artifacts/.relay_e2e_ok.tree)" ]; then
+        ng "中継E2Eを通した後で relay/src・relay/wrangler.jsonc・ui/pwa が変わった → RUN_RELAY=1 bash verify.sh で通す（PWA・Worker の変更は既定の verify では検査されない）"
+      else
+        ok "中継E2Eは今の relay/src・relay/wrangler.jsonc・ui/pwa で通っている（${RELAY_AGO} 日前）"
+        [ "$RELAY_AGO" -ge 3 ] && echo "  ⚠ 中継E2Eを最後に通してから ${RELAY_AGO} 日。配備の前に RUN_RELAY=1 で 1 回通すこと"
+      fi
+    else
+      # 指紋の無い旧い記録（R99-P4-5 より前）: 記録より新しいファイルで判定する（checkout で触れただけでも赤＝安全側）
+      RELAY_NEWER=$(find relay/src ui/pwa relay/wrangler.jsonc -type f ! -name '.*' -newer tests/artifacts/.relay_e2e_ok 2>/dev/null | head -3 | tr '\n' ' ')
+      if [ -n "$RELAY_NEWER" ]; then
+        ng "中継E2Eを通した後で変わったファイルがある（${RELAY_NEWER}）→ RUN_RELAY=1 bash verify.sh で通す"
+      else
+        [ "$RELAY_AGO" -ge 3 ] && echo "  ⚠ 中継E2Eを最後に通してから ${RELAY_AGO} 日。配備の前に RUN_RELAY=1 で 1 回通すこと"
+      fi
+    fi
   else
     echo "  ⚠ この作業ツリーで中継E2Eを通した記録が無い（配備の前に RUN_RELAY=1 で 1 回）"
   fi
 fi
 
+sec "10"
 echo "▶ 10 P4常駐の配線検査 (temp-deploy・実launchctlはしない)"
 if lsof -ti tcp:$TPORT -sTCP:LISTEN >/dev/null 2>&1; then
   ng "P4 :$TPORT に先客（孤児サーバー）が居る — 停止してから再実行（嘘green防止のため▶10中断）"
@@ -861,6 +1167,11 @@ plutil -lint "$DTMP/rp.plist" >/dev/null \
   && grep -q "com.senao.aioffice.relay" "$DTMP/rp.plist" && ! grep -q "/Downloads/" "$DTMP/rp.plist" \
   && ok "P4.5 relay plist (relay_agent/PathState/no-port/TCC回避)" || ng "P4.5 relay plist 不備"
 [ -f "$DTMP/com.senao.aioffice.relay.plist" ] && ok "P4.5 relay plist もTESTMODE deployで生成" || ng "P4.5 relay plist未生成"
+# R120: 2 本とも ProcessType=Interactive（未指定は launchd が CPU と I/O を絞る＝重い作業と重なると走査が 10〜180 秒止まった）
+python3 -c "import plistlib,sys; sys.exit(0 if all(plistlib.load(open(p,'rb')).get('ProcessType') == 'Interactive' for p in sys.argv[1:]) else 1)" \
+  "$DTMP/p.plist" "$DTMP/rp.plist" "$DTMP/com.senao.aioffice.plist" "$DTMP/com.senao.aioffice.relay.plist" \
+  && ok "R120 plist 2 本とも ProcessType=Interactive（launchd の CPU/I/O の絞りを受けない）" \
+  || ng "R120 plist の ProcessType が Interactive でない（launchd が daemon の CPU と I/O を絞る）"
 # TESTMODE deploy が書いた plist（$DTMP/app を指す）で target 実在を確認（rp.plistは実インストール先パス）
 RTARGET=$(python3 -c "import plistlib; print(plistlib.load(open('$DTMP/com.senao.aioffice.relay.plist','rb'))['ProgramArguments'][1])" 2>/dev/null)
 [ -f "$RTARGET" ] && ok "P4.5 relay plist target実在 (deployのrelay_agent.py)" || ng "P4.5 relay plist target欠落: $RTARGET"
@@ -895,6 +1206,7 @@ fi
 echo "  ℹ 本checkが保証しないもの: 実launchctl load/ログイン自動起動/KeepAlive実挙動/"
 echo "    Automation TCC同意/再起動後の復帰。これらは macapp/install.sh 末尾のユーザー手順で確認する"
 
+sec "11"
 echo "▶ 11 MCPサーバー stdioスモーク (mcp_office.py)"
 MHOME=$(python3 tests/make_home.py)
 MOUT=$(printf '%s\n' \
@@ -913,6 +1225,60 @@ echo "$MOUT" | python3 -c 'import sys,json; [json.loads(l) for l in sys.stdin if
   && ok "MCP応答数 (3リクエスト=3応答・通知は無応答)" || ng "MCP応答数が3でない"
 [ -f "$MHOME/.claude/office_inbox/sess-verify0001.json" ] && ok "MCP経由の投函 (在席セッションへinbox生成)" || ng "MCP投函失敗"
 [ "$MRC" = "0" ] && ok "MCP EOF正常終了 (exit 0)" || ng "MCP exit=$MRC"
+# R126 出勤の口（mcp_office.py --bot <id>）: 道具は口の 5 つだけ・出勤が口の状態に落ちる・いつもの道具（office_status）は呼べない。
+# 続けて「終わりの形」= テスト用ポートの /api/office に Bot が 1 人。R127（不変条件 8 の改定）から中継へ送る形（relay_agent の伏字）にも
+# Bot の行が載る＝Bot だけの狭い allowlist（本文とパスの鍵・feed は鍵ごと無い・verb は縮約）・sources.door は載らない。
+# 相談の往復（ask → Mac の /api/approval/reply・スマホの id8 → office_inbox → ack）は tests/test_door_e2e.py（▶4 の unittest）。
+OFFICE_HOME="$MHOME" python3 server/office_door.py add verifybot --name 検証の見回り >/dev/null 2>&1 \
+  || ng "出勤の口: Bot を登録できない（python3 server/office_door.py add）"
+MBOT=$(printf '%s\n' \
+  '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"verify","version":"0"}}}' \
+  '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
+  '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"office_checkin","arguments":{"doing":"verify の見回り"}}}' \
+  '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"office_status","arguments":{}}}' \
+  | OFFICE_HOME="$MHOME" OFFICE_CONFIG="$MHOME/office_config.json" OFFICE_DATA="$MHOME" \
+    python3 server/mcp_office.py --bot verifybot 2>/dev/null)
+printf '%s\n' "$MBOT" | python3 -c '
+import json, sys
+r = {x["id"]: x for x in (json.loads(l) for l in sys.stdin if l.strip())}
+names = [t["name"] for t in r[2]["result"]["tools"]]
+assert names == ["office_checkin", "office_report", "office_ask", "office_inbox", "office_withdraw"], names
+assert r[3]["result"]["isError"] is False, r[3]
+assert r[4]["error"]["code"] == -32602, r[4]' 2>/dev/null \
+  && ok "MCP --bot: 道具は出勤の口の 5 つだけ・出勤できる・office_status は呼べない" \
+  || ng "MCP --bot: 道具が 5 つでない／出勤できない／セッションの道具が呼べた"
+if lsof -ti tcp:$TPORT -sTCP:LISTEN >/dev/null 2>&1; then
+  ng "出勤の口: :$TPORT に先客（孤児サーバー）が居る — 嘘 green を避けて中断"
+else
+  OFFICE_HOME="$MHOME" OFFICE_CONFIG="$MHOME/office_config.json" OFFICE_DATA="$MHOME" \
+    python3 server/office_server.py --port $TPORT >/dev/null 2>&1 &
+  SPID=$!
+  D_OFFICE=""
+  for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do
+    sleep 0.4
+    D_OFFICE=$(curl -s -H "X-Office-Local: 1" "http://127.0.0.1:$TPORT/api/office" 2>/dev/null)
+    case "$D_OFFICE" in *'"employees"'*) break ;; esac
+  done
+  kill $SPID 2>/dev/null; wait $SPID 2>/dev/null; SPID=""
+  printf '%s' "$D_OFFICE" | OFFICE_HOME="$MHOME" python3 -c '
+import json, sys
+sys.path.insert(0, "server")
+d = json.load(sys.stdin)
+bots = [e for e in d["employees"] if e.get("vendor") == "bot"]
+assert [e["session"] for e in bots] == ["bot-verifybot"], bots
+assert bots[0]["verb"] == "verify の見回り" and bots[0]["listening"] is True and "external" not in bots[0]
+assert d["sources"]["door"] == {"ok": True, "bots": 1, "n": 1, "asks": 0}, d["sources"]["door"]
+import relay_agent
+out = relay_agent._redact_office_for_relay(d)
+rb = [e for e in out["employees"] if e.get("vendor") == "bot"]
+assert [e["session"] for e in rb] == ["bot-verifybot"], rb
+assert set(rb[0]) <= set(relay_agent._ALLOW_DOOR_ENTRY), sorted(rb[0])
+assert not set(rb[0]) & {"cwd", "branch", "lastSaid", "lastOrder", "target", "feed", "sessions", "title"}, sorted(rb[0])
+assert rb[0]["verb"] == "verify の見回り" and rb[0]["disp"] == "検証の見回り", rb[0]
+assert "door" not in out["sources"], out["sources"]' 2>/dev/null \
+    && ok "出勤の口: /api/office（:${TPORT}）に bot-verifybot が 1 人・中継へ送る形は Bot の表の鍵だけ（本文・パスの鍵なし・sources.door なし）" \
+    || ng "出勤の口: /api/office に Bot が出ない／中継へ送る形の Bot の行が Bot の表を外れた"
+fi
 rm -rf "$MHOME"; MHOME=""
 # 登録は常駐デプロイ済みなら app/ 側を推奨（コード更新は install.sh 再実行で反映）・未導入なら repo 正本
 MCP_REG="$(pwd)/server/mcp_office.py"
@@ -920,6 +1286,7 @@ MCP_REG="$(pwd)/server/mcp_office.py"
   && MCP_REG="$HOME/Library/Application Support/AIOffice/app/server/mcp_office.py"
 echo "  ℹ 実Claude Code登録: claude mcp add --scope user aioffice -- \$(python3 -c 'import sys;print(sys.executable)') \"$MCP_REG\""
 
+sec "12"
 echo "▶ 12 封書(dialog_seal)の土台 — CommonCrypto AES-256-GCM"
 # R87-H0: server/ は標準ライブラリのみという不変条件を守るため、暗号は ctypes で
 # macOS の CommonCrypto を叩く。check_stdlib.py は import 名しか見ないので
@@ -946,7 +1313,9 @@ else
 fi
 rm -f /tmp/ccgcm.txt
 
+vt_end
 echo
+[ "${EVIDENCE_WARN:-0}" = "1" ] && echo "⚠ 本番の hook: 証拠列の分類（git:commit／test）が直近 24 時間 0 件＝台帳の証拠列が黙って空（▶8 を見る）"
 if [ $NG -eq 0 ]; then
   if [ "${UI_SKIPPED:-}" = "1" ]; then echo "⚠ verify: 合格（ただし UI スモークは Playwright なしで省略＝見た目の回帰は未検査。verify.local を置くか VENV_PY を渡す）"; else echo "✅ verify: 全チェック合格"; fi
 else echo "❌ verify: ${NG}件失敗"; exit 1; fi

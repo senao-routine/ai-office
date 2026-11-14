@@ -65,7 +65,7 @@ python3 "../server/relay_agent.py"                   # 常駐ポーリング開�
 
 - 追加ルート（無認証・秘密なし）: `GET /app`（PWA本体）・`GET /app/sw.js`・`GET /app/manifest.webmanifest`。スマホはこれを開いて creds を localStorage に保存し、以後 `/status`・`/instruct` を叩く。
 - `POST /instruct` は **署名封筒**を受理する（`{v,device_id,session,text,ts,nonce,alg:"HS256",sig}`）。**Worker は sig を検証しない**（署名鍵を持たない・形式プレフィルタのみ）。真正性は Mac 側 `relay_agent` が per-device HMAC-SHA256 で検証する＝**Bearer が漏れても偽造不可**。無署名の `{session,text}` は 400。
-- ペアリング: Mac の office UI「📱スマホ連携」で発行 → `<relay>/app#v=1&d=..&s=..&t=..&e=..` リンクをスマホへ（AirDrop/メッセージ）→ 開くと1回で登録。デバイス台帳＝`~/.claude/office_devices.json`(600)・30日TTL・office UI から revoke。
+- ペアリング: Mac の office UI「📱スマホ連携」で発行 → `<relay>/app#v=1&d=..&s=..&t=..&e=..` リンクをスマホへ（AirDrop/メッセージ）→ 開くと1回で登録。デバイス台帳＝`~/.claude/office_devices.json`(600)・30日TTL（📱 の端末行［延長］で同じ端末のまま秘密を作り直して 30 日延ばせる・R116-S1b）・office UI から revoke。
 - 検証: `bash tests/relay_e2e.sh`（署名版・JS/Python KAT・改竄reject・リプレイ非再配達を含む）／`RUN_RELAY=1 bash "AI Office/verify.sh"`。
 - deploy 後の追加設定は不要（PWA も Worker 内蔵）。`office_relay.json` の `url`+`token` を office UI が読んで pair_url を組み立てる。
 

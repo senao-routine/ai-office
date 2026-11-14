@@ -1,0 +1,1521 @@
+{
+ "_note": "R99 cockpit 用の固定ワールド（Phase 3 の印・動き・ポーズを golden とユニットで証明するため）。正本は tools/gen_cockpit_fixture.py（手で直さない・作り直し= `python3 tools/gen_cockpit_fixture.py`・一致は tests/cockpit_fixture.test.mjs が --check で見る）。employees は server の parse_session / source_codex / openclaw_source の形、roster は server の group_by_project(mode=\"session\") の出力そのまま。evidence は scan_office と同じく employees にだけ付く。vendor=futurecli は今のサーバーに無い将来のソースの代役（UI が other として運ぶことの材料）。basic.json / xl22.json は iso・pixel の golden が依存するので触らない。",
+ "v": 2,
+ "officeName": "テストオフィス",
+ "lang": "ja",
+ "generatedAt": 1790200000.0,
+ "setup": {
+  "hookInstalled": true,
+  "eventsWired": true,
+  "approvalWired": true
+ },
+ "employees": [
+  {
+   "session": "sess-cp-01",
+   "vendor": "claude",
+   "cwd": "/Users/test/work/atlas-api",
+   "branch": "main",
+   "title": "",
+   "age": 6,
+   "mtime": 1790199994.0,
+   "state": "working",
+   "kind": "tool",
+   "verb": "編集中",
+   "tool": "Edit",
+   "target": "router.ts",
+   "feed": [
+    "編集中 router.ts",
+    "実行中 npm test",
+    "💬 ルーターの型を揃えました"
+   ],
+   "skills": [],
+   "minions": 0,
+   "pending": false,
+   "listening": false,
+   "lastSaid": "ルーターの型を揃えました",
+   "lastOrder": "ルーターの型を揃えて",
+   "question": "",
+   "approvalMin": 0,
+   "stuckTool": "",
+   "dept": "atlas-api",
+   "role": "開発",
+   "work": {
+    "now": [
+     "ルーターの型"
+    ],
+    "next": [
+     "ミドルウェア"
+    ],
+    "done": [
+     "エンドポイント一覧"
+    ],
+    "counts": {
+     "pending": 2,
+     "in_progress": 1,
+     "completed": 4
+    }
+   },
+   "disp": "atlas-api",
+   "evidence": {
+    "kind": "tested",
+    "ago": 180
+   }
+  },
+  {
+   "session": "sess-cp-12",
+   "vendor": "claude",
+   "cwd": "/Users/test/work/shop-front",
+   "branch": "main",
+   "title": "",
+   "age": 9,
+   "mtime": 1790199991.0,
+   "state": "working",
+   "kind": "tool",
+   "verb": "実行中",
+   "tool": "Bash",
+   "target": "pytest -q",
+   "feed": [
+    "実行中 pytest -q",
+    "編集中 cart.py"
+   ],
+   "skills": [],
+   "minions": 0,
+   "pending": false,
+   "listening": false,
+   "lastSaid": "",
+   "lastOrder": "",
+   "question": "",
+   "approvalMin": 0,
+   "stuckTool": "",
+   "dept": "ショップ",
+   "role": "フロント",
+   "disp": "ショップ",
+   "evidence": {
+    "kind": "failed",
+    "ago": 60
+   }
+  },
+  {
+   "session": "sess-cp-04",
+   "vendor": "claude",
+   "cwd": "/Users/test/work/blog-studio",
+   "branch": "main",
+   "title": "",
+   "age": 14,
+   "mtime": 1790199986.0,
+   "state": "working",
+   "kind": "tool",
+   "verb": "読込中",
+   "tool": "Read",
+   "target": "outline.md",
+   "feed": [
+    "読込中 outline.md",
+    "調査中 draft-*.md"
+   ],
+   "skills": [],
+   "minions": 0,
+   "pending": false,
+   "listening": false,
+   "lastSaid": "",
+   "lastOrder": "",
+   "question": "",
+   "approvalMin": 0,
+   "stuckTool": "",
+   "dept": "ブログ編集部",
+   "role": "記事制作",
+   "disp": "ブログ編集部"
+  },
+  {
+   "session": "sess-cp-10",
+   "vendor": "claude",
+   "cwd": "/Users/test/work/research-lab",
+   "branch": "main",
+   "title": "",
+   "age": 20,
+   "mtime": 1790199980.0,
+   "state": "working",
+   "kind": "tool",
+   "verb": "サブエージェントに指示中",
+   "tool": "Task",
+   "target": "3 方向の比較調査",
+   "feed": [
+    "サブエージェントに指示中 3 方向の比較調査"
+   ],
+   "skills": [],
+   "minions": 3,
+   "pending": false,
+   "listening": false,
+   "lastSaid": "",
+   "lastOrder": "",
+   "question": "",
+   "approvalMin": 0,
+   "stuckTool": "",
+   "dept": "リサーチ室",
+   "role": "調査",
+   "work": {
+    "now": [
+     "比較表"
+    ],
+    "next": [
+     "まとめ"
+    ],
+    "done": [],
+    "counts": {
+     "pending": 1,
+     "in_progress": 1,
+     "completed": 0
+    }
+   },
+   "disp": "リサーチ室"
+  },
+  {
+   "session": "sess-cp-14",
+   "vendor": "claude",
+   "cwd": "/Users/test/work/memo-app",
+   "branch": "main",
+   "title": "",
+   "age": 22,
+   "mtime": 1790199978.0,
+   "state": "working",
+   "kind": "tool",
+   "verb": "段取り整理中",
+   "tool": "TodoWrite",
+   "target": "保存先の切替 3 件",
+   "feed": [
+    "段取り整理中 保存先の切替 3 件",
+    "読込中 settings.ts"
+   ],
+   "skills": [],
+   "minions": 0,
+   "pending": false,
+   "listening": false,
+   "lastSaid": "",
+   "lastOrder": "",
+   "question": "",
+   "approvalMin": 0,
+   "stuckTool": "",
+   "dept": "議事録アプリ",
+   "role": "開発",
+   "work": {
+    "now": [
+     "保存先の切替"
+    ],
+    "next": [
+     "共有フォルダの権限"
+    ],
+    "done": [
+     "ローカル保存"
+    ],
+    "counts": {
+     "pending": 1,
+     "in_progress": 1,
+     "completed": 1
+    }
+   },
+   "disp": "議事録アプリ"
+  },
+  {
+   "session": "sess-cp-11",
+   "vendor": "claude",
+   "cwd": "/Users/test/work/research-lab",
+   "branch": "main",
+   "title": "配色の下調べ",
+   "age": 30,
+   "mtime": 1790199970.0,
+   "state": "working",
+   "kind": "tool",
+   "verb": "リサーチ中",
+   "tool": "WebFetch",
+   "target": "dot art palette 16 colors",
+   "feed": [
+    "リサーチ中 dot art palette 16 colors"
+   ],
+   "skills": [],
+   "minions": 0,
+   "pending": false,
+   "listening": false,
+   "lastSaid": "",
+   "lastOrder": "",
+   "question": "",
+   "approvalMin": 0,
+   "stuckTool": "",
+   "dept": "リサーチ室",
+   "role": "調査",
+   "disp": "リサーチ室 2号"
+  },
+  {
+   "session": "sess-cp-02",
+   "vendor": "claude",
+   "cwd": "/Users/test/work/atlas-api",
+   "branch": "main",
+   "title": "",
+   "age": 40,
+   "mtime": 1790199960.0,
+   "state": "working",
+   "kind": "order",
+   "verb": "指示を受領",
+   "tool": "",
+   "target": "型を直してから push して",
+   "feed": [
+    "編集中 schema.ts"
+   ],
+   "skills": [],
+   "minions": 0,
+   "pending": false,
+   "listening": false,
+   "lastSaid": "",
+   "lastOrder": "型を直してから push して",
+   "question": "",
+   "approvalMin": 0,
+   "stuckTool": "",
+   "dept": "atlas-api",
+   "role": "開発",
+   "disp": "atlas-api 2号"
+  },
+  {
+   "session": "sess-cp-06",
+   "vendor": "claude",
+   "cwd": "/Users/test/work/video-cut",
+   "branch": "main",
+   "title": "",
+   "age": 50,
+   "mtime": 1790199950.0,
+   "state": "working",
+   "kind": "think",
+   "verb": "考え中…",
+   "tool": "",
+   "target": "",
+   "feed": [
+    "実行中 ffprobe intro.mp4"
+   ],
+   "skills": [],
+   "minions": 0,
+   "pending": false,
+   "listening": false,
+   "lastSaid": "",
+   "lastOrder": "冒頭 30 秒を詰めて",
+   "question": "",
+   "approvalMin": 0,
+   "stuckTool": "",
+   "dept": "動画編集部",
+   "role": "本編カット",
+   "disp": "動画編集部"
+  },
+  {
+   "session": "sess-cp-09",
+   "vendor": "claude",
+   "cwd": "/Users/test/work/memo-app",
+   "branch": "main",
+   "title": "",
+   "age": 200,
+   "mtime": 1790199800.0,
+   "state": "waiting",
+   "kind": "tool",
+   "verb": "質問中(返答待ち)",
+   "tool": "AskUserQuestion",
+   "target": "保存先はどちらにしますか？（ローカル / 共有フォルダ）",
+   "feed": [
+    "質問中(返答待ち) 保存先はどちらにしますか？"
+   ],
+   "skills": [],
+   "minions": 0,
+   "pending": false,
+   "listening": false,
+   "lastSaid": "",
+   "lastOrder": "",
+   "question": "保存先はどちらにしますか？（ローカル / 共有フォルダ）",
+   "approvalMin": 0,
+   "stuckTool": "",
+   "dept": "議事録アプリ",
+   "role": "開発",
+   "questionOptions": [
+    {
+     "label": "ローカル",
+     "desc": "推奨"
+    },
+    {
+     "label": "共有フォルダ",
+     "desc": ""
+    }
+   ],
+   "ask": {
+    "tool": "AskUserQuestion",
+    "kind": "question",
+    "title": "保存先はどちらにしますか？",
+    "options": [
+     "ローカル",
+     "共有フォルダ"
+    ],
+    "ts": 1790199810.0
+   },
+   "disp": "議事録アプリ 2号"
+  },
+  {
+   "session": "sess-cp-07",
+   "vendor": "claude",
+   "cwd": "/Users/test/work/infra-ops",
+   "branch": "main",
+   "title": "",
+   "age": 380,
+   "mtime": 1790199620.0,
+   "state": "waiting",
+   "kind": "tool",
+   "verb": "実行中",
+   "tool": "Bash",
+   "target": "deploy.sh staging",
+   "feed": [
+    "実行中 deploy.sh staging",
+    "編集中 stack.yml"
+   ],
+   "skills": [],
+   "minions": 0,
+   "pending": false,
+   "listening": false,
+   "lastSaid": "",
+   "lastOrder": "",
+   "question": "",
+   "approvalMin": 6,
+   "stuckTool": "実行中 deploy.sh staging",
+   "dept": "インフラ",
+   "role": "運用",
+   "ask": {
+    "tool": "Bash",
+    "kind": "permission",
+    "title": "deploy.sh staging を実行しますか",
+    "options": [],
+    "ts": 1790199640.0
+   },
+   "disp": "インフラ"
+  },
+  {
+   "session": "sess-cp-05",
+   "vendor": "claude",
+   "cwd": "/Users/test/work/blog-studio",
+   "branch": "main",
+   "title": "",
+   "age": 520,
+   "mtime": 1790199480.0,
+   "state": "waiting",
+   "kind": "said",
+   "verb": "指示待ち",
+   "tool": "",
+   "target": "下書きを 3 本まとめました。どれから公開しますか",
+   "feed": [
+    "💬 下書きを 3 本まとめました。どれから公開しますか",
+    "執筆中 draft-03.md"
+   ],
+   "skills": [],
+   "minions": 0,
+   "pending": false,
+   "listening": true,
+   "lastSaid": "下書きを 3 本まとめました。どれから公開しますか",
+   "lastOrder": "下書きを 3 本書いて",
+   "question": "",
+   "approvalMin": 0,
+   "stuckTool": "",
+   "dept": "ブログ編集部",
+   "role": "記事制作",
+   "disp": "ブログ編集部 2号",
+   "evidence": {
+    "kind": "committed",
+    "ago": 900
+   }
+  },
+  {
+   "session": "sess-cp-08",
+   "vendor": "claude",
+   "cwd": "/Users/test/work/infra-ops",
+   "branch": "main",
+   "title": "",
+   "age": 960,
+   "mtime": 1790199040.0,
+   "state": "waiting",
+   "kind": "tool",
+   "verb": "実行中",
+   "tool": "Bash",
+   "target": "npm run build:all",
+   "feed": [
+    "実行中 npm run build:all"
+   ],
+   "skills": [],
+   "minions": 0,
+   "pending": false,
+   "listening": false,
+   "lastSaid": "",
+   "lastOrder": "",
+   "question": "",
+   "approvalMin": 0,
+   "stuckTool": "",
+   "dept": "インフラ",
+   "role": "運用",
+   "disp": "インフラ 2号"
+  },
+  {
+   "session": "sess-cp-13",
+   "vendor": "claude",
+   "cwd": "/Users/test/work/video-cut",
+   "branch": "main",
+   "title": "",
+   "age": 1200,
+   "mtime": 1790198800.0,
+   "state": "waiting",
+   "kind": "said",
+   "verb": "指示待ち",
+   "tool": "",
+   "target": "書き出しが終わりました。確認をお願いします",
+   "feed": [
+    "💬 書き出しが終わりました。確認をお願いします",
+    "実行中 render.sh final"
+   ],
+   "skills": [],
+   "minions": 0,
+   "pending": false,
+   "listening": true,
+   "lastSaid": "書き出しが終わりました。確認をお願いします",
+   "lastOrder": "本編を書き出して",
+   "question": "",
+   "approvalMin": 0,
+   "stuckTool": "",
+   "dept": "動画編集部",
+   "role": "書き出し",
+   "disp": "動画編集部 2号"
+  },
+  {
+   "session": "oc-helper-1",
+   "external": "openclaw",
+   "vendor": "openclaw",
+   "site": "mini",
+   "dept": "OpenClaw",
+   "role": "chat",
+   "state": "working",
+   "verb": "応答中",
+   "target": "",
+   "cwd": "",
+   "branch": "",
+   "lastSaid": "",
+   "lastOrder": "",
+   "question": "",
+   "approvalMin": 0,
+   "stuckTool": "",
+   "feed": [
+    "応答中"
+   ],
+   "skills": [],
+   "age": 15,
+   "mtime": 1790199985.0,
+   "minions": 0,
+   "pending": false,
+   "avatar": 0,
+   "disp": "OpenClaw"
+  },
+  {
+   "session": "cx-cp0000000000a3",
+   "cwd": "/Users/test/work/atlas-api",
+   "branch": "main",
+   "title": "型エラーの修正",
+   "age": 12,
+   "mtime": 1790199988.0,
+   "state": "working",
+   "kind": "tool",
+   "verb": "実行中",
+   "target": "",
+   "feed": [
+    "実行中"
+   ],
+   "skills": [],
+   "minions": 0,
+   "pending": false,
+   "listening": true,
+   "lastSaid": "",
+   "lastOrder": "",
+   "question": "",
+   "approvalMin": 0,
+   "stuckTool": "",
+   "dept": "型エラーの修正",
+   "role": "cli",
+   "vendor": "codex",
+   "tokens": 48000,
+   "disp": "型エラーの修正"
+  },
+  {
+   "session": "cx-cp0000000000b1",
+   "cwd": "/Users/test/work/data-pipe",
+   "branch": "main",
+   "title": "データ整形",
+   "age": 300,
+   "mtime": 1790199700.0,
+   "state": "waiting",
+   "kind": "said",
+   "verb": "報告中",
+   "target": "",
+   "feed": [
+    "報告中"
+   ],
+   "skills": [],
+   "minions": 0,
+   "pending": false,
+   "listening": true,
+   "lastSaid": "",
+   "lastOrder": "",
+   "question": "",
+   "approvalMin": 0,
+   "stuckTool": "",
+   "dept": "データ整形",
+   "role": "vscode",
+   "vendor": "codex",
+   "tokens": 12000,
+   "disp": "データ整形"
+  },
+  {
+   "session": "cx-cp0000000000b2",
+   "cwd": "/Users/test/work/data-pipe",
+   "branch": "main",
+   "title": "データ整形",
+   "age": 2400,
+   "mtime": 1790197600.0,
+   "state": "resting",
+   "kind": "idle",
+   "verb": "編集中",
+   "target": "",
+   "feed": [
+    "編集中"
+   ],
+   "skills": [],
+   "minions": 0,
+   "pending": false,
+   "listening": false,
+   "lastSaid": "",
+   "lastOrder": "",
+   "question": "",
+   "approvalMin": 0,
+   "stuckTool": "",
+   "dept": "データ整形",
+   "role": "cli",
+   "vendor": "codex",
+   "tokens": 3000,
+   "disp": "データ整形 2号"
+  },
+  {
+   "session": "fc-cp0000000000c1",
+   "cwd": "/Users/test/work/research-lab",
+   "branch": "main",
+   "title": "",
+   "age": 3200,
+   "mtime": 1790196800.0,
+   "state": "resting",
+   "kind": "idle",
+   "verb": "作業中",
+   "target": "",
+   "feed": [
+    "作業中"
+   ],
+   "skills": [],
+   "minions": 0,
+   "pending": false,
+   "listening": false,
+   "lastSaid": "",
+   "lastOrder": "",
+   "question": "",
+   "approvalMin": 0,
+   "stuckTool": "",
+   "dept": "リサーチ室",
+   "role": "cli",
+   "vendor": "futurecli",
+   "disp": "リサーチ室"
+  }
+ ],
+ "sources": {
+  "claude": {
+   "fg": 13,
+   "bg": 0,
+   "agentsCli": false
+  },
+  "codex": {
+   "connected": true,
+   "n": 3,
+   "reason": ""
+  },
+  "openclaw": {
+   "connected": true
+  }
+ },
+ "roster": [
+  {
+   "projectId": "21ef8bb124cd",
+   "session": "sess-cp-01",
+   "vendor": "claude",
+   "name": "atlas-api",
+   "role": "開発",
+   "cwd": "/Users/test/work/atlas-api",
+   "crew": 1,
+   "state": "working",
+   "kind": "tool",
+   "verb": "編集中",
+   "tool": "Edit",
+   "target": "router.ts",
+   "age": 6,
+   "minions": 0,
+   "minionsLive": 0,
+   "pending": false,
+   "listening": false,
+   "attention": false,
+   "approvalMin": 0,
+   "question": "",
+   "stuckTool": "",
+   "ask": null,
+   "lastSaid": "ルーターの型を揃えました",
+   "feed": [
+    "編集中 router.ts",
+    "実行中 npm test",
+    "💬 ルーターの型を揃えました"
+   ],
+   "sessions": [
+    {
+     "session": "sess-cp-01",
+     "vendor": "claude",
+     "state": "working",
+     "age": 6,
+     "attention": false,
+     "minions": 0,
+     "pending": false,
+     "listening": false
+    }
+   ],
+   "title": "",
+   "work": {
+    "now": [
+     "ルーターの型"
+    ],
+    "next": [
+     "ミドルウェア"
+    ],
+    "done": [
+     "エンドポイント一覧"
+    ],
+    "counts": {
+     "pending": 2,
+     "in_progress": 1,
+     "completed": 4
+    }
+   },
+   "disp": "atlas-api"
+  },
+  {
+   "projectId": "f81e6ad1f9b1",
+   "session": "sess-cp-12",
+   "vendor": "claude",
+   "name": "ショップ",
+   "role": "フロント",
+   "cwd": "/Users/test/work/shop-front",
+   "crew": 1,
+   "state": "working",
+   "kind": "tool",
+   "verb": "実行中",
+   "tool": "Bash",
+   "target": "pytest -q",
+   "age": 9,
+   "minions": 0,
+   "minionsLive": 0,
+   "pending": false,
+   "listening": false,
+   "attention": false,
+   "approvalMin": 0,
+   "question": "",
+   "stuckTool": "",
+   "ask": null,
+   "lastSaid": "",
+   "feed": [
+    "実行中 pytest -q",
+    "編集中 cart.py"
+   ],
+   "sessions": [
+    {
+     "session": "sess-cp-12",
+     "vendor": "claude",
+     "state": "working",
+     "age": 9,
+     "attention": false,
+     "minions": 0,
+     "pending": false,
+     "listening": false
+    }
+   ],
+   "title": "",
+   "disp": "ショップ"
+  },
+  {
+   "projectId": "87f5d20555b8",
+   "session": "sess-cp-04",
+   "vendor": "claude",
+   "name": "ブログ編集部",
+   "role": "記事制作",
+   "cwd": "/Users/test/work/blog-studio",
+   "crew": 1,
+   "state": "working",
+   "kind": "tool",
+   "verb": "読込中",
+   "tool": "Read",
+   "target": "outline.md",
+   "age": 14,
+   "minions": 0,
+   "minionsLive": 0,
+   "pending": false,
+   "listening": false,
+   "attention": false,
+   "approvalMin": 0,
+   "question": "",
+   "stuckTool": "",
+   "ask": null,
+   "lastSaid": "",
+   "feed": [
+    "読込中 outline.md",
+    "調査中 draft-*.md"
+   ],
+   "sessions": [
+    {
+     "session": "sess-cp-04",
+     "vendor": "claude",
+     "state": "working",
+     "age": 14,
+     "attention": false,
+     "minions": 0,
+     "pending": false,
+     "listening": false
+    }
+   ],
+   "title": "",
+   "disp": "ブログ編集部 2号"
+  },
+  {
+   "projectId": "af810ad1106f",
+   "session": "sess-cp-10",
+   "vendor": "claude",
+   "name": "リサーチ室",
+   "role": "調査",
+   "cwd": "/Users/test/work/research-lab",
+   "crew": 1,
+   "state": "working",
+   "kind": "tool",
+   "verb": "サブエージェントに指示中",
+   "tool": "Task",
+   "target": "3 方向の比較調査",
+   "age": 20,
+   "minions": 3,
+   "minionsLive": 0,
+   "pending": false,
+   "listening": false,
+   "attention": false,
+   "approvalMin": 0,
+   "question": "",
+   "stuckTool": "",
+   "ask": null,
+   "lastSaid": "",
+   "feed": [
+    "サブエージェントに指示中 3 方向の比較調査"
+   ],
+   "sessions": [
+    {
+     "session": "sess-cp-10",
+     "vendor": "claude",
+     "state": "working",
+     "age": 20,
+     "attention": false,
+     "minions": 3,
+     "pending": false,
+     "listening": false
+    }
+   ],
+   "title": "",
+   "work": {
+    "now": [
+     "比較表"
+    ],
+    "next": [
+     "まとめ"
+    ],
+    "done": [],
+    "counts": {
+     "pending": 1,
+     "in_progress": 1,
+     "completed": 0
+    }
+   },
+   "disp": "リサーチ室 3号"
+  },
+  {
+   "projectId": "542d2511f309",
+   "session": "sess-cp-14",
+   "vendor": "claude",
+   "name": "議事録アプリ",
+   "role": "開発",
+   "cwd": "/Users/test/work/memo-app",
+   "crew": 1,
+   "state": "working",
+   "kind": "tool",
+   "verb": "段取り整理中",
+   "tool": "TodoWrite",
+   "target": "保存先の切替 3 件",
+   "age": 22,
+   "minions": 0,
+   "minionsLive": 0,
+   "pending": false,
+   "listening": false,
+   "attention": false,
+   "approvalMin": 0,
+   "question": "",
+   "stuckTool": "",
+   "ask": null,
+   "lastSaid": "",
+   "feed": [
+    "段取り整理中 保存先の切替 3 件",
+    "読込中 settings.ts"
+   ],
+   "sessions": [
+    {
+     "session": "sess-cp-14",
+     "vendor": "claude",
+     "state": "working",
+     "age": 22,
+     "attention": false,
+     "minions": 0,
+     "pending": false,
+     "listening": false
+    }
+   ],
+   "title": "",
+   "work": {
+    "now": [
+     "保存先の切替"
+    ],
+    "next": [
+     "共有フォルダの権限"
+    ],
+    "done": [
+     "ローカル保存"
+    ],
+    "counts": {
+     "pending": 1,
+     "in_progress": 1,
+     "completed": 1
+    }
+   },
+   "disp": "議事録アプリ 2号"
+  },
+  {
+   "projectId": "39b35fbfa885",
+   "session": "sess-cp-11",
+   "vendor": "claude",
+   "name": "リサーチ室",
+   "role": "調査",
+   "cwd": "/Users/test/work/research-lab",
+   "crew": 1,
+   "state": "working",
+   "kind": "tool",
+   "verb": "リサーチ中",
+   "tool": "WebFetch",
+   "target": "dot art palette 16 colors",
+   "age": 30,
+   "minions": 0,
+   "minionsLive": 0,
+   "pending": false,
+   "listening": false,
+   "attention": false,
+   "approvalMin": 0,
+   "question": "",
+   "stuckTool": "",
+   "ask": null,
+   "lastSaid": "",
+   "feed": [
+    "リサーチ中 dot art palette 16 colors"
+   ],
+   "sessions": [
+    {
+     "session": "sess-cp-11",
+     "vendor": "claude",
+     "state": "working",
+     "age": 30,
+     "attention": false,
+     "minions": 0,
+     "pending": false,
+     "listening": false
+    }
+   ],
+   "title": "配色の下調べ",
+   "disp": "リサーチ室"
+  },
+  {
+   "projectId": "988377934502",
+   "session": "sess-cp-02",
+   "vendor": "claude",
+   "name": "atlas-api",
+   "role": "開発",
+   "cwd": "/Users/test/work/atlas-api",
+   "crew": 1,
+   "state": "working",
+   "kind": "order",
+   "verb": "指示を受領",
+   "tool": "",
+   "target": "型を直してから push して",
+   "age": 40,
+   "minions": 0,
+   "minionsLive": 0,
+   "pending": false,
+   "listening": false,
+   "attention": false,
+   "approvalMin": 0,
+   "question": "",
+   "stuckTool": "",
+   "ask": null,
+   "lastSaid": "",
+   "feed": [
+    "編集中 schema.ts"
+   ],
+   "sessions": [
+    {
+     "session": "sess-cp-02",
+     "vendor": "claude",
+     "state": "working",
+     "age": 40,
+     "attention": false,
+     "minions": 0,
+     "pending": false,
+     "listening": false
+    }
+   ],
+   "title": "",
+   "disp": "atlas-api 2号"
+  },
+  {
+   "projectId": "87e9fac1520e",
+   "session": "sess-cp-06",
+   "vendor": "claude",
+   "name": "動画編集部",
+   "role": "本編カット",
+   "cwd": "/Users/test/work/video-cut",
+   "crew": 1,
+   "state": "working",
+   "kind": "think",
+   "verb": "考え中…",
+   "tool": "",
+   "target": "",
+   "age": 50,
+   "minions": 0,
+   "minionsLive": 0,
+   "pending": false,
+   "listening": false,
+   "attention": false,
+   "approvalMin": 0,
+   "question": "",
+   "stuckTool": "",
+   "ask": null,
+   "lastSaid": "",
+   "feed": [
+    "実行中 ffprobe intro.mp4"
+   ],
+   "sessions": [
+    {
+     "session": "sess-cp-06",
+     "vendor": "claude",
+     "state": "working",
+     "age": 50,
+     "attention": false,
+     "minions": 0,
+     "pending": false,
+     "listening": false
+    }
+   ],
+   "title": "",
+   "disp": "動画編集部"
+  },
+  {
+   "projectId": "2ffc7d9c6254",
+   "session": "sess-cp-09",
+   "vendor": "claude",
+   "name": "議事録アプリ",
+   "role": "開発",
+   "cwd": "/Users/test/work/memo-app",
+   "crew": 1,
+   "state": "waiting",
+   "kind": "tool",
+   "verb": "質問中(返答待ち)",
+   "tool": "AskUserQuestion",
+   "target": "保存先はどちらにしますか？（ローカル / 共有フォルダ）",
+   "age": 200,
+   "minions": 0,
+   "minionsLive": 0,
+   "pending": false,
+   "listening": false,
+   "attention": true,
+   "approvalMin": 0,
+   "question": "保存先はどちらにしますか？（ローカル / 共有フォルダ）",
+   "stuckTool": "",
+   "ask": {
+    "tool": "AskUserQuestion",
+    "kind": "question",
+    "title": "保存先はどちらにしますか？",
+    "options": [
+     "ローカル",
+     "共有フォルダ"
+    ],
+    "ts": 1790199810.0
+   },
+   "lastSaid": "",
+   "feed": [
+    "質問中(返答待ち) 保存先はどちらにしますか？"
+   ],
+   "sessions": [
+    {
+     "session": "sess-cp-09",
+     "vendor": "claude",
+     "state": "waiting",
+     "age": 200,
+     "attention": true,
+     "minions": 0,
+     "pending": false,
+     "listening": false,
+     "ask": {
+      "tool": "AskUserQuestion",
+      "kind": "question"
+     }
+    }
+   ],
+   "title": "",
+   "questionOptions": [
+    {
+     "label": "ローカル",
+     "desc": "推奨"
+    },
+    {
+     "label": "共有フォルダ",
+     "desc": ""
+    }
+   ],
+   "disp": "議事録アプリ"
+  },
+  {
+   "projectId": "b6bfa2422592",
+   "session": "sess-cp-07",
+   "vendor": "claude",
+   "name": "インフラ",
+   "role": "運用",
+   "cwd": "/Users/test/work/infra-ops",
+   "crew": 1,
+   "state": "waiting",
+   "kind": "tool",
+   "verb": "実行中",
+   "tool": "Bash",
+   "target": "deploy.sh staging",
+   "age": 380,
+   "minions": 0,
+   "minionsLive": 0,
+   "pending": false,
+   "listening": false,
+   "attention": true,
+   "approvalMin": 6,
+   "question": "",
+   "stuckTool": "実行中 deploy.sh staging",
+   "ask": {
+    "tool": "Bash",
+    "kind": "permission",
+    "title": "deploy.sh staging を実行しますか",
+    "options": [],
+    "ts": 1790199640.0
+   },
+   "lastSaid": "",
+   "feed": [
+    "実行中 deploy.sh staging",
+    "編集中 stack.yml"
+   ],
+   "sessions": [
+    {
+     "session": "sess-cp-07",
+     "vendor": "claude",
+     "state": "waiting",
+     "age": 380,
+     "attention": true,
+     "minions": 0,
+     "pending": false,
+     "listening": false,
+     "ask": {
+      "tool": "Bash",
+      "kind": "permission"
+     }
+    }
+   ],
+   "title": "",
+   "disp": "インフラ 2号"
+  },
+  {
+   "projectId": "678544aedeb9",
+   "session": "sess-cp-05",
+   "vendor": "claude",
+   "name": "ブログ編集部",
+   "role": "記事制作",
+   "cwd": "/Users/test/work/blog-studio",
+   "crew": 1,
+   "state": "waiting",
+   "kind": "said",
+   "verb": "指示待ち",
+   "tool": "",
+   "target": "下書きを 3 本まとめました。どれから公開しますか",
+   "age": 520,
+   "minions": 0,
+   "minionsLive": 0,
+   "pending": false,
+   "listening": true,
+   "attention": false,
+   "approvalMin": 0,
+   "question": "",
+   "stuckTool": "",
+   "ask": null,
+   "lastSaid": "下書きを 3 本まとめました。どれから公開しますか",
+   "feed": [
+    "💬 下書きを 3 本まとめました。どれから公開しますか",
+    "執筆中 draft-03.md"
+   ],
+   "sessions": [
+    {
+     "session": "sess-cp-05",
+     "vendor": "claude",
+     "state": "waiting",
+     "age": 520,
+     "attention": false,
+     "minions": 0,
+     "pending": false,
+     "listening": true
+    }
+   ],
+   "title": "",
+   "disp": "ブログ編集部"
+  },
+  {
+   "projectId": "b53e1fd10570",
+   "session": "sess-cp-08",
+   "vendor": "claude",
+   "name": "インフラ",
+   "role": "運用",
+   "cwd": "/Users/test/work/infra-ops",
+   "crew": 1,
+   "state": "waiting",
+   "kind": "tool",
+   "verb": "実行中",
+   "tool": "Bash",
+   "target": "npm run build:all",
+   "age": 960,
+   "minions": 0,
+   "minionsLive": 0,
+   "pending": false,
+   "listening": false,
+   "attention": false,
+   "approvalMin": 0,
+   "question": "",
+   "stuckTool": "",
+   "ask": null,
+   "lastSaid": "",
+   "feed": [
+    "実行中 npm run build:all"
+   ],
+   "sessions": [
+    {
+     "session": "sess-cp-08",
+     "vendor": "claude",
+     "state": "waiting",
+     "age": 960,
+     "attention": false,
+     "minions": 0,
+     "pending": false,
+     "listening": false
+    }
+   ],
+   "title": "",
+   "disp": "インフラ"
+  },
+  {
+   "projectId": "f15ed78aec5c",
+   "session": "sess-cp-13",
+   "vendor": "claude",
+   "name": "動画編集部",
+   "role": "書き出し",
+   "cwd": "/Users/test/work/video-cut",
+   "crew": 1,
+   "state": "waiting",
+   "kind": "said",
+   "verb": "指示待ち",
+   "tool": "",
+   "target": "書き出しが終わりました。確認をお願いします",
+   "age": 1200,
+   "minions": 0,
+   "minionsLive": 0,
+   "pending": false,
+   "listening": true,
+   "attention": false,
+   "approvalMin": 0,
+   "question": "",
+   "stuckTool": "",
+   "ask": null,
+   "lastSaid": "書き出しが終わりました。確認をお願いします",
+   "feed": [
+    "💬 書き出しが終わりました。確認をお願いします",
+    "実行中 render.sh final"
+   ],
+   "sessions": [
+    {
+     "session": "sess-cp-13",
+     "vendor": "claude",
+     "state": "waiting",
+     "age": 1200,
+     "attention": false,
+     "minions": 0,
+     "pending": false,
+     "listening": true
+    }
+   ],
+   "title": "",
+   "disp": "動画編集部 2号"
+  },
+  {
+   "projectId": "oc-helper-1",
+   "session": "oc-helper-1",
+   "vendor": "openclaw",
+   "name": "OpenClaw",
+   "role": "chat",
+   "cwd": "",
+   "crew": 1,
+   "state": "working",
+   "kind": "idle",
+   "verb": "応答中",
+   "tool": "",
+   "target": "",
+   "age": 15,
+   "minions": 0,
+   "minionsLive": 0,
+   "pending": false,
+   "listening": false,
+   "attention": false,
+   "approvalMin": 0,
+   "question": "",
+   "stuckTool": "",
+   "ask": null,
+   "lastSaid": "",
+   "feed": [
+    "応答中"
+   ],
+   "sessions": [
+    {
+     "session": "oc-helper-1",
+     "vendor": "openclaw",
+     "state": "working",
+     "age": 15,
+     "attention": false,
+     "minions": 0,
+     "pending": false
+    }
+   ],
+   "title": "",
+   "external": "openclaw",
+   "disp": "OpenClaw"
+  },
+  {
+   "projectId": "8bc4e3ddd5d6",
+   "session": "cx-cp0000000000a3",
+   "vendor": "codex",
+   "name": "型エラーの修正",
+   "role": "cli",
+   "cwd": "/Users/test/work/atlas-api",
+   "crew": 1,
+   "state": "working",
+   "kind": "tool",
+   "verb": "実行中",
+   "tool": "",
+   "target": "",
+   "age": 12,
+   "minions": 0,
+   "minionsLive": 0,
+   "pending": false,
+   "listening": true,
+   "attention": false,
+   "approvalMin": 0,
+   "question": "",
+   "stuckTool": "",
+   "ask": null,
+   "lastSaid": "",
+   "feed": [
+    "実行中"
+   ],
+   "sessions": [
+    {
+     "session": "cx-cp0000000000a3",
+     "vendor": "codex",
+     "state": "working",
+     "age": 12,
+     "attention": false,
+     "minions": 0,
+     "pending": false,
+     "listening": true
+    }
+   ],
+   "title": "型エラーの修正",
+   "disp": "型エラーの修正"
+  },
+  {
+   "projectId": "4c1a2b412dd0",
+   "session": "cx-cp0000000000b1",
+   "vendor": "codex",
+   "name": "データ整形",
+   "role": "vscode",
+   "cwd": "/Users/test/work/data-pipe",
+   "crew": 1,
+   "state": "waiting",
+   "kind": "said",
+   "verb": "報告中",
+   "tool": "",
+   "target": "",
+   "age": 300,
+   "minions": 0,
+   "minionsLive": 0,
+   "pending": false,
+   "listening": true,
+   "attention": false,
+   "approvalMin": 0,
+   "question": "",
+   "stuckTool": "",
+   "ask": null,
+   "lastSaid": "",
+   "feed": [
+    "報告中"
+   ],
+   "sessions": [
+    {
+     "session": "cx-cp0000000000b1",
+     "vendor": "codex",
+     "state": "waiting",
+     "age": 300,
+     "attention": false,
+     "minions": 0,
+     "pending": false,
+     "listening": true
+    }
+   ],
+   "title": "データ整形",
+   "disp": "データ整形 2号"
+  },
+  {
+   "projectId": "35d36ee6b7c3",
+   "session": "cx-cp0000000000b2",
+   "vendor": "codex",
+   "name": "データ整形",
+   "role": "cli",
+   "cwd": "/Users/test/work/data-pipe",
+   "crew": 1,
+   "state": "resting",
+   "kind": "idle",
+   "verb": "編集中",
+   "tool": "",
+   "target": "",
+   "age": 2400,
+   "minions": 0,
+   "minionsLive": 0,
+   "pending": false,
+   "listening": false,
+   "attention": false,
+   "approvalMin": 0,
+   "question": "",
+   "stuckTool": "",
+   "ask": null,
+   "lastSaid": "",
+   "feed": [
+    "編集中"
+   ],
+   "sessions": [
+    {
+     "session": "cx-cp0000000000b2",
+     "vendor": "codex",
+     "state": "resting",
+     "age": 2400,
+     "attention": false,
+     "minions": 0,
+     "pending": false,
+     "listening": false
+    }
+   ],
+   "title": "データ整形",
+   "disp": "データ整形"
+  },
+  {
+   "projectId": "80a0a51c2a88",
+   "session": "fc-cp0000000000c1",
+   "vendor": "futurecli",
+   "name": "リサーチ室",
+   "role": "cli",
+   "cwd": "/Users/test/work/research-lab",
+   "crew": 1,
+   "state": "resting",
+   "kind": "idle",
+   "verb": "作業中",
+   "tool": "",
+   "target": "",
+   "age": 3200,
+   "minions": 0,
+   "minionsLive": 0,
+   "pending": false,
+   "listening": false,
+   "attention": false,
+   "approvalMin": 0,
+   "question": "",
+   "stuckTool": "",
+   "ask": null,
+   "lastSaid": "",
+   "feed": [
+    "作業中"
+   ],
+   "sessions": [
+    {
+     "session": "fc-cp0000000000c1",
+     "vendor": "futurecli",
+     "state": "resting",
+     "age": 3200,
+     "attention": false,
+     "minions": 0,
+     "pending": false,
+     "listening": false
+    }
+   ],
+   "title": "",
+   "disp": "リサーチ室 2号"
+  }
+ ],
+ "history": [
+  {
+   "session": "sess-cp-02",
+   "disp": "atlas-api",
+   "text": "型を直してから push して",
+   "ts": 1790199955.0,
+   "pending": false
+  },
+  {
+   "session": "sess-cp-05",
+   "disp": "ブログ編集部",
+   "text": "下書きを 3 本書いて",
+   "ts": 1790196400.0,
+   "pending": false
+  }
+ ],
+ "today": {
+  "sent": 2,
+  "answered": 1,
+  "lastSentAgo": 45,
+  "capped": false
+ },
+ "launchable": [],
+ "avatarMode": "session",
+ "counts": {
+  "working": 10,
+  "waiting": 6,
+  "resting": 2
+ },
+ "tasks": {
+  "pending": 4,
+  "inProgress": 3,
+  "completed": 5
+ }
+}

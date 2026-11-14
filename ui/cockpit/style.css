@@ -1,0 +1,1436 @@
+/* css-vars-from: ui/hud/hud.css */
+/* R99: 様式 cockpit（俯瞰オフィス × 台帳 × 端末 × 一覧）。
+   HUD の共通則は ui/hud/hud.css（.hud 接頭）＝ここは配置と、この様式だけの色。
+
+   色の正本は ui/cockpit/palette.js の UI_COLORS。CSS は JS を import できないので同じ値を
+   ここにも書くが、**ずれたら tests/cockpit_smoke.py が落ちる**（両方を突き合わせる）。
+   ランプ（濃→淡の階段）から外れた色をここで発明しない＝部屋と UI が同じ光の下に見えなくなる。
+
+   ピクセルはオフィスの canvas だけ。周りは等幅・1px の罫・余白で組む（本人のモックアップ）。
+   keyframe は使わない（golden の決定論）。 */
+/* TERM_TOKENS_BEGIN (generated: ui/cockpit/palette.js TERM) */
+:root, .t-dark {
+  --t-bg: #0c0f0c;
+  --t-panel: #111511;
+  --t-panel-2: #1c261c;
+  --t-line: #2a342a;
+  --t-line-strong: #3a463a;
+  --t-line-soft: #1c241c;
+  --t-ink: #d8e0d8;
+  --t-ink-soft: #a9b5a9;
+  --t-ink-faint: #869286;
+  --t-accent: #39d353;
+  --t-on-accent: #0c0f0c;
+  --t-ok: #39d353;
+  --t-attn: #ce8a6c;
+  --t-warn: #d8ae67;
+  --t-danger: #ff6b5e;
+  --t-stage: #1a1d19;
+  --t-mono: "SF Mono", "Cascadia Code", ui-monospace, Menlo, Monaco, Consolas, "Hiragino Kaku Gothic ProN", "Hiragino Sans", monospace;
+  --t-sans: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif;
+  color-scheme: dark;
+}
+:root[data-theme="light"] {
+  --t-bg: #f3f1e8;
+  --t-panel: #eeebe0;
+  --t-panel-2: #ddd8c8;
+  --t-line: #c4bfad;
+  --t-line-strong: #a9a391;
+  --t-line-soft: #dcd8cb;
+  --t-ink: #1d231d;
+  --t-ink-soft: #465046;
+  --t-ink-faint: #535c51;
+  --t-accent: #1a6b2e;
+  --t-on-accent: #f3f1e8;
+  --t-ok: #1a6b2e;
+  --t-attn: #8a4f3b;
+  --t-warn: #69502d;
+  --t-danger: #b3261e;
+  --t-stage: #1a1d19;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: light) {
+  :root[data-theme-auto] {
+    --t-bg: #f3f1e8;
+    --t-panel: #eeebe0;
+    --t-panel-2: #ddd8c8;
+    --t-line: #c4bfad;
+    --t-line-strong: #a9a391;
+    --t-line-soft: #dcd8cb;
+    --t-ink: #1d231d;
+    --t-ink-soft: #465046;
+    --t-ink-faint: #535c51;
+    --t-accent: #1a6b2e;
+    --t-on-accent: #f3f1e8;
+    --t-ok: #1a6b2e;
+    --t-attn: #8a4f3b;
+    --t-warn: #69502d;
+    --t-danger: #b3261e;
+    --t-stage: #1a1d19;
+    color-scheme: light;
+  }
+}
+:root[data-theme="light"] .t-dark, :root[data-theme-auto] .t-dark {
+  --t-bg: #0c0f0c;
+  --t-panel: #111511;
+  --t-panel-2: #1c261c;
+  --t-line: #2a342a;
+  --t-line-strong: #3a463a;
+  --t-line-soft: #1c241c;
+  --t-ink: #d8e0d8;
+  --t-ink-soft: #a9b5a9;
+  --t-ink-faint: #869286;
+  --t-accent: #39d353;
+  --t-on-accent: #0c0f0c;
+  --t-ok: #39d353;
+  --t-attn: #ce8a6c;
+  --t-warn: #d8ae67;
+  --t-danger: #ff6b5e;
+  --t-stage: #1a1d19;
+  color-scheme: dark;
+}
+/* TERM_TOKENS_END */
+/* R101: 色は端末の配色（ui/cockpit/palette.js の TERM → 上の --t-*）。セレクタは .hud.ui-cockpit（hud.css より後に読まれる＝
+   同じ詳細度の .hud.th-dark〔iso のダーク〕に並び順で勝つ＝iso の暗色を持ち込まない）。部屋と端末の窓（.t-dark）の中では
+   --t-* が常にダーク＝--cp-* もそこで結び直す（var() は定義した要素で解決される）。
+   --cp-* ↔ UI_COLORS の対応は tests/cockpit_smoke.py の 7 番が見る（値ではなく --t-* の名前で・TERM.dark の値と UI_COLORS の一致）。 */
+.hud.ui-cockpit, .hud.ui-cockpit .t-dark {
+  --cp-bg: var(--t-bg);
+  --cp-panel: var(--t-panel);
+  --cp-panel-2: var(--t-panel-2);
+  --cp-line: var(--t-line);
+  --cp-line-soft: var(--t-line-soft);
+  --cp-line-strong: var(--t-line-strong);
+  --cp-ink: var(--t-ink);
+  --cp-ink-soft: var(--t-ink-soft);
+  --cp-ink-faint: var(--t-ink-faint);
+  --cp-accent: var(--t-accent);
+  --cp-ok: var(--t-ok);
+  --cp-alert: var(--t-attn);
+  --cp-warn: var(--t-warn);
+  --cp-danger: var(--t-danger);
+  --cp-stage: var(--t-stage);
+}
+/* 部屋の窓と端末の窓はどのテーマでも暗い（CRT）＝地と文字もその中の --cp-*（ダーク）で塗る */
+.ui-cockpit .cpstage.t-dark, .ui-cockpit .cpterm.t-dark { background: var(--cp-bg); color: var(--cp-ink); }
+.hud.ui-cockpit {
+  /* hud.css の部品（❗トレイ・シート・モーダル・ゲージ・台帳の行）は --iso-* を見る。
+     ここで束ねると、部品を 1 つも書き換えずに様式の色へ揃う（pixel と同じ手）。 */
+  --iso-bg: var(--cp-bg);
+  --iso-stage-bg: var(--cp-panel);
+  --iso-glass: var(--cp-panel);
+  --iso-glass-solid: var(--cp-panel-2);
+  --iso-line: var(--cp-line);
+  --iso-hairline: var(--cp-line);
+  --iso-ink: var(--cp-ink);
+  --iso-ink-soft: var(--cp-ink-soft);
+  --iso-ink-muted: var(--cp-ink-faint);
+  --iso-accent: var(--cp-accent);
+  --iso-accent-2: var(--cp-accent);
+  --iso-alert: var(--cp-alert);
+  --iso-ok: var(--cp-ok);
+  --iso-on-accent: var(--cp-bg);
+  /* chip 系を外すと hud.css の明るい既定（桜色の ❗帯）が残って、暗い部屋から浮く（実測） */
+  --iso-alert-chip: var(--cp-panel-2);
+  --iso-accent-chip: var(--cp-panel-2);
+  --iso-warn: var(--cp-warn);
+  --iso-warn-chip: var(--cp-panel-2);
+  --iso-rest: var(--cp-ink-faint);
+  --iso-shadow: none;
+  --iso-radius: 0;
+  /* セッション色の既定。実際の色は JS が要素ごとに style.setProperty("--session", …) で差す。
+     既定が無いと、JS が差す前の 1 フレームで印が消える（CSS は未定義の var() を黙って無視する）。 */
+  --session: var(--cp-accent);
+  /* R110 骨格 A: 3 カラムの左（部屋＋受付）と右（名簿）の列の幅。左は index.js が倍率から書く（184k ＋ 18＝×3 570・×4 754・
+     .main の inline）＝ここは JS が書く前の 1 フレームの値（×3）。2 カラムは下の段の clamp（端末 80 桁が先）。 */
+  --cp-left-w: 570px;
+  --cp-right-w: clamp(280px, 18vw, 320px);
+  --cp-font-base: 14px;
+  --cp-font-small: 12px;
+  --cp-font-body: var(--cp-font-base);
+  --cp-font-title: 16px;
+  --cp-font-display: 20px;
+  --cp-lh-body: 1.5;
+  --cp-lh-dense: 1.35;
+  background: var(--cp-bg);
+  color: var(--cp-ink);
+  font-family: var(--t-mono);
+  font-size: var(--cp-font-body);
+  font-variant-numeric: tabular-nums;
+  line-height: var(--cp-lh-body);
+}
+.hud.ui-cockpit[data-cp-font="12"] {
+  --cp-font-base: 12px; --cp-font-small: 11px; --cp-font-title: 14px; --cp-font-display: 18px;
+}
+.hud.ui-cockpit[data-cp-font="13"] {
+  --cp-font-base: 13px; --cp-font-small: 12px; --cp-font-title: 15px; --cp-font-display: 19px;
+}
+.hud.ui-cockpit[data-cp-font="16"] {
+  --cp-font-base: 16px; --cp-font-small: 13px; --cp-font-title: 18px; --cp-font-display: 22px;
+}
+.ui-cockpit .cpshell {
+  display: grid;
+  grid-template-rows: 56px minmax(0, 1fr) 36px;
+  width: 100%; height: 100%; box-sizing: border-box; overflow: hidden;
+}
+/* ボタンの字形は周りから継ぐ（本人のモックアップ design/cockpit.html の button 則と同じ）。UA の既定の字形（Arial）のままだと、
+   一覧のカード・端末のタブ・「＋ 端末」だけ字形が変わり、和文の名前は代わりの字形の行の丈で描かれて、同じ一覧の中で
+   カードの丈が 61〜75px にばらついた（今は全部 68px・390 と 1440 の実測・第 D 波）。字の大きさは各部品が決める */
+.ui-cockpit button { font-family: inherit; }
+
+/* プロンプト行。起動の入口を 1 つのメニューへまとめる。 */
+.ui-cockpit .cphead {
+  display: flex; align-items: center; gap: 14px; min-width: 0;
+  padding: 0 16px; border-bottom: 1px solid var(--cp-line); background: var(--cp-panel);
+}
+.ui-cockpit .brand { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 0 1 auto; }
+.ui-cockpit .brand .mark { display: inline-grid; place-items: center; width: auto; height: auto; background: none; border: 0; box-shadow: none; color: var(--cp-accent); line-height: 0; }
+.ui-cockpit .brand .txt { display: flex; flex-direction: row; align-items: baseline; gap: 0; min-width: 0; }
+.hud.ui-cockpit .brand #brandoffice { font-size: var(--cp-font-body); font-style: normal; color: var(--cp-ink); white-space: normal; overflow-wrap: anywhere; overflow: visible; text-overflow: clip; max-width: none; }
+.ui-cockpit .brand .cpprompt { font-size: var(--cp-font-body); color: var(--cp-accent); }
+.ui-cockpit .brand .cur { display: inline-block; flex: none; width: .6em; height: 1.05em; background: var(--cp-accent); }
+.ui-cockpit[data-cursor="off"] .brand .cur { visibility: hidden; }
+.ui-cockpit .brand #greet { display: none; }
+.hud.ui-cockpit .cpcounts { flex: 0 1 auto; min-width: 0; font-size: var(--cp-font-small); color: var(--cp-ink-soft); white-space: normal; overflow-wrap: anywhere; }
+.ui-cockpit .cphead .usage { display: none; }
+.hud.ui-cockpit .cphead .freshness { flex: 0 1 auto; min-width: 0; font-size: var(--cp-font-small); white-space: normal; overflow-wrap: anywhere; }
+.ui-cockpit #cp-attn-slot { margin-left: auto; }
+.ui-cockpit .admin { display: flex; flex-direction: row; flex: none; align-items: center; gap: 10px; }  /* hud の .admin は縦積み（iso の左サイドバー）＝向きを明示しないと継ぐ */
+.ui-cockpit .admin .abtn { width: auto; min-width: 32px; min-height: 32px; padding: 4px 8px; font-size: var(--cp-font-body); line-height: 1.35; border: 0; border-radius: 0; color: var(--cp-ink-soft); background: none; box-shadow: none; }
+.ui-cockpit .admin .abtn:hover { color: var(--cp-accent); background: var(--cp-panel-2); }
+.ui-cockpit .cpadd { position: relative; }
+.ui-cockpit #cp-add-menu { top: calc(100% + 8px); right: 0; min-width: 240px; }
+.ui-cockpit #cp-add-menu .abtn { justify-content: start; text-align: left; padding: 8px 12px; }
+.ui-cockpit .sheettools [data-px] { display: inline-grid; place-items: center; color: var(--cp-ink-soft); line-height: 0; }
+
+/* ── 3 カラム（R110 骨格 A）──
+   左＝01 オフィス（部屋）＋04 受付 ／ 中央＝03 端末（指示欄 #sheet はその下・重ねない）／ 右＝02 名簿。
+   窓（.cpwin）の間は地の溝 8px（列の間＝column-gap）。行の間は溝を置かない（row-gap 0）＝溝の要る所だけ明示の行か margin。
+   R111-S0: 格子は .main 1 枚の平ら（部屋と受付も .main の升目へ直置き・部屋と受付の間の溝は明示の 8px の行 ogap）。
+   既定は fallback の静的値＝JS が --cp-tpl-*／--cp-area-* を書かない間は R110 と同じ升目（窓の入れ替えはこの変数だけで行う）。
+   sheet の行は丈 0px の錨（指示欄は行の丈を取らない＝下の #sheet の節）。 */
+.ui-cockpit .main {
+  display: grid; position: relative; min-height: 0; column-gap: 8px; row-gap: 0;
+  grid-template-columns: var(--cp-tpl-cols, var(--cp-left-w) minmax(0, 1fr) var(--cp-right-w));
+  grid-template-rows: var(--cp-tpl-rows, auto 8px minmax(120px, 1fr) 0px);
+  grid-template-areas: var(--cp-tpl-areas, "office center right" "ogap center right" "reception center right" "reception sheet right");
+}
+.ui-cockpit .cpleft, .ui-cockpit .cpcenter, .ui-cockpit .cpright {
+  display: grid; min-width: 0; min-height: 0;
+}
+/* 窓は強い 1px の罫と窓の地で分ける。罫の寸法は index.js の LEFT_CHROME（1×2）のまま。 */
+.hud.ui-cockpit .cpwin { border: 1px solid var(--cp-line-strong); background: var(--cp-panel); min-width: 0; min-height: 0; }
+/* 左の列: 部屋の窓は絵の丈（auto・入らなければ部屋の段の中でスクロール）・受付の窓は残り（最低 120px＝index.js の RECEPTION_MIN_H_TIGHT。
+   倍率の計算は 200 を基準にし、受付を 120 まで詰めれば ×4 が入る 3 カラム＝本人の 1920×約 950 の窓だけ 120 で ×4 にする）。
+   部屋の窓の自動の最小（中身の丈）を 0 にする＝列が低い形（1440×640）で受付の最低の丈を部屋の段が譲る */
+.ui-cockpit .cpleft {
+  grid-area: left; grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(120px, 1fr); row-gap: 8px;
+}
+/* R111-S0: 3 カラムは左の列の箱をほどく（1 列と同じ型）＝部屋と受付の窓は .main の升目 office／reception へ直に置く。
+   上の grid・row-gap は 2 カラム（左の列が箱のまま）の分＝溝 8px は .main の ogap の行が持つ */
+.ui-cockpit .cpleft { display: contents; }
+.ui-cockpit #win-office {
+  grid-area: var(--cp-area-office, office);
+  display: grid; grid-template-columns: minmax(0, 1fr);
+  /* 部屋の段は絵の丈ちょうど（index.js が倍率から --cp-room-h を出す）。未設定の間だけ ×3 の丈 */
+  grid-template-rows: auto auto minmax(0, var(--cp-room-h, 480px));
+}
+/* 行は名指しで置く（接続の案内が空＝display:none の間に部屋の段が 2 行目へ繰り上がると、空の 3 行目が絵の丈を取って
+   部屋の段が半分に潰れた＝1920×1080 で段 371px・下に 372px の空き） */
+.ui-cockpit #sec-office { grid-row: 1; }
+.ui-cockpit #cp-setup-slot { grid-row: 2; min-width: 0; max-height: 220px; overflow: auto; }
+.ui-cockpit #cp-setup-slot:empty { display: none; }
+.ui-cockpit #stage { grid-row: 3; }
+/* 受付: 見出し・あなた待ち 1 件（hud/tray.js）か INBOX ZERO・最近の指示。あなた待ちは中身の丈を先に取る（押せることが先＝
+   最近の指示が譲る）・受付の窓より長いときだけ中でスクロール */
+.ui-cockpit #win-reception {
+  grid-area: var(--cp-area-reception, reception);
+  display: grid; grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, auto) minmax(0, 1fr); overflow: hidden;
+}
+.ui-cockpit #sec-reception { grid-row: 1; }
+.ui-cockpit #win-reception > #attn.tray, .ui-cockpit #cp-inbox-zero { grid-row: 2; }
+.ui-cockpit #win-reception > #attn.tray { min-height: 0; overflow-y: auto; }
+.ui-cockpit #win-reception > .cphist { grid-row: 3; min-height: 0; overflow-y: auto; }
+.ui-cockpit #cp-inbox-zero {
+  margin: 0; padding: 10px 14px; font-size: var(--cp-font-body); color: var(--cp-ink-soft);
+  border-bottom: 1px solid var(--cp-line); overflow-wrap: anywhere;
+}
+.ui-cockpit #cp-inbox-zero[hidden] { display: none; }
+.ui-cockpit .cpcenter { grid-area: var(--cp-area-terminal, center); grid-template-rows: auto auto minmax(0, 1fr) auto; grid-template-columns: minmax(0, 1fr); }
+/* b4-mac: 中央の列は中身の最小幅で広がらない（足元の「指示を書く」「ターミナルを前へ」・答えのボタンが 1194 幅の 310px の列を
+   押し広げて右カラムの ❗トレイに重なり、トレイのボタンが押せなくなった＝cockpit_smoke 29 で実測）。足元は列の幅で切る */
+/* 端末の面の行は明示する（見出し 1・タブ列 2・本体 3・足元 4）。デモはタブ列を畳む（display:none）＝自動配置のままだと
+   本体と足元が 1 行ずつ繰り上がり、足元の帯が 1fr の行を取って列の真ん中に浮いた（実測 1440×900 のデモ・足元 661px） */
+.ui-cockpit .cpcenter > .cpterm { grid-row: 3; }
+.ui-cockpit .cpcenter > .cptermfoot { grid-row: 4; }
+/* 右カラム（名簿）は列を 1 本・minmax(0, 1fr) で明示する。書かないと暗黙の auto 列になり、中身の min-content
+   （名前の nowrap）に押し広げられて枠を越える（旧 一覧で実測: トレイの選択肢が画面の外へ出た）。
+   行＝見出し（絞り込みを含む）・名簿（中でスクロール）・「▾ あと N 件」。 */
+.ui-cockpit .cpright {
+  grid-area: var(--cp-area-roster, right); grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+.ui-cockpit #cp-roster { min-height: 0; overflow-y: auto; }
+.ui-cockpit #cp-roster-more {
+  display: block; width: 100%; min-height: 28px; padding: 4px 14px; margin: 0;
+  font-size: var(--cp-font-small); color: var(--cp-ink-soft); text-align: center;
+  background: var(--cp-panel); border: 0; border-top: 1px solid var(--cp-line); border-radius: 0; box-shadow: none;
+}
+.ui-cockpit #cp-roster-more:hover { color: var(--cp-ink); background: var(--cp-panel-2); }
+.ui-cockpit #cp-roster-more[hidden] { display: none; }
+/* 指示欄（#sheet）は端末の下（重ねない）。hud の幅 1279 以下・⤢ の則（grid-row・margin・width）は :has(#attn[hidden]) を
+   含む詳細度 (1,6,0) まである＝同じ :has を持つ id 込みのセレクタで上書きする。丈の上限は画面の丈で書く。
+   R111-S0: 指示欄は丈 0px の sheet の行（端末の列の下端）に下端を揃えて置き、中身の丈だけ上へはみ出す（static のまま・行の丈は取らない）。
+   丈は index.js が測って --cp-sheet-h に書き、端末の窓をその丈＋溝 8 だけ持ち上げる（2 カラムの型・丈だけ実測）。
+   平らな格子で auto の行に置くと、部屋の窓の行と丈を取り合って開いた瞬間に部屋の段が潰れた（1440×900 で部屋の窓 520→320px・
+   受付 280→480px）。端末の丈は term.js の ResizeObserver が合わせ直す。
+   R111-A2: 端末が 2 窓の列に入った配置では、端末の升目が列の丈の一部（既定の割りで半分）しかない＝45dvh の指示欄が端末を潰して
+   .main の上へはみ出した（1440×900 で升目 400px・指示欄 405px・端末 2px）。その間だけ index.js が上限 --cp-sheet-cap（升目の丈 −
+   溝 8 − 端末の最低 200・下限 160）を書く。既定の配置では書かない＝min(45dvh, 45dvh)＝今の値 */
+.ui-cockpit #sheet, .ui-cockpit .sheet-open:has(#attn[hidden]) #sheet {
+  grid-area: var(--cp-area-sheet, sheet); position: static; inset: auto; align-self: end; width: auto; max-width: none;
+  margin: 0; min-height: 0; max-height: min(45dvh, var(--cp-sheet-cap, 45dvh));
+}
+.ui-cockpit .cpcenter { margin-bottom: var(--cp-sheet-mb, 0px); }
+.ui-cockpit .main:has(> #sheet:not([hidden])) { --cp-sheet-mb: calc(var(--cp-sheet-h, min(45dvh, var(--cp-sheet-cap, 45dvh))) + 8px); }
+.ui-cockpit .main:has(> #sheet.wide:not([hidden])) { --cp-sheet-mb: calc(var(--cp-sheet-h, min(70dvh, var(--cp-sheet-cap, 70dvh))) + 8px); }
+/* ⤢（広げる）は丈を広げる（幅は端末の列のまま） */
+.ui-cockpit #sheet.wide, .ui-cockpit .sheet-open:has(#attn[hidden]) #sheet.wide { max-height: min(70dvh, var(--cp-sheet-cap, 70dvh)); }
+/* 丈が限られた指示欄の中身: hud の最低の丈（会話 200px・定型 92px）のままだと中身が箱より高くなり、「自由に書く」で入力欄へ
+   フォーカスした瞬間に箱ごとスクロールして、見出しの ⤢ と ✕ が上へ隠れて押せなかった（1440×900 で ⤢ の中心が端末の足元に当たる）。
+   最低の丈を下げて会話と定型だけが中でスクロールし、それでも溢れるときは見出しを上端に留める */
+.ui-cockpit #sheet .sheetbody { min-height: 80px; }
+.ui-cockpit #sheet .quickdock { min-height: 0; }
+.ui-cockpit #sheet .sheethead { position: sticky; top: -16px; z-index: 1; background: var(--iso-glass-solid); }
+/* R111-A2: 窓の入れ替えと境目の機能の則だけ（色・ホバー・落とし先の印・フォーカスの輪・メニューの見た目は末尾の配置の節）。
+   境目の取っ手（.cpsplit・ui/cockpit/layout.js がドラッグを受ける）は溝の中の透明な 8px＝トラックの寸法に効かない・画素に出ない
+   （既定の golden は不変）。列の取っ手は溝の縦いっぱい（grid-column は shell の inline と index.js＝gridTemplate の colsplits・
+   左の列の右の溝へ margin-left: -8px で戻す）。段の取っ手は 2 窓の列の 8px の行（既定は ogap・入れ替えた後は index.js が
+   --cp-area-rowsplit を書く）。指で引けるように touch-action を切る。題名の写し（.cpghost）は画面に固定・当たりを持たない
+  （落とし先は elementFromPoint で引く）。2 カラム・1 列では取っ手を出さない（下の段の @media の中） */
+.hud.ui-cockpit .main > .cpsplit[data-split="col"] {
+  grid-row: 1 / -1; justify-self: start; width: 8px; margin-left: -8px;
+  position: relative; z-index: 3; background: transparent; cursor: col-resize; touch-action: none;
+}
+.hud.ui-cockpit .main > .cpsplit[data-split="row"] {
+  grid-area: var(--cp-area-rowsplit, ogap); height: 8px; align-self: start;
+  position: relative; z-index: 3; background: transparent; cursor: row-resize; touch-action: none;
+}
+.ui-cockpit .cpghost { position: fixed; pointer-events: none; z-index: 50; }
+/* 部屋の窓が 1 窓の列（行 1〜4 をまたぐ＝列の丈いっぱい）に来ても、見出し・接続の案内・部屋の段は中身の丈のまま（空きは段の下）。
+   書かないと格子の既定（align-content: normal＝stretch）が余りを auto の行へ配り、見出しが 229px に伸びた（1440×900 の実測）＝
+   倍率の計算（見出しの丈を引く）まで巻き込んで ×2 に落ちた。既定の配置（部屋の窓は auto の行＝中身の丈ちょうど）には余りが無い＝画素は不変 */
+.ui-cockpit #win-office { align-content: start; }
+
+/* 節の見出し（01/02/03/04）。番号は「順番に読むもの」を示す＝飾りで付けない。 */
+.hud.ui-cockpit .cpsec {
+  display: flex; align-items: center; gap: 10px; min-height: 34px;
+  padding: 0 14px; font-size: var(--cp-font-small); border-bottom: 1px solid var(--cp-line);
+  background: var(--cp-panel-2);
+}
+.hud.ui-cockpit :is(.sectitle, .pxhrow, .cpwork-head, .cardtitle) { font-size: var(--cp-font-small); letter-spacing: .1em; }
+.ui-cockpit .secno { color: var(--cp-accent); font-size: var(--cp-font-small); }
+.hud.ui-cockpit .sectitle { color: var(--cp-ink-soft); font-size: var(--cp-font-small); letter-spacing: .1em; }
+.ui-cockpit .secmeta {
+  margin-left: auto; color: var(--cp-ink-faint); font-size: var(--cp-font-small); white-space: nowrap;
+}
+/* R106-12: 台帳の絞り込み（あいまい一致・名前で探す・⌘K か / で入る・Esc で消す）。R110: 名簿（02）の見出しを 2 段にする
+   （2 カラムでは index.js の roomAvailH() が実測の丈を引く対象の 1 つ）。 */
+.ui-cockpit #sec-roster { flex-wrap: wrap; row-gap: 6px; padding-bottom: 8px; }
+.ui-cockpit #sec-roster .cpledsearch { order: 3; flex: 1 0 100%; }
+.ui-cockpit .cpledsearch input {
+  width: 100%; box-sizing: border-box; font: inherit; font-size: var(--cp-font-body); color: var(--cp-ink);
+  background: var(--cp-panel-2); border: 1px solid var(--cp-line); border-radius: 0;
+  padding: 5px 9px; outline: none;
+}
+.ui-cockpit .cpledsearch input:focus { border-color: var(--cp-accent); }
+.ui-cockpit .cpledsearch input::placeholder { color: var(--cp-ink-faint); }
+.ui-cockpit .cpledsearch input[type="search"] { -webkit-appearance: none; appearance: none; }
+.ui-cockpit .cpledsearch input::-webkit-search-cancel-button { -webkit-appearance: none; }
+
+/* R106-11: 指示欄（#composeinput）は複数行の自動で伸びる textarea（スマホの textarea と揃える）。
+   hud.css の `.compose input` は要素型が input のときだけ当たるので、textarea 用に同じ見た目をここで持つ。 */
+.ui-cockpit .compose textarea {
+  flex: 1; min-width: 0; font: inherit; font-size: var(--hud-font-body); color: var(--cp-ink);
+  background: var(--cp-panel-2); border: 1px solid var(--cp-line); border-radius: 0;
+  padding: 8px 12px; outline: none; resize: none; line-height: 1.4;
+  min-height: 36px; max-height: 140px; overflow-y: auto;
+}
+.ui-cockpit .compose textarea:focus { border-color: var(--cp-accent); }
+.ui-cockpit .compose textarea::placeholder { color: var(--cp-ink-soft); }
+
+/* ── 01 オフィス（ここだけがピクセル）── */
+/* hud.css は 3D 用に `.viewport { position: absolute; inset: 0 }` と
+   `.viewport canvas { width: 100%; height: 100% }` を持っている。そのままだと
+   ①部屋が画面全体に浮き上がって他の面を覆い ②552×480 のドットが引き伸ばされて滲む。
+   コックピットの部屋は**流し込み＋原寸**（整数倍の掟）なので、両方をここで打ち消す。
+   `.viewport canvas` と同じ詳細度で後から書く＝勝つ（詳細度を下げると黙って負ける）。 */
+.ui-cockpit .cpstage { min-height: 0; background: var(--cp-panel); overflow: auto; }
+.ui-cockpit .cpstage .viewport { position: static; inset: auto; padding: 0 8px; }   /* 左右 8 ＝index.js の LEFT_CHROME */
+.ui-cockpit .viewport canvas {
+  image-rendering: pixelated; display: block; flex: none; width: auto; height: auto;
+}
+/* R110: 旧 .roomfoot（凡例・選択中・動きを止める）は 01 の題名行へ畳んだ。狭い列では題名行ごと折り返す */
+.ui-cockpit #sec-office { flex-wrap: wrap; row-gap: 4px; padding-top: 2px; padding-bottom: 2px; }
+.ui-cockpit #sec-office .secmeta { margin-left: 0; }
+.ui-cockpit #sec-office .key { display: inline-flex; align-items: center; gap: 5px; color: var(--cp-ink-faint); }
+.ui-cockpit #sec-office .swatch {
+  width: 4px; height: 4px; border-radius: 50%; background: var(--cp-ink-faint);
+}
+.ui-cockpit #sec-office .swatch.lit { background: var(--cp-accent); }
+.ui-cockpit #cp-pick {
+  color: var(--cp-ink-soft); white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; max-width: 240px;
+}
+/* 「動きを止める」は UA の白いボタンのまま（2px の outset の枠）だった＝端末の足元の「閉じる」（.cpclose）と同じ
+   hairline の枠の小さなボタンにそろえる。止めている間（aria-pressed）は背景の明度差で押し込んだ側に見せる。
+   固定時刻（?t=）では押せない（disabled）＝枠も字も一段落とす */
+.ui-cockpit #cp-motion {
+  margin-left: auto; flex: none; color: var(--cp-ink-soft); font-size: var(--cp-font-small); padding: 2px 8px;
+  background: none; border: 1px solid var(--cp-line); border-radius: 0; min-height: 0; box-shadow: none;
+}
+.ui-cockpit #cp-motion[aria-pressed="true"] { background: var(--cp-panel-2); }
+.ui-cockpit #cp-motion:not(:disabled):hover { color: var(--cp-ink); border-color: var(--cp-ink-faint); }
+.ui-cockpit #cp-motion:disabled {
+  cursor: default; color: var(--cp-ink-faint); background: none; border-color: var(--cp-line);
+}
+
+/* ── 02 名簿（旧 台帳・スクロールは #cp-roster が持つ）── */
+/* 幅に依らず 2 行。名前は上段、作業・証拠・経過は下段で読む。 */
+.hud.ui-cockpit :is(.pxhrow, .pxrow) {
+  display: grid; grid-template-columns: 24px minmax(0, 1fr) auto auto;
+  column-gap: 8px; align-items: center; box-sizing: border-box;
+}
+.hud.ui-cockpit .pxhrow { grid-template-areas: "mono proj age state"; padding: 0 12px; letter-spacing: .1em; }
+.hud.ui-cockpit .pxhrow :is(.c-detail, .c-evd) { display: none; }
+.hud.ui-cockpit .pxrow {
+  grid-template-areas: "mono proj proj state" "mono now evd age";
+  row-gap: 4px; padding: 8px 12px; line-height: var(--cp-lh-dense);
+}
+.hud.ui-cockpit .c-mono { grid-area: mono; align-self: center; }
+.hud.ui-cockpit .c-project { grid-area: proj; }
+.hud.ui-cockpit .c-state { grid-area: state; }
+.hud.ui-cockpit .c-detail { grid-area: now; }
+.hud.ui-cockpit .c-evd { grid-area: evd; }
+.hud.ui-cockpit .c-age { grid-area: age; }
+.hud.ui-cockpit .pxrow .c-project {
+  min-width: 0; white-space: normal; overflow-wrap: anywhere;
+  overflow: visible; text-overflow: clip; font-size: var(--cp-font-body);
+}
+.hud.ui-cockpit .pxrow .pname {
+  min-width: 0; white-space: normal; overflow-wrap: anywhere;
+  overflow: visible; text-overflow: clip; font-size: var(--cp-font-body); font-weight: 400;
+}
+/* R110-D6: 状態の列（auto）の幅は状態の語（.stext）だけで決める。配達の札（.dstate「保存済み（次の操作で届く）」・172px）を
+   状態の列に積んでいたときは列が札の幅まで広がり、同じ列を共有する 2 段目で「いま」が 27px に潰れた（1440×900・形状の門 ⑤）。
+   札は行の 3 段目（いまの列の左端から右端まで）に絶対配置で置き、札が出ている行だけ下の余白を札の丈ぶん広げる＝
+   table.js の DOM は変えない（pixel の golden は不変）・.c-state は箱のまま（スマホの段の門 ⑤' がセルの箱を見る）。
+   札は「届く」の間は hidden＝3 段目は出ない。左 44px＝行の余白 12＋記号の列 24＋溝 8 */
+.hud.ui-cockpit .pxrow { position: relative; }
+.hud.ui-cockpit .pxrow .c-state {
+  justify-self: end; min-width: 0; white-space: nowrap; font-size: var(--cp-font-small);
+}
+.hud.ui-cockpit .pxrow .stext { white-space: nowrap; font-size: var(--cp-font-small); }
+.hud.ui-cockpit .pxrow .dstate { position: absolute; left: 44px; bottom: 8px; max-width: calc(100% - 56px); }
+.hud.ui-cockpit .pxrow:has(.dstate:not([hidden])) { padding-bottom: calc(16px + 1.35 * var(--cp-font-small)); }
+.hud.ui-cockpit .pxrow .dstate-label { white-space: normal; overflow: visible; text-overflow: clip; }
+/* R110-D7（裁定）: 名簿の「いま」は本文（base 14px）＝本人が一番読む文。2 行で切り、全文は行の title（table.js） */
+.hud.ui-cockpit .pxrow .c-detail {
+  min-width: 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden; text-overflow: clip; overflow-wrap: anywhere;
+  font-size: var(--cp-font-body); color: var(--cp-ink-soft); line-height: var(--cp-lh-dense);
+}
+.hud.ui-cockpit .pxrow :is(.c-evd, .c-age) {
+  min-width: 0; justify-self: end; white-space: nowrap; overflow: visible;
+  text-overflow: clip; font-size: var(--cp-font-small);
+}
+/* 記号と経過は <i>＝合成の斜体の和文になっていた（pixel は normal を指定している） */
+.ui-cockpit .pxrow .mono, .ui-cockpit .pxrow .age { font-style: normal; }
+.ui-cockpit .pxrow .age { color: var(--cp-ink-soft); }
+/* 記号に状態の輪（色は端末の配色の語彙だけ） */
+.ui-cockpit .pxrow .mono {
+  display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%;
+  font-size: var(--cp-font-small); font-weight: 700; color: var(--cp-ink); border: 1px solid var(--cp-ink-faint); box-shadow: none;
+}
+.ui-cockpit .pxrow .mono.st-working { border-color: var(--cp-ok); }
+.ui-cockpit .pxrow .mono.st-waiting { border-color: var(--cp-warn); }
+.ui-cockpit .pxrow .mono.st-attention, .ui-cockpit .pxrow .mono.st-error {
+  border-color: var(--cp-alert); color: var(--cp-alert);
+}
+.ui-cockpit .pxrow[data-state="error"] .stext { color: var(--cp-alert); }
+.ui-cockpit .pxrow.hov { background: var(--cp-panel); }
+.ui-cockpit .pxhrow {
+  height: 32px; font-size: var(--cp-font-small); color: var(--cp-ink-faint);
+  border-bottom: 1px solid var(--cp-line); position: sticky; top: 0;
+  background: var(--cp-bg); z-index: 1;
+}
+.ui-cockpit .pxrow {
+  min-height: 42px; border-bottom: 1px solid var(--cp-line);
+  width: 100%; text-align: left; background: none;
+}
+.ui-cockpit .pxrow:hover { background: var(--cp-panel); }
+/* 台帳の空の案内（まだ誰も居ない）。行と同じ左右の余白に揃える（左端に貼り付いた） */
+.hud.ui-cockpit .pxrows > :not(.pxrow) { padding: 12px 14px; font-size: var(--cp-font-body); color: var(--cp-ink-soft); }
+.hud.ui-cockpit .pxrow.sel { background: var(--cp-panel-2); outline: 1px solid var(--cp-line-strong); outline-offset: -1px; }
+/* 列の並びは shell.js の 8 枠だが、狭い左カラムでは「セッション」と「進捗」を畳む。
+   消すのではなく畳む＝台帳の意味（誰が・いま何を・証拠・経過）は残す。 */
+.ui-cockpit .c-session, .ui-cockpit .c-prog, .ui-cockpit .pxrow .sess, .ui-cockpit .pxrow .prog { display: none; }
+.ui-cockpit .pxrow .evd.evd-committed, .ui-cockpit .pxrow .evd.evd-tested { color: var(--cp-ok); }
+.ui-cockpit .pxrow .evd.evd-failed { color: var(--cp-alert); font-weight: 700; }
+
+/* 並べ替えの見出しはボタンだが**見た目は文字**（hud.css の丸いボタン則が当たると、
+   列見出しが押しボタンの塊になって表に見えなくなる＝実測） */
+.ui-cockpit .pxsort {
+  font: inherit; color: inherit; background: transparent; border: 0; padding: 0;
+  text-align: left; min-height: 0; border-radius: 0; box-shadow: none;
+}
+.ui-cockpit .pxsort.on { color: var(--cp-accent); }
+/* R106-17: 2 回目クリック＝降順・3 回目＝既定へ戻る 3 段階（table.js が data-dir を貼る）。
+   昇順 ▴・降順 ▾（従来は方向を問わず ▾ 固定だった＝降順のつもりで押しても見分けがつかなかった）。 */
+.ui-cockpit .pxsort.on[data-dir="desc"]::after { content: " ▾"; }
+.ui-cockpit .pxsort.on[data-dir="asc"]::after { content: " ▴"; }
+
+/* 受付のトレイ（あなた待ち 1 件）。見出し・本文（6.5em まで・長文は本文の中でスクロール）・答えのボタンを grid に流し込む。
+   R110-D2: ボタンは中身の丈（min-height 32・ラベルは 2 行まで＋title に全文＝tray.js）で並べ、grid の伸ばし（stretch）を使わない
+   （長い選択肢の隣のボタンが 90〜146px に伸びた）。入らないときはトレイ全体を中でスクロールする＝本文だけでなくボタンの列も
+   スクロールで届く（以前は行 minmax(0,1fr) と overflow:hidden の重ねで、低い受付では本文が見出しに重なり、ボタンの列が窓の下に
+   切れて押せなかった＝1440×640・1280×800 の長文 ❗）。sheet-open の共用 HUD 則と同じ詳細度で、流し込みの位置を保つ。 */
+/* R110-D5: :not([hidden]) を付ける＝下の [hidden]{display:none}（1,4,0）に ⤢ の則（:has(#sheet.wide) で 2,5,0）が勝ち、
+   ❗ が 0 件のまま ⤢ を押すと空のトレイが出て、1 列では指示欄が 443px 下へずれた */
+.hud.ui-cockpit #attn.tray:not([hidden]),
+.hud.ui-cockpit .sheet-open #attn.tray:not([hidden]),
+.hud.ui-cockpit .sheet-open:has(#sheet.wide) #attn.tray:not([hidden]) {
+  /* 行: 見出しとボタンの行は max-content（auto だと受付の丈に合わせて行が縮み、中身の丈の本文が下のボタンの行に重なった＝
+     1366×768）。本文の行だけが fit-content(6.5em)＝受付が低いときは本文から先に縮む（最低 1 行・本文の中でスクロール）＝
+     見出しとボタンは見えたまま（1920×1080 の長文 ❗ で答えのボタンがトレイの下に切れた）。それでも入らない形だけトレイ全体が
+     中でスクロールする */
+  display: grid; grid-template-rows: max-content fit-content(6.5em); grid-auto-rows: max-content;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  align-content: start; align-items: start;
+  position: static; inset: auto; z-index: auto; border-radius: 0;
+  border: 0; border-bottom: 1px solid var(--cp-line);
+  background: var(--cp-panel-2); box-shadow: none;
+  padding: 8px 12px; gap: 6px; white-space: normal;
+  min-height: 0; max-height: 100%; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain;
+  margin: 0; box-sizing: border-box;
+}
+.hud.ui-cockpit #attn.tray[hidden] { display: none; }
+.hud.ui-cockpit #attn.tray > .trayhead {
+  grid-column: 1 / -1; grid-row: 1; max-width: 100%; min-width: 0;
+  font-size: var(--cp-font-body); overflow-wrap: anywhere;
+}
+.hud.ui-cockpit #attn.tray > .trayline {
+  grid-column: 1 / -1; grid-row: 2; align-self: stretch; min-width: 0; min-height: 1lh;
+  font-size: var(--cp-font-body); overflow-wrap: anywhere; text-overflow: clip;
+  /* tray.js の長文用 inline clamp より優先し、本文の中だけで全文を読めるようにする。 */
+  display: block !important; -webkit-line-clamp: unset !important;
+  max-height: 6.5em !important; overflow: auto !important;
+}
+.hud.ui-cockpit #attn.tray:has(.trayexpand[aria-expanded="true"]) > .trayline {
+  max-height: none !important;
+}
+/* 「全文を見る」で開いた本文は 6.5em の上限を外し、トレイの残りの丈を全部使う（1fr）＝本文は本文の中でスクロールし、
+   答えのボタンは見えたまま（行を max-content にすると 45 個連結の長文で答えが 2,100px 下へ押し出された＝r106_logic 1f） */
+.hud.ui-cockpit #win-reception > #attn.tray:not([hidden]):has(.trayexpand[aria-expanded="true"]) { grid-template-rows: max-content minmax(1lh, 1fr); }
+.hud.ui-cockpit #attn.tray :is(.trayans, .traylock, .trayexpand) { grid-column: 1 / -1; }
+/* 「全文を見る」は答えのボタンの後ろへ（DOM は本文の直後＝tray.js）。低い受付で本文が 1 行に縮むと「全文を見る」が出て、
+   答えのボタンを 1 段下へ押し出した（1366×768 で答えがトレイの下に隠れた）＝押す物を先に見せる */
+.hud.ui-cockpit #attn.tray > .trayexpand { order: 1; }
+.hud.ui-cockpit #attn.tray .kbd {
+  max-width: 100%; white-space: normal; overflow-wrap: anywhere; text-align: left;
+}
+/* ボタンのラベルは 2 行まで（3 行目からは切る・全文は title＝tray.js）。overflow-clip-margin: content-box＝切った 3 行目の上端が
+   下の余白（padding）に覗かない（overflow:hidden は padding の外縁で切る＝字の頭が 6px 見えた） */
+.hud.ui-cockpit #attn.tray > button.kbd {
+  align-self: start; min-height: 32px;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+  overflow: clip; overflow-clip-margin: content-box;
+}
+/* 指で押す端末（pointer: coarse＝iPad・スマホ）では、トレイのボタンを 44×44 以上にする（丈 21px では押し損じる）。
+   幅の段ではなく入力の段で決める＝Mac の細い窓（マウス）は小さいまま、タッチの 3 カラム（iPad Pro の横）も大きくなる。
+   `.kbd` の詳細度 (1,3,0) に負けないよう button.kbd で書く。 */
+@media (pointer: coarse) {
+  .hud.ui-cockpit #attn.tray button, .hud.ui-cockpit #attn.tray button.kbd:not(.pxsort):not(.cptab) {
+    min-width: 44px; min-height: 44px; padding: 6px 12px; font-size: var(--cp-font-body); line-height: 1.3;
+  }
+  .ui-cockpit #attn.tray { gap: 8px; }
+}
+
+/* ── 03 端末（いまは読むだけの会話）── */
+.ui-cockpit .cptabs {
+  display: flex; align-items: stretch; overflow-x: auto; scrollbar-width: none;
+  border-bottom: 1px solid var(--cp-line); background: var(--cp-panel);
+}
+/* タブの区切りは右の hairline 1 本だけ。border の一括で UA の枠（2px の outset）を 0 にしてから右だけを引く
+   （右だけ書いていたら、上・下・左に UA の枠が残り、タブが 1 枚ずつ灰色の額縁に入って見えた） */
+.ui-cockpit .cptab {
+  display: flex; align-items: center; gap: 7px; padding: 0 13px; min-height: 32px;
+  flex: none; white-space: nowrap; font-size: var(--cp-font-small); color: var(--cp-ink-faint);
+  border: 0; border-right: 1px solid var(--cp-line); border-radius: 0; background: none;
+}
+.ui-cockpit .cptab .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--session); flex: none; }
+.hud.ui-cockpit .cptab .nm { max-width: 20em; overflow: hidden; text-overflow: ellipsis; }
+.ui-cockpit .cptab .attn { color: var(--cp-alert); font-style: normal; }
+/* b4-mac: タブが収まらないとき、端に隠れている本数（押すとその向きへ送る） */
+.ui-cockpit .cptabs-more {
+  flex: none; padding: 0 8px; font-size: var(--cp-font-small); color: var(--cp-ink-soft); background: var(--cp-panel);
+  border: 0; border-radius: 0; min-height: 32px; box-shadow: none; white-space: nowrap;
+}
+.ui-cockpit .cptabs-more.l { border-right: 1px solid var(--cp-line); }
+.ui-cockpit .cptabs-more.r { border-left: 1px solid var(--cp-line); }
+.ui-cockpit .cptabs-more:hover { color: var(--cp-ink); background: var(--cp-panel-2); }
+.ui-cockpit .cptabs-more[hidden] { display: none; }
+.ui-cockpit .cptab.sel {
+  color: var(--cp-ink); background: var(--cp-panel-2);
+  box-shadow: none; border-bottom: 1px solid var(--cp-accent);
+}
+/* ── 端末のタブ列と「＋ 端末」 ── */
+.ui-cockpit .cptabbar {
+  display: flex; align-items: stretch; position: relative; min-width: 0;
+  border-bottom: 1px solid var(--cp-line); background: var(--cp-panel);
+}
+.ui-cockpit .cptabbar .cptabs { flex: 1; min-width: 0; border-bottom: 0; }
+/* デモ（?demo=1）は端末が無い＝タブ列ごと畳む（index.js が hidden を付ける。display:flex が UA の [hidden] に勝つので明示） */
+.ui-cockpit .cptabbar[hidden] { display: none; }
+/* R106-20: 右端（左端）で部分的に見えているタブの文字が、隠れている本数「N ›」と密着して見える
+   （1 文字未満でハードクリップ）。#cp-tabs-l/-r は index.js が溢れているときだけ hidden を外す＝
+   その縁だけをフェードで隠す（はみ出た文字は消すのでなく隠す）。 */
+.ui-cockpit .cptabbar:has(#cp-tabs-l:not([hidden])):not(:has(#cp-tabs-r:not([hidden]))) .cptabs {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 28px);
+  mask-image: linear-gradient(to right, transparent, #000 28px);
+}
+.ui-cockpit .cptabbar:has(#cp-tabs-r:not([hidden])):not(:has(#cp-tabs-l:not([hidden]))) .cptabs {
+  -webkit-mask-image: linear-gradient(to left, transparent, #000 28px);
+  mask-image: linear-gradient(to left, transparent, #000 28px);
+}
+.ui-cockpit .cptabbar:has(#cp-tabs-l:not([hidden])):has(#cp-tabs-r:not([hidden])) .cptabs {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 28px, #000 calc(100% - 28px), transparent);
+  mask-image: linear-gradient(to right, transparent, #000 28px, #000 calc(100% - 28px), transparent);
+}
+.ui-cockpit .cpnew {
+  flex: none; padding: 0 14px; font-size: var(--cp-font-small); color: var(--cp-accent); background: none;
+  border: 0; border-left: 1px solid var(--cp-line); border-radius: 0; min-height: 32px; box-shadow: none;
+}
+.ui-cockpit .cpnew:hover, .ui-cockpit .cpnew[aria-expanded="true"] { background: var(--cp-panel-2); }
+.ui-cockpit .cpmenu {
+  position: absolute; right: 0; top: 100%; z-index: 6; min-width: 220px;
+  display: grid; background: var(--cp-panel); border: 1px solid var(--cp-line);
+}
+.ui-cockpit .cpmenu[hidden] { display: none; }
+.ui-cockpit .cpmenu-head {
+  padding: 8px 12px 6px; font-size: var(--cp-font-small); color: var(--cp-ink-faint); letter-spacing: .06em;
+  border-bottom: 1px solid var(--cp-line);
+}
+.ui-cockpit .cpmenu button {
+  text-align: left; padding: 9px 12px; font-size: var(--cp-font-small); color: var(--cp-ink); background: none;
+  border: 0; border-radius: 0; min-height: 0; box-shadow: none;
+}
+.ui-cockpit .cpmenu button:hover:not([disabled]), .ui-cockpit .cpmenu button:focus-visible { background: var(--cp-panel-2); }
+.ui-cockpit .cpmenu button[disabled] { color: var(--cp-ink-faint); cursor: default; }
+.ui-cockpit .cptab .live { color: var(--cp-ok); font-style: normal; font-size: var(--cp-font-small); }
+.ui-cockpit .cptab.term .nm { color: var(--cp-ink-soft); }
+.ui-cockpit .cptab.dead .live { color: var(--cp-ink-faint); }
+.ui-cockpit .cpclose {
+  color: var(--cp-ink-soft); font-size: var(--cp-font-small); background: none; border: 1px solid var(--cp-line);
+  border-radius: 0; padding: 2px 8px; min-height: 0; box-shadow: none;
+}
+.ui-cockpit .cpclose:hover { color: var(--cp-ink); border-color: var(--cp-ink-faint); }
+/* 「もう一度押すと終了」の 3 秒（生きている端末を止める操作＝確認の色） */
+.ui-cockpit .cpclose.armed { color: var(--cp-alert); border-color: var(--cp-alert); }
+.ui-cockpit .cpacts { display: inline-flex; gap: 6px; flex: none; }
+.ui-cockpit .cpacts > button { white-space: nowrap; }
+.ui-cockpit .cpacts[hidden], .ui-cockpit .cpacts > [hidden] { display: none; }
+
+/* 上＝いまの仕事（必ず在る）／下＝会話（届くまで空）。下だけがスクロールする。
+   本物の端末があるときは、端末が面いっぱいを使う（会話ビューは畳む＝同じ相手を二重に見せない）。 */
+.ui-cockpit .cpterm {
+  display: grid; grid-template-rows: auto minmax(0, 1fr); grid-template-columns: minmax(0, 1fr); min-height: 0; position: relative;
+}
+.ui-cockpit .cpterm.live > .cpwork, .ui-cockpit .cpterm.live > .cpdlg { display: none; }
+.ui-cockpit .cpxterm { position: absolute; inset: 0; padding: 8px 4px 4px 12px; background: var(--cp-bg); }
+.ui-cockpit .cpxterm[hidden] { display: none; }
+.ui-cockpit .cpxt { width: 100%; height: 100%; }
+.ui-cockpit .cpxt[hidden] { display: none; }
+/* xterm は自前の背景を持つ。縁と地を同じ色にして、面の中の面に見せない */
+.ui-cockpit .cpxt .xterm, .ui-cockpit .cpxt .xterm-viewport { background: var(--cp-bg) !important; }
+/* R111-B2: 端末のペイン（機能の則だけ）。根は #cp-xterm（padding は上のまま＝葉の矩形は根の content box の中）。位置と寸法は
+   ui/cockpit/panes.js が書く（left/top/width/height）。見出しは葉が 2 つ以上見えているときだけ DOM に在る（1 ペインは見出しも枠も無し）。
+   body は見出しの有無に依らず 2 行目（見出しが無ければ 1 行目の auto は丈 0）。色・罫・見出しの体裁・選択の枠・案内の字は末尾の節 */
+.hud.ui-cockpit .cppane {
+  position: absolute; display: grid; grid-template-rows: auto minmax(0, 1fr); grid-template-columns: minmax(0, 1fr);
+  min-width: 0; min-height: 0;
+}
+.hud.ui-cockpit .cppane[hidden] { display: none; }
+.hud.ui-cockpit .cppane-head { grid-row: 1; display: flex; align-items: center; gap: 8px; min-height: 34px; padding: 0 8px; min-width: 0; }
+.hud.ui-cockpit .cppane-head .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hud.ui-cockpit .cppane-head .cpacts { margin-left: auto; }
+.hud.ui-cockpit .cppane-body { grid-row: 2; position: relative; min-width: 0; min-height: 0; overflow: hidden; }
+.hud.ui-cockpit .cppane-body.term > .cpxt { width: 100%; height: 100%; }
+.hud.ui-cockpit .cppane-body.dialog { display: grid; grid-template-rows: auto minmax(0, 1fr); grid-template-columns: minmax(0, 1fr); }
+.hud.ui-cockpit .cpsplit-bar { position: absolute; z-index: 2; touch-action: none; }
+.hud.ui-cockpit .cpsplit-bar[data-dir="h"] { width: 7px; cursor: col-resize; }
+.hud.ui-cockpit .cpsplit-bar[data-dir="v"] { height: 7px; cursor: row-resize; }
+.hud.ui-cockpit .cpsplit-ghost { position: absolute; z-index: 3; pointer-events: none; }
+.ui-cockpit #cp-dlg-park[hidden] { display: none; }
+.ui-cockpit #cp-term-menu > [hidden] { display: none; }
+.ui-cockpit .cpwork { padding: 16px 18px 0; display: grid; gap: 8px; align-content: start; }
+.ui-cockpit .cpwork:empty { display: none; }
+.ui-cockpit .cpwork-head, .ui-cockpit .cpq-head {
+  font-size: var(--cp-font-small); color: var(--cp-ink-faint); letter-spacing: .1em; font-weight: 400;
+}
+.ui-cockpit .cpwork-grid {
+  display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 12px; font-size: var(--cp-font-body);
+}
+.ui-cockpit .cpwork-grid .wl { color: var(--cp-ink-faint); font-style: normal; font-size: var(--cp-font-small); white-space: nowrap; }
+.ui-cockpit .cpwork-grid .wv { color: var(--cp-ink-soft); overflow-wrap: anywhere; }
+.ui-cockpit .cpq {
+  display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px;
+  padding: 9px 12px; background: var(--cp-panel-2); font-size: var(--cp-font-body);
+}
+.ui-cockpit .cpq-text { color: var(--cp-ink); overflow-wrap: anywhere; }
+.ui-cockpit .cpq-head { color: var(--cp-alert); letter-spacing: 0; white-space: nowrap; }
+/* 答え（トレイと同じ並び: 1 許可する / 2 許可しない / 3 自由に書く） */
+.ui-cockpit .cpq-acts { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; }
+.ui-cockpit .cpq-btn {
+  color: var(--cp-ink); font-size: var(--cp-font-small); background: none; border: 1px solid var(--cp-line);
+  border-radius: 0; padding: 3px 10px; min-height: 0; box-shadow: none;
+  max-width: 100%; white-space: normal; overflow-wrap: anywhere; text-align: left;
+}
+.ui-cockpit .cpq-btn.go { color: var(--cp-accent); border-color: var(--cp-accent); }
+.ui-cockpit .cpq-btn:hover { background: var(--cp-panel); }
+/* 会話の読み直しで新しい発言が来た（上を読んでいる間は位置を奪わない） */
+.ui-cockpit .cpdlg .dlgnew {
+  position: sticky; bottom: 0; align-self: center; font-size: var(--cp-font-small); color: var(--cp-accent);
+  background: var(--cp-panel-2); border: 1px solid var(--cp-line); border-radius: 0; padding: 2px 10px;
+  min-height: 0; box-shadow: none;
+}
+/* 部屋のロボに乗せたときの札（DOM・canvas には文字を描かない） */
+.ui-cockpit .cphover {
+  position: fixed; z-index: 30; transform: translate(-50%, -100%); pointer-events: none;
+  padding: 2px 6px; font-size: var(--cp-font-small); white-space: nowrap; color: var(--cp-ink);
+  background: var(--cp-panel-2); border: 1px solid var(--cp-line);
+}
+.ui-cockpit .cphover[hidden] { display: none; }
+.ui-cockpit .cpdlg {
+  overflow: auto; min-height: 0; padding: 16px 18px 22px;
+  display: flex; flex-direction: column; gap: 12px; font-size: var(--cp-font-body); line-height: 1.8;
+}
+.ui-cockpit .cpdlg .dlgmsg {
+  max-width: 62ch; white-space: pre-wrap; overflow-wrap: anywhere;
+  border-left: 0; padding: 0 0 0 16px; position: relative; color: var(--cp-ink-soft);
+  /* R105: 端末の窓の中の発言は札にしない（hud の .dlgmsg.user/.ai の地と枠はライトのテーマ色のまま＝暗い窓の中で
+     白い札に薄い字が乗り、本人の発言が読めなかった・1440 ライトの実測）。同じ詳細度で後から読む＝勝つ */
+  background: none; border: 0; border-radius: 0; align-self: auto;
+}
+/* 発言者は 1 文字の記号で示す（色の帯を左に立てない＝AI 臭い定型を避ける） */
+.ui-cockpit .cpdlg .dlgmsg::before {
+  content: "›"; position: absolute; left: 0; color: var(--cp-ink-faint);
+}
+.ui-cockpit .cpdlg .dlgmsg.user { color: var(--cp-ink); }
+.ui-cockpit .cpdlg .dlgmsg.user::before { content: "$"; color: var(--cp-accent); }
+.hud.ui-cockpit .cpempty { color: var(--cp-ink-faint); font-size: var(--cp-font-body); margin: 0; }
+.ui-cockpit .cptermfoot {
+  display: flex; align-items: center; gap: 9px; min-height: 28px; padding: 0 14px;
+  border-top: 1px solid var(--cp-line); font-size: var(--cp-font-small); color: var(--cp-ink-faint);
+  background: var(--cp-panel);
+}
+/* dialog.js が中身を作る箱。件数・もっと見る・全画面が入る。 */
+.ui-cockpit .dlghead { display: inline-flex; align-items: center; gap: 8px; }
+.ui-cockpit .dlghead .seccount { font-style: normal; }
+.ui-cockpit .dlghead button {
+  color: var(--cp-accent); font-size: var(--cp-font-small); background: none; border: 0;
+  border-radius: 0; padding: 0; min-height: 0; box-shadow: none; width: auto;
+}
+.ui-cockpit .cptermfoot .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--session); flex: none; }
+.ui-cockpit .cptermfoot .foot-end { margin-left: auto; }
+/* 足元の名前・状態・注記は折り返して全文を出す。操作は次の行へ回せる。 */
+.ui-cockpit .cptermfoot > #cp-term-who, .ui-cockpit .cptermfoot > #cp-term-state, .ui-cockpit .cptermfoot > #cp-term-note {
+  min-width: 0; white-space: normal; overflow-wrap: anywhere; overflow: visible; text-overflow: clip;
+}
+.ui-cockpit .cptermfoot { min-width: 0; overflow: hidden; }
+/* 注記から幅を譲り、名前・状態も必要なだけ折り返す。 */
+.ui-cockpit .cptermfoot > #cp-term-who { flex: 0 1 auto; max-width: none; }
+.ui-cockpit .cptermfoot > #cp-term-state { flex: 0 4 auto; }
+.ui-cockpit .cptermfoot > #cp-term-note { flex: 0 8 auto; }
+.ui-cockpit .cptermfoot .dlgmore {
+  color: var(--cp-accent); font-size: var(--cp-font-small); background: none; border: 0;
+  border-radius: 0; padding: 0; min-height: 0; box-shadow: none; width: auto;
+}
+
+/* R121: 作業ビューの外枠。本文・カードの様式は ui/hud/activity.css が持つ。 */
+/* 字の 3 段は R110 の token へ（本文と付帯の行＝base・小さい字＝small）＝⚙「文字の大きさ」に従い、文字の段の門（4 段だけ）を外さない */
+.hud.ui-cockpit .act { --act-fs-body: var(--cp-font-body); --act-fs-meta: var(--cp-font-body); --act-fs-small: var(--cp-font-small); }
+.hud.ui-cockpit .cpterm { background: var(--cp-panel); }
+.hud.ui-cockpit .cpwork {
+  display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 6px 12px;
+  padding: 10px 18px; border-bottom: 1px solid var(--cp-line-soft);
+  font-family: var(--t-sans); font-size: var(--cp-font-small); line-height: 1.5;
+}
+.hud.ui-cockpit .cpwork:empty { display: none; }
+.hud.ui-cockpit .cpactivity-state { color: var(--cp-ink-soft); }
+.hud.ui-cockpit .cpactivity-state.live { color: var(--cp-accent); font-weight: 600; }
+.hud.ui-cockpit .cpactivity-perm { margin-left: auto; color: var(--cp-ink-faint); }
+.hud.ui-cockpit .cpwork .act-chip {
+  padding: 1px 8px; border: 1px solid var(--cp-line); border-radius: 999px;
+  font-family: var(--t-mono); color: var(--cp-ink-soft); white-space: nowrap;
+}
+.hud.ui-cockpit .cpdlg.act {
+  padding: 18px 22px 12px; gap: 14px; background: var(--cp-panel);
+  font-family: var(--t-sans); font-size: var(--cp-font-body); line-height: 1.75;
+}
+.hud.ui-cockpit .cpdlg.act > * { flex-shrink: 0; }
+.hud.ui-cockpit .cpdlg .cpactivity-before { align-self: center; font-size: var(--cp-font-small); }
+.hud.ui-cockpit .cpdlg .act-note { color: var(--cp-ink-faint); font-size: var(--cp-font-small); }
+.hud.ui-cockpit .act .cpq {
+  display: flex; flex-direction: column; gap: 6px; padding: 12px 14px;
+  border: 1px dashed var(--cp-line-strong); border-radius: 12px; background: var(--cp-panel);
+  font-family: var(--t-sans);
+}
+.hud.ui-cockpit .act .cpq-head { color: var(--cp-alert); font-weight: 600; }
+.hud.ui-cockpit .act .cpq-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.hud.ui-cockpit .cptermfoot.act {
+  display: flex; flex-direction: row; flex-wrap: wrap; gap: 8px; padding: 8px 14px 14px;
+  font-family: var(--t-sans); background: var(--cp-panel);
+}
+.hud.ui-cockpit .cptermfoot .cpacts { flex: 1 1 auto; min-width: 0; align-items: center; }
+.hud.ui-cockpit .cptermfoot.act #cp-compose {
+  flex: 1; min-width: 0; min-height: 44px; padding: 10px 14px; text-align: left;
+  border: 1px solid var(--cp-line-strong); border-radius: 14px;
+  background: var(--cp-bg); color: var(--cp-ink-faint); white-space: normal;
+}
+.hud.ui-cockpit .cptermfoot #cp-jump { flex: 0 1 auto; font-size: var(--cp-font-small); }
+.hud.ui-cockpit .cpcenter:has(.cpterm:not(.live)) .cptermfoot :is(#cp-term-dot, #cp-term-who, #cp-term-state) { display: none; }
+.hud.ui-cockpit #cp-activity-toggle { margin-left: auto; font-size: var(--cp-font-small); }
+/* R121 名簿: 行の並び（R110 の 2 段＝名前と状態／いま・証拠・経過）はそのまま。「いま」の中身だけを
+   いまやっていること（feed の先頭）か最後の返事（lastSaid の 1 行目）にする（index.js の preview）＝形状の門 ⑤'・7 の配り方を変えない */
+.hud.ui-cockpit .pxrow .c-detail { font-family: var(--t-sans); }
+.hud.ui-cockpit .pxrow .c-detail.live { color: var(--cp-ink); }
+.hud.ui-cockpit .cppreview-dots { display: inline-flex; gap: 2px; margin-right: 6px; vertical-align: middle; }
+.hud.ui-cockpit .cppreview-dots[hidden] { display: none; }
+.hud.ui-cockpit .cppreview-dots i { width: 4px; height: 4px; border-radius: 50%; background: var(--cp-accent); }
+.hud.ui-cockpit .cppreview-dots i:nth-child(2) { opacity: .6; }
+.hud.ui-cockpit .cppreview-dots i:nth-child(3) { opacity: .3; }
+
+/* ── 04 受付の最近の指示 ── */
+.ui-cockpit .cphist { border-top: 1px solid var(--cp-line); padding: 10px 14px; background: var(--cp-panel); }
+.ui-cockpit .cphist .cardtitle { font-size: var(--cp-font-small); color: var(--cp-ink-faint); letter-spacing: .1em; }
+.hud.ui-cockpit .cphist .hist { font-size: var(--cp-font-body); color: var(--cp-ink-soft); }
+/* 最近の指示は 2 段（右の列 300px に「名前・経過・届く・［↻］・本文」の 1 行は入らない＝［↻］が右端で切れていた・
+   README の先頭の動画にも写っていた）。1 段目＝名前・経過・状態・［↻］、2 段目＝本文 */
+.ui-cockpit .cphist .hrow { flex-wrap: wrap; align-items: center; row-gap: 2px; }
+.hud.ui-cockpit .cphist .hrow b { order: 1; flex: 1 1 0; min-width: 0; max-width: none; white-space: normal; overflow-wrap: anywhere; overflow: visible; text-overflow: clip; }
+.ui-cockpit .cphist .hrow .hago { order: 2; }
+.ui-cockpit .cphist .hrow .hp { order: 3; }
+.ui-cockpit .cphist .hrow .hresend { order: 4; }
+.hud.ui-cockpit .cphist .hrow > span:not(.hp) { order: 5; flex: 1 1 100%; white-space: normal; overflow-wrap: anywhere; text-overflow: clip; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: var(--cp-font-body); }   /* 状態の札（.hp）も span＝本文だけを 2 段目へ */
+.ui-cockpit .tray { border-bottom: 1px solid var(--cp-line); }
+
+/* 足元の状態。留守中・接続状態もこの行だけを使う。 */
+.ui-cockpit .cpfoot {
+  display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto;
+  grid-template-areas: "seats today login end"; align-items: center; gap: 14px; padding: 0 16px;
+  font-size: var(--cp-font-small); color: var(--cp-ink-faint); border-top: 1px solid var(--cp-line); background: var(--cp-panel);
+}
+.ui-cockpit #cp-foot-seats { grid-area: seats; }
+.ui-cockpit #pxtoday { grid-area: today; }
+.ui-cockpit #cp-login-slot { grid-area: login; min-width: 0; overflow: hidden; }
+.ui-cockpit #cp-foot-end { grid-area: end; justify-self: end; }
+.ui-cockpit.offline #cp-login-slot { visibility: hidden; }
+.ui-cockpit button { min-height: 32px; }
+.ui-cockpit .cpempty-entry { display: grid; gap: 12px; align-content: center; justify-items: start; min-height: 220px; margin: auto 0; }
+.hud.ui-cockpit .cpempty-title { font-size: var(--cp-font-title); color: var(--cp-ink); font-weight: 400; }
+.ui-cockpit .cpempty-body { font-size: var(--cp-font-body); color: var(--cp-ink-soft); line-height: 1.6; margin: 0; }
+.ui-cockpit .cpempty-acts { display: flex; gap: 12px; flex-wrap: wrap; }
+.ui-cockpit .cpempty-acts button { border: 0; color: var(--cp-accent); background: none; padding: 6px 0; font-size: var(--cp-font-body); }
+/* R106-3: ここに同じセレクタ `.pxrows > :not(.pxrow)` の display:none が重複していて、318 行目の
+   「空の案内を表示する」則を後勝ちで無効化していた（台帳が空でも「セッションはまだありません」が出ない実バグ）。
+   318 行目だけが正本＝ここでは消さない。 */
+.ui-cockpit .cpstage .viewport { display: flex; justify-content: center; align-items: start; }
+.ui-cockpit .cptermfoot { flex-wrap: wrap; padding-top: 4px; padding-bottom: 4px; }
+
+@media (min-width: 900px) {
+  .hud.ui-cockpit #btn-settings::after { content: " " attr(aria-label); }
+  /* R110-D2: 配達の手応え（#toast）は端末の列の真ん中に出す（.main の真ん中・nowrap のままだと、長い「配達失敗: …」が
+     左の列の受付に掛かり、答えのボタンの中心を覆った＝2 カラムの 1194×834 で 2 回目の答えが押せなかった・形状の門 ⑳）。
+     幅は端末の列の内（折り返す）。--cp-toast-left＝端末の列の左端（左の列の幅＋溝）・--cp-toast-right＝右の列（名簿）の幅＋溝
+     （2 カラムは 0）。R111-S0: 左端も変数にした＝窓を入れ替えたら JS が端末の列の左右を書く（既定はここの値のまま） */
+  .ui-cockpit .main { --cp-toast-left: calc(var(--cp-left-w) + 8px); --cp-toast-right: calc(var(--cp-right-w) + 8px); }
+  .ui-cockpit #toast {
+    left: calc(var(--cp-toast-left) + (100% - var(--cp-toast-left) - var(--cp-toast-right)) / 2);
+    max-width: calc(100% - var(--cp-toast-left) - 16px - var(--cp-toast-right));
+  }
+  .ui-cockpit #toast .tmsg { max-width: 100%; white-space: normal; overflow-wrap: anywhere; text-align: center; }
+  /* 多段では #offbar は足元の行の中（NO CARRIER の文法）。1 列（<900）はページが流れる＝下の段の position: fixed のまま
+     （.cpfoot を付けた詳細度で段の外に書くと、1 列でも static が勝って帯がページの一番下へ消えた＝形状の門 ⑮ ⑳） */
+  .ui-cockpit .cpfoot #offbar { grid-area: login; position: static; transform: none; width: auto; min-height: 32px; padding: 0; border: 0; background: none; color: var(--cp-alert); font-size: var(--cp-font-small); }
+}
+
+/* 中幅（900〜1400）は 2 カラム: 左＝部屋＋受付・その下に名簿（常に見える・切替のタブは R110 で撤去）／右＝端末（指示欄はその下）。 */
+@media (min-width: 900px) and (max-width: 1400px) {
+  /* R105: 左の列＝画面から端末の 636px（80 桁）を引いた幅・上限 440（1280 で 410px だと部屋が ×1＝184px まで縮んでいた）。
+     R110: 窓の間の溝 8 と端末の窓の罫 2 も引く（646）＝端末の中身は 636 のまま。1024 で 378px＝部屋 ×2（368＋余白 8＋罫 2）が
+     ちょうど入る・1024 未満は端末の 80 桁を優先して 280px まで（部屋は ×1）。
+     段を増やさない（幅の段は 1 列・2 カラム・3 カラムの 3 つだけ＝cockpit_smoke の「文字列の段」） */
+  .hud.ui-cockpit { --cp-left-w: clamp(280px, calc(100vw - 646px), 440px); }
+  /* 行: 左の列（部屋＋受付）は中身の丈／名簿は残り。端末は 2 行をまたぐ 1 つの升目。
+     R110-D1: 名簿の行の最低（--cp-roster-min）＝溝 8・罫 2・1 段の見出し 34・詰めた行 2 つ（余白 16・罫 1・名前 1 行・溝 4・いま 1 行
+     ＝21px＋2.7em）。左の列は minmax(0, auto)＝名簿の最低を引いた残りの範囲で中身の丈まで伸びる。譲る順は 受付 → 名簿の 3 行目より
+     先 → 部屋（部屋は譲らない）。受付を最低 200px に取って名簿の窓が 112〜132px（見出し 2 段 66px）になり、行が 1 行も見えなかった
+     （1280×800・1366×768・1024×768）。1366×768 で受付 146px（❗ の 1 件と答え・中でスクロール）＋名簿 2 行。
+     部屋の段を中でスクロールさせると、受付に立つ ❗ のロボ（部屋の下端）が受付の窓の下に隠れて押せなかった（形状の門 ⑦・1112/1194×834）。
+     名簿の窓が低い間（@container cproster）は列見出しを畳み、いまを 1 行に詰め、「▾ あと N 件」は見出しの右へ上げる（下の節） */
+  .ui-cockpit .main {
+    --cp-roster-min: calc(88px + 5.4em);
+    --cp-toast-right: 0px;
+    grid-template-columns: var(--cp-left-w) minmax(0, 1fr);
+    grid-template-rows: minmax(0, auto) minmax(var(--cp-roster-min), 1fr);
+    grid-template-areas: "left center" "roster center";
+  }
+  /* 部屋の窓は自動の最小（中身の丈）を持つ＝左の列が縮むときは受付（fr の行）だけが譲る。左の列そのものの最小を中身にすると
+     （block の min-content は受付の丈まで含む）名簿の最低を割って .main からはみ出した（1366×768 で 11px） */
+  .ui-cockpit #win-office { min-height: auto; }
+  /* R111-S0: 2 カラムは左の列を箱に戻す（3 カラムの display: contents をほどかない）。部屋と受付は左の列の中の自動の配置
+     （id の詳細度で上の var() 版に勝つ＝名前付きの升目の無い格子で暗黙の行を作らせない）。端末も名指しで center */
+  .ui-cockpit .cpleft { display: grid; grid-template-rows: auto minmax(0, 1fr); }
+  .ui-cockpit #win-office, .ui-cockpit #win-reception { grid-area: auto; }
+  .ui-cockpit .cpcenter { grid-area: center; }
+  /* R111-A2: 窓の配置は 3 カラムだけ＝境目の取っ手を出さない（名前の無い升目に置くと暗黙の行・列を作る） */
+  .hud.ui-cockpit .main > .cpsplit { display: none; }
+  /* 受付の上限: ❗ があれば 200px（あなた待ち 1 件と答え・入らなければトレイの中でスクロール）、無ければ 140px（INBOX ZERO の 1 行と
+     最近の指示・中身が少なければ中身の丈まで縮む）＝❗ が無い間は名簿へ回す */
+  .ui-cockpit #win-reception { max-height: 140px; }
+  .ui-cockpit #win-reception:has(> #attn:not([hidden])) { max-height: 200px; }
+  /* 名簿の窓は丈の問い合わせ先（cproster・2 カラムだけ＝3 カラムと 1 列には効かない）。丈は格子の行で決まる＝中身に依らない */
+  .ui-cockpit .cpright { grid-area: roster; margin-top: 8px; container: cproster / size; }
+  /* 見出しは 1 段（題名・数・絞り込みを 1 行に・絞り込みは 5em まで縮む）。2 段（66px）だと名簿の窓の半分を見出しが取った。
+     入らない狭い列（900〜1000 の 280px）だけ絞り込みが 2 段目へ折れる。題名は縮めない（和文は 1 字ずつ折れて縦書きになった） */
+  .ui-cockpit #sec-roster { padding-bottom: 0; }
+  .ui-cockpit #sec-roster .cpledsearch { order: 0; flex: 1 1 5em; min-width: 5em; }
+  .ui-cockpit #sec-roster > :is(.secno, .sectitle) { flex: none; white-space: nowrap; }
+  /* 部屋と名簿の見出しも 1 段に保つ（1024×768 の 378px で部屋の見出しが 2 段 60px に折れ、名簿の 2 行目が窓の下に切れた）。
+     見出しが 400px 以下では数の要約を畳む（@container cpsec・2 カラムだけ）＝部屋の席数は足元の #cp-foot-seats と同じ文・
+     名簿の「要対応 N · エラー M」はヘッダーの「あなた待ち N」と行の状態の語が言う。凡例・「動きを止める」・絞り込みは残す */
+  .ui-cockpit :is(#sec-office, #sec-roster) { container: cpsec / inline-size; }
+  /* 指示欄は端末の升目の下端に置き、端末の窓をその丈だけ持ち上げる（重ねない）。2 カラムで「端末の下の行」を足すと、
+     その行が左の列（部屋＋受付／名簿）と行を共有して、開いた瞬間に部屋の段が 134px まで潰れた（1280×800 の実測）＝丈は固定
+     （中身は中でスクロール）にして、端末の窓の下の余白に同じ値を書く。升目の大きさの計算に入れない（絶対配置・包含ブロックは
+     端末の升目）。⤢ は丈を広げる */
+  .ui-cockpit #sheet, .ui-cockpit .sheet-open:has(#attn[hidden]) #sheet {
+    grid-area: center; position: absolute; inset: auto 0 0 0; height: 45dvh; max-height: none; margin: 0;
+  }
+  .ui-cockpit #sheet.wide, .ui-cockpit .sheet-open:has(#attn[hidden]) #sheet.wide { height: 70dvh; max-height: none; }
+  .ui-cockpit .main:has(> #sheet:not([hidden])) > .cpcenter { margin-bottom: calc(45dvh + 8px); }
+  .ui-cockpit .main:has(> #sheet.wide:not([hidden])) > .cpcenter { margin-bottom: calc(70dvh + 8px); }
+  .ui-cockpit #cp-pick { display: none; }
+  .ui-cockpit .cphead .freshness { display: none; }
+}
+
+/* R110-D1: 2 カラムの名簿の窓が低い間（見出し 34＋列見出し 32＋2 段の行 2 つ＋「▾ あと N 件」の帯＝約 255px＝18.2em に満たない間・
+   1280×800・1366×768・1024×768・1112×834）。行を 2 つ以上まるごと見せるために、列見出し（並べ替え）を畳み、いまを 1 行に詰め
+   （全文は行の title）、「▾ あと N 件」を下端の帯から見出しの右の札へ上げる。問い合わせ先は 2 カラムの .cpright だけ（上の段）。
+   丈の問い合わせ（max-height）＝幅の段（@media の width）を増やさない。em は問い合わせ先の字の大きさ（⚙ 文字の大きさに追従） */
+.ui-cockpit #cp-roster-more-chip { display: none; }
+@container cpsec (max-width: 400px) {
+  .ui-cockpit :is(#cp-office-meta, #cp-roster-meta) { display: none; }
+}
+@container cproster (max-height: 18.2em) {
+  .hud.ui-cockpit .pxhrow { display: none; }
+  .hud.ui-cockpit .pxrow .c-detail { -webkit-line-clamp: 1; }
+  .hud.ui-cockpit #cp-roster-more { display: none; }
+  .hud.ui-cockpit #cp-roster-more-chip:not([hidden]) {
+    display: block; flex: none; margin-left: auto; white-space: nowrap; padding: 4px 10px; min-height: 28px;
+  }
+}
+
+/* ── モーダル（管理のフロー・? の案内・会話の全画面）──
+   暗幕は様式の地（--cp-bg）に透明を混ぜて 72% で重ねる（色は発明しない）。hud の rgba(46,45,44,.14) は明るい紙の地のための
+   薄さで、暗い cockpit の上では背面の明暗の差が 86% 残り（背面の文字も部屋も読めたまま）、モーダルが背面から浮かなかった
+   （形状の門 ⑰＝同じ画素の明暗の差が、暗幕を重ねると重ねない差の 50% 以下）。
+   モーダルの縁は 1px の罫（--cp-line）。hud の --iso-hairline は cockpit では面の色（--cp-panel-2）と同じ値＝縁が見えなかった。
+   角はほかの面と同じく立てる（hud の 14px・10px は --iso-radius を読まずに書かれている）。
+
+   置き方は両方の段で同じ（段で振る舞いを割らない）: 暗幕は画面に固定して画面の全体を覆い（position: fixed; inset: 0）、
+   モーダルはその真ん中。長い中身（⚡）は中でスクロール（丈の上限は画面の丈 − 40px）。
+   - 1 列: hud の .modalwrap（.main 基準の absolute; inset 0）のままだと、ページの丈まで伸びた .main の縦の中央にモーダルが出て、
+     スクロール 0 の画面には中身が出なかった（第 C 波の検収・形状の門 ⑬）。
+   - 3 カラム: 同じ absolute のままだと、暗幕が .main だけに掛かり、ヘッダーとフッターは明るいのに inertOthers で押せない
+     （押せそうに見えて押せない）。✕ も .main の右上の角（1194 で x 1144〜1176）に居て、モーダル（x 387〜807）から 337px
+     離れていた（形状の門 ㉔＝暗幕が画面の全体を覆い、ヘッダーとフッターの点が暗幕に当たる・✕ がモーダルの矩形に接する）。
+   ✕ はモーダルの右上の角に付ける。hud の置き方（暗幕＝画面の右上 18px）のままだと、1 列ではスクロール 0 でヘッダーの ? と
+   要約のボタンに重なった（834 で ✕ x 784〜816・? x 796〜822・形状の門 ⑲）。暗幕を 1 本の列（モーダルの幅）と中身の丈の
+   1 行にして、モーダルと ✕ を同じ升目に重ねる＝✕ はいつもモーダルの角に居る（ヘッダーは暗幕とモーダルの下）。
+   行が中身の丈なので、モーダルの丈の上限は % ではなく画面の丈（dvh）で書く（% は中身の丈を指して、上限が中身−40 に化ける）。
+   見出し（どのモーダルも先頭は .mtitle）は ✕ のぶん右を空ける＝長い見出しが ✕ の下に潜らない */
+.ui-cockpit #modalwrap {
+  background: color-mix(in srgb, var(--cp-bg) 72%, transparent);
+  position: fixed; inset: 0;
+  grid-template-columns: min(420px, calc(100% - 60px)); grid-template-rows: auto;
+  justify-content: center; align-content: center;
+}
+/* モーダルを開いている間はゲージの詳細を出さない。hud の .usage .gauges は z-index 10 で暗幕（9）より上に描かれ、キーボードの ? で
+   モーダルを開くと詳細がモーダルの右半分を覆った（詳細は inert で押せない＝見えるが押せない）。外側クリックで閉じる経路を通らない */
+.ui-cockpit:has(#modalwrap:not([hidden])) .usage .gauges { display: none; }
+.ui-cockpit #modal {
+  border-color: var(--cp-line-strong); border-radius: 0;
+  grid-area: 1 / 1; width: auto; justify-self: stretch; max-height: calc(100dvh - 40px);
+  overscroll-behavior: contain;
+}
+.ui-cockpit #modalclose {
+  border-radius: 0;
+  grid-area: 1 / 1; position: relative; top: auto; right: auto; align-self: start; justify-self: end;
+  margin: 10px 10px 0 0;
+}
+.ui-cockpit #modal > .mtitle:first-child { padding-right: 36px; }
+/* R105: モーダルはヘッダーの下から（ヘッダーの右に広いボタン［＋ 新しいセッション］・あなた待ちが並んだ＝✕ が重なった・形状の門 ⑲）。
+   ヘッダーの丈は index.js が実測して --cp-head-h で渡す（1 列のスマホの段では 2 段に折れて 115px になる） */
+.ui-cockpit #modalwrap { padding-top: calc(var(--cp-head-h, 56px) + 8px); }
+.ui-cockpit #modal { max-height: calc(100dvh - var(--cp-head-h, 56px) - 28px); }
+/* 指で押す端末（pointer: coarse）では ✕ を 44×44 にする（hud の 32×32 では押し損じる・390 で x 318〜350・形状の門 ㉓）。
+   トレイのボタンと同じく幅の段ではなく入力の段で決める（Mac の細い窓は小さいまま・タッチの 3 カラムも大きくなる）。
+   見出しの右の余白も ✕ に合わせて広げる（✕ の左端＝右から 10 + 44 = 54px・見出しの字の右端＝右から padding 16 + 48 = 64px） */
+@media (pointer: coarse) {
+  .ui-cockpit #modalclose { width: 44px; height: 44px; }
+  .ui-cockpit #modal > .mtitle:first-child { padding-right: 48px; }
+}
+
+/* 縦 1 列。ページ自体がスクロールする。
+   ここが要: `#app` と `.hud` は 100dvh の**固定丈**なので、中を auto の行にしても
+   グリッドは画面ぴったりに配り直すだけで、3 面が等分に潰れる（実測 390×844 で台帳 63px）。
+   固定丈をほどいて、面ごとに最低の丈を持たせて初めて「はみ出したぶんはスクロール」になる。
+   丈をほどく相手は boot.html が付ける data-ui-style で限定する（他の様式を巻き込まない）。 */
+@media (width < 900px) {
+  [data-ui-style="cockpit"], [data-ui-style="cockpit"] body { height: auto; overflow: auto; }
+  [data-ui-style="cockpit"] #app { height: auto; min-height: 100dvh; display: block; }
+  .ui-cockpit { height: auto; min-height: 100dvh; }
+  .ui-cockpit .cpshell {
+    grid-template-rows: auto auto auto; height: auto; min-height: 0; overflow: visible;
+    /* スマホの段（下の @container cphead）の問い合わせ先は、画面の幅そのもの（シェル）にする。ヘッダー自身
+       （左右の余白 12px）に置いていたときは、中身の幅 ≤600＝画面 ≤624 でヘッダーだけがスマホの 3 段になり、
+       台帳（余白なし＝画面 ≤600）と境が 24px ずれた（601〜624 はヘッダーがスマホ・台帳が 6 列の混ざった形）。
+       台帳の問い合わせ先（.cptable）も 1 列では画面の幅＝境は両方とも画面 600 の 1 本 */
+    container: cphead / inline-size;
+  }
+  /* R110 骨格 A の 1 列: 窓を 1 本の列に積む。並び＝受付 → 指示欄 → 部屋 → 名簿 → 端末。左の列（.cpleft）の箱をほどいて
+     （display: contents）部屋の窓と受付の窓を .main の行へ直に並べ、order で前後させる＝DOM は 3 カラムと同じ（id と
+     ui/hud の部品の掴み方を変えない）。窓の間は地の溝 8px（row-gap）。 */
+  .ui-cockpit .main { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; grid-template-areas: none; min-height: 0; row-gap: 8px; }
+  .ui-cockpit .cpleft { display: contents; }
+  .ui-cockpit .cpleft > .cpwin, .ui-cockpit .cpcenter, .ui-cockpit .cpright { grid-column: 1; grid-area: auto; margin: 0; }
+  /* R111-A2: 窓の配置は 3 カラムだけ＝境目の取っ手を出さない */
+  .hud.ui-cockpit .main > .cpsplit { display: none; }
+  /* R111-S0: 部屋と受付の grid-area は上の段の id の則（var() 版）が詳細度で勝つ＝ここも id で auto に戻す */
+  .ui-cockpit #win-reception { order: -1; grid-area: auto; }
+  .ui-cockpit #win-office { order: 0; grid-area: auto; grid-template-rows: auto auto auto; }
+  .ui-cockpit .cpright { order: 1; }
+  .ui-cockpit .cpcenter { order: 2; }
+  /* 受付は中身の丈（ページが流れる＝中でスクロールさせない） */
+  .ui-cockpit #win-reception { grid-template-rows: auto auto auto; overflow: visible; }
+  .ui-cockpit #win-reception > #attn.tray, .ui-cockpit #win-reception > .cphist { overflow: visible; }
+  .ui-cockpit .cpcenter { grid-template-rows: auto auto auto auto; }
+  .ui-cockpit .cpright { grid-template-rows: auto auto auto; }
+  /* 面ごとの最低の丈。これが無いと「中身 0 でも成立する」ので、グリッドは遠慮なく潰す。
+     部屋の箱は倍率に合わせる（index.js が #stage に data-room-scale を出す）。×2（368×320）に ×3 の 480 を
+     課したら、部屋の下に 160px の空きが出た（390×844 の実測）。1 列は丈の上限 480＝×2 か ×3 だけ */
+  .ui-cockpit .cpstage { min-height: 480px; }
+  .ui-cockpit .cpstage[data-room-scale="2"] { min-height: 320px; }
+  .ui-cockpit .cpstage[data-room-scale="1"] { min-height: 160px; }
+  /* 指示欄を開いても部屋の箱の丈は変えない。hud の幅 820 以下の則（.sheet-open #stage に 75vh）は 3D の舞台を
+     指示欄の上に残すための則で、ここでは部屋の箱が 320→633px に伸びて部屋の下に 313px の空きが出た
+     （390×844・612×900 では 480→675px の実測・形状の門 ⑩）。同じ詳細度で後から書く＝勝つ */
+  .ui-cockpit .sheet-open #stage { height: auto; }
+  .ui-cockpit #cp-roster { max-height: 420px; }
+  .ui-cockpit .cpterm { min-height: 220px; max-height: 420px; }
+  /* 端末の足元は折り返す（デモの理由の文が長く、390 では名前が「Design / Review」と 2 行に潰れた）。
+     折り返した足元の文は margin-left:auto のまま次の行の右へ寄る */
+  .ui-cockpit .cptermfoot { flex-wrap: wrap; row-gap: 2px; padding: 5px 14px; }
+  .ui-cockpit .cptermfoot > span { white-space: normal; overflow-wrap: anywhere; }
+  .ui-cockpit #cp-term-note { white-space: normal; }
+  /* 名前は行の幅に収めて折り返す。色の点の幅も残す。 */
+  .ui-cockpit #cp-term-who { min-width: 0; max-width: calc(100% - 16px); white-space: normal; overflow-wrap: anywhere; }
+  /* 端末の列も列を 1 本・minmax(0, 1fr) で明示する（右カラムの .cpright と同じ穴）。暗黙の auto 列は中身の
+     min-content（足元の nowrap の名前）まで広がり、.cpsec・タブ列・端末の面ごと画面の右へはみ出した */
+  .ui-cockpit .cpcenter { grid-template-columns: minmax(0, 1fr); }
+
+  /* 指示欄（#sheet）は受付の直後（部屋より上）＝「自由に書く」を押した直後に、スクロール 0 で指示欄が見える（形状の門 ⑩）。
+     hud の幅 1279 以下の則（grid-row: 2・:has(#attn[hidden]) で 1 / -1）は order の並べ方を壊す＝同じ詳細度で auto に戻す。
+     ⤢（.wide）でも置き方は変えない（1 列の指示欄はもとから画面の幅） */
+  .ui-cockpit #sheet, .ui-cockpit .sheet-open:has(#attn[hidden]) #sheet,
+  .ui-cockpit #sheet.wide, .ui-cockpit .sheet-open:has(#attn[hidden]) #sheet.wide {
+    grid-area: auto; order: -1; margin: 0; max-height: none;
+  }
+
+  /* 1 列でもヘッダーは 1 行（折るのは画面 600 以下＝下の @container cphead・台帳と同じ境 1 本＝形状の門 ⑭） */
+  .ui-cockpit .cphead { padding: 0 12px; gap: 10px; }
+  .ui-cockpit .cpcounts { flex: 0 1 auto; min-width: 0; }
+  .ui-cockpit .cphead .freshness { display: none; }
+
+  .ui-cockpit .cpfoot { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "seats today" "login login" "end end"; padding: 8px 12px; gap: 6px; }
+
+  /* 画面に固定するもの（配達の手応え・管理のモーダル・オフライン帯）。hud はこの 3 つを .main 基準の absolute で置く
+     （3D の 1 枚の舞台＝.main が画面の丈のための則）。1 列では .main がページの丈（1,900〜2,100px）まで伸びるので、
+     トーストはページの一番下（390 で y 1,700 前後）に、モーダルはページの縦の中央（y 700〜1,150）に出て、スクロール 0 の
+     画面には「投函済み」も「配達失敗」もモーダルの中身も出なかった（第 C 波の検収・形状の門 ⑧' ⑧'' ⑬）。
+     fixed は画面が基準（.cpshell の container は Chromium では fixed の包含ブロックにならない＝門の陽性対照で確かめた）。
+     幅は中身の幅で、画面の左右 12px の内に収める（長い名前の「… への配達」は画面の中で折り返す・hud の nowrap のままだと
+     画面の外へ切れる）。左右の中央寄せ（left 50% と translateX）は hud のまま。3 カラムは .main が画面の丈＝hud の置き方のまま */
+  .ui-cockpit #toast {
+    position: fixed; bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+    width: max-content; max-width: calc(100% - 24px);
+  }
+  .ui-cockpit #toast .tmsg { max-width: 100%; white-space: normal; overflow-wrap: anywhere; text-align: center; }
+  /* モーダル（管理のフロー）の置き方は両方の段で同じ＝上のモーダルの節。
+     モーダルを開いている間はページを止める（暗幕の上でもモーダルの中の端でも、指やホイールで背面のページが流れた・
+     形状の門 ⑱）。1 列ではページ（html）がスクロールの箱＝開いている間だけ html と body の overflow を hidden にする
+     （スクロールの位置は保たれる・閉じれば上の auto に戻る）。モーダルの中のスクロールは背面へ連ねない（overscroll-behavior）。
+     3 カラムは body がもとから hidden＝何もしなくても動かない。
+     スクロールバーの溝は開いている間も取っておく（scrollbar-gutter: stable）。スクロールバーが常に見える環境（Mac にマウスを
+     つないだとき・Windows）では、overflow を hidden にした瞬間にスクロールバーが消え、背面の幅が約 15px 広がって開閉のたびに
+     ページが横に揺れる（画面 601〜615 ではヘッダーのコンテナ問い合わせ cphead ≤600 がモーダルの裏で切り替わりうる）。
+     重ねて出すスクロールバー（Mac の既定・タッチ）では溝は 0＝何も変わらない。
+     形状の門 ㉒ は計算値（開く前も開いている間も stable）と、開く前後で背面の幅（clientWidth）が同じことを見る。ヘッドレスの
+     Chromium（Mac）は重ねて出すスクロールバーで、::-webkit-scrollbar で常に見えるスクロールバーを作っても html の溝は
+     overflow:hidden の間に取られない（2026-09-26 の実測・div では取られる）＝溝の実際の幅は実機（スクロールバーを常に表示）で見る */
+  [data-ui-style="cockpit"] { scrollbar-gutter: stable; }
+  [data-ui-style="cockpit"]:has(#modalwrap:not([hidden])),
+  [data-ui-style="cockpit"]:has(#modalwrap:not([hidden])) body { overflow: hidden; }
+  /* オフライン帯はスクロールしても画面に残す＝画面の**下**に固定する。上（top 12px）に固定したときは、スクロール 0 で
+     帯がヘッダーに重なってタップを吸い（612 で管理のボタン 5 個・390 で ? と要約とピン 2 個）、スクロールするとヘッダーの
+     ほうが帯の下へ流れる＝オフラインの間はヘッダーを押す位置が無かった（形状の門 ⑮（ヘッダー））。帯は文言だけで押せる部品は
+     無い（ui/hud/session.js が textContent を入れるだけ）が、帯の下の部品は吸うので pointer-events では逃がさない（⑮ の
+     「中心が当たる」も帯が面を持つことを見ている）。
+     高さは画面の下から 108px（--cp-offbar-lift）。画面の一番下（12px）に置くと、ページの一番下までスクロールしても最後の
+     カードと ↻（再送）が帯の下から出てこない（390 の実測）。108px なら帯の下の行は指のスクロールで帯の外へ出せる。
+     和文は語の途中で折らない（390 で「凍結デ／ータ」と折れた）＝空白と括弧で折り、それでも入らない長さだけ字の途中で折る */
+  .ui-cockpit { --cp-offbar-lift: 108px; }
+  .ui-cockpit #offbar {
+    position: fixed; top: auto; bottom: calc(var(--cp-offbar-lift) + env(safe-area-inset-bottom, 0px));
+    width: max-content; max-width: calc(100% - 24px); text-align: center;
+    word-break: keep-all; overflow-wrap: anywhere;
+  }
+  /* 帯が出ている間（.offline）は、トーストを帯の**上**から積む。帯の下（24〜108px）に積んでいたときの根拠は「1 行のトースト
+     2 件＝76px」で、折り返したトースト（長い名前・長い error＝390 で 3〜4 行）は帯の下からはみ出して帯に掛かった
+     （390 で丈 107px のトーストが帯 y 684〜736 に掛かる・形状の門 ⑳）。帯の丈は折り返しで変わる（1 行 34px・390 は 2 行 52px）
+     ＝CSS は兄弟の丈を読めないので、index.js が帯の丈を実測して --cp-offbar-h へ渡す（帯が hidden の間は 0）。
+     帯は動かさない（ずっと出ている方の位置を保ち、2.6 秒で消えるトーストの方が避ける） */
+  .ui-cockpit.offline #toast {
+    bottom: calc(var(--cp-offbar-lift) + var(--cp-offbar-h, 52px) + 8px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+/* ── スマホ（1 列の段の中で、幅 600 以下）──
+   画面の幅で切る段（メディア問い合わせの width）は 3 カラム／1 列の 2 つだけ（tests/cockpit_smoke.py の 29a・
+   この注記にも「アット media」の綴りを書かない＝29a はその綴りから次の波かっこまでを段として読む）。スマホの畳み方は
+   コンテナ問い合わせで決める（1 列の段でだけ問い合わせ先を置く＝3 カラムには効かない）。問い合わせ先は
+   ヘッダーがシェル（.cpshell）・台帳が台帳の箱（.cptable）で、1 列ではどちらも画面の幅＝境は画面 600 の 1 本。
+   ここに書くのは差分だけ＝既定は上の 1 列の段（600〜601 の小数幅で「どちらにも当たらない」穴は無い）。 */
+
+/* ヘッダー（390 で 3 段 112px・ゲージが重なって読めなかった）:
+   1 段目＝ブランド・人数・?、2 段目＝枠ゲージ（2 列の格子で揃える）、3 段目＝管理のボタンと鮮度。
+   管理を 1 段目に入れると、雇う（＋）が出たときに 390 幅を越えて横スクロールになる */
+@container cphead (max-width: 600px) {
+  .ui-cockpit .cphead { flex-wrap: wrap; row-gap: 6px; padding: 8px 12px; }
+  .ui-cockpit .brand { flex: 1 1 auto; }
+  .ui-cockpit .admin { width: 100%; justify-content: end; }
+}
+
+
+.ui-cockpit #cp-motion, .ui-cockpit .pxsort, .ui-cockpit .cpclose,
+.ui-cockpit .cpq-btn, .ui-cockpit .cpdlg .dlgnew, .ui-cockpit .dlghead button,
+.ui-cockpit .cptermfoot .dlgmore, .ui-cockpit .cpmenu button { min-height: 32px; }
+
+.hud.ui-cockpit #cp-login-slot .digest-strip { display: block; width: 100%; min-height: 32px; padding: 0; border: 0; background: none; color: var(--cp-ink-soft); font-size: var(--cp-font-small); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hud.ui-cockpit #cp-login-slot .digest-strip[hidden] { display: none; }
+.hud.ui-cockpit .apvbadge { display: none; }
+
+.hud.ui-cockpit .setupbar { margin: 0; border: 0; border-bottom: 1px solid var(--cp-line); background: var(--cp-panel); font-size: var(--cp-font-body); padding: 10px 14px; gap: 6px 10px; }
+.hud.ui-cockpit .setup-checklist { display: grid; gap: 4px; font-size: var(--cp-font-body); }
+/* R105: 既定は 1 行（題名・コマンド・コピー・［詳しく］）。3 項目と説明は［詳しく］で開いたときだけ */
+.hud.ui-cockpit .setupbar { display: flex; flex-wrap: wrap; align-items: center; }
+.hud.ui-cockpit .setupbar:not([data-open="1"]) :is(.setup-hooks, .setup-events, .setup-approval, .sb-msg) { display: none; }
+.hud.ui-cockpit .setupbar:not([data-open="1"]) .setup-checklist { display: contents; }
+.hud.ui-cockpit .setupbar[data-open="1"] .setup-checklist { flex: 1 1 100%; }
+.hud.ui-cockpit .setupbar[data-open="1"] .sb-msg { flex: 1 1 100%; }
+.hud.ui-cockpit .setupbar .sb-more { margin-left: auto; font: inherit; color: var(--cp-ink-soft); background: none; border: 1px solid var(--cp-line); border-radius: 0; padding: 2px 8px; min-height: 28px; cursor: pointer; }
+.hud.ui-cockpit .setupbar .sb-more:hover { color: var(--cp-accent); border-color: var(--cp-accent); }
+.hud.ui-cockpit .setupbar .sb-msg { color: var(--cp-ink-soft); }
+.hud.ui-cockpit .dlgmsg { border-left: 0; }
+.hud.ui-cockpit .swatch.on { box-shadow: none; }
+
+.hud.ui-cockpit #cp-term-head[hidden] { display: none; }
+.ui-cockpit .sectitle::before { content: "┤ "; }
+.ui-cockpit .sectitle::after { content: " ├"; }
+
+
+/* R105: メンバー先行βの入口。ヘッダーの「あなた待ち N」（意味色の枠だけ・塗らない）と、足元の版と［フィードバック］ */
+.hud.ui-cockpit #cp-attn-chip {
+  font: inherit; font-size: var(--cp-font-body); color: var(--cp-alert); background: none; white-space: nowrap;
+  border: 1px solid var(--cp-alert); border-radius: 0; padding: 4px 10px; min-height: 32px; cursor: pointer;
+}
+.hud.ui-cockpit #cp-attn-chip:hover { background: var(--cp-panel-2); }
+.hud.ui-cockpit #cp-attn-chip[hidden] { display: none; }
+.hud.ui-cockpit #cp-foot-end { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.hud.ui-cockpit .cp-ver { color: var(--cp-ink-faint); font-size: var(--cp-font-small); white-space: nowrap; }
+.hud.ui-cockpit #cp-feedback {
+  font: inherit; font-size: var(--cp-font-small); color: var(--cp-ink-soft); background: none; border: 0;
+  padding: 4px 6px; min-height: 28px; cursor: pointer; white-space: nowrap;
+}
+.hud.ui-cockpit #cp-feedback:hover { color: var(--cp-accent); }
+.hud.ui-cockpit .beta-h { display: block; margin-top: 14px; font-size: var(--cp-font-body); color: var(--cp-ink); }
+.hud.ui-cockpit .beta-diag {
+  white-space: pre-wrap; overflow-wrap: anywhere; margin: 6px 0 8px; padding: 8px 10px; max-height: 220px; overflow: auto;
+  font-size: var(--cp-font-body); line-height: 1.6; color: var(--cp-ink); background: var(--cp-bg); border: 1px solid var(--cp-line);
+}
+.hud.ui-cockpit .beta-thanks { color: var(--cp-ink); }
+.hud.ui-cockpit .beta-open { display: inline-block; text-decoration: none; }
+
+/* R110 S1: 操作は常時、枠と地で示す。列見出しと端末タブは各自の罫を使う。
+   R121: 作業ビューの畳みの行（実行済み N 件・1 手・… +N 行）は本文の中の薄い字＝枠と地を付けない（見本どおり・ui/hud/activity.css が持つ） */
+.hud.ui-cockpit :is(button, #cp-motion, #attn .kbd, #cp-feedback, #cp-roster-more,
+  #cp-attn-chip, #cp-add-menu button, #quickdock button, .beta-open):not(.pxsort):not(.cptab):not(.act-group-head, .act-step-head, .act-more) {
+  border: 1px solid var(--cp-line-strong); background: var(--cp-panel-2); color: var(--cp-ink);
+  padding: 6px 12px; min-height: 32px; font-size: var(--cp-font-body);
+  border-radius: 0; box-shadow: none; line-height: var(--cp-lh-dense);
+}
+.hud.ui-cockpit :is(button, #cp-motion, #attn .kbd, #cp-feedback, #cp-roster-more,
+  #cp-attn-chip, #cp-add-menu button, #quickdock button, .beta-open):not(.pxsort):not(.cptab):not(.act-group-head, .act-step-head, .act-more):hover {
+  border-color: var(--cp-ink-faint);
+}
+.hud.ui-cockpit :is(button, #attn .kbd):not(.pxsort):not(.cptab):is(.kbd.go, .cpq-btn.go, .mgo, .mkeysave, .reply-save, #cp-empty-start) {
+  background: var(--cp-accent); color: var(--t-on-accent); border-color: var(--cp-accent);
+}
+.hud.ui-cockpit :is(button, #attn .kbd):not(.pxsort):not(.cptab):is(.cpclose.armed, .mledel, .mrevoke, .mkeyrevoke, .tpldel) {
+  color: var(--cp-danger); border-color: var(--cp-danger);
+}
+.hud.ui-cockpit :is(.cptab.sel, .arow.sel, .card.sel) {
+  background: var(--cp-panel-2); outline: 1px solid var(--cp-line-strong); outline-offset: -1px;
+}
+.hud.ui-cockpit :is(:focus-visible, .pxrow.sel:focus-visible, .cptab.sel:focus-visible, .arow.sel:focus-visible, .card.sel:focus-visible) { outline: 2px solid var(--cp-accent); outline-offset: 2px; }
+
+/* ── R110-S6: 常時の名札・眺めるモード（F）・名簿の「いま」の経過 ──
+   名札は部屋の canvas の上の DOM（canvas に文字を描かない掟）。層（#cpnames）は index.js が canvas と同じ位置・寸法に置き、
+   札（.cpname）の left/top は ui/core/plates.js の placePlates が決める（足元・下へ 1 段・頭の上）。押せない（pointer-events: none）＝
+   ロボのクリックとホバーの札（.cphover）は今のまま。 */
+.ui-cockpit .cpstage .viewport { position: relative; }
+.ui-cockpit #cpnames { position: absolute; left: 0; top: 0; overflow: hidden; pointer-events: none; }
+.ui-cockpit #cpnames[hidden] { display: none; }
+.ui-cockpit .cpname {
+  position: absolute; left: 0; top: 0; display: inline-flex; align-items: center; gap: 4px;
+  padding: 0 4px; box-sizing: border-box; pointer-events: none; white-space: nowrap;
+  font-family: var(--t-mono); font-size: var(--cp-font-small); line-height: 1.3; font-style: normal;
+  color: var(--cp-ink); background: var(--cp-panel-2); border: 1px solid var(--cp-line-strong); border-radius: 0;
+}
+.ui-cockpit .cpname[hidden], .ui-cockpit .cpname .st[hidden] { display: none; }
+.ui-cockpit .cpname .dot { flex: none; width: 6px; height: 6px; background: var(--session); }
+.ui-cockpit .cpname .st { color: var(--cp-ink-soft); }
+.ui-cockpit .cpname.attn .st { color: var(--cp-alert); }
+/* 他の人の頭上の印（canvas）に掛かる札は薄くする＝印が勝つ（印は札の下から透ける） */
+.ui-cockpit .cpname.under { opacity: .35; }
+
+/* 眺めるモード: 部屋だけを画面いっぱいに。ほかの面は visibility で隠す（レイアウトは保つ＝隠れた端末の桁数を変えない）。
+   キー起点だけ＝golden（既定のビュー）は変わらない。下端のティッカー（#cpticker）は .cpshell の外（root の子） */
+.hud.ui-cockpit.cp-watch .cpshell { visibility: hidden; }
+.hud.ui-cockpit.cp-watch #stage {
+  visibility: visible; position: fixed; inset: 0; z-index: 40; margin: 0;
+  width: auto; height: auto; min-height: 0; max-height: none; box-sizing: border-box;
+  display: grid; place-items: center; overflow: auto; padding-bottom: 40px;   /* 40＝index.js の WATCH_TICKER_H */
+  background: var(--cp-bg); border: 0;
+}
+.hud.ui-cockpit.cp-watch #stage .viewport { padding: 0; }
+.hud.ui-cockpit.cp-watch .cpname { font-size: var(--cp-font-title); }
+.hud.ui-cockpit.cp-watch .cphover { z-index: 42; }
+/* 別モデルレビュー（R110・2026-10-07）: 眺めている間に接続が切れると #offbar が .cpshell の visibility: hidden を継いで消え、
+   部屋とティッカーは最後の状態で動き続ける＝止まったセッションを作業中と誤認させる。接続断の警告だけは部屋より前面に出す */
+.hud.ui-cockpit.cp-watch .cpfoot #offbar:not([hidden]) {
+  visibility: visible; position: fixed; left: 50%; bottom: 52px; transform: translateX(-50%); z-index: 43;
+  width: auto; max-width: min(90vw, 640px); padding: 8px 14px; box-sizing: border-box;
+  color: var(--cp-alert); background: var(--cp-panel); border: 1px solid var(--cp-alert);
+}
+.ui-cockpit #cpticker { display: none; }
+.hud.ui-cockpit.cp-watch #cpticker {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 41; box-sizing: border-box;
+  display: flex; align-items: center; gap: 12px; min-height: 40px; padding: 4px 16px;
+  font-size: var(--cp-font-body); line-height: var(--cp-lh-dense); color: var(--cp-ink);
+  background: var(--cp-panel); border-top: 1px solid var(--cp-line-strong);
+}
+.ui-cockpit #cpticker[hidden] { display: none; }
+.ui-cockpit #cpticker .tk-who { flex: none; font-weight: 400; color: var(--session); }
+.ui-cockpit #cpticker .tk-who[hidden], .ui-cockpit #cpticker .tk-n[hidden] { display: none; }
+.ui-cockpit #cpticker .tk-text { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; color: var(--cp-ink-soft); }
+.ui-cockpit #cpticker .tk-n { flex: none; color: var(--cp-ink-faint); font-size: var(--cp-font-small); }
+.ui-cockpit #cpticker .tk-exit { flex: none; font-size: var(--cp-font-small); }
+
+/* ⚙ の選んでいる段（.mkeybtn.on）。R110-S1 の「全ボタンに枠と地」（:is(#attn .kbd…) で詳細度 1,5,0）が選択の印まで同じ地に
+   塗り、どれを選んでいるか見えなかった（文字の大きさ・環境音・テーマ）＝id 2 つで上回り accent の枠と字にする（塗らない＝主操作と分ける） */
+.hud.ui-cockpit #modalwrap #modal .mkeybtn.on { border-color: var(--cp-accent); color: var(--cp-accent); }
+
+/* 名簿の「いま」の経過（作業中の人の行だけ・live だけ） */
+.ui-cockpit .pxrow .c-detail .since { font-style: normal; font-size: var(--cp-font-small); color: var(--cp-ink-faint); margin-left: .4em; white-space: nowrap; }
+
+/* ── R111 C: 見た目（配置の入れ替え・境目・端末のペイン）── */
+/* 配置: 触れた境目と落とし先だけを示す。 */
+.hud.ui-cockpit .main > .cpsplit:hover,
+.hud.ui-cockpit .main > .cpsplit.on { background: var(--cp-line-strong); }
+.hud.ui-cockpit .cpghost {
+  padding: 0 14px; font-size: var(--cp-font-small); color: var(--cp-ink-soft);
+  background: var(--cp-panel-2); border: 1px solid var(--cp-line-strong); border-radius: 0; box-shadow: none;
+}
+.hud.ui-cockpit .cpwin.cp-drop { outline: 2px solid var(--cp-accent); outline-offset: -2px; }
+.hud.ui-cockpit .cpwin.cp-drop-above { box-shadow: inset 0 3px 0 var(--cp-accent); }
+.hud.ui-cockpit .cpwin.cp-drop-below { box-shadow: inset 0 -3px 0 var(--cp-accent); }
+.hud.ui-cockpit .cpwin.cp-drag-src { opacity: .85; }
+.hud.ui-cockpit .cpsec[data-win][tabindex] { cursor: grab; }
+.hud.ui-cockpit .cpsec[tabindex]:focus-visible { outline: 1px solid var(--cp-accent); outline-offset: -1px; }
+/* 掴んでいる間は子の操作カーソルより優先する。 */
+.hud.ui-cockpit.cp-dragging,
+.hud.ui-cockpit.cp-dragging * { user-select: none; cursor: grabbing !important; }
+.hud.ui-cockpit #cp-move-menu.cpmenu[role="menu"] > button[data-dir][disabled] { color: var(--cp-ink-faint); }
+
+/* ペイン: 分割時だけ見出しと枠で選択を示す。 */
+.hud.ui-cockpit #cp-xterm:not([data-panes="1"]) .cppane.sel {
+  outline: 1px solid var(--cp-accent); outline-offset: -1px;
+}
+.hud.ui-cockpit #cp-xterm:not([data-panes="1"]) .cppane-head {
+  background: var(--cp-panel-2); border-bottom: 1px solid var(--cp-line);
+  font-size: var(--cp-font-small); color: var(--cp-ink-soft);
+}
+.hud.ui-cockpit #cp-xterm:not([data-panes="1"]) .cppane-head i.dot {
+  width: 8px; height: 8px; border-radius: 50%; background: var(--session);
+}
+.hud.ui-cockpit #cp-xterm:not([data-panes="1"]) .cppane-head .nm {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
+}
+/* 汎用ボタン則より詳細度を上げ、分割の小さな操作を保つ。 */
+.hud.ui-cockpit #cp-xterm:not([data-panes="1"]) .cppane[data-pane] .cppane-head button {
+  border: 1px solid var(--cp-line-strong); background: var(--cp-panel-2); color: var(--cp-ink);
+  min-height: 24px; min-width: 28px; padding: 0 6px; border-radius: 0; box-shadow: none;
+  font: inherit; font-size: var(--cp-font-small);
+}
+.hud.ui-cockpit #cp-xterm:not([data-panes="1"]) .cppane[data-pane] .cppane-head button:hover {
+  border-color: var(--cp-ink-faint);
+}
+.hud.ui-cockpit #cp-xterm:not([data-panes="1"]) .cppane[data-pane] .cppane-head button.cppane-close:hover {
+  color: var(--cp-danger);
+}
+.hud.ui-cockpit #cp-xterm .cppane-body:is(.empty, .label) p.cppane-hint {
+  color: var(--cp-ink-faint); font-size: var(--cp-font-small); padding: 14px; margin: 0; text-align: center;
+}
+.hud.ui-cockpit #cp-xterm .cppane-body.dialog { background: var(--cp-bg); }
+/* 当たり幅は変えず、中央の罫だけを描く。 */
+.hud.ui-cockpit #cp-xterm:not([data-panes="1"]) .cpsplit-bar::before {
+  content: ""; position: absolute; background: var(--cp-line);
+}
+.hud.ui-cockpit #cp-xterm:not([data-panes="1"]) .cpsplit-bar[data-dir="h"]::before {
+  left: 50%; top: 0; bottom: 0; width: 1px; transform: translateX(-50%);
+}
+.hud.ui-cockpit #cp-xterm:not([data-panes="1"]) .cpsplit-bar[data-dir="v"]::before {
+  top: 50%; left: 0; right: 0; height: 1px; transform: translateY(-50%);
+}
+.hud.ui-cockpit #cp-xterm:not([data-panes="1"]) .cpsplit-bar:hover::before,
+.hud.ui-cockpit #cp-xterm:not([data-panes="1"]) .cpsplit-bar.on::before { background: var(--cp-line-strong); }
+.hud.ui-cockpit #cp-xterm .cpsplit-ghost { background: var(--cp-accent); opacity: .6; }
+
+/* ACTIVITY_BEGIN (generated: ui/hud/activity.css) */
+/* css-vars-from: ui/cockpit/style.css, ui/pwa/app.css */
+/* R121: 共有の作業ビュー。gen_pwa_modules.py が Mac と PWA の印の間へ展開する。 */
+/* R121: 作業ビューの字の大きさは 3 段（--act-fs-body／meta／small）。スマホは既定の値（下の fallback）・Mac は cockpit の style.css が
+   R110 の 4 段の token（⚙「文字の大きさ」に従う）へ結ぶ＝コックピットの文字の段の門（cockpit_smoke の R110）を外さない。 */
+.act {
+  --act-bg: var(--cp-bg, var(--t-bg));
+  --act-panel: var(--cp-panel, var(--t-panel));
+  --act-panel-2: var(--cp-panel-2, var(--t-panel-2));
+  --act-line: var(--cp-line, var(--t-line));
+  --act-line-soft: var(--cp-line-soft, var(--t-line-soft));
+  --act-line-strong: var(--cp-line-strong, var(--t-line-strong));
+  --act-ink: var(--cp-ink, var(--t-ink));
+  --act-ink-soft: var(--cp-ink-soft, var(--t-ink-soft));
+  --act-ink-faint: var(--cp-ink-faint, var(--t-ink-faint));
+  --act-accent: var(--cp-accent, var(--t-accent));
+  --act-attn: var(--cp-alert, var(--t-attn));
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  padding: 18px 22px 12px;
+  color: var(--act-ink);
+  background: var(--act-panel);
+  font-family: var(--t-sans);
+  font-size: var(--act-fs-body, 14.5px);
+  line-height: 1.75;
+  overflow-wrap: anywhere;
+  overflow-anchor: none;
+}
+.act > * { flex-shrink: 0; min-width: 0; }
+.act [hidden] { display: none !important; }
+.act button, .act input { font: inherit; }
+.act button { cursor: pointer; }
+.act .act-group-head, .act .act-step-head, .act .act-more { width: auto; min-height: 0; margin: 0; border-radius: 0; font-weight: 400; letter-spacing: normal; }
+.act button:focus-visible, .act input:focus-visible { outline: 1px solid var(--act-accent); outline-offset: 3px; }
+.act .act-user { align-self: flex-end; max-width: 86%; padding: 10px 14px; border-radius: 14px; background: var(--act-panel-2); font-size: var(--act-fs-body, 14px); line-height: 1.65; }
+.act .act-user-text { white-space: pre-wrap; }
+.act .act-clamp { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.act .act-user-command { padding: 5px 12px; }
+.act .act-command-chip { font-family: var(--t-mono); font-size: var(--act-fs-small, 12.5px); }
+.act .act-text p, .act .act-question-text p { margin: 0 0 .65em; white-space: pre-wrap; }
+.act .act-text p:last-child, .act .act-question-text p:last-child { margin-bottom: 0; }
+.act .act-heading { font-weight: 600; }
+.act code { font-family: var(--t-mono); font-size: var(--act-fs-small, 12.5px); background: var(--act-panel-2); padding: 1px 5px; }
+.act .act-name { padding: 0; background: none; white-space: pre-wrap; }
+.act .act-list { margin: .4em 0; padding-inline-start: 1.5em; }
+.act .act-group { color: var(--act-ink-faint); font-size: var(--act-fs-meta, 13.5px); }
+.act .act-group-head, .act .act-step-head { display: block; width: 100%; padding: 0; border: 0; background: none; color: inherit; text-align: start; line-height: 1.65; }
+.act .act-group-head:hover, .act .act-more:hover { color: var(--act-ink); }
+.act .act-file { color: var(--act-ink-soft); font-family: var(--t-mono); font-size: var(--act-fs-small, 12.5px); }
+.act .act-add { color: var(--act-accent); font-family: var(--t-mono); }
+.act .act-rem { color: var(--act-attn); font-family: var(--t-mono); }
+.act .act-chevron { display: inline-block; font-size: var(--act-fs-small, 10px); color: var(--act-ink-faint); }
+.act .act-steps { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; padding: 10px 0 0 12px; border-top: 1px solid var(--act-line-soft); }
+.act .act-step-head { display: flex; align-items: baseline; gap: 9px; color: var(--act-ink-soft); }
+.act .act-mark { flex: none; font-size: var(--act-fs-small, 11px); white-space: nowrap; }
+.act .act-mark-ok, .act .act-mark-run { color: var(--act-accent); }
+.act .act-mark-err, .act .act-mark-int, .act .act-error { color: var(--act-attn); }
+.act .act-description { min-width: 0; }
+.act .act-step-head > .act-description { flex: 1; }
+.act .act-duration { flex: none; color: var(--act-ink-faint); font-family: var(--t-mono); font-size: var(--act-fs-small, 12px); white-space: nowrap; }
+.act .act-step-body { margin: 7px 0 4px 20px; }
+.act .act-pre, .act .act-diff { margin: 4px 0; padding: 8px 10px; border: 1px solid var(--act-line-soft); background: var(--act-bg); color: var(--act-ink-soft); font-family: var(--t-mono); font-size: var(--act-fs-small, 12px); line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+.act .act-table { overflow-x: auto; white-space: pre; }
+.act .act-more { display: block; padding: 3px 0; border: 0; background: none; color: var(--act-ink-faint); font-size: var(--act-fs-small, 12px); line-height: 1.5; text-align: start; }
+.act .act-user > .act-more { margin-top: 4px; }
+.act .act-diffline { display: grid; grid-template-columns: minmax(3ch, max-content) 1ch minmax(0, 1fr); gap: 8px; }
+.act .act-lineno { color: var(--act-ink-faint); text-align: end; }
+.act .act-source { color: var(--act-ink-soft); white-space: pre-wrap; }
+.act .act-kids { margin-top: 7px; }
+.act .act-kids-body { display: flex; flex-direction: column; gap: 10px; padding-top: 8px; }
+.act .act-card { padding: 12px 14px; border: 1px solid var(--act-line-strong); border-radius: 12px; background: var(--act-panel); }
+.act .act-card-title { display: block; margin-bottom: 6px; font-size: var(--act-fs-meta, 13.5px); }
+.act .act-question-text { font-size: var(--act-fs-body, 14px); }
+.act .act-options { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; color: var(--act-ink-soft); font-size: var(--act-fs-meta, 13px); }
+.act .act-option { display: flex; align-items: baseline; flex-wrap: wrap; gap: 7px; }
+.act .act-option-number { color: var(--act-ink-faint); font-family: var(--t-mono); font-size: var(--act-fs-small, 12px); }
+.act .act-chip { display: inline-block; padding: 1px 8px; border: 1px solid var(--act-line); border-radius: 999px; color: var(--act-ink-soft); font-family: var(--t-mono); font-size: var(--act-fs-small, 11.5px); line-height: 1.6; }
+.act .act-user > .act-chip { margin-top: 5px; }
+.act .act-recommended { color: var(--act-accent); }
+.act .act-live { display: flex; align-items: baseline; gap: 10px; color: var(--act-ink-soft); font-size: var(--act-fs-body, 14px); }
+.act .act-dots { display: inline-flex; align-self: center; flex: none; gap: 3px; }
+.act .act-dots i { width: 5px; height: 5px; border-radius: 999px; background: var(--act-accent); }
+.act .act-dots i:nth-child(2) { opacity: .6; }
+.act .act-dots i:nth-child(3) { opacity: .3; }
+.act .act-note, .act .act-time { color: var(--act-ink-faint); font-size: var(--act-fs-small, 12px); }
+.act .act-time { align-self: stretch; padding-top: 8px; border-top: 1px solid var(--act-line-soft); text-align: center; font-family: var(--t-mono); }
+.act .act-pending { border-style: dashed; }
+.act .act-pending .act-card-title { color: var(--act-attn); }
+.act .act-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.act .act-actions button { width: auto; min-height: 36px; margin: 0; padding: 6px 12px; border: 1px solid var(--act-line-strong); background: var(--act-panel-2); color: var(--act-ink); font-size: var(--act-fs-meta, 13px); }
+.act .act-actions .act-primary { border-color: var(--act-accent); background: var(--act-accent); color: var(--act-bg); font-weight: 600; }
+/* R128: 出勤の口の Bot の記録。報告は種類の札（注意だけ attn の字）と題・人の言葉は吹き出しの下に答え／指示の札・
+   出勤の変化と相談の閉じ方（期限切れ・取り下げ）は吹き出しでも本文でもない 1 行。色は字の明度差だけ（帯・影・絵文字は使わない） */
+.act .act-text .act-report-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; margin: 0 0 .4em; white-space: normal; }
+.act .act-report-title { font-weight: 600; }
+.act .act-report-kind.act-report-warn { color: var(--act-attn); }
+.act .act-event { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; color: var(--act-ink-soft); font-size: var(--act-fs-meta, 13px); line-height: 1.6; }
+.act .act-event-word { color: var(--act-ink); font-weight: 600; white-space: nowrap; }
+.act .act-event-text { min-width: 0; }
+.act .act-event-expired .act-event-word, .act .act-event-withdrawn .act-event-word { color: var(--act-ink-soft); font-weight: 400; white-space: normal; }
+/* ACTIVITY_END */

@@ -107,6 +107,66 @@ class HookWireTest(unittest.TestCase):
         self.assertNotEqual(r.returncode, 0)
         self.assertEqual(self.settings.read_text(encoding="utf-8"), "{broken")  # 壊れた正本に触らない
 
+    # 2026-10-14: 配る部品と、配った後の権限（.sh は実行できる・.py は読むだけ）
+    INSTALLED = {"office-inbox-wait.sh": ("hooks", 0o755), "office-approval-wait.sh": ("hooks", 0o755),
+                 "office-statusline-capture.sh": ("hooks", 0o755), "office-event.sh": ("hooks", 0o755),
+                 "office_shell_lex.py": ("hooks", 0o644), "approval_policy.py": ("server", 0o644),
+                 "approval_review.py": ("server", 0o644)}
+
+    def test_install_does_not_rewrite_a_hook_that_is_still_running(self):
+        """配備をまたいで待っている hook（受信・承認は最長 12 時間）の中身を、その場で書き換えない。
+
+        bash は開いたままのスクリプトを逐次読む。cp の上書きは inode が同じまま中身が変わり、python から戻った bash が
+        「古いオフセットから新しい中身」を読む（tests.md の「実行中の verify.sh を編集しない」と同じ事故＝rc=2）。
+        一時ファイル＋mv なら、開いている側は古い中身を最後まで読み、パスの先は新しい中身になる。
+        """
+        hooks = self.home / ".claude" / "hooks"
+        hooks.mkdir(parents=True)
+        old = b"#!/bin/bash\n# old\nexit 0\n"
+        held = {}
+        try:
+            for name in self.INSTALLED:
+                (hooks / name).write_bytes(old)
+                held[name] = open(hooks / name, "rb")     # 待っている hook の代わりに開いたまま持つ
+            r = run_install(self.home)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            for name, (src_dir, mode) in self.INSTALLED.items():
+                held[name].seek(0)
+                self.assertEqual(held[name].read(), old, name + ": 開いたままの中身が書き換わった（その場の上書き）")
+                dst = hooks / name
+                self.assertEqual(dst.read_bytes(), (ROOT / src_dir / name).read_bytes(), name)
+                self.assertEqual(dst.stat().st_mode & 0o777, mode, name)
+            self.assertEqual([p.name for p in hooks.iterdir() if ".tmp." in p.name], [])  # 一時ファイルを残さない
+        finally:
+            for fh in held.values():
+                fh.close()
+
+    def test_install_keeps_a_symlinked_hook_a_symlink(self):
+        """自分でリンクにしている形は変えない（リンク先の中身を書く＝今までどおり）。"""
+        hooks = self.home / ".claude" / "hooks"
+        hooks.mkdir(parents=True)
+        target = self.home / "elsewhere" / "office-event.sh"
+        target.parent.mkdir()
+        target.write_bytes(b"old\n")
+        (hooks / "office-event.sh").symlink_to(target)
+        r = run_install(self.home)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertTrue((hooks / "office-event.sh").is_symlink())
+        self.assertEqual(target.read_bytes(), (ROOT / "hooks" / "office-event.sh").read_bytes())
+
+    def test_install_failure_is_not_silent(self):
+        """配れなかった部品があれば ✗ を出して失敗で終える（以前は cp の失敗でも ✓ を出して 0 で終えた）。"""
+        hooks = self.home / ".claude" / "hooks"
+        hooks.mkdir(parents=True)
+        hooks.chmod(0o555)                                # 書けないフォルダ
+        try:
+            r = run_install(self.home)
+        finally:
+            hooks.chmod(0o755)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("✗ 配布できませんでした", r.stderr)
+        self.assertNotIn("✓ 配布", r.stdout)
+
 
 class EventWireTest(unittest.TestCase):
     """R90-D5: イベント記録 hook（office-event.sh）を 17 イベントへ async で配線する。

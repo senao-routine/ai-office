@@ -4,6 +4,8 @@
 // 退避経路（HTTP /sync /pull /ack /status）のアサーションは relay_e2e.sh 本体が持ち続ける＝
 // このファイルはWSの「追加」だけを検査し、既存HTTP検査を1つも置き換えない。
 // 使い方: node ws_e2e.mjs <base_url> <full_token> <post_token> [macmini_token]
+import { APP_VER } from "../relay/src/app_html.js";
+
 const [base, TOKEN, POST_TOKEN, MINI_TOKEN] = process.argv.slice(2);
 if (!base || !TOKEN) {
   console.error("使い方: node ws_e2e.mjs <base_url> <full_token> <post_token> [macmini_token]");
@@ -83,9 +85,13 @@ if (!app.ok) {
 
   const hello = await nextFrame(app);
   let helloOk = false;
-  try { helloOk = JSON.parse(hello).t === "status"; } catch { /* fallthrough */ }
+  let shellOk = false;
+  try { const h = JSON.parse(hello); helloOk = h.t === "status"; shellOk = h.shell === APP_VER; } catch { /* fallthrough */ }
   helloOk ? ok("接続直後に status スナップショット受信（再同期）")
           : bad(`接続直後のstatusが来ない: ${hello}`);
+  // R102-1: status は今配っている /app の版（APP_VER）を運ぶ＝古い版で動いている端末が安全な時に 1 回読み直す
+  shellOk ? ok(`status フレームに shell=${APP_VER}（今配っている /app の版）`)
+          : bad(`status フレームの shell が APP_VER でない: ${String(hello).slice(0, 80)}`);
 
   app.ws.send("p");
   const pong = await nextFrame(app);
@@ -107,7 +113,7 @@ if (!app.ok) {
   if (sync1.status !== 200) bad(`/sync が ${sync1.status}`);
   const fan = await nextFrame(app);
   let fanOk = false;
-  try { const d = JSON.parse(fan); fanOk = d.t === "status" && String(d.json).includes(marker) && d.agentSeenAgo === 0; } catch { /* fallthrough */ }
+  try { const d = JSON.parse(fan); fanOk = d.t === "status" && String(d.json).includes(marker) && d.agentSeenAgo === 0 && d.shell === APP_VER; } catch { /* fallthrough */ }
   fanOk ? ok("putStatus 扇形配信（/sync→WS push・agentSeenAgo=0）")
         : bad(`扇形配信フレームが不正: ${String(fan).slice(0, 120)}`);
 
@@ -147,6 +153,8 @@ if (!app.ok) {
   stDOk ? ok("R87 {\"t\":\"status\"} 応答にも dlg（再接続直後の端末が取り直せる）") : bad(`status 要求応答に dlg が無い`);
   const getFull = await http("GET", "/status");
   const getPost = await http("GET", "/status", undefined, POST_TOKEN);
+  (getFull.body.shell === APP_VER) ? ok("GET /status にも shell（HTTP 退避中の端末も版の食い違いに気づく）")
+    : bad(`GET /status の shell が APP_VER でない: ${JSON.stringify(getFull.body.shell)}`);
   (getFull.body.dlg === dlgText2 && !("dlg" in (getPost.body || {})))
     ? ok("R87 GET /status: フル Bearer には dlg・限定トークンには載せない")
     : bad(`GET /status の dlg 露出が想定外: full=${JSON.stringify(getFull.body.dlg).slice(0, 60)} post=${JSON.stringify(getPost.body.dlg)}`);

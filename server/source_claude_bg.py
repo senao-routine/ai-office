@@ -63,8 +63,14 @@ def _epoch(value):
         return 0.0
 
 
-def parse_job_state(raw, now):
-    """読み取り済み JSON から許可した job メタデータだけを作る純関数。"""
+def parse_job_state(raw, now, lang="ja"):
+    """読み取り済み JSON から許可した job メタデータだけを作る純関数。
+
+    plan.md #23: `detail` は外部の bg 管理プロセスが**自己申告する自由文**で、
+    AI Office の言語設定（lang）を経由しない。本人が言語を English に切り替えても、
+    このセルだけ日本語（または他言語）が残る＝UIの他の部分と食い違う静かな嘘になる。
+    自由文を翻訳する手段は無い＝**言語を合わせられないなら出さない**（嘘より無言）。
+    この外部プロセスの慣習は ja 固定文言のため、lang=="ja" のときだけ通す。"""
     raw = _decode(raw)
     if not isinstance(raw, dict):
         return None
@@ -97,7 +103,7 @@ def parse_job_state(raw, now):
     return {
         "id": _text(raw.get("daemonShort")),
         "state": state,
-        "detail": _text(raw.get("detail"))[:200],
+        "detail": _text(raw.get("detail"))[:200] if lang == "ja" else "",
         "tempo": _text(raw.get("tempo")),
         "inFlight": {
             "tasks": _integer(in_flight.get("tasks")),
@@ -196,7 +202,7 @@ class BgIndex:
         return self._by_key.get(session_id_or_stem)
 
 
-def bg_index(home, now, show_window=3 * 3600):
+def bg_index(home, now, show_window=3 * 3600, lang="ja"):
     """job の状態ファイルと roster のみを読む（transcript/timeline は読まない）。"""
     claude = Path(home) / ".claude"
     roster = parse_roster(_read_json(claude / "daemon" / "roster.json"))
@@ -206,7 +212,7 @@ def bg_index(home, now, show_window=3 * 3600):
     except OSError:
         paths = []
     for path in paths:
-        record = parse_job_state(_read_json(path), now)
+        record = parse_job_state(_read_json(path), now, lang)
         if (record is None or record["updatedAt"] <= 0
                 or record["updatedAt"] < now - show_window):
             continue

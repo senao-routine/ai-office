@@ -80,6 +80,7 @@
 .ui-pixel .pxvendor.vendor-claude { background: var(--iso-accent); }
 .ui-pixel .pxvendor.vendor-codex { background: var(--iso-accent-2); }
 .ui-pixel .pxvendor.vendor-openclaw { background: var(--iso-alert); }
+.ui-pixel .pxvendor.vendor-bot { background: #5d76a8; }
 .ui-pixel .pxvendor.vendor-other { background: var(--iso-rest); }
 .ui-pixel .pxrow .scount { margin-left: 4px; font-weight: 800; color: var(--iso-ink-soft); }
 .ui-pixel .pxrow .c-state { display: flex; align-items: center; gap: 4px; }

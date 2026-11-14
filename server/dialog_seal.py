@@ -41,7 +41,8 @@ COMPRESSION = "zl"                                     # zlib(RFC1950)＝JS の 
 BUNDLE_TTL = 90                                        # 画面を閉じた人に後から届けない
 REQID_RE = re.compile(r"^[0-9a-f]{32}$")
 # err は固定 enum のみ（自由文字列を作らない＝scrub できない値を中継に出さない）
-ERRORS = ("unavailable", "denied", "notfound", "toolarge", "expired")
+ERRORS = ("unavailable", "denied", "notfound", "toolarge", "expired",
+          "off", "unenrolled", "noask", "scope")      # R100-1b: 許可の全文（kind:"ask"）を封じない理由
 
 _KCC_AES, _KCC_MODE_GCM, _KCC_ENCRYPT, _KCC_DECRYPT = 0, 11, 0, 1
 
@@ -288,7 +289,14 @@ BUNDLE_TTL = int(os.environ.get("OFFICE_DIALOG_TTL", "90"))   # 画面を閉じ�
 MAX_LIVE = 4                                                   # 同時に生きている封書の上限
 _LOCK = threading.Lock()
 _RESERVED = {}          # reqId -> 予約の期限（このプロセスで封緘中＝再配達で二重に封じない）
-_FILE_CACHE = {"key": None, "rows": []}
+# R100-1a: reqId -> 置き換えの鍵（"term:<device>"）。同じ鍵の古い封書は新しい 1 通に置き換える
+# （ターミナル画面は数秒おきに要求する＝MAX_LIVE の枠を会話ビューと食い合わない）。メモリだけ:
+# daemon が再起動して忘れても、古い分は BUNDLE_TTL（90 秒）で自然に消える。
+_REPLACE = {}
+_FILE_CACHE = {"key": None, "rows": [], "urgent": frozenset()}
+# 急ぎの封書（許可の全文 kind:"ask" と、その理由の封筒）の reqId。中継の自動減速（R80・usage.level>=1）でも
+# 保留しない（人が押して 60 秒待っている・小さく回数も少ない）。relay_agent は別プロセス＝ファイルの "urgent" で渡す
+# （封書そのものには足さない＝_assert_opaque の閉じたキー集合は変えない）。
 
 
 def _read_file():
@@ -296,13 +304,18 @@ def _read_file():
     try:
         st = BUNDLES_FILE.stat()
     except OSError:
+        _FILE_CACHE["urgent"] = frozenset()
         return None                       # 一度も使っていない
     key = (st.st_mtime_ns, st.st_size)
     if _FILE_CACHE["key"] == key:
         return list(_FILE_CACHE["rows"])
     rows = []
+    urgent = frozenset()
     try:
         obj = json.loads(BUNDLES_FILE.read_text(encoding="utf-8"))
+        marks = obj.get("urgent") if isinstance(obj, dict) else None
+        urgent = frozenset(u for u in (marks if isinstance(marks, list) else [])[:MAX_LIVE * 2]
+                           if isinstance(u, str) and REQID_RE.match(u))
         raw = obj.get("bundles") if isinstance(obj, dict) else None
         for b in (raw if isinstance(raw, list) else [])[:MAX_LIVE * 2]:
             e = b.get("e") if isinstance(b, dict) else None
@@ -313,19 +326,23 @@ def _read_file():
                     and 0 < e < 4102444800):            # 2100-01-01 より先は壊れた値
                 rows.append(b)
     except (OSError, UnicodeError, ValueError, TypeError):
-        rows = []
+        rows, urgent = [], frozenset()
     _FILE_CACHE["key"] = key
     _FILE_CACHE["rows"] = rows
+    _FILE_CACHE["urgent"] = urgent
     return list(rows)
 
 
-def _persist_locked(rows):
-    """_LOCK を持ったまま呼ぶ（R92 と同じ理由＝書き込み順が入れ替わると古い版が勝つ）。"""
+def _persist_locked(rows, urgent=()):
+    """_LOCK を持ったまま呼ぶ（R92 と同じ理由＝書き込み順が入れ替わると古い版が勝つ）。
+    urgent は残っている封書の reqId だけ書く（消えた封書の印を持ち越さない）。"""
     BUNDLES_FILE.parent.mkdir(parents=True, exist_ok=True)
     tmp = BUNDLES_FILE.with_name(BUNDLES_FILE.name + ".tmp")
+    alive = {b.get("id") for b in rows}
+    marks = sorted(u for u in urgent if u in alive)
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w", encoding="utf-8") as f:
-        json.dump({"v": 1, "bundles": rows}, f, ensure_ascii=False)
+        json.dump({"v": 1, "bundles": rows, **({"urgent": marks} if marks else {})}, f, ensure_ascii=False)
     os.replace(tmp, BUNDLES_FILE)
 
 
@@ -349,15 +366,26 @@ def reserve_dialog(req_id):
         return None, True
 
 
-def store_bundle(req_id, bundle):
-    """封じたもの（err 封筒も）を保存。期限切れは同時に落とし、上限を超えた古い分も捨てる。"""
+def store_bundle(req_id, bundle, replace_key=None, urgent=False):
+    """封じたもの（err 封筒も）を保存。期限切れは同時に落とし、上限を超えた古い分も捨てる。
+    replace_key（R100-1a）が同じ封書は、この 1 通に置き換える。
+    urgent: 中継の自動減速でも保留しない封書（許可の全文とその理由）。"""
     with _LOCK:
         now = time.time()
         rows = [b for b in _live(_read_file(), now) if b.get("id") != req_id]
+        marks = set(_FILE_CACHE.get("urgent") or ()) - {req_id}
+        if urgent:
+            marks.add(req_id)
+        if replace_key:
+            rows = [b for b in rows if _REPLACE.get(b.get("id")) != replace_key]
+            _REPLACE[req_id] = replace_key
         rows.append(bundle)
         rows = rows[-MAX_LIVE:]
+        alive = {b.get("id") for b in rows}
+        for k in [k for k in _REPLACE if k not in alive]:
+            del _REPLACE[k]
         try:
-            _persist_locked(rows)
+            _persist_locked(rows, marks)
         finally:
             _RESERVED.pop(req_id, None)
 
@@ -369,6 +397,13 @@ def live_bundles():
         if rows is None:
             return None
         return _live(rows, time.time())
+
+
+def urgent_ids():
+    """急ぎの印が付いた reqId（relay_agent が減速中に送ってよい封書を見分ける）。"""
+    with _LOCK:
+        _read_file()
+        return set(_FILE_CACHE.get("urgent") or ())
 
 
 def live_bundle(req_id):
@@ -386,7 +421,7 @@ def sweep():
             return
         alive = _live(rows, time.time())
         if len(alive) != len(rows):
-            _persist_locked(alive)
+            _persist_locked(alive, _FILE_CACHE.get("urgent") or ())
 
 
 def selftest():

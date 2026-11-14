@@ -42,7 +42,8 @@ LEGEND = [
 
 # ベンダー別の殻（ui/pixel/px/palette.js の SHELL と同じ値）。`s` は描画時に差し替わるので、
 # 量子化のときも**そのベンダーの殻色**で近さを測らないと、Codex の灰色が影（h）に化ける。
-SHELL = {"claude": (0xe9, 0xe0, 0xd5), "codex": (0x78, 0x76, 0x76), "openclaw": (0xbb, 0x48, 0x38)}
+SHELL = {"claude": (0xe9, 0xe0, 0xd5), "codex": (0x78, 0x76, 0x76), "openclaw": (0xbb, 0x48, 0x38),
+         "bot": (0x5d, 0x76, 0xa8)}
 
 
 def nearest(rgb, vendor="claude"):

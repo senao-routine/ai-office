@@ -7,6 +7,7 @@ from contextlib import closing
 from datetime import date, datetime, timedelta
 import hashlib
 import json
+import marshal
 import math
 import os
 from pathlib import Path
@@ -36,6 +37,7 @@ CREATE TABLE IF NOT EXISTS events(
     nt, sub, task, ok INTEGER, seq INTEGER UNIQUE);
 CREATE INDEX IF NOT EXISTS events_day_sid ON events(day,sid);
 CREATE INDEX IF NOT EXISTS events_sid_ts ON events(sid,ts);
+CREATE INDEX IF NOT EXISTS events_kind_ts ON events(kind,ts);
 CREATE TABLE IF NOT EXISTS spans(
     id INTEGER PRIMARY KEY, sid, kind TEXT, label TEXT, start REAL, end REAL, day TEXT);
 CREATE INDEX IF NOT EXISTS spans_sid_kind_start ON spans(sid,kind,start);
@@ -538,8 +540,12 @@ def record_ask_resolved(projectId, sid, waited_sec, now):
 
 # D9 readers use separate read-only connections. They never start a writer or
 # inspect transcripts. Synthetic active/askResolved facts contain numbers only.
+# R115: readers select only the rows a result needs (never every hook row) and
+# cache the small results for 60 seconds, never the facts behind them — and a
+# result only until `now` reaches the first row already stored with a later time.
 _READ_LOCK = threading.Lock()
-_READ_CACHE = {}
+_READ_CACHE = {}          # (kind, home, day(now), …) → (at, until, marshal of the result)
+READ_TTL = 60
 _SEEN_LOCK = threading.Lock()
 SEEN_FILE = ".claude/office_seen.json"
 _RATES = {"tasksDone": 10, "commits": 5, "asksAnswered": 2,
@@ -598,24 +604,32 @@ def _growth(counts):
     return {"xp": xp, "level": math.isqrt(int(xp // 100)), "breakdown": breakdown}
 
 
-def _streak(events, today):
-    days, waits = set(), {}
+def _iso_day(value):
+    if not isinstance(value, str):
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _streak(events, today, days=None):
+    """`days`: ISO days with activity whose rows are not in `events` (R115)."""
+    active, waits = set(), {}
     for row in events:
-        day = row.get("day")
-        if not isinstance(day, str):
+        parsed = _iso_day(row.get("day"))
+        if parsed is None or parsed > today:
             continue
-        try:
-            parsed = date.fromisoformat(day)
-        except ValueError:
-            continue
-        if parsed > today:
-            continue
-        days.add(parsed)
+        active.add(parsed)
         if row.get("ev") == "askResolved":
             waits.setdefault(parsed, []).append(_number(row.get("waitedSec")))
-    if not days:
+    for day in days or ():
+        parsed = _iso_day(day)
+        if parsed is not None and parsed <= today:
+            active.add(parsed)
+    if not active:
         return 0
-    current, first, streak = today, min(days), 0
+    current, first, streak = today, min(active), 0
     while current >= first:
         if waits.get(current) and median(waits[current]) >= 900:
             break
@@ -624,18 +638,28 @@ def _streak(events, today):
     return streak
 
 
-def growth_from_events(events, today=None):
+def growth_from_events(events, today=None, days=None):
     """Pure XP calculation: no I/O, clock, randomness, or token accounting.
 
     Accept hook/hire/turnCompleted rows plus numeric `active` (activeMin) and
     `askResolved` (waitedSec) facts. Rows carry sid, projectId and ISO day.
     `today` bounds streak15; when omitted the latest supplied day is used.
     Days without answers count from the first observed day, never before it.
+    `days` (optional) adds ISO days with activity whose rows were not supplied:
+    rows that count nothing need not be read just to date the first day.
     """
     events = list(events)
-    groups = {}
+    days = list(days or ())
+    groups, ids = {}, {}
     for row in events:
-        groups.setdefault(_project(row.get("projectId")), []).append(row)
+        value = row.get("projectId")
+        if type(value) is str:      # Ids repeat across thousands of rows.
+            pid = ids.get(value)
+            if pid is None:
+                pid = ids[value] = _project(value)
+        else:
+            pid = _project(value)
+        groups.setdefault(pid, []).append(row)
     projects, total = {}, _counts()
     for pid, rows in sorted(groups.items()):
         counts, _, _ = _measure(rows)
@@ -645,10 +669,10 @@ def growth_from_events(events, today=None):
     office = _growth(total)
     office["nextAt"] = 100 * (office["level"] + 1) ** 2
     if today is None:
-        today = max((row.get("day", "") for row in events), default="")
+        today = max([row.get("day", "") for row in events] + days, default="")
     today = date.fromisoformat(today) if isinstance(today, str) and today else today
     return {"byProject": projects, "office": office,
-            "streak15": _streak(events, today) if today else 0}
+            "streak15": _streak(events, today, days) if today else 0}
 
 
 def _read_seen(home):
@@ -741,71 +765,303 @@ def timeline_json(home, since=0, sid="", limit=200):
     return {"events": list(reversed(rows)), "since": since, "limit": limit}
 
 
+# Only these event rows change XP counts (`_measure`). Event rows carry hook
+# names, hire or turnCompleted — never the synthetic active/askResolved facts.
+_XP_EVENTS = ("(e.ev IN ('TaskCompleted','hire','turnCompleted')"
+              " OR (e.ev='PostToolUse' AND e.kind='git:commit'))")
+# Per row only what `_measure` reads for its ev; other fields are None. Days and
+# times stay in SQL (`days`, windows); projectId comes from the sessions rows.
+_EVENT_ROWS = """SELECT e.sid,e.ev,e.ok,CASE WHEN e.ev='turnCompleted' THEN e.vendor END,
+    CASE WHEN e.ev='PostToolUse' THEN e.tool END,CASE WHEN e.ev='PostToolUse' THEN e.kind END,
+    CASE WHEN e.ev='TaskCompleted' THEN e.task END FROM events e"""
+
+
+def _tuples(db, sql, args=()):
+    # Plain tuples: thousands of rows, read once (sqlite3.Row costs more).
+    cursor = db.cursor()
+    cursor.row_factory = None
+    return cursor.execute(sql, args)
+
+
+def _event_facts(db, sessions, where, args):
+    facts, projects = [], {}
+    for sid, ev, ok, vendor, tool, kind, task in _tuples(db, _EVENT_ROWS + where, args):
+        pid = projects.get(sid)
+        if pid is None:
+            pid = projects[sid] = _project(sessions.get(sid, {}).get("projectId"))
+        facts.append({"sid": sid, "ev": ev, "ok": ok, "vendor": vendor, "tool": tool,
+                      "kind": kind, "task": task, "projectId": pid})
+    return facts
+
+
+def _sessions(db):
+    return {sid: {"sid": sid, "vendor": vendor, "projectId": project, "name": name, "lastSeen": last}
+            for sid, vendor, project, name, last in _tuples(
+                db, "SELECT sid,vendor,projectId,name,lastSeen FROM sessions")}
+
+
+def _resolved_key(sid, start):
+    return "resolved:" + hashlib.sha256(json.dumps([sid, start]).encode()).hexdigest()
+
+
+def _span_scan(db, sessions, now, window=None):
+    """Span facts by the rules of reading every row: state pieces split at local
+    midnight (an open span counts only until min(now, lastSeen)) and answered
+    asks. Only pieces inside `window` (start, end) become dicts.
+
+    Returns (facts, stops, active, present):
+      facts    pieces clipped to `window`, then every askResolved fact; each kind
+               in span order (no result depends on how the two interleave)
+      stops    {ISO day: earliest piece end}: a day has a piece by t iff stops[day] <= t
+      active   {projectId: activeMin} added piece by piece, as `_measure` adds facts
+      present  {projectId: base fact} for every project with a piece
+    """
+    bases = {}
+
+    def base(sid):
+        found = bases.get(sid)
+        if found is None:
+            session = sessions[sid]
+            found = bases[sid] = {"sid": sid, "vendor": session["vendor"],
+                                  "projectId": _project(session["projectId"])}
+        return found
+
+    first, last = window if window is not None else (math.inf, -math.inf)
+    facts, stops, active, present, midnights = [], {}, {}, {}, {}
+    # The last piece's day as naive local datetimes [00:00, next 00:00): a wall
+    # clock inside it has that date, whatever the zone does, so .date() is skipped.
+    lo = hi = datetime.max
+    # A flag instead of the label, which only a piece that can reach the window needs.
+    for sid, working, label, start, end in _tuples(db, """SELECT sid,label='working',
+            CASE WHEN start<? AND (end IS NULL OR end>?) THEN label END,start,end
+            FROM spans WHERE kind='state' ORDER BY id""", (last, first)):
+        if sid not in sessions or start is None:
+            continue
+        # An unclosed span is only observed through the last scan. A
+        # stopped daemon must not accrue an entire night of active XP.
+        end = min(now, end if end is not None else sessions[sid]["lastSeen"])
+        span = base(sid)
+        pid = span["projectId"]
+        while start < end:
+            clock = datetime.fromtimestamp(start)
+            if not lo <= clock < hi:
+                day = clock.date()
+                midnight = midnights.get(day)
+                if midnight is None:
+                    after = datetime.combine(day + timedelta(days=1), datetime.min.time())
+                    midnight = midnights[day] = (datetime.combine(day, datetime.min.time()), after,
+                                                 after.timestamp(), day.isoformat())
+                lo, hi, boundary, iso = midnight
+            stop = min(end, boundary)
+            if iso not in stops or stop < stops[iso]:
+                stops[iso] = stop
+            present.setdefault(pid, span)
+            if working:
+                active[pid] = active.get(pid, 0) + _number((stop - start) / 60)
+            if window is not None:
+                left, right = max(first, start), min(last, stop)
+                if left < right:
+                    facts.append(dict(span, ev="active" if working else "state", state=label,
+                                      start=left, ts=right, day=iso,
+                                      activeMin=(right - left) / 60 if working else 0))
+            start = stop
+
+    answered, rows = set(), []
+    # A D8 database can be read before its writer migrates the schema.
+    if db.execute("SELECT 1 FROM sqlite_master WHERE name='answers'").fetchone():
+        answered = set(_tuples(db, "SELECT sid,start FROM spans WHERE id IN (SELECT spanId FROM answers)"))
+        rows = _tuples(db, """SELECT p.id,p.sid,p.start,a.ts,a.waitedSec FROM spans p
+            JOIN answers a ON a.spanId=p.id WHERE p.kind='ask'""").fetchall()
+    # Every key the lookup below can match (LIKE 'resolved:%' scanned all of meta).
+    # An unanswered interval never has an answered interval's key, so only the
+    # rest can match; usually none are left and no unanswered ask is read.
+    resolved = set(row[0] for row in _tuples(db, "SELECT k FROM meta WHERE k>='resolved:' AND k<'resolved;'"))
+    if resolved:
+        resolved -= {_resolved_key(sid, start) for sid, start in answered}
+    if resolved:
+        asks = _tuples(db, "SELECT id,sid,start,end FROM spans WHERE kind='ask' ORDER BY id").fetchall()
+        latest = {(sid, start): span_id for span_id, sid, start, _ in asks}
+        rows += [(span_id, sid, start, end, end - start) for span_id, sid, start, end in asks
+                 if end is not None and (sid, start) not in answered
+                 and latest[(sid, start)] == span_id and _resolved_key(sid, start) in resolved]
+    rows.sort(key=lambda row: row[0])
+    for _, sid, start, ts, waited in rows:
+        if sid in sessions and start is not None:
+            facts.append(dict(base(sid), ev="askResolved", ts=ts, day=_day(ts), waitedSec=waited))
+    return facts, stops, active, present
+
+
+def _event_days(db, bound, today):
+    """Stored days up to `today` with an event at or before `bound`: one index
+    probe per day instead of reading the rows (streaks need days, not rows)."""
+    days = []
+    day = db.execute("SELECT MIN(day) FROM events").fetchone()[0]
+    while day is not None:
+        parsed = _iso_day(day)
+        if parsed is not None and parsed <= today and db.execute(
+                "SELECT 1 FROM events WHERE day=? AND ts<=? LIMIT 1", (day, bound)).fetchone():
+            days.append(day)
+        day = db.execute("SELECT MIN(day) FROM events WHERE day>?", (day,)).fetchone()[0]
+    return days
+
+
+def _next_event_time(db, bound, strict):
+    """Earliest stored event time after `bound` (`strict`) or at or after it, of
+    any ev: one events_kind_ts probe per stored kind instead of a pass over the
+    rows (a database its writer has not migrated yet is read once instead)."""
+    op = ">" if strict else ">="
+    if db.execute("SELECT 1 FROM sqlite_master WHERE type='index' AND name='events_kind_ts'").fetchone() is None:
+        times = [db.execute(f"SELECT MIN(ts) FROM events WHERE ts{op}?", (bound,)).fetchone()[0]]
+    else:
+        times = [db.execute(f"SELECT MIN(ts) FROM events WHERE kind IS NULL AND ts{op}?", (bound,)).fetchone()[0]]
+        kind = db.execute("SELECT MIN(kind) FROM events").fetchone()[0]
+        while kind is not None:
+            times.append(db.execute(f"SELECT MIN(ts) FROM events WHERE kind=? AND ts{op}?",
+                                    (kind, bound)).fetchone()[0])
+            kind = db.execute("SELECT MIN(kind) FROM events WHERE kind>?", (kind,)).fetchone()[0]
+    return min((value for value in times if value is not None), default=math.inf)
+
+
+def _xp_facts(db, sessions, now):
+    """Facts XP needs at `now`, the days of state pieces and the first answer
+    time after `now`. Counted event rows; per project one `active` fact with the
+    summed minutes (or a `state` fact, counting nothing, when it only waited or
+    rested); askResolved facts; and one uncounted row for a project with nothing
+    else — byProject keeps every project that had any fact, as when every row
+    was read."""
+    facts = _event_facts(db, sessions, " WHERE e.ts<=? AND " + _XP_EVENTS + " ORDER BY e.ts,e.id", (now,))
+    spans, stops, active, present = _span_scan(db, sessions, now)
+    facts += [row for row in spans if row["ts"] <= now]
+    later = min((row["ts"] for row in spans if row["ts"] > now), default=math.inf)
+    for pid, base in present.items():
+        facts.append(dict(base, ev="active", activeMin=active[pid]) if pid in active
+                     else dict(base, ev="state"))
+    projects = {row["projectId"] for row in facts}
+    # A session with a hire row by `now` is already among the facts above.
+    for (sid,) in _tuples(db, """SELECT d.sid FROM (SELECT DISTINCT sid FROM events WHERE ts<=?) d
+            WHERE NOT EXISTS (SELECT 1 FROM events h WHERE h.sid IS d.sid AND h.ev='hire' AND h.ts<=?)
+            ORDER BY d.sid""", (now, now)).fetchall():
+        project = _project(sessions.get(sid, {}).get("projectId"))
+        if project not in projects:
+            projects.add(project)
+            facts += _event_facts(db, sessions, " WHERE e.sid IS ? AND e.ts<=? ORDER BY e.ts,e.id LIMIT 1",
+                                  (sid, now))
+    return facts, list(stops), later
+
+
 def _snapshot(home, now):
-    """Cache a consistent DB snapshot for at most 60 seconds, reset at midnight."""
-    key = (str(Path(home).resolve()), _day(now))
+    """XP facts at `now`, the activity days they leave out (stored days of
+    events up to `now`, days of state pieces) and `until`, the first stored
+    time after `now` (an event of any ev or an answer): before it a later `now`
+    adds no stored row (state pieces stay as observed at `now`, as a cached
+    snapshot kept them). R115: read through indexes on each call — never every
+    row, never cached (results are)."""
+    try:
+        with closing(_reader(home)) as db:
+            sessions = _sessions(db)
+            facts, days, later = _xp_facts(db, sessions, now)
+            return (sessions, facts, _event_days(db, now, date.fromisoformat(_day(now))) + days,
+                    min(later, _next_event_time(db, now, strict=True)))
+    except (OSError, sqlite3.Error):
+        return None   # Do not cache absence during writer startup/recovery.
+
+
+def _cached(key, now, compute):
+    """Keep results (serialized, never facts) for at most 60 seconds, reset at
+    midnight, and only while `now` is before their `until`: a row already
+    stored with a later time joins once `now` reaches it, as when each call
+    filtered cached rows by its own `now`. Callers get their own copy.
+    compute() is None while unreadable, else (result, until)."""
     with _READ_LOCK:
-        cached = _READ_CACHE.get(key)
-        if cached is not None and 0 <= now - cached[0] < 60:
-            return cached[1]
-        try:
-            with closing(_reader(home)) as db:
-                sessions = {row["sid"]: dict(row) for row in db.execute("SELECT * FROM sessions")}
-                events = [dict(row) for row in db.execute("SELECT * FROM events ORDER BY ts,id")]
-                spans = [dict(row) for row in db.execute("SELECT * FROM spans")]
-                # A D8 database can be read before its writer migrates the schema.
-                has_answers = db.execute("SELECT 1 FROM sqlite_master WHERE name='answers'").fetchone()
-                answers = ({row["spanId"]: dict(row) for row in db.execute("SELECT * FROM answers")}
-                           if has_answers else {})
-                resolved = {row["k"]: row["v"] for row in db.execute("SELECT k,v FROM meta WHERE k LIKE 'resolved:%'")}
-        except (OSError, sqlite3.Error):
-            return None   # Do not cache absence during writer startup/recovery.
-        facts = []
-        answered_intervals = {(span["sid"], span["start"]) for span in spans if span["id"] in answers}
-        last_asks = {(span["sid"], span["start"]): span["id"] for span in spans if span["kind"] == "ask"}
-        for event in events:
-            facts.append(dict(event, projectId=_project(sessions.get(event["sid"], {}).get("projectId"))))
-        for span in spans:
-            if span["sid"] not in sessions or span["start"] is None:
-                continue
-            session = sessions[span["sid"]]
-            base = {"sid": span["sid"], "vendor": session["vendor"],
-                    "projectId": _project(session["projectId"])}
-            if span["kind"] == "state":
-                # An unclosed span is only observed through the last scan. A
-                # stopped daemon must not accrue an entire night of active XP.
-                start = span["start"]
-                end = min(now, span["end"] if span["end"] is not None else session["lastSeen"])
-                while start < end:
-                    day = datetime.fromtimestamp(start).date()
-                    boundary = datetime.combine(day + timedelta(days=1), datetime.min.time()).timestamp()
-                    stop = min(end, boundary)
-                    facts.append(dict(base, ev="active" if span["label"] == "working" else "state",
-                                      state=span["label"], start=start, ts=stop, day=day.isoformat(),
-                                      activeMin=(stop - start) / 60 if span["label"] == "working" else 0))
-                    start = stop
-            elif span["kind"] == "ask":
-                answer = answers.get(span["id"])
-                interval = (span["sid"], span["start"])
-                if (answer is None and span["end"] is not None and interval not in answered_intervals
-                        and last_asks.get(interval) == span["id"]):
-                    fingerprint = hashlib.sha256(json.dumps([span["sid"], span["start"]]).encode()).hexdigest()
-                    if "resolved:" + fingerprint in resolved:
-                        answer = {"ts": span["end"], "waitedSec": span["end"] - span["start"]}
-                if answer is not None:
-                    facts.append(dict(base, ev="askResolved", ts=answer["ts"], day=_day(answer["ts"]),
-                                      waitedSec=answer["waitedSec"]))
-        snapshot = (sessions, facts)
+        hit = _READ_CACHE.get(key)
+        if hit is not None and 0 <= now - hit[0] < READ_TTL and now < hit[1]:
+            return marshal.loads(hit[2])
+        computed = compute()
+        if computed is None:
+            return None
+        result, until = computed
         if len(_READ_CACHE) >= 16:
             _READ_CACHE.pop(next(iter(_READ_CACHE)))
-        _READ_CACHE[key] = (now, snapshot)
-        return snapshot
+        _READ_CACHE[key] = (now, until, marshal.dumps(result))
+        return result
 
 
 def growth_json(home, now=None):
     now = time.time() if now is None else now
-    snapshot = None if os.environ.get("OFFICE_TIMELINE") == "0" else _snapshot(home, now)
-    return growth_from_events([row for row in snapshot[1] if row["ts"] <= now] if snapshot else [], _day(now))
+    today = _day(now)
+    result = None
+    if os.environ.get("OFFICE_TIMELINE") != "0":
+        def compute():
+            snapshot = _snapshot(home, now)
+            return snapshot and (growth_from_events(snapshot[1], today, snapshot[2]), snapshot[3])
+        result = _cached(("growth", str(Path(home).resolve()), today), now, compute)
+    return result if result is not None else growth_from_events([], today)
+
+
+def _near(day, delta):
+    try:
+        return (day + timedelta(days=delta)).isoformat()
+    except OverflowError:
+        return (date.min if delta < 0 else date.max).isoformat()
+
+
+def _digest_read(home, day, parsed, start, end, now):
+    """The rows of a digest and `until` (see `_snapshot`): None while unreadable."""
+    try:
+        with closing(_reader(home)) as db:
+            sessions = _sessions(db)
+            spans, stops, _, _ = _span_scan(db, sessions, now, (start, end))
+            # The window is [start, end) on the clock. Stored days are the local
+            # date when written, so allow any change of UTC offset (two days).
+            events = _event_facts(db, sessions, " WHERE e.day BETWEEN ? AND ? AND e.ts>=? AND e.ts<?"
+                                  " ORDER BY e.ts,e.id", (_near(parsed, -2), _near(parsed, 2), start, end)
+                                  ) if start < end else []
+            days = _event_days(db, end, parsed) + [iso for iso, stop in stops.items() if stop <= end]
+            observed = (day in stops or any(row["day"] == day for row in spans)
+                        or db.execute("SELECT 1 FROM events WHERE day=? LIMIT 1", (day,)).fetchone() is not None)
+            until = math.inf    # A day that is over ends at its midnight for any later `now`.
+            if end == now:
+                # The window [start, end) and the streak (ts <= end) end at `now`: a
+                # stored row at `end` joins once `now` passes it, a later one once
+                # `now` reaches it (an event of any ev or an answer).
+                first = min([_next_event_time(db, end, strict=False)]
+                            + [row["ts"] for row in spans if row["ev"] == "askResolved" and row["ts"] >= end])
+                until = max(first, math.nextafter(end, math.inf))
+    except (OSError, sqlite3.Error):
+        return None
+    return (sessions, events, spans, days, observed), until
+
+
+def _digest(day, parsed, since, start, end, read):
+    metadata, events, spans, days, observed = read or ({}, [], [], [], False)
+    # `spans` holds pieces already clipped to [start, end) and every askResolved.
+    facts = list(events) + [row for row in spans
+                            if row["ev"] != "askResolved" or start <= row["ts"] < end]
+    growth = growth_from_events(facts, day)
+    # Streak uses whole days/history, independently of the unread `since` view.
+    growth["streak15"] = _streak([row for row in spans if row["ts"] <= end], parsed, days)
+
+    def metrics(rows):
+        counts, tools, waits = _measure(rows)
+        return {**{key: round(value, 9) for key, value in counts.items()}, "tools": tools,
+                "waitingMin": round(sum((row["ts"] - row["start"]) / 60 for row in rows
+                                        if row.get("state") == "waiting"), 9),
+                "avgWaitSec": sum(waits) / len(waits) if waits else 0,
+                "medianWaitSec": median(waits) if waits else 0}
+
+    by_sid = {}
+    for row in facts:
+        by_sid.setdefault(row["sid"], []).append(row)
+    sessions = []
+    for sid in sorted(by_sid):
+        meta = metadata.get(sid, {})
+        sessions.append({"sid": sid, "vendor": meta.get("vendor", ""), "name": meta.get("name", ""),
+                         "projectId": _project(meta.get("projectId")), **metrics(by_sid[sid])})
+    totals = metrics(facts)
+    totals.update(xp=growth["office"]["xp"], level=growth["office"]["level"])
+    return {"day": day, "since": since, "sessions": sessions, "totals": totals,
+            "hires": totals["hires"], "streak15": growth["streak15"], "growth": growth,
+            "available": bool(read and observed)}
 
 
 def digest_json(home, day=None, since=None, now=None):
@@ -819,37 +1075,10 @@ def digest_json(home, day=None, since=None, now=None):
         raise ValueError("bad since")
     start = max(since, datetime.combine(parsed, datetime.min.time()).timestamp())
     end = min(now, datetime.combine(parsed + timedelta(days=1), datetime.min.time()).timestamp())
-    snapshot = None if os.environ.get("OFFICE_TIMELINE") == "0" else _snapshot(home, now)
-    metadata, all_facts = snapshot if snapshot else ({}, [])
-    facts = []
-    for row in all_facts:
-        if row.get("ev") in ("active", "state"):
-            left, right = max(start, row["start"]), min(end, row["ts"])
-            if left < right:
-                facts.append(dict(row, start=left, ts=right,
-                                  activeMin=(right - left) / 60 if row["ev"] == "active" else 0))
-        elif start <= row["ts"] < end:
-            facts.append(row)
-    growth = growth_from_events(facts, day)
-    # Streak uses whole days/history, independently of the unread `since` view.
-    growth["streak15"] = _streak([row for row in all_facts if row["ts"] <= end], parsed)
-
-    def metrics(rows):
-        counts, tools, waits = _measure(rows)
-        return {**{key: round(value, 9) for key, value in counts.items()}, "tools": tools,
-                "waitingMin": round(sum((row["ts"] - row["start"]) / 60 for row in rows
-                                        if row.get("state") == "waiting"), 9),
-                "avgWaitSec": sum(waits) / len(waits) if waits else 0,
-                "medianWaitSec": median(waits) if waits else 0}
-
-    sessions = []
-    for sid in sorted({row["sid"] for row in facts}):
-        meta = metadata.get(sid, {})
-        sessions.append({"sid": sid, "vendor": meta.get("vendor", ""), "name": meta.get("name", ""),
-                         "projectId": _project(meta.get("projectId")),
-                         **metrics([row for row in facts if row["sid"] == sid])})
-    totals = metrics(facts)
-    totals.update(xp=growth["office"]["xp"], level=growth["office"]["level"])
-    return {"day": day, "since": since, "sessions": sessions, "totals": totals,
-            "hires": totals["hires"], "streak15": growth["streak15"], "growth": growth,
-            "available": bool(snapshot and any(row.get("day") == day for row in all_facts))}
+    result = None
+    if os.environ.get("OFFICE_TIMELINE") != "0":
+        def compute():
+            found = _digest_read(home, day, parsed, start, end, now)
+            return found and (_digest(day, parsed, since, start, end, found[0]), found[1])
+        result = _cached(("digest", str(Path(home).resolve()), _day(now), day, since), now, compute)
+    return result if result is not None else _digest(day, parsed, since, start, end, None)

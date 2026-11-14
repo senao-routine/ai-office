@@ -1,0 +1,1626 @@
+[
+ {
+  "cmd": "npm test",
+  "segs": [
+   [
+    [
+     "npm",
+     false
+    ],
+    [
+     "test",
+     false
+    ]
+   ]
+  ],
+  "seps": [
+   ""
+  ],
+  "unsafe": false,
+  "and": false,
+  "semi": false,
+  "group": false
+ },
+ {
+  "cmd": "bash verify.sh",
+  "segs": [
+   [
+    [
+     "bash",
+     false
+    ],
+    [
+     "verify.sh",
+     false
+    ]
+   ]
+  ],
+  "seps": [
+   ""
+  ],
+  "unsafe": false,
+  "and": false,
+  "semi": false,
+  "group": false
+ },
+ {
+  "cmd": "bash verify.sh | tail -20",
+  "segs": [
+   [
+    [
+     "bash",
+     false
+    ],
+    [
+     "verify.sh",
+     false
+    ]
+   ],
+   [
+    [
+     "tail",
+     false
+    ],
+    [
+     "-20",
+     false
+    ]
+   ]
+  ],
+  "seps": [
+   "|",
+   ""
+  ],
+  "unsafe": false,
+  "and": false,
+  "semi": false,
+  "group": false
+ },
+ {
+  "cmd": "git commit -m 'x' && git push",
+  "segs": [
+   [
+    [
+     "git",
+     false
+    ],
+    [
+     "commit",
+     false
+    ],
+    [
+     "-m",
+     false
+    ],
+    [
+     "x",
+     true
+    ]
+   ],
+   [
+    [
+     "git",
+     false
+    ],
+    [
+     "push",
+     false
+    ]
+   ]
+  ],
+  "seps": [
+   "&&",
+   ""
+  ],
+  "unsafe": false,
+  "and": true,
+  "semi": false,
+  "group": false
+ },
+ {
+  "cmd": "git status || true",
+  "segs": [
+   [
+    [
+     "git",
+     false
+    ],
+    [
+     "status",
+     false
+    ]
+   ],
+   [
+    [
+     "true",
+     false
+    ]
+   ]
+  ],
+  "seps": [
+   "||",
+   ""
+  ],
+  "unsafe": true,
+  "and": false,
+  "semi": false,
+  "group": false
+ },
+ {
+  "cmd": "pytest; echo done",
+  "segs": [
+   [
+    [
+     "pytest",
+     false
+    ]
+   ],
+   [
+    [
+     "echo",
+     false
+    ],
+    [
+     "done",
+     false
+    ]
+   ]
+  ],
+  "seps": [
+   ";",
+   ""
+  ],
+  "unsafe": false,
+  "and": false,
+  "semi": true,
+  "group": false
+ },
+ {
+  "cmd": "sleep 5 &",
+  "segs": [
+   [
+    [
+     "sleep",
+     false
+    ],
+    [
+     "5",
+     false
+    ]
+   ]
+  ],
+  "seps": [
+   "&"
+  ],
+  "unsafe": true,
+  "and": false,
+  "semi": false,
+  "group": false
+ },
+ {
+  "cmd": "make 2>&1 | tee log",
+  "segs": [
+   [
+    [
+     "make",
+     false
+    ],
+    [
+     "2>&1",
+     false
+    ]
+   ],
+   [
+    [
+     "tee",
+     false
+    ],
+    [
+     "log",
+     false
+    ]
+   ]
+  ],
+  "seps": [
+   "|",
+   ""
+  ],
+  "unsafe": false,
+  "and": false,
+  "semi": false,
+  "group": false
+ },
+ {
+  "cmd": "echo $(date)",
+  "segs": [
+   [
+    [
+     "echo",
+     false
+    ],
+    [
+     "$(date)",
+     false
+    ]
+   ]
+  ],
+  "seps": [
+   ""
+  ],
+  "unsafe": true,
+  "and": false,
+  "semi": false,
+  "group": false
+ },
+ {
+  "cmd": "echo `date`",
+  "segs": [
+   [
+    [
+     "echo",
+     false
+    ],
+    [
+     "`date`",
+     false
+    ]
+   ]
+  ],
+  "seps": [
+   ""
+  ],
+  "unsafe": true,
+  "and": false,
+  "semi": false,
+  "group": false
+ },
+ {
+  "cmd": "TEST_CMD='npx vitest run' npm test",
+  "segs": [
+   [
+    [
+     "TEST_CMD=npx vitest run",
+     true
+    ],
+    [
+     "npm",
+     false
+    ],
+    [
+     "test",
+     false
+    ]
+   ]
+  ],
+  "seps": [
+   ""
+  ],
+  "unsafe": false,
+  "and": false,
+  "semi": false,
+  "group": false
+ },
+ {
+  "cmd": "FOO=1 BAR=\"a b\" pytest -q",
+  "segs": [
+   [
+    [
+     "FOO=1",
+     false
+    ],
+    [
+     "BAR=a b",
+     true
+    ],
+    [
+     "pytest",
+     false
+    ],
+    [
+     "-q",
+     false
+    ]
+   ]
+  ],
+  "seps": [
+   ""
+  ],
+  "unsafe": false,
+  "and": false,
+  "semi": false,
+  "group": false
+ },
+ {
+  "cmd": "cd /tmp && ls -la",
+  "segs": [
+   [
+    [
+     "cd",
+     false
+    ],
+    [
+     "/tmp",
+     false
+    ]
+   ],
+   [
+    [
+     "ls",
+     false
+    ],
+    [
+     "-la",
+     false
+    ]
+   ]
+  ],
+  "seps": [
+   "&&",
+   ""
+  ],
+  "unsafe": false,
+  "and": true,
+  "semi": false,
+  "group": false
+ },
+ {
+  "cmd": "( cd sub && make ) | tail",
+  "segs": [
+   [
+    [
+     "cd",
+     false
+    ],
+    [
+     "sub",
+     false
+    ]
+   ],
+   [
+    [
+     "make",
+     false
+    ]
+   ],
+   [
+    [
+     "tail",
+     false
+    ]
+   ]
+  ],
+  "seps": [
+   "&&",
+   "|",
+   ""
+  ],
+  "unsafe": false,
+  "and": true,
+  "semi": false,
+  "group": true
+ },
+ {
+  "cmd": "cat <<'EOF'\nhello\nEOF",
+  "segs": [
+   [
+    [
+     "cat",
+     false
+    ]
+   ]
+  ],
+  "seps": [
+   ";"
+  ],
+  "unsafe": false,
+  "and": false,
+  "semi": true,
+  "group": false
+ },
+ {
+  "cmd": "cat <<EOF\nline\\\nEOF\n",
+  "segs": [
+   [
+    [
+     "cat",
+     false
+    ]
+   ]
+  ],
+  "seps": [
+   ";"
+  ],
+  "unsafe": true,
+  "and": false,
+  "semi": true,
+  "group": false
+ },
+ {
+  "cmd": "cat <<-EOF\n\tbody\n\tEOF\necho after",
+  "segs": [
+   [
+    [
+     "cat",
+     false
+    ]
+   ],
+   [
+    [
+     "echo",
+     false
+    ],
+    [
+     "after",
+     false
+    ]
+   ]
+  ],
+  "seps": [
+   ";",
+   ""
+  ],
+  "unsafe": false,
+  "and": false,
+  "semi": true,
+  "group": false
+ },
+ {
+  "cmd": "cat <<EOF\nnever ends",
+  "segs": [
+   [
+    [
+     "cat",
+     false
+    ]
+   ]
+  ],
+  "seps": [
+   ";"
+  ],
+  "unsafe": true,
+  "and": false,
+  "semi": true,
+  "group": false
+ },
+ {
+  "cmd": "git commit -m \"$(cat <<'EOF'\nmsg body\n\nCo-Authored-By: x\nEOF\n)\"",
+  "segs": [
+   [
+    [
+     "git",
+     false
+    ],
+    [
+     "commit",
+     false
+    ],
+    [
+     "-m",
+     false
+    ],
+    [
+     "msg body\n\nCo-Authored-By: x",
+     true
+    ]
+   ]
+  ],
+  "seps": [
+   ""
+  ],
+  "unsafe": false,
+  "and": false,
+  "semi": false,
+  "group": false
+ },
+ {
+  "cmd": "grep x <<< \"$var\"",
+  "segs": [
+   [
+    [
+     "grep",
+     false
+    ],
+    [
+     "x",
+     false
+    ]
+   ]
+  ],
+  "seps": [
+   ""
+  ],
+  "unsafe": true,
+  "and": false,
+  "semi": false,
+  "group": false
+ },
+ {
+  "cmd": "diff <(ls a) <(ls b)",
+  "segs": [
+   [
+    [
+     "diff",
+     false
+    ]
+   ]
+  ],
+  "seps": [
+   ""
+  ],
+  "unsafe": true,
+  "and": false,
+  "semi": false,
+  "group": false
+ },
+ {
+  "cmd": "# only a comment",
+  "segs": [],
+  "seps": [],
+  "unsafe": false,
+  "and": false,
+  "semi": false,
+  "group": false
+ },
+ {
+  "cmd": "ls # trailing comment",
+  "segs": [
+   [
+    [
+     "ls",
+     false
+    ]
+   ]
+  ],
+  "seps": [
+   ""
+  ],
+  "unsafe": false,
+  "and": false,
+  "semi": false,
+  "group": false
+ },
+ {
+  "cmd": "echo 'a;b' ; echo \"c|d\"",
+  "segs": [
+   [
+    [
+     "echo",
+     false
+    ],
+    [
+     "a;b",
+     true
+    ]
+   ],
+   [
+    [
+     "echo",
+     false
+    ],
+    [
+     "c|d",
+     true
+    ]
+   ]
+  ],
+  "seps": [
+   ";",
+   ""
+  ],
+  "unsafe": false,
+  "and": false,
+  "semi": true,
+  "group": false
+ },
+ {
+  "cmd": "echo a\\ b",
+  "segs": [
+   [
+    [
+     "echo",
+     false
+    ],
+    [
+     "a b",
+     false
+    ]
+   ]
+  ],
+  "seps": [
+   ""
+  ],
+  "unsafe": false,
+  "and": false,
+  "semi": false,
+  "group": false
+ },
+ {
+  "cmd": "echo \"\"",
+  "segs": [
+   [
+    [
+     "echo",
+     false
+    ],
+    [
+     "",
+     true
+    ]
+   ]
+  ],
+  "seps": [
+   ""
+  ],
+  "unsafe": false,
+  "and": false,
+  "semi": false,
+  "group": false
+ },
+ {
+  "cmd": "echo ''",
+  "segs": [
+   [
+    [
+     "echo",
+     false
+    ],
+    [
+     "",
+     true
+    ]
+   ]
+  ],
+  "seps": [
+   ""
+  ],
+  "unsafe": false,
+  "and": false,
+  "semi": false,
+  "group": false
+ },
+ {
+  "cmd": "f() { echo x; }",
+  "segs": [
+   [
+    [
+     "f",
+     false
+    ],
+    [
+     "{",
+     false
+    ],
+    [
+     "echo",
+     false
+    ],
+    [
+     "x",
+     false
+    ]
+   ],
+   [
+    [
+     "}",
+     false
+    ]
+   ]
+  ],
+  "seps": [
+   ";",
+   ""
+  ],
+  "unsafe": true,
+  "and": false,
+  "semi": true,
+  "group": true
+ },
+ {
+  "cmd": "pytest() ( echo )",
+  "segs": [
+   [
+    [
+     "pytest",
+     false
+    ],
+    [
+     "echo",
+     false
+    ]
+   ]
+  ],
+  "seps": [
+   ""
+  ],
+  "unsafe": true,
+  "and": false,
+  "semi": false,
+  "group": true
+ },
+ {
+  "cmd": "rm -rf /tmp/x",
+  "segs": [
+   [
+    [
+     "rm",
+     false
+    ],
+    [
+     "-rf",
+     false
+    ],
+    [
+     "/tmp/x",
+     false
+    ]
+   ]
+  ],
+  "seps": [
+   ""
+  ],
+  "unsafe": false,
+  "and": false,
+  "semi": false,
+  "group": false
+ },
+ {
+  "cmd": "sudo rm -rf /",
+  "segs": [
+   [
+    [
+     "sudo",
+     false
+    ],
+    [
+     "rm",
+     false
+    ],
+    [
+     "-rf",
+     false
+    ],
+    [
+     "/",
+     false
+    ]
+   ]
+  ],
+  "seps": [
+   ""
+  ],
+  "unsafe": false,
+  "and": false,
+  "semi": false,
+  "group": false
+ },
+ {
+  "cmd": "git -C /repo push origin main",
+  "segs": [
+   [
+    [
+     "git",
+     false
+    ],
+    [
+     "-C",
+     false
+    ],
+    [
+     "/repo",
+     false
+    ],
+    [
+     "push",
+     false
+    ],
+    [
+     "origin",
+     false
+    ],
+    [
+     "main",
+     false
+    ]
+   ]
+  ],
+  "seps": [
+   ""
+  ],
+  "unsafe": false,
+  "and": false,
+  "semi": false,
+  "group": false
+ },
+ {
+  "cmd": "git push --force origin main",
+  "segs": [
+   [
+    [
+     "git",
+     false
+    ],
+    [
+     "push",
+     false
+    ],
+    [
+     "--force",
+     false
+    ],
+    [
+     "origin",
+     false
+    ],
+    [
+     "main",
+     false
+    ]
+   ]
+  ],
+  "seps": [
+   ""
+  ],
+  "unsafe": false,
+  "and": false,
+  "semi": false,
+  "group": false
+ },
+ {
+  "cmd": "curl -s https://example.com | sh",
+  "segs": [
+   [
+    [
+     "curl",
+     false
+    ],
+    [
+     "-s",
+     false
+    ],
+    [
+     "https://example.com",
+     false
+    ]
+   ],
+   [
+    [
+     "sh",
+     false
+    ]
+   ]
+  ],
+  "seps": [
+   "|",
+   ""
+  ],
+  "unsafe": false,
+  "and": false,
+  "semi": false,
+  "group": false
+ },
+ {
+  "cmd": "python3 - <<'PY'\nprint(1)\nPY",
+  "segs": [
+   [
+    [
+     "python3",
+     false
+    ],
+    [
+     "-",
+     false
+    ]
+   ]
+  ],
+  "seps": [
+   ";"
+  ],
+  "unsafe": false,
+  "and": false,
+  "semi": true,
+  "group": false
+ },
+ {
+  "cmd": "bash -c 'echo hi'",
+  "segs": [
+   [
+    [
+     "bash",
+     false
+    ],
+    [
+     "-c",
+     false
+    ],
+    [
+     "echo hi",
+     true
+    ]
+   ]
+  ],
+  "seps": [
+   ""
+  ],
+  "unsafe": false,
+  "and": false,
+  "semi": false,
+  "group": false
+ },
+ {
+  "cmd": "env -i PATH=/bin ls",
+  "segs": [
+   [
+    [
+     "env",
+     false
+    ],
+    [
+     "-i",
+     false
+    ],
+    [
+     "PATH=/bin",
+     false
+    ],
+    [
+     "ls",
+     false
+    ]
+   ]
+  ],
+  "seps": [
+   ""
+  ],
+  "unsafe": false,
+  "and": false,
+  "semi": false,
+  "group": false
+ },
+ {
+  "cmd": "echo a &&\necho b",
+  "segs": [
+   [
+    [
+     "echo",
+     false
+    ],
+    [
+     "a",
+     false
+    ]
+   ],
+   [
+    [
+     "echo",
+     false
+    ],
+    [
+     "b",
+     false
+    ]
+   ]
+  ],
+  "seps": [
+   "&&",
+   ""
+  ],
+  "unsafe": false,
+  "and": true,
+  "semi": true,
+  "group": false
+ },
+ {
+  "cmd": "echo a \\\n  b",
+  "segs": [
+   [
+    [
+     "echo",
+     false
+    ],
+    [
+     "a",
+     false
+    ],
+    [
+     "b",
+     false
+    ]
+   ]
+  ],
+  "seps": [
+   ""
+  ],
+  "unsafe": false,
+  "and": false,
+  "semi": false,
+  "group": false
+ },
+ {
+  "cmd": "ls > out.txt 2>&1",
+  "segs": [
+   [
+    [
+     "ls",
+     false
+    ],
+    [
+     ">",
+     false
+    ],
+    [
+     "out.txt",
+     false
+    ],
+    [
+     "2>&1",
+     false
+    ]
+   ]
+  ],
+  "seps": [
+   ""
+  ],
+  "unsafe": false,
+  "and": false,
+  "semi": false,
+  "group": false
+ },
+ {
+  "cmd": "cmd >&2",
+  "segs": [
+   [
+    [
+     "cmd",
+     false
+    ],
+    [
+     ">&2",
+     false
+    ]
+   ]
+  ],
+  "seps": [
+   ""
+  ],
+  "unsafe": false,
+  "and": false,
+  "semi": false,
+  "group": false
+ },
+ {
+  "cmd": "exec 3<&0",
+  "segs": [
+   [
+    [
+     "exec",
+     false
+    ],
+    [
+     "3<&0",
+     false
+    ]
+   ]
+  ],
+  "seps": [
+   ""
+  ],
+  "unsafe": false,
+  "and": false,
+  "semi": false,
+  "group": false
+ },
+ {
+  "cmd": "a && b || c",
+  "segs": [
+   [
+    [
+     "a",
+     false
+    ]
+   ],
+   [
+    [
+     "b",
+     false
+    ]
+   ],
+   [
+    [
+     "c",
+     false
+    ]
+   ]
+  ],
+  "seps": [
+   "&&",
+   "||",
+   ""
+  ],
+  "unsafe": true,
+  "and": true,
+  "semi": false,
+  "group": false
+ },
+ {
+  "cmd": "a | b | c",
+  "segs": [
+   [
+    [
+     "a",
+     false
+    ]
+   ],
+   [
+    [
+     "b",
+     false
+    ]
+   ],
+   [
+    [
+     "c",
+     false
+    ]
+   ]
+  ],
+  "seps": [
+   "|",
+   "|",
+   ""
+  ],
+  "unsafe": false,
+  "and": false,
+  "semi": false,
+  "group": false
+ },
+ {
+  "cmd": "a; b; c",
+  "segs": [
+   [
+    [
+     "a",
+     false
+    ]
+   ],
+   [
+    [
+     "b",
+     false
+    ]
+   ],
+   [
+    [
+     "c",
+     false
+    ]
+   ]
+  ],
+  "seps": [
+   ";",
+   ";",
+   ""
+  ],
+  "unsafe": false,
+  "and": false,
+  "semi": true,
+  "group": false
+ },
+ {
+  "cmd": "a\nb\nc",
+  "segs": [
+   [
+    [
+     "a",
+     false
+    ]
+   ],
+   [
+    [
+     "b",
+     false
+    ]
+   ],
+   [
+    [
+     "c",
+     false
+    ]
+   ]
+  ],
+  "seps": [
+   ";",
+   ";",
+   ""
+  ],
+  "unsafe": false,
+  "and": false,
+  "semi": true,
+  "group": false
+ },
+ {
+  "cmd": "echo \"$(whoami)\"",
+  "segs": [
+   [
+    [
+     "echo",
+     false
+    ],
+    [
+     "$(whoami)",
+     true
+    ]
+   ]
+  ],
+  "seps": [
+   ""
+  ],
+  "unsafe": true,
+  "and": false,
+  "semi": false,
+  "group": false
+ },
+ {
+  "cmd": "echo \"`id`\"",
+  "segs": [
+   [
+    [
+     "echo",
+     false
+    ],
+    [
+     "`id`",
+     true
+    ]
+   ]
+  ],
+  "seps": [
+   ""
+  ],
+  "unsafe": true,
+  "and": false,
+  "semi": false,
+  "group": false
+ },
+ {
+  "cmd": "echo '$(not)'",
+  "segs": [
+   [
+    [
+     "echo",
+     false
+    ],
+    [
+     "$(not)",
+     true
+    ]
+   ]
+  ],
+  "seps": [
+   ""
+  ],
+  "unsafe": false,
+  "and": false,
+  "semi": false,
+  "group": false
+ },
+ {
+  "cmd": "x=$(cmd) && echo $x",
+  "segs": [
+   [
+    [
+     "x=$(cmd)",
+     false
+    ]
+   ],
+   [
+    [
+     "echo",
+     false
+    ],
+    [
+     "$x",
+     false
+    ]
+   ]
+  ],
+  "seps": [
+   "&&",
+   ""
+  ],
+  "unsafe": true,
+  "and": true,
+  "semi": false,
+  "group": false
+ },
+ {
+  "cmd": "cat <<$'EOF'\nx\nEOF",
+  "segs": [
+   [
+    [
+     "cat",
+     false
+    ]
+   ]
+  ],
+  "seps": [
+   ""
+  ],
+  "unsafe": true,
+  "and": false,
+  "semi": false,
+  "group": false
+ },
+ {
+  "cmd": "cat <<\"E O\"\nx\nE O",
+  "segs": [
+   [
+    [
+     "cat",
+     false
+    ]
+   ]
+  ],
+  "seps": [
+   ";"
+  ],
+  "unsafe": false,
+  "and": false,
+  "semi": true,
+  "group": false
+ },
+ {
+  "cmd": "cat << 'END' ; echo x\nbody\nEND",
+  "segs": [
+   [
+    [
+     "cat",
+     false
+    ]
+   ],
+   [
+    [
+     "echo",
+     false
+    ],
+    [
+     "x",
+     false
+    ]
+   ]
+  ],
+  "seps": [
+   ";",
+   ";"
+  ],
+  "unsafe": false,
+  "and": false,
+  "semi": true,
+  "group": false
+ },
+ {
+  "cmd": "npm run build -- --watch",
+  "segs": [
+   [
+    [
+     "npm",
+     false
+    ],
+    [
+     "run",
+     false
+    ],
+    [
+     "build",
+     false
+    ],
+    [
+     "--",
+     false
+    ],
+    [
+     "--watch",
+     false
+    ]
+   ]
+  ],
+  "seps": [
+   ""
+  ],
+  "unsafe": false,
+  "and": false,
+  "semi": false,
+  "group": false
+ },
+ {
+  "cmd": "node --test tests/",
+  "segs": [
+   [
+    [
+     "node",
+     false
+    ],
+    [
+     "--test",
+     false
+    ],
+    [
+     "tests/",
+     false
+    ]
+   ]
+  ],
+  "seps": [
+   ""
+  ],
+  "unsafe": false,
+  "and": false,
+  "semi": false,
+  "group": false
+ },
+ {
+  "cmd": "git log --oneline -5",
+  "segs": [
+   [
+    [
+     "git",
+     false
+    ],
+    [
+     "log",
+     false
+    ],
+    [
+     "--oneline",
+     false
+    ],
+    [
+     "-5",
+     false
+    ]
+   ]
+  ],
+  "seps": [
+   ""
+  ],
+  "unsafe": false,
+  "and": false,
+  "semi": false,
+  "group": false
+ },
+ {
+  "cmd": "git add -A && git commit -m \"a && b\"",
+  "segs": [
+   [
+    [
+     "git",
+     false
+    ],
+    [
+     "add",
+     false
+    ],
+    [
+     "-A",
+     false
+    ]
+   ],
+   [
+    [
+     "git",
+     false
+    ],
+    [
+     "commit",
+     false
+    ],
+    [
+     "-m",
+     false
+    ],
+    [
+     "a && b",
+     true
+    ]
+   ]
+  ],
+  "seps": [
+   "&&",
+   ""
+  ],
+  "unsafe": false,
+  "and": true,
+  "semi": false,
+  "group": false
+ },
+ {
+  "cmd": "echo 'unterminated",
+  "segs": [
+   [
+    [
+     "echo",
+     false
+    ],
+    [
+     "unterminated",
+     true
+    ]
+   ]
+  ],
+  "seps": [
+   ""
+  ],
+  "unsafe": false,
+  "and": false,
+  "semi": false,
+  "group": false
+ },
+ {
+  "cmd": "echo \"unterminated",
+  "segs": [
+   [
+    [
+     "echo",
+     false
+    ],
+    [
+     "unterminated",
+     true
+    ]
+   ]
+  ],
+  "seps": [
+   ""
+  ],
+  "unsafe": false,
+  "and": false,
+  "semi": false,
+  "group": false
+ },
+ {
+  "cmd": "(ls)",
+  "segs": [
+   [
+    [
+     "ls",
+     false
+    ]
+   ]
+  ],
+  "seps": [
+   ""
+  ],
+  "unsafe": false,
+  "and": false,
+  "semi": false,
+  "group": true
+ },
+ {
+  "cmd": "{ ls; }",
+  "segs": [
+   [
+    [
+     "{",
+     false
+    ],
+    [
+     "ls",
+     false
+    ]
+   ],
+   [
+    [
+     "}",
+     false
+    ]
+   ]
+  ],
+  "seps": [
+   ";",
+   ""
+  ],
+  "unsafe": false,
+  "and": false,
+  "semi": true,
+  "group": false
+ }
+]

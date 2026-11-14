@@ -46,6 +46,30 @@ export function localHour() {
   return date.getHours() + date.getMinutes() / 60 + date.getSeconds() / 3600;
 }
 
+/** 部屋の窓と壁の光。境界は地域の 6/12/17/20 時（時刻を読まない純関数）。 */
+export function lightStageForHour(hour) {
+  if (!Number.isFinite(hour)) return "day";
+  if (hour >= 6 && hour < 12) return "morning";
+  if (hour >= 12 && hour < 17) return "day";
+  if (hour >= 17 && hour < 20) return "evening";
+  return "night";
+}
+
+/** 部屋の光の段＝iso と同じ localHour()（?hour が優先・固定ページは昼の 11 時）。
+ *  ?t は「起動からの経過秒」＝Unix 秒ではない（地域の時刻に直すと golden が端末の時間帯で変わった・検収で修正）。 */
+export function roomLightStage() {
+  return lightStageForHour(localHour());
+}
+
+/** 停止・視差効果を減らす・再生の間は直前の段を保つ（描画の t=0 で固定時刻を失わない）。 */
+export function createRoomLighting(readStage = roomLightStage) {
+  let stage = readStage();
+  return (still = false) => {
+    if (!still) stage = readStage();
+    return stage;
+  };
+}
+
 const started = typeof performance !== "undefined" ? performance.now() : 0;
 const SEED = Number.isFinite(seedParam) ? seedParam >>> 0 : 0x9e3779b9;
 

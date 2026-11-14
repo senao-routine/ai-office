@@ -19,6 +19,7 @@
 - 監査: 全アクションを ~/.claude/office_actions_audit.jsonl（0600）へ追記＋macOS通知
   （NOTIFY フックは office_server が注入）。
 """
+import fcntl
 import json
 import os
 import re
@@ -28,15 +29,41 @@ import threading
 import time
 from pathlib import Path
 
-_HOME = Path(os.environ.get("OFFICE_HOME", str(Path.home())))
-RECIPES_FILE = _HOME / ".claude" / "office_recipes.json"
-AUDIT_FILE = _HOME / ".claude" / "office_actions_audit.jsonl"
+# R100-0: 置き場所は**呼び出しのたびに** OFFICE_HOME から決める（以前は import 時の定数）。
+# unittest の discover は全モジュールを先に import する＝別のテストが OFFICE_HOME を置く前に import すると
+# 実 HOME で固まり、テストの監査・結果が本物の ~/.claude へ書かれた（2026-09-29 に実 HOME の監査ログを失った）。
+# 外からは今までどおり `office_actions.RECIPES_FILE` 等で読める（下の __getattr__）。
+
+
+def _home():
+    return Path(os.environ.get("OFFICE_HOME") or str(Path.home()))
+
+
+def recipes_file():
+    return _home() / ".claude" / "office_recipes.json"
+
+
+def audit_file():
+    return _home() / ".claude" / "office_actions_audit.jsonl"
+
+
 # R92: 実行結果の共有置き場（0600）。**別プロセスが読む唯一の経路**。
 # relay_agent は自分のプロセスで office_json() を組み立てるので（relay_agent.py の
 # push_status 等）、実行者＝daemon のメモリ上のレジストリは relay 側から永久に空に見え、
-# スマホには ⏳ のまま結果が1件も届かなかった（実バグ）。レシピが RECIPES_FILE 経由で
+# スマホには ⏳ のまま結果が1件も届かなかった（実バグ）。レシピが recipes_file() 経由で
 # 両プロセスに見えているのと同じ流儀で、結果もファイルに落とす。
-RESULTS_FILE = _HOME / ".claude" / "office_action_results.json"
+def results_file():
+    return _home() / ".claude" / "office_action_results.json"
+
+
+_PATHS = {"RECIPES_FILE": recipes_file, "AUDIT_FILE": audit_file, "RESULTS_FILE": results_file}
+
+
+def __getattr__(name):
+    if name in _PATHS:
+        return _PATHS[name]()
+    raise AttributeError(name)
+
 
 ID_RE = re.compile(r"^[a-z0-9_]{1,32}$")
 REQID_RE = re.compile(r"^[A-Za-z0-9-]{8,40}$")
@@ -126,7 +153,7 @@ def validate_recipes(obj):
 def load_recipes():
     """(recipes, errors)。ファイル無し=空（既定でレシピゼロ＝実行できるものが無い、が正）。"""
     try:
-        raw = json.loads(RECIPES_FILE.read_text(encoding="utf-8"))
+        raw = json.loads(recipes_file().read_text(encoding="utf-8"))
     except FileNotFoundError:
         return [], []
     except (OSError, json.JSONDecodeError) as e:
@@ -136,12 +163,12 @@ def load_recipes():
 
 def save_recipes(recipes):
     """検証済み recipes を原子保存（0600）。呼び出し側は validate_recipes を通してから渡す。"""
-    RECIPES_FILE.parent.mkdir(parents=True, exist_ok=True)
-    tmp = RECIPES_FILE.with_name(RECIPES_FILE.name + ".tmp")
+    recipes_file().parent.mkdir(parents=True, exist_ok=True)
+    tmp = recipes_file().with_name(recipes_file().name + ".tmp")
     tmp.write_text(json.dumps({"v": 1, "recipes": recipes}, ensure_ascii=False, indent=1),
                    encoding="utf-8")
     os.chmod(tmp, 0o600)
-    tmp.replace(RECIPES_FILE)
+    tmp.replace(recipes_file())
 
 
 # ── act封筒の text 解析 ───────────────────────────────────────────────────
@@ -222,12 +249,31 @@ def scrub_output(text, limit=OUTPUT_LIMIT):
 
 
 # ── 実行レジストリ ─────────────────────────────────────────────────────────
+AUDIT_ROTATE = 5 * 1024 * 1024   # R100-0: 5MB で 1 世代だけ回す（.1）＝無限に太らない
+
+
 def _audit(record):
+    # R100-0: 作ってから chmod すると、作成から chmod までの間 0644（umask 次第）で読める窓がある
+    # ＝最初から 0600 で開く（os.open）。既存ファイルの権限もついでに締める。
+    # 回すのと追記は隣の .lock の flock で直列化する（daemon の複数スレッドが同時に回すと、先に回した
+    # 5MB 分の世代を後の方が上書きして消した＝R100-0 のレビュー）。
+    path = audit_file()
     try:
-        AUDIT_FILE.parent.mkdir(parents=True, exist_ok=True)
-        with open(AUDIT_FILE, "a", encoding="utf-8") as f:
-            f.write(json.dumps(record, ensure_ascii=False) + "\n")
-        os.chmod(AUDIT_FILE, 0o600)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        lk = os.open(str(path.with_name(path.name + ".lock")), os.O_WRONLY | os.O_CREAT, 0o600)
+        try:
+            fcntl.flock(lk, fcntl.LOCK_EX)
+            try:
+                if path.stat().st_size > AUDIT_ROTATE:
+                    os.replace(path, path.with_name(path.name + ".1"))
+            except FileNotFoundError:
+                pass
+            fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+            with os.fdopen(fd, "a", encoding="utf-8") as f:
+                f.write(json.dumps(record, ensure_ascii=False) + "\n")
+            os.chmod(path, 0o600)
+        finally:
+            os.close(lk)                 # 閉じれば flock も外れる
     except OSError:
         pass                     # 監査はベストエフォート（実行の本流を殺さない）
 
@@ -280,7 +326,7 @@ def _normalize_public(r):
 
 
 def _persist_locked():
-    """レジストリを RESULTS_FILE へ写す（_LOCK を持ったまま呼ぶ）。
+    """レジストリを results_file() へ写す（_LOCK を持ったまま呼ぶ）。
 
     実行者は1プロセス（daemon）だけなので、丸ごと書き直す os.replace で足りる
     （プロセス間の read-modify-write をしない＝flock を持ち込まない）。
@@ -291,12 +337,12 @@ def _persist_locked():
     """
     try:
         rows = [_public_record(_ACTIONS[r]) for r in reversed(_ORDER)][:RESULT_KEEP]
-        RESULTS_FILE.parent.mkdir(parents=True, exist_ok=True)
-        tmp = RESULTS_FILE.with_name(RESULTS_FILE.name + ".tmp")
+        results_file().parent.mkdir(parents=True, exist_ok=True)
+        tmp = results_file().with_name(results_file().name + ".tmp")
         fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump({"v": 1, "results": rows}, f, ensure_ascii=False)
-        os.replace(tmp, RESULTS_FILE)
+        os.replace(tmp, results_file())
     except (OSError, UnicodeError, TypeError, ValueError):
         pass
 
@@ -307,7 +353,7 @@ _FILE_CACHE = {"key": None, "rows": []}
 def _read_results_file():
     """他プロセスが書いた結果（mtime+size が同じ間は読み直さない）。"""
     try:
-        st = RESULTS_FILE.stat()
+        st = results_file().stat()
     except OSError:
         return []
     key = (st.st_mtime_ns, st.st_size)
@@ -315,7 +361,7 @@ def _read_results_file():
         return _FILE_CACHE["rows"]
     rows = []
     try:
-        obj = json.loads(RESULTS_FILE.read_text(encoding="utf-8"))
+        obj = json.loads(results_file().read_text(encoding="utf-8"))
         raw = obj.get("results") if isinstance(obj, dict) else None
         for item in (raw if isinstance(raw, list) else [])[:RESULT_KEEP]:
             rec = _normalize_public(item)
@@ -336,21 +382,34 @@ def _notify(title, body):
             pass
 
 
-def _confirm_dangerous(label):
-    """Macの前での物理確認。既定=キャンセル・10秒タイムアウト＝無人なら必ず拒否。"""
+def _dialog_text(s, n):
+    return str(s).replace("\\", "").replace('"', "'")[:n]
+
+
+def _confirm_local(message, ok_label, wait=10):
+    """Macの前での物理確認。既定=キャンセル・wait 秒（既定 10 秒）で閉じる＝無人なら必ず拒否。
+    R100-0: 危険操作の実行（_confirm_dangerous）とスマホの登録（/api/pair/new）で共有する。
+    OFFICE_FAKE_CONFIRM（ok / それ以外）はテストの注入口。"""
     fake = os.environ.get("OFFICE_FAKE_CONFIRM")
     if fake is not None:
         return fake == "ok"
-    script = ('display dialog "📲 スマホから危険操作の実行要求:\\n{}" '
-              'buttons {{"キャンセル", "実行"}} default button "キャンセル" '
-              'giving up after 10').format(str(label).replace("\\", "").replace('"', "'")[:80])
+    # 改行は AppleScript の文字列の改行記法（バックスラッシュ n）に。本文のバックスラッシュと " は落とす＝文字列から抜け出せない
+    body = "\\n".join(_dialog_text(line, 120) for line in str(message).split("\n")[:4])
+    wait = int(wait) if isinstance(wait, int) and 5 <= wait <= 120 else 10
+    script = ('display dialog "{}" buttons {{"キャンセル", "{}"}} default button "キャンセル" '
+              'giving up after {}').format(body, _dialog_text(ok_label, 20), wait)
     try:
         r = subprocess.run(["osascript", "-e", script],
-                           capture_output=True, text=True, timeout=20)
-        return r.returncode == 0 and "実行" in (r.stdout or "") \
-            and "gave up:true" not in (r.stdout or "")
+                           capture_output=True, text=True, timeout=wait + 10)
+        out = r.stdout or ""
+        return r.returncode == 0 and f"button returned:{_dialog_text(ok_label, 20)}" in out \
+            and "gave up:true" not in out
     except (OSError, subprocess.TimeoutExpired):
         return False
+
+
+def _confirm_dangerous(label):
+    return _confirm_local("📲 スマホから危険操作の実行要求:\n" + _dialog_text(label, 80).replace("\n", " "), "実行")
 
 
 def admit(recipe_id, running):
@@ -580,7 +639,7 @@ def kill_running(reason="shutdown"):
 def results_public(limit=8):
     """office_json に載せる公開ビュー（新しい順）。output はここでも scrub（二重適用の掟）。
 
-    R92: **メモリだけでなく RESULTS_FILE も合流する**。実行者（daemon）と中継配達員
+    R92: **メモリだけでなく results_file() も合流する**。実行者（daemon）と中継配達員
     （relay_agent）は別プロセスなので、メモリだけを見ると relay 側は常に空＝スマホに
     結果が届かなかった。自分が実行した分（メモリ）が正・他プロセス分はファイルから。
     """

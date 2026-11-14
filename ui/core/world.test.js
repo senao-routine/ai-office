@@ -195,9 +195,10 @@ test("buildWorld: roster[] が無ければ employees[] から作る（後方互�
   assert.equal(w.agents[0].crew, 1);
 });
 
-test("vendorOf: 4 語に正規化・未搬送は external で決める（R98）", () => {
+test("vendorOf: 5 語に正規化・未搬送は external で決める（R98・R128）", () => {
   assert.equal(vendorOf({ vendor: "Codex" }), "codex");
   assert.equal(vendorOf({ vendor: "OpenClaw" }), "openclaw");
+  assert.equal(vendorOf({ vendor: "Bot", external: { provider: "openclaw" } }), "bot");
   assert.equal(vendorOf({ vendor: "gemini" }), "other");
   assert.equal(vendorOf({}), "claude");
   assert.equal(vendorOf({ external: { site: "mini" } }), "openclaw");
@@ -210,6 +211,11 @@ test("vendorOf: 4 語に正規化・未搬送は external で決める（R98）"
   // buildWorld の agent も持つ（リプレイの世界でベンダーが消えない）
   const w = buildWorld({ employees: [{ session: "s1", dept: "a", vendor: "codex" }] });
   assert.equal(w.agents[0].vendor, "codex");
+  for (const avatarMode of ["session", "project"]) {
+    const bot = { session: "bot-watch", projectId: "watch", vendor: "bot", state: "waiting" };
+    const office = buildWorld({ avatarMode, employees: [bot], projects: [bot] });
+    assert.equal(office.agents[0].vendor, "bot", `${avatarMode} の Bot が消える`);
+  }
 });
 
 test("buildWorld: evidence は {kind, ago} だけ・無ければ null（R98）", () => {

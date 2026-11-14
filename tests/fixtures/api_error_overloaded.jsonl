@@ -1,0 +1,2 @@
+{"type": "user", "message": {"role": "user", "content": "直して"}, "cwd": "/Users/test/demo-project", "gitBranch": "main"}
+{"type": "assistant", "isApiErrorMessage": true, "message": {"role": "assistant", "model": "<synthetic>", "content": [{"type": "text", "text": "API Error: 529 {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"}}"}]}, "cwd": "/Users/test/demo-project", "gitBranch": "main"}

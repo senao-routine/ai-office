@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { archetypeFor, SHELL_COLORS } from "./archetype.js";
+import { ARCHETYPE_RULES, archetypeFor, roomArchetype, SHELL_COLORS } from "./archetype.js";
 
 test("キーワードで職業が決まる（名前/role/deptのどれでも）", () => {
   assert.equal(archetypeFor({ name: "動画編集ライン" }).kind, "video");
@@ -56,4 +56,31 @@ test("R91: 殻の色は職業判定と直交する（帽子は帽子のまま・
     assert.match(v.swatch, /^#[0-9a-f]{6}$/, name);
     assert.equal(v.tint.length, 3, name);
   }
+});
+
+
+test("roomArchetype（R110-S2）: name/role/dept → projectName と cwd の末尾のフォルダ名 → work.now[0] の順・該当なしは generic", () => {
+  // 1 段目（3D と同じ文字列）が勝つ
+  assert.equal(roomArchetype({ name: "動画編集部", projectName: "ブログ", cwd: "/w/blog" }), "video");
+  assert.equal(roomArchetype({ role: "記事制作", name: "x" }), "writer");
+  // 2 段目: projectName・cwd の末尾だけ（親のフォルダ名でユーザー名や develop を拾わない）
+  assert.equal(roomArchetype({ name: "x", projectName: "リサーチ室" }), "research");
+  assert.equal(roomArchetype({ name: "x", cwd: "/Users/someone/work/video-cut" }), "video");
+  assert.equal(roomArchetype({ name: "x", cwd: "/Users/dev/blog/zzz/" }), "generic", "親のフォルダ名（dev・blog）で決めた");
+  assert.equal(roomArchetype({ name: "x", projectKey: "cwd:/Users/a/podcast-studio" }), "audio", "cwd が無いときは projectKey の cwd:");
+  assert.equal(roomArchetype({ name: "x", projectKey: "id:podcast" }), "generic", "cwd でない projectKey を読んだ");
+  // 3 段目: いまの作業の 1 行目
+  assert.equal(roomArchetype({ name: "x", work: { now: ["サムネの差し替え", "ブログ"] } }), "design");
+  assert.equal(roomArchetype({ name: "x", work: { now: [] } }), "generic");
+  // 前の段で当たれば後ろは見ない（同じ段の中は ARCHETYPE_RULES の先勝ち＝3D と同じ順）
+  assert.equal(roomArchetype({ name: "経費申請bot", work: { now: ["動画"] } }), "ops");
+  assert.equal(roomArchetype({ name: "ブログ自動化" }), "writer", "writer が ops より先勝ち（3D と同じ順）");
+  for (const kind of ARCHETYPE_RULES.map(([k]) => k)) assert.ok(typeof kind === "string");
+  // 該当なし・壊れた入力は generic（嘘の帽子を被せない）・カスタマイズの arch は読まない
+  for (const a of [null, undefined, 3, {}, { name: "こんにちは" }, { name: 5, cwd: 7, work: { now: [9] } }]) {
+    assert.equal(roomArchetype(a), "generic", JSON.stringify(a));
+  }
+  assert.equal(roomArchetype({ name: "こんにちは", arch: "beret" }), "generic");
+  // 3D（archetypeFor）とは独立（同じ名前なら同じ職業・cwd では 3D は変わらない）
+  assert.equal(archetypeFor({ name: "x", cwd: "/w/video-cut" }).kind, "generic");
 });

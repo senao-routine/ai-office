@@ -12,8 +12,9 @@ import { INSTANCE, PALETTE, ROOM, shellOf } from "./px/palette.js";
 import { CLAUDE } from "./px/claude.js";
 import { CODEX } from "./px/codex.js";
 import { OPENCLAW } from "./px/openclaw.js";
+import { BOT } from "./px/bot.js";
 
-const SHEETS = { claude: CLAUDE, codex: CODEX, openclaw: OPENCLAW };
+const SHEETS = { claude: CLAUDE, codex: CODEX, openclaw: OPENCLAW, bot: BOT };
 
 /** 個体色: プロジェクト id から決める（同じプロジェクトはいつも同じ色・乱数を使わない）。 */
 function tintFor(key) {

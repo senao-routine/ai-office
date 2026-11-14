@@ -27,7 +27,7 @@ fi
 if [ -z "$OFFICE_PY" ]; then
   for OFFICE_PY_CAND in /usr/bin/python3 "$(command -v python3 2>/dev/null || true)"; do
     [ -n "$OFFICE_PY_CAND" ] && [ -x "$OFFICE_PY_CAND" ] || continue
-    "$OFFICE_PY_CAND" -c 'import json,sys' >/dev/null 2>&1 || continue
+    "$OFFICE_PY_CAND" -I -c 'import json,sys' >/dev/null 2>&1 || continue
     OFFICE_PY="$OFFICE_PY_CAND"
     mkdir -p "${OFFICE_PY_CACHE%/*}" 2>/dev/null || true
     printf '%s' "$OFFICE_PY" 2>/dev/null > "$OFFICE_PY_CACHE" || true
@@ -47,7 +47,7 @@ INPUT="$(cat 2>/dev/null)"
 # 渡すとheredocに上書きされて届かない（実測1敗）。payloadは環境変数で渡す。
 LINE=""
 if [ -n "$OFFICE_PY" ]; then
-LINE="$(SL_JSON="$INPUT" OFFICE_HOME="$H" "$OFFICE_PY" - 2>/dev/null <<'PYEOF'
+LINE="$(SL_JSON="$INPUT" OFFICE_HOME="$H" "$OFFICE_PY" -I - 2>/dev/null <<'PYEOF'
 import json
 import os
 import time

@@ -19,11 +19,11 @@ import { init as initGrowth } from "/ui/hud/growth.js";
 import { init as initHire } from "/ui/hud/hire.js";
 import { init as initFirstRun } from "/ui/hud/firstrun.js";
 import { applyStaticStrings, el, initHelp, initUsage } from "/ui/hud/shell.js";
-import { attnKeyFor, boardFromWorld, departmentBoard, renderChrome, renderHistory } from "/ui/hud/board.js";
+import { attnKeyFor, boardFromWorld, departmentBoard, mutedSessions, renderChrome, renderHistory } from "/ui/hud/board.js";
 import { init as initSession } from "/ui/hud/session.js";
 import { T, lang, setLang } from "/ui/hud/strings.js";
 import { applyPixelStrings, template } from "./shell.js";
-import { init as initTable } from "./table.js";
+import { init as initTable } from "/ui/hud/table.js";
 import { init as initStrip } from "./strip.js";
 
 export const STYLE = STYLES.PIXEL;
@@ -109,6 +109,7 @@ export async function mount(root) {
   const apply = (office) => {
     world = office;
     built = buildWorld(office);
+    built.muted = mutedSessions(office);   // R128 #4: 消音の Bot（画面の通知＝tray で鳴らさない）
     arrivals.update(office);
     if (built.lang !== lang()) { setLang(built.lang); strings(); }
     session.markData();

@@ -3,12 +3,15 @@ import { getDigest, getTimeline, postSeen } from "/ui/platform/api.js";
 import { absenceDays, epochNow, frozen, localDayStart, now } from "/ui/platform/clock.js";
 import { recordWebM, webmType } from "/ui/platform/webm.js";
 import { inertOthers } from "/ui/hud/layers.js";
+import { optional } from "/ui/hud/shell.js";
 
 /** Unread summary and a separate, disposable playback world. Live polling stays live. */
 export function init({ shell, T, getWorld, tray, showToast, beforeOpen, restore, canvas,
   enabled = true, DEMO = false, host = null, replay: replayEnabled = true }) {
   // Structural golden guard: not even listeners, timers, requests or hidden UI are installed.
   if (frozen || DEMO || !enabled) return { update() {}, frame: () => null, canRecord: () => false, close() {}, dispose() {} };
+  const loginSlot = optional(shell, "#cp-login-slot");
+  const cockpit = Boolean(loginSlot);
   const el = (tag, cls, text) => {
     const node = document.createElement(tag);
     node.className = cls;
@@ -35,7 +38,7 @@ export function init({ shell, T, getWorld, tray, showToast, beforeOpen, restore,
   const pause = el("button", "replay-pause"); pause.id = "replay-pause";
   const exit = el("button", "digest-close", "✕");
   controls.append(progress, pause, exit);
-  shell.querySelector(".main").append(strip);
+  (loginSlot || shell.querySelector(".main")).append(strip);
   stage.append(card, controls);
 
   let disposed = false, started = false, pendingAuto = false, busy = false;
@@ -45,6 +48,7 @@ export function init({ shell, T, getWorld, tray, showToast, beforeOpen, restore,
   let lastRefresh = -Infinity;
   let seenRequest = null;
   let recording = null, saving = false;
+  let loginUntil = 0, loginTimer = null;
   let releaseInert = null;
   const isPresent = () => !document.hidden && document.hasFocus();
   const formatAway = (seconds) => {
@@ -91,9 +95,15 @@ export function init({ shell, T, getWorld, tray, showToast, beforeOpen, restore,
   };
   const paint = () => {
     const present = Boolean(summary);
-    strip.hidden = !present || Boolean(replay);
-    strip.disabled = !summary?.hasActivity;
-    if (present) strip.textContent = T("digest_strip", summary.since > 0
+    strip.hidden = !present || Boolean(replay)
+      || (cockpit && (summary.away < 15 * 60 || now() >= loginUntil));
+    strip.disabled = !cockpit && !summary?.hasActivity;
+    if (present && cockpit) {
+      const lastLogin = new Date(summary.since * 1000).toLocaleTimeString(
+        getWorld()?.lang === "en" ? "en-US" : "ja-JP", { hour: "2-digit", minute: "2-digit", hour12: false });
+      strip.textContent = T("cp_digest_strip", lastLogin, formatAway(summary.away), summary.completed, summary.stopped);
+      strip.setAttribute("aria-label", T("cp_login_dismiss"));
+    } else if (present) strip.textContent = T("digest_strip", summary.since > 0
       ? formatAway(summary.away) : T("digest_today"), summary.stopped, summary.completed, summary.working);
     if (card.hidden || !summary) return;
     title.textContent = T(summary.away > 90 * 86400 ? "digest_retained" : "digest_title");
@@ -149,7 +159,12 @@ export function init({ shell, T, getWorld, tray, showToast, beforeOpen, restore,
         totals: { ...result.totals,
           tasksDone: [result, ...earlier].reduce((sum, day) => sum + day.totals?.tasksDone, 0) } };
       summary = digestSummary(getWorld(), data, at);
-      pendingAuto = Boolean(summary?.autoOpen);
+      pendingAuto = !cockpit && Boolean(summary?.autoOpen);
+      if (cockpit && summary?.away >= 15 * 60) {
+        loginUntil = now() + 15;
+        clearTimeout(loginTimer);
+        loginTimer = setTimeout(() => { loginUntil = 0; if (!disposed) paint(); }, 15000);
+      }
       paint();
       if (pendingAuto && canAutoOpen()) open();
       else if (!pendingAuto && isPresent()) void markSeen();
@@ -230,7 +245,10 @@ export function init({ shell, T, getWorld, tray, showToast, beforeOpen, restore,
     if (saving) { closeAll(); return; }
     if (data && card.hidden && !replay && !pendingAuto) void markSeen();
   };
-  strip.addEventListener("click", open);
+  strip.addEventListener("click", () => {
+    if (!cockpit) { open(); return; }
+    loginUntil = 0; clearTimeout(loginTimer); paint();
+  });
   close.addEventListener("click", closeAll);
   exit.addEventListener("click", closeAll);
   details.addEventListener("click", () => { void startReplay(); });
@@ -265,7 +283,7 @@ export function init({ shell, T, getWorld, tray, showToast, beforeOpen, restore,
     },
     dispose() {
       recording?.cancel(); recording = null;
-      disposed = true; version += 1; request?.abort(); clearInterval(heartbeat);
+      disposed = true; version += 1; request?.abort(); clearInterval(heartbeat); clearTimeout(loginTimer);
       window.removeEventListener("keydown", onKey, true);
       document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("pagehide", onPageHide);

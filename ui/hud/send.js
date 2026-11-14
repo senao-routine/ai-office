@@ -44,7 +44,9 @@ export function init({ shell, T, DEMO, attnKeyFor, getWorld, render }) {
       b.disabled = on;
     }
   };
-  const send = async (session, name, text, attnKey = "") => {
+  // shownAskId（R100-0）: 画面に出していた要求の番号（ask.askId・要求が無ければ ""）。渡されたら、押した瞬間に
+  // 最古の要求へ決め直さない＝表示していない要求へ拒否や文章が効かない。undefined は従来どおり（今の要求へ）。
+  const send = async (session, name, text, attnKey = "", shownAskId = undefined) => {
     if (DEMO) { showToast(T("demo_no_send")); return false; }
     if (!session || !text) return false;
     if (sending) {
@@ -62,7 +64,13 @@ export function init({ shell, T, DEMO, attnKeyFor, getWorld, render }) {
       if (tgt?.ask) {
         // R86-H: いま人間に聞いていて止まっている相手。指示ポストはターンが終わるまで
         // 届かない（＝これが「承認しても届かない」の正体）ので、承認フックへ直接答える。
-        await approvalReply(session, "deny", text);
+        const cur = tgt.ask.askId || "";
+        if (shownAskId !== undefined && shownAskId !== cur) {
+          showToast(T("ask_changed"), false);          // 表示の後で要求が替わった＝黙って別の要求へ答えない
+          if (getWorld()) render();
+          return false;
+        }
+        await approvalReply(session, "deny", text, cur);
         showToast(T("dstate_to", name), true, "pending");
       } else {
         await postInstruction(session, text);
@@ -94,7 +102,7 @@ export function init({ shell, T, DEMO, attnKeyFor, getWorld, render }) {
     sending = true;
     sendingUi(true);
     try {
-      await approvalReply(agent.session, "allow", "");
+      await approvalReply(agent.session, "allow", "", agent.ask?.askId || "");
       showToast(T("dstate_to", agent.name), true, "pending");
       answered.set(agent.session, { key: attnKeyFor(agent), at: now() });
       recentSends.set(agent.session, now());
@@ -123,7 +131,8 @@ export function init({ shell, T, DEMO, attnKeyFor, getWorld, render }) {
     const btn = e.target.closest(".hresend");
     if (!btn || !btn.dataset.session || !btn.dataset.text) return;
     const key = `${btn.dataset.session}|${btn.dataset.text}`;
-    if (resendArm.key !== key) {
+    // 見た目が未武装（行が作り直された等）なら鍵が残っていても武装からやり直す＝表示と違う 1 クリック再送をしない
+    if (resendArm.key !== key || !btn.classList.contains("arm")) {
       disarmResend();
       resendArm = { key, timer: setTimeout(disarmResend, 3000) };
       btn.classList.add("arm");

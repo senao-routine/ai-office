@@ -1,0 +1,192 @@
+{
+ "_note": "R129 ③: 1〜2 人の画面を見るための世界（basic.json から 2 人だけ残した・撮って見る用。golden には使わない）",
+ "officeName": "せなおAIオフィス",
+ "lang": "ja",
+ "generatedAt": 1753800000.0,
+ "setup": {
+  "hookInstalled": true
+ },
+ "edition": {
+  "id": "hybrid",
+  "features": {
+   "claudeSessions": true,
+   "openclaw": true,
+   "relayPwa": true,
+   "push": true,
+   "costDash": true
+  },
+  "license": {
+   "valid": true,
+   "edition": "hybrid",
+   "reason": ""
+  }
+ },
+ "counts": {
+  "working": 1,
+  "waiting": 1,
+  "resting": 0
+ },
+ "history": [
+  {
+   "session": "sess-fixture-0001",
+   "disp": "ai-office",
+   "text": "テストを直してから push して",
+   "ts": 1753799880.0,
+   "pending": false
+  }
+ ],
+ "employees": [
+  {
+   "session": "sess-fixture-0004",
+   "cwd": "/Users/test/works/Claudecode",
+   "branch": "main",
+   "age": 260,
+   "mtime": 1753799740.0,
+   "state": "working",
+   "verb": "考え中…",
+   "target": "",
+   "dept": "動画編集部",
+   "role": "本編カット",
+   "disp": "動画編集部",
+   "avatar": 3,
+   "sprite": "/assets/video.png",
+   "spriteWalk": "/assets/video_walk.png",
+   "feed": [
+    "考え中…"
+   ],
+   "skills": [],
+   "minions": 1,
+   "pending": true,
+   "lastSaid": "",
+   "lastOrder": "カットを詰めて",
+   "question": "",
+   "approvalMin": 0,
+   "stuckTool": ""
+  },
+  {
+   "session": "sess-fixture-0005",
+   "cwd": "/Users/test/xpostSample",
+   "branch": "main",
+   "age": 240,
+   "mtime": 1753799760.0,
+   "state": "waiting",
+   "verb": "実行中",
+   "target": "git push",
+   "dept": "xpost製品化",
+   "role": "スキルパック開発",
+   "disp": "xpost製品化",
+   "avatar": 4,
+   "sprite": "/assets/xpost.png",
+   "spriteWalk": "/assets/xpost_walk.png",
+   "feed": [
+    "実行中 git push"
+   ],
+   "skills": [],
+   "minions": 0,
+   "pending": false,
+   "lastSaid": "",
+   "lastOrder": "",
+   "question": "",
+   "approvalMin": 4,
+   "stuckTool": "実行中 git push",
+   "evidence": {
+    "kind": "failed",
+    "ago": 240
+   }
+  }
+ ],
+ "tasks": {
+  "pending": 2,
+  "inProgress": 1,
+  "completed": 3
+ },
+ "roster": [
+  {
+   "projectId": "ee4d805240bd",
+   "session": "sess-fixture-0004",
+   "name": "動画編集部",
+   "role": "本編カット",
+   "cwd": "/Users/test/works/Claudecode",
+   "branch": "main",
+   "crew": 1,
+   "state": "working",
+   "kind": "idle",
+   "verb": "考え中…",
+   "target": "",
+   "age": 260,
+   "minions": 1,
+   "pending": true,
+   "attention": false,
+   "approvalMin": 0,
+   "question": "",
+   "stuckTool": "",
+   "lastSaid": "",
+   "lastOrder": "カットを詰めて",
+   "feed": [
+    "考え中…"
+   ],
+   "skills": [],
+   "sprite": "/assets/video.png",
+   "spriteWalk": "/assets/video_walk.png",
+   "avatar": 3,
+   "sessions": [
+    {
+     "session": "sess-fixture-0004",
+     "state": "working",
+     "age": 260,
+     "attention": false,
+     "minions": 1,
+     "pending": true
+    }
+   ],
+   "disp": "動画編集部"
+  },
+  {
+   "projectId": "499969f86d31",
+   "session": "sess-fixture-0005",
+   "name": "xpost製品化",
+   "role": "スキルパック開発",
+   "cwd": "/Users/test/xpostSample",
+   "branch": "main",
+   "crew": 1,
+   "state": "waiting",
+   "kind": "idle",
+   "verb": "実行中",
+   "target": "git push",
+   "age": 240,
+   "minions": 0,
+   "pending": false,
+   "attention": true,
+   "approvalMin": 4,
+   "question": "",
+   "stuckTool": "実行中 git push",
+   "lastSaid": "",
+   "lastOrder": "",
+   "feed": [
+    "実行中 git push"
+   ],
+   "skills": [],
+   "sprite": "/assets/xpost.png",
+   "spriteWalk": "/assets/xpost_walk.png",
+   "avatar": 4,
+   "sessions": [
+    {
+     "session": "sess-fixture-0005",
+     "state": "waiting",
+     "age": 240,
+     "attention": true,
+     "minions": 0,
+     "pending": false
+    }
+   ],
+   "disp": "xpost製品化"
+  }
+ ],
+ "rosterCounts": {
+  "total": 2,
+  "working": 1,
+  "waiting": 1,
+  "resting": 0,
+  "attention": 1
+ }
+}

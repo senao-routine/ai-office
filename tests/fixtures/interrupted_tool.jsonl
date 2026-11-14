@@ -1,0 +1,5 @@
+{"type": "permission-mode", "permissionMode": "bypassPermissions", "cwd": "/Users/test/demo-project", "gitBranch": "main"}
+{"type": "user", "message": {"role": "user", "content": "検査を回して"}, "cwd": "/Users/test/demo-project", "gitBranch": "main"}
+{"type": "assistant", "message": {"role": "assistant", "content": [{"type": "tool_use", "id": "toolu_2", "name": "Bash", "input": {"command": "bash verify.sh"}}]}, "cwd": "/Users/test/demo-project", "gitBranch": "main"}
+{"type": "user", "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_2", "is_error": true, "content": "The user doesn't want to proceed with this tool use."}]}, "cwd": "/Users/test/demo-project", "gitBranch": "main"}
+{"type": "user", "message": {"role": "user", "content": [{"type": "text", "text": "[Request interrupted by user for tool use]"}]}, "cwd": "/Users/test/demo-project", "gitBranch": "main"}

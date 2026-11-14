@@ -47,7 +47,7 @@ class CodexDeliveryTest(unittest.TestCase):
     def test_fake_marker_records_thread_and_text_without_inbox(self):
         marker = _home / "codex_queue.marker"
         os.environ["OFFICE_FAKE_CODEX"] = str(marker)
-        ok, msg = office.post_instruction("cx-parent-a", "  テストを直して  ")
+        ok, msg = office.post_instruction("cx-parent-a", "  テストを直して  ", src="local")
         self.assertTrue(ok, msg)
         rec = json.loads(marker.read_text(encoding="utf-8"))
         self.assertEqual(rec, {"thread": "parent-a", "text": "テストを直して"})
@@ -57,7 +57,7 @@ class CodexDeliveryTest(unittest.TestCase):
 
     def test_argv_is_fixed_form_and_message_is_joined(self):
         d = fake_codex('printf "%s\\n" "$@" > "$(dirname "$0")/argv.txt"; exit 0')
-        ok, _ = office.post_instruction("cx-thread-0001", "-rf / --danger")
+        ok, _ = office.post_instruction("cx-thread-0001", "-rf / --danger", src="local")
         self.assertTrue(ok)
         argv = (d / "argv.txt").read_text(encoding="utf-8").splitlines()
         self.assertEqual(argv, ["queue", "--thread", "thread-0001", "--message=-rf / --danger"])
@@ -65,7 +65,7 @@ class CodexDeliveryTest(unittest.TestCase):
 
     def test_nonzero_exit_is_honest_failure(self):
         fake_codex("echo 'session not found' >&2; exit 1")
-        ok, msg = office.post_instruction("cx-thread-0002", "hello")
+        ok, msg = office.post_instruction("cx-thread-0002", "hello", src="local")
         self.assertFalse(ok)
         self.assertIn("Codex", msg)
         self.assertEqual(list(office.INBOX.glob("cx-*.json")), [])
@@ -75,7 +75,7 @@ class CodexDeliveryTest(unittest.TestCase):
         npm ラッパーが spawn する実体（孫）もプロセスグループごと止める。"""
         d = fake_codex('bash -c "sleep 30" & echo $! > "$(dirname "$0")/child.pid"; sleep 30')
         with self.assertRaises(OSError) as cm:
-            office.post_instruction("cx-thread-0003", "hello")
+            office.post_instruction("cx-thread-0003", "hello", src="local")
         self.assertIsInstance(cm.exception, office.CodexUnavailable)
         pid = int((d / "child.pid").read_text().strip())
         time.sleep(0.3)
@@ -85,26 +85,26 @@ class CodexDeliveryTest(unittest.TestCase):
 
     def test_nul_in_text_is_rejected(self):
         os.environ["OFFICE_FAKE_CODEX"] = str(_home / "nul.marker")
-        ok, msg = office.post_instruction("cx-thread-0006", "hello\x00world")
+        ok, msg = office.post_instruction("cx-thread-0006", "hello\x00world", src="local")
         self.assertFalse(ok)
         self.assertFalse((_home / "nul.marker").exists())
 
     def test_missing_codex_binary(self):
         os.environ["OFFICE_CODEX_BIN"] = str(_home / "no-such-codex")
-        ok, msg = office.post_instruction("cx-thread-0004", "hello")
+        ok, msg = office.post_instruction("cx-thread-0004", "hello", src="local")
         self.assertFalse(ok)
         self.assertIn("codex", msg.lower())
 
     def test_validation_still_applies(self):
         os.environ["OFFICE_FAKE_CODEX"] = str(_home / "m.json")
-        self.assertFalse(office.post_instruction("cx-a", "x")[0])            # 短すぎ（既存の 8..64 規則）
-        self.assertFalse(office.post_instruction("cx-thread-0005", "   ")[0])  # 空
-        self.assertFalse(office.post_instruction("cx-thread-0005", "x" * 4001)[0])
-        self.assertFalse(office.post_instruction("cx-bad id", "x")[0])
+        self.assertFalse(office.post_instruction("cx-a", "x", src="local")[0])            # 短すぎ（既存の 8..64 規則）
+        self.assertFalse(office.post_instruction("cx-thread-0005", "   ", src="local")[0])  # 空
+        self.assertFalse(office.post_instruction("cx-thread-0005", "x" * 4001, src="local")[0])
+        self.assertFalse(office.post_instruction("cx-bad id", "x", src="local")[0])
 
     def test_claude_session_path_is_unchanged(self):
         os.environ["OFFICE_FAKE_CODEX"] = str(_home / "m2.json")
-        ok, _ = office.post_instruction("sess-plain-0001", "hello")
+        ok, _ = office.post_instruction("sess-plain-0001", "hello", src="local")
         self.assertTrue(ok)
         self.assertTrue((office.INBOX / "sess-plain-0001.json").exists())   # Claude 宛は従来どおり inbox
         self.assertFalse((_home / "m2.json").exists())

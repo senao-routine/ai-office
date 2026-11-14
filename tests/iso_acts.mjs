@@ -21,7 +21,8 @@ registerHooks({ resolve(specifier, context, next) {
 } });
 const { freeze } = await import(clockURL);
 const { IsoScene } = await import("../ui/iso/scene3d.js");
-const { RobotBatch, makeSkeleton, applyPose } = await import("../ui/iso/robot.js");
+const { RobotBatch, makeSkeleton, applyPose, BOT_TINT } = await import("../ui/iso/robot.js");
+const { createRigKit, BOT_PARTS, D_PARTS, D_PARTS_CLAW, HYBRID_PARTS } = await import("../ui/iso/rigbot.js");
 const { BOSS_SEAT, ENTRANCE } = await import("../ui/iso/office.js");
 const { PROP_MATERIALS } = await import("../ui/iso/props.js");
 const { markerTexture } = await import("../ui/iso/markers.js");
@@ -204,3 +205,177 @@ test("marker canvases use only semantic ink and white paths, without any font AP
     if (previous === undefined) delete globalThis.document; else globalThis.document = previous;
   }
 });
+
+// Real geometry/rig checks share the existing canvas stub; no renderer or port is required.
+function withRobotMaterials(check) {
+  const previous = globalThis.document;
+  const ctx = new Proxy({}, { get: (object, key) => object[key] ?? (() => {}) });
+  globalThis.document = { createElement: () => ({ getContext: () => ctx }) };
+  const materials = Object.fromEntries(["shell", "visor", "joint", "accent", "crown", ...Object.values(PROP_MATERIALS)]
+    .map(key => [key, new THREE.MeshStandardMaterial({ color: key === "joint" ? 0x23213a : 0xffffff })]));
+  try {
+    check(materials);
+  } finally {
+    Object.values(materials).forEach(material => material.dispose());
+    if (previous === undefined) delete globalThis.document; else globalThis.document = previous;
+  }
+}
+const near = (actual, expected, epsilon = 1e-6) => assert.ok(Math.abs(actual - expected) <= epsilon,
+  `${actual} differs from ${expected}`);
+function instanceColor(mesh, index = 0) {
+  const color = new THREE.Color(); mesh.getColorAt(index, color); return color;
+}
+function oldInstances(batch) {
+  return Object.fromEntries(Object.entries(batch.meshes).filter(([part]) => !["headBot", "lampBot"].includes(part))
+    .map(([part, mesh]) => [part, {
+      count: mesh.count, matrix: Array.from(mesh.instanceMatrix.array.slice(0, mesh.count * 16)),
+      color: mesh.instanceColor ? Array.from(mesh.instanceColor.array.slice(0, mesh.count * 3)) : null,
+    }]));
+}
+
+test("Bot has a square steel-blue box, small rounded corners, one hemispherical status lamp and black mittens", () => {
+  withRobotMaterials(materials => {
+    const renderScene = new THREE.Scene(), batch = new RobotBatch(renderScene, materials, 8);
+    try {
+      assert.equal(BOT_TINT.getHexString(), "5d76a8");
+      assert.equal(batch.meshes.headBot, undefined); assert.equal(batch.meshes.lampBot, undefined);
+      const accent = new THREE.Color(0xd89342);
+      batch.begin(); batch.push(makeSkeleton(), accent, null, null, "bot"); batch.end();
+      const head = batch.meshes.headBot, lamp = batch.meshes.lampBot;
+      assert.equal(head.count, 1); assert.equal(lamp.count, 1);
+      assert.equal(head.material, materials.shell); assert.equal(lamp.material, materials.accent);
+      assert.equal(batch.meshes.hand.count, 2); assert.equal(batch.meshes.hand.material, materials.joint);
+      assert.equal(batch.meshes.hand.material.color.getHexString(), "23213a");
+      for (const part of ["head", "headCodex", "headOpenclaw", "antStem", "antCodex", "antOpenclaw", "antTip", "claw"])
+        assert.equal(batch.meshes[part].count, 0, part);
+      near(instanceColor(head).r, BOT_TINT.r); near(instanceColor(head).g, BOT_TINT.g); near(instanceColor(head).b, BOT_TINT.b);
+      near(instanceColor(lamp).r, accent.r); near(instanceColor(lamp).g, accent.g); near(instanceColor(lamp).b, accent.b);
+      for (const mesh of [head, lamp]) mesh.geometry.computeBoundingBox();
+      near(head.geometry.boundingBox.max.x - head.geometry.boundingBox.min.x, .72);
+      near(head.geometry.boundingBox.max.y - head.geometry.boundingBox.min.y, .72);
+      const pos = head.geometry.getAttribute("position"), radius = .72 * .12, inner = .36 - radius;
+      let roundedCorners = 0;
+      for (let i = 0; i < pos.count; i++) {
+        const x = Math.abs(pos.getX(i)), y = Math.abs(pos.getY(i)), z = Math.abs(pos.getZ(i));
+        if (x > inner + 1e-5 && y > inner + 1e-5 && z < .33 - radius) {
+          near(Math.hypot(x - inner, y - inner), radius); roundedCorners++;
+        }
+      }
+      assert.ok(roundedCorners > 0, "Box corners are not rounded at twelve percent of head height");
+      near(lamp.geometry.boundingBox.min.y, .36); near(lamp.geometry.boundingBox.max.y, .468);
+      near(lamp.geometry.boundingBox.max.x - lamp.geometry.boundingBox.min.x, .216);
+      near(lamp.geometry.boundingBox.max.z - lamp.geometry.boundingBox.min.z, .216);
+      const lampPos = lamp.geometry.getAttribute("position");
+      for (let i = 0; i < lampPos.count; i++) assert.ok(lampPos.getY(i) >= .36 - 1e-6, "Lamp includes a lower hemisphere or stem");
+      assert.ok(Object.values(batch.meshes).every(mesh => Object.values(materials).includes(mesh.material)), "Bot created another material");
+    } finally { batch.dispose(); }
+  });
+});
+
+test("Bot-free batches keep their old instances; adding and removing Bot resets only its new part counts", () => {
+  withRobotMaterials(materials => {
+    const renderScene = new THREE.Scene(), batch = new RobotBatch(renderScene, materials, 8);
+    try {
+      const original = ["claude", "codex", "openclaw"].map((vendor, i) => {
+        const nodes = makeSkeleton(); nodes.root.position.x = i * 2; return { nodes, vendor };
+      });
+      const paintOriginal = () => original.forEach(({ nodes, vendor }) => batch.push(nodes, null, null, null, vendor));
+      batch.begin(); paintOriginal(); batch.end();
+      assert.equal(batch.meshes.headBot, undefined); assert.equal(batch.meshes.lampBot, undefined);
+      const before = oldInstances(batch), materialSet = new Set(renderScene.children.filter(n => n.isMesh).map(n => n.material));
+      batch.begin(); paintOriginal(); batch.push(makeSkeleton(), null, null, null, "bot"); batch.end();
+      for (const [part, saved] of Object.entries(before)) {
+        const mesh = batch.meshes[part];
+        assert.deepEqual(Array.from(mesh.instanceMatrix.array.slice(0, saved.count * 16)), saved.matrix, part);
+        if (saved.color) assert.deepEqual(Array.from(mesh.instanceColor.array.slice(0, saved.count * 3)), saved.color, part);
+      }
+      assert.ok(materialSet.has(batch.meshes.headBot.material)); assert.ok(materialSet.has(batch.meshes.lampBot.material));
+      batch.begin(); paintOriginal(); batch.end();
+      assert.deepEqual(oldInstances(batch), before);
+      assert.equal(batch.meshes.headBot.count, 0); assert.equal(batch.meshes.lampBot.count, 0);
+      batch.begin(); batch.push(makeSkeleton(), null, null, null, "unknown-vendor"); batch.end();
+      assert.equal(batch.meshes.head.count, 1); assert.equal(batch.meshes.headBot.count, 0);
+      assert.equal(batch.meshes.antStem.count, 1); assert.equal(batch.meshes.antTip.count, 1);
+    } finally { batch.dispose(); }
+  });
+});
+
+for (const mode of [1, 2]) {
+  test(`Bot uses its procedural head on the real mode ${mode} rig, restores old geometry and resets pooled indices`, () => {
+    withRobotMaterials(materials => {
+      const renderScene = new THREE.Scene(), kit = createRigKit(materials, renderScene, mode);
+      assert.ok(kit);
+      let batch, rig, reused;
+      try {
+        assert.deepEqual(new Set(BOT_PARTS), new Set(["headBot", "lampBot", "visor", "ear", "chest", "__acc", "__prop"]));
+        assert.equal(kit.partsFor("bot"), BOT_PARTS);
+        assert.equal(kit.partsFor("claude"), mode === 2 ? HYBRID_PARTS : D_PARTS);
+        assert.equal(kit.partsFor("openclaw"), mode === 2 ? HYBRID_PARTS : D_PARTS_CLAW);
+        batch = new RobotBatch(renderScene, materials, 8, kit.facePlate ? { visorRig: kit.facePlate } : null);
+        const nodes = makeSkeleton(); rig = kit.attach(nodes);
+        const fullIndex = rig.mesh.geometry.getIndex(), originalIndex = Array.from(fullIndex.array);
+        const headBone = rig.mesh.skeleton.bones.find(bone => bone.name === "Head");
+        const cutoff = headBone.getWorldPosition(new THREE.Vector3()).y + .01;
+        rig.setTint(BOT_TINT); rig.setVendorShape("bot"); rig.apply("wait", 2, 0, false);
+        assert.equal(rig.mesh.material, materials.shell);
+        const botIndex = rig.mesh.geometry.getIndex(), pos = rig.mesh.geometry.getAttribute("position");
+        if (mode === 1) {
+          assert.ok(botIndex.count > 0 && botIndex.count < fullIndex.count, "Generated head/antenna triangles remain");
+          for (let i = 0; i < botIndex.count; i += 3)
+            assert.ok(Math.min(pos.getY(botIndex.getX(i)), pos.getY(botIndex.getX(i + 1)), pos.getY(botIndex.getX(i + 2))) < cutoff,
+              "Bot retained a triangle wholly above its neck");
+        } else assert.equal(botIndex, fullIndex, "Hybrid body already has no generated head");
+        batch.begin(); batch.push(nodes, null, BOT_TINT, null, "bot", "idle", null, kit.partsFor("bot")); batch.end();
+        assert.equal(batch.meshes.headBot.count, 1); assert.equal(batch.meshes.lampBot.count, 1);
+        assert.equal(batch.meshes.visor.count, 1); assert.equal(batch.meshes.ear.count, 2);
+        for (const part of ["head", "headCodex", "headOpenclaw", "antStem", "antCodex", "antOpenclaw", "antTip"])
+          assert.equal(batch.meshes[part].count, 0, part);
+        if (batch.meshes.visorRig) assert.equal(batch.meshes.visorRig.count, 0);
+        for (const vendor of ["claude", "codex", "openclaw", "unknown-vendor"]) {
+          rig.setVendorShape(vendor);
+          assert.equal(rig.mesh.geometry.getIndex(), fullIndex, `${vendor} did not restore the ordinary index`);
+          assert.deepEqual(Array.from(rig.mesh.geometry.getIndex().array), originalIndex);
+        }
+        rig.setVendorShape("bot");
+        const pooledGeometry = rig.mesh.geometry; rig.dispose(); rig = null;
+        reused = kit.attach(makeSkeleton());
+        assert.equal(reused.mesh.geometry, pooledGeometry);
+        assert.equal(reused.mesh.geometry.getIndex(), fullIndex, "A new ordinary actor inherited Bot's headless index");
+      } finally {
+        reused?.dispose(); rig?.dispose(); batch?.dispose(); kit.dispose();
+        if (batch?.materials.visorRig) batch.materials.visorRig.dispose();
+      }
+    });
+  });
+
+  test(`Scene keeps Bot actor and meeting chibi steel-blue in rig mode ${mode}`, () => {
+    withRobotMaterials(materials => {
+      const renderScene = new THREE.Scene(), kit = createRigKit(materials, renderScene, mode);
+      let batch;
+      const s = scene(true);
+      try {
+        batch = new RobotBatch(renderScene, materials, 12, kit.facePlate ? { visorRig: kit.facePlate } : null);
+        s.robots = batch; s.rigKit = kit; s._chibiTint = new THREE.Color();
+        s.renderer = { debug: {} }; s.post = { render() {} }; s.scene = renderScene;
+        s.update(world([agent("a", { vendor: "bot", session: "bot-mail", minions: 1, color: "slate" })]), 2);
+        const actor = s.actors.get("a");
+        assert.equal(actor.vendor, "bot"); assert.equal(actor.rigTint.getHexString(), "5d76a8");
+        assert.equal(s._shellTint(null, "bot").getHexString(), "5d76a8");
+        assert.equal(s._shellTint("slate", "bot").getHexString(), "5d76a8");
+        assert.equal(batch.meshes.headBot.count, 2); assert.equal(batch.meshes.lampBot.count, 2);
+        assert.equal(s.chibiRigs.length, 1); assert.equal(s.chibiRigs[0].group.visible, true);
+        assert.deepEqual(Array.from(s.chibiRigs[0].mesh.geometry.getAttribute("color").array),
+          Array.from(actor.rig.mesh.geometry.getAttribute("color").array), "Actor/chibi body tints differ");
+        for (let i = 0; i < 2; i++) {
+          near(instanceColor(batch.meshes.headBot, i).r, BOT_TINT.r);
+          near(instanceColor(batch.meshes.headBot, i).b, BOT_TINT.b);
+        }
+      } finally {
+        for (const actor of s.actors.values()) actor.rig?.dispose();
+        for (const rig of s.chibiRigs || []) rig.dispose();
+        batch?.dispose(); kit.dispose();
+        if (batch?.materials.visorRig) batch.materials.visorRig.dispose();
+      }
+    });
+  });
+}

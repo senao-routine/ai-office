@@ -162,6 +162,8 @@ class SourcesMetadataTest(unittest.TestCase):
             "claude": {"fg": 1, "bg": 1, "agentsCli": True},
             "codex": {"connected": True, "n": 2, "reason": ""},
             "openclaw": {"connected": True},
+            # R126: 出勤の口（登録なし＝0 人・台帳が無いのは正常＝ok）
+            "door": {"ok": True, "bots": 0, "n": 0, "asks": 0},
         })
         for key in ("fg", "bg"):
             self.assertIs(type(sources["claude"][key]), int)
@@ -169,6 +171,9 @@ class SourcesMetadataTest(unittest.TestCase):
         self.assertIs(type(sources["claude"]["agentsCli"]), bool)
         for vendor in ("codex", "openclaw"):
             self.assertIs(type(sources[vendor]["connected"]), bool)
+        self.assertIs(type(sources["door"]["ok"]), bool)
+        for key in ("bots", "n", "asks"):
+            self.assertIs(type(sources["door"][key]), int)
         encoded = json.dumps(sources)
         for forbidden in ("/", "\\", str(self.home), "cwd", "session", "detail"):
             self.assertNotIn(forbidden, encoded)
@@ -180,6 +185,35 @@ class SourcesMetadataTest(unittest.TestCase):
         self.assertEqual(codex[0]["verb"], "running")
         self.assertEqual(codex[0]["minions"], 1)
         self.assertEqual([e["vendor"] for e in employees[-2:]], ["codex", "codex"])
+
+    def test_door_bots_join_next_to_openclaw_and_are_counted(self):
+        """R126: 登録した Bot は OpenClaw の隣に 1 行ずつ（vendor "bot"・session "bot-<id>"）。sources.door は数だけ。
+        壊れた台帳でも走査は落ちない（ok=False・Bot は 0 人・ほかのソースはそのまま）。"""
+        door = self.office.office_door
+        now = time.time()
+        for bot_id, name in (("watch", "見回り"), ("mail", "郵便受け"), ("idle", "眠り")):
+            self.assertTrue(door.add_bot(bot_id, name, home=self.home)["ok"])
+        self.assertTrue(door.checkin("watch", "受信箱を見回り中", home=self.home, now=now)["ok"])
+        self.assertTrue(door.ask("mail", "送ってよい？", ["はい", "いいえ"], home=self.home, now=now)["ok"])
+        data = self.office.scan_office()
+        self.assertEqual(data["sources"]["door"], {"ok": True, "bots": 3, "n": 2, "asks": 1})
+        vendors = [e["vendor"] for e in data["employees"]]
+        self.assertEqual(vendors.count("bot"), 2)                       # 一度も動いていない Bot は居ない
+        self.assertLess(vendors.index("openclaw"), vendors.index("bot"))
+        self.assertLess(vendors.index("bot"), vendors.index("codex"))
+        bots = {e["session"]: e for e in data["employees"] if e["vendor"] == "bot"}
+        self.assertEqual(set(bots), {"bot-watch", "bot-mail"})
+        self.assertEqual(bots["bot-mail"]["state"], "waiting")
+        self.assertNotIn("external", bots["bot-watch"])                 # Claude のセッションと同じ道を通す
+        self.assertEqual(data["counts"]["waiting"], sum(1 for e in data["employees"] if e["state"] == "waiting"))
+        door.ledger_path(self.home).write_text("{not json", encoding="utf-8")
+        data = self.office.scan_office()
+        self.assertEqual(data["sources"]["door"], {"ok": False, "bots": 0, "n": 0, "asks": 0})
+        self.assertFalse(any(e["vendor"] == "bot" for e in data["employees"]))
+        self.assertEqual(data["sources"]["codex"]["n"], 2)
+        with patch.object(door, "door_employees", side_effect=RuntimeError("boom")):
+            data = self.office.scan_office()                           # 口の例外は握る（オフィスは落ちない）
+        self.assertEqual(data["sources"]["door"], {"ok": False, "bots": 0, "n": 0, "asks": 0})
 
     def test_codex_can_be_disabled_by_source_config_or_env(self):
         for config, env in (({"sources": {"codex": False}}, {}),

@@ -78,3 +78,55 @@ console.log(`✓ isMute parity: ${CASES.length} ケースで Mac↔スマホ一�
   assert.equal(pwaState({ listening: true, state: "waiting" }, { stalled: true }), "stalled");
   console.log(`✓ deliveryState parity: ${n} ケースで Mac↔スマホ一致`);
 }
+
+// R102-1/R102-4（b4-mac）: セッションの種類（計画・許可・質問・止まっている?・エラー…）と待っている分の語を
+// Mac（ui/core/world.js の sessionKind / waitMinutes / waitWord）と スマホ（sessKind / waitMin / waitText）で同一に保つ。
+// Mac の ❗トレイ・台帳・コックピットが「N分 止まっています」とだけ言い、種類を言わなかった（スマホは札を出していた）。
+{
+  const kind = await import(join(ROOT, "ui/core/kind.js"));
+  const kBegin = src.indexOf("function errOf(");
+  const kEnd = src.indexOf("function kindWord(", kBegin);
+  const wBegin = src.indexOf("function waitMin(");
+  const wEnd = src.indexOf("function actBtn(", wBegin);
+  assert.ok(kBegin >= 0 && kEnd > kBegin, "PWA sessKind source not found in app_html.js");
+  assert.ok(wBegin >= 0 && wEnd > wBegin, "PWA waitText source not found in app_html.js");
+  (0, eval)(src.slice(kBegin, kEnd).replace("function errOf", "globalThis.errOf = function errOf")
+    .replace("function sessKind", ";__ismuteParity.sessKind = function sessKind"));
+  let LANG = "ja";
+  globalThis.T = (ja, en) => (LANG === "en" ? en : ja);
+  (0, eval)(src.slice(wBegin, wEnd).replace("function waitMin", "globalThis.waitMin = function waitMin")
+    .replace("function waitText", ";__ismuteParity.waitText = function waitText"));
+  const { sessKind, waitText } = globalThis.__ismuteParity;
+  const KC = [
+    ...CASES,
+    { state: "working", ask: { tool: "ExitPlanMode", kind: "permission" }, approvalMin: 2 },
+    { state: "working", ask: { tool: "Bash", kind: "permission", min: 6 }, approvalMin: 1 },
+    { state: "waiting", question: "どっち?", age: 400 },
+    { state: "waiting", ask: { tool: "AskUserQuestion", kind: "question" }, session: "s1", age: 30,
+      sessions: [{ session: "s1", age: 3725 }] },
+    { state: "waiting", err: { k: "limit", ago: 900 } },
+    { state: "working", err: { k: "api", ago: 60 } },               // 作業中なら古い理由を貼らない
+    { state: "resting", err: { k: "ctx", ago: 7300 } },
+    { state: "waiting", minions: 2 },
+    { state: "waiting", minions: 2, minionsLive: 1 },
+    { state: "resting" },
+    {},
+  ];
+  let n = 0;
+  for (const c of KC) {
+    const a = kind.sessionKind(c), b = sessKind(c);
+    assert.equal(b, a, `sessKind 不一致: ${JSON.stringify(c)} core=${a} pwa=${b}`);
+    for (const lang of ["ja", "en"]) {
+      LANG = lang;
+      const wa = kind.waitWord(kind.waitMinutes(c), lang), wb = waitText(c);
+      assert.equal(wb, wa, `waitText 不一致(${lang}): ${JSON.stringify(c)} core=${wa} pwa=${wb}`);
+    }
+    n++;
+  }
+  // ❗の種類: 分の無い attention も「止まっている?」（Mac だけの語・トレイの見出し）
+  assert.equal(kind.attnKind({ attention: true, state: "waiting" }), "stuck");
+  assert.equal(kind.attnKind({ ask: { tool: "Bash", kind: "permission" }, approvalMin: 1 }), "perm");
+  assert.equal(kind.attnKind({ state: "waiting", err: { k: "limit", ago: 60 } }), "error");
+  assert.equal(kind.attnKind({ state: "working" }), "");
+  console.log(`✓ sessKind/waitText parity: ${n} ケースで Mac↔スマホ一致`);
+}

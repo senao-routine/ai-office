@@ -67,6 +67,7 @@ export function applyStaticStrings(shell, T) {
   put("#title-hist", "card_hist");
   put("#title-agents", "board_title");
   put("#gauges-more", "gauges_more");
+  shell.querySelector("#gauges-more")?.setAttribute("aria-label", T("gauges_more"));
   put("#rail-toggle", "rail_list");
   const help = shell.querySelector("#btn-help");
   if (help) { help.title = T("help_title"); help.setAttribute("aria-label", T("help_title")); }
@@ -82,6 +83,10 @@ export function initUsage({ shell, T }) {
   const usage = shell.querySelector(".usage");
   const gaugesEl = shell.querySelector("#gauges");
   const usageSummary = shell.querySelector("#usage-summary");
+  // R106-19: cockpit はヘッダーの #usage-summary を常時 display:none にしている（導線は設定の
+  // 「リソースを見る」=#btn-res に一本化）。開閉の配線（㉗ のモーダル z-index 回帰）はそのまま保ち、
+  // 見えない要素へ gauges.js が 60 秒ごとに書き続けていた paintPins の中身だけを cockpit では止める（iso は変えない）。
+  const cockpit = shell.closest(".ui-cockpit") !== null;
   const setUsageOpen = (open) => {
     usage.classList.toggle("open", open);
     usageSummary.setAttribute("aria-expanded", String(open));
@@ -93,6 +98,7 @@ export function initUsage({ shell, T }) {
     if (!usage.contains(e.target)) setUsageOpen(false);
   });
   const paintPins = (pins) => {
+    if (cockpit) return;
     usageSummary.replaceChildren();
     if (!pins.length) {
       usageSummary.textContent = T("gauge_credits");
@@ -135,12 +141,31 @@ export function initUsage({ shell, T }) {
  * ctx: shell, T, modals, blocked() ＝ ダイジェスト／リプレイ／配信が前面のときは開かない
  *（ヘルプの裏でダイジェストの数字キーが生き続けて誤送信する・別モデルレビュー）。
  */
-export function initHelp({ shell, T, modals: { modal, openModal, mEl }, blocked }) {
+export function initHelp({ shell, T, modals: { modal, openModal, mEl }, blocked,
+  keys = "help_keys", urls = "help_urls" }) {
+  // b4-mac: 様式ごとの中身（コックピットに 3D のホイール・?tilt を案内していた）＝keys / urls で文言のキーを渡す
   const openHelp = () => {
     if (blocked?.()) return;
-    modal.replaceChildren(mEl("b", "mtitle", T("help_title")),
-      mEl("b", "msubtitle", T("help_keys_title")), mEl("p", "mnote", T("help_keys")),
-      mEl("b", "msubtitle", T("help_urls_title")), mEl("p", "mnote", T("help_urls")));
+    if (keys === "help_keys_cockpit") {
+      const table = mEl("table", "cp-help-keys");
+      const head = mEl("tr");
+      head.append(mEl("th", "", T("cp_help_key")), mEl("th", "", T("cp_help_action")));
+      const thead = mEl("thead"); thead.append(head); table.append(thead);
+      const tbody = mEl("tbody");
+      for (const name of ["answer", "next", "close", "help", "select", "compose", "terminal", "new", "search", "watch", "move", "split"]) {
+        const row = mEl("tr");
+        row.append(mEl("td", "", T(`cp_help_${name}_key`)), mEl("td", "", T(`cp_help_${name}`)));
+        tbody.append(row);
+      }
+      table.append(tbody);
+      const advanced = mEl("details", "cp-help-advanced");
+      advanced.append(mEl("summary", "", T("cp_help_advanced")), mEl("p", "mnote", T(urls)));
+      modal.replaceChildren(mEl("b", "mtitle", T("help_title")), table, advanced);
+    } else {
+      modal.replaceChildren(mEl("b", "mtitle", T("help_title")),
+        mEl("b", "msubtitle", T("help_keys_title")), mEl("p", "mnote", T(keys)),
+        mEl("b", "msubtitle", T("help_urls_title")), mEl("p", "mnote", T(urls)));
+    }
     modal.dataset.kind = "help";
     openModal();
   };

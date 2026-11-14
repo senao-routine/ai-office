@@ -114,16 +114,25 @@ def main():
             else:
                 print(f"  ✗ ❗回答が inbox に届かない: {f1}")
                 ng += 1
-            if page.eval_on_selector("#toast", "el => !el.hidden && !!el.querySelector('.dstate-pending')"
-                                    " && el.textContent.includes('配達')"
-                                    " && el.textContent.includes('投函済み')"
-                                    " && el.textContent.includes('議事録アプリ')"):
+            # トースト・回答済みの表示は応答が戻ってから（受信箱のファイルはその前に書かれる）＝高負荷では即時の読みが先に走る。待つ
+            toast_js = ("() => { const el = document.querySelector('#toast'); return !!el && !el.hidden"
+                        " && !!el.querySelector('.dstate-pending') && el.textContent.includes('配達')"
+                        " && el.textContent.includes('投函済み') && el.textContent.includes('議事録アプリ'); }")
+            try:
+                page.wait_for_function(toast_js, timeout=4000)
+            except Exception:
+                pass
+            if page.evaluate(toast_js):
                 print("  ✓ 送信トースト表示（宛先＋投函済みチップ）")
             else:
                 print("  ✗ 送信トーストが出ない")
                 ng += 1
 
             # (1b) 二重送信ガード: 回答済みトレイは「反映待ち」表示になり数字キーが無効
+            try:
+                page.wait_for_function("() => (document.querySelector('#attn') || {}).textContent.includes('回答済み')", timeout=4000)
+            except Exception:
+                pass
             if page.eval_on_selector("#attn", "el => el.textContent.includes('回答済み')"):
                 print("  ✓ 回答済みトレイ=反映待ち表示（楽観状態）")
             else:
@@ -161,6 +170,11 @@ def main():
             else:
                 print(f"  ✗ コンポーズ投函が inbox に届かない: {f2}")
                 ng += 1
+            # 閉じるのは応答が戻ってから（受信箱のファイルはその前に書かれる）＝高負荷では 1 回の即時の読みが先に走る。3 秒まで待つ
+            try:
+                page.wait_for_function("() => document.querySelector('#sheet').hidden", timeout=3000)
+            except Exception:
+                pass
             if page.eval_on_selector("#sheet", "el => el.hidden"):
                 print("  ✓ 送信後にシートが閉じる")
             else:
@@ -221,8 +235,10 @@ def main():
             APPR = ROOT / ".ui_shot_home" / ".claude" / "office_approvals"
             shutil.rmtree(APPR, ignore_errors=True)
             APPR.mkdir(parents=True, exist_ok=True)
-            (APPR / f"{target_session}.json").write_text(json.dumps({
-                "session": target_session, "tool": "Bash", "kind": "permission",
+            # R100-0: 掲示は 1 件ごと（<session>.<askId>.json）。画面は askId で答える＝回答も同じ名前。
+            ASK_ID = "c0ffee00" * 4
+            (APPR / f"{target_session}.{ASK_ID}.json").write_text(json.dumps({
+                "session": target_session, "askId": ASK_ID, "tool": "Bash", "kind": "permission",
                 "title": "git push origin main", "options": [],
                 "ts": time.time(), "deadline": time.time() + 600, "pid": 1}), encoding="utf-8")
             ask_world = json.loads(payload)
@@ -232,7 +248,7 @@ def main():
                     p0["attention"] = True
                     p0["approvalMin"] = 2
                     p0["ask"] = {"tool": "Bash", "kind": "permission",
-                                 "title": "git push origin main"}
+                                 "title": "git push origin main", "askId": ASK_ID}
             page.evaluate("(w) => window.__office.inject(w)", ask_world)
             page.wait_for_timeout(250)
             page.click(f'.arow[data-session="{target_session}"]')
@@ -250,7 +266,7 @@ def main():
                 print(f"  ✗ 承認まちの表示が不正: {askui}")
                 ng += 1
             page.click("#quickdock .allowbtn")
-            fr = APPR / f"{target_session}.reply.json"
+            fr = APPR / f"{target_session}.{ASK_ID}.reply.json"
             if wait_file(fr):
                 rec = json.loads(fr.read_text(encoding="utf-8"))
                 if rec["behavior"] == "allow" and rec["src"] == "local":
@@ -280,6 +296,63 @@ def main():
             else:
                 print(f"  ✗ 文章の回答が reply を書かない: {fr}")
                 ng += 1
+            # R102-11: ❗トレイの数字キーもシートと同じ判定＝許可待ちの 1 番は allow。
+            # 以前は「1 承認して進める」の**文章**＝deny＋「はい、そのまま進めてください」が届いていた（本番の実バグ）。
+            fr.unlink(missing_ok=True)
+            page.keyboard.press("Escape")
+            calm = json.loads(payload)                 # 回答済み（楽観表示）を解く＝その相手の ❗ を一度消す
+            for p0 in calm["roster"]:
+                if p0["session"] == target_session:
+                    p0.update(attention=False, approvalMin=0, question="")
+                    p0.pop("ask", None)
+            page.evaluate("(w) => window.__office.inject(w)", calm)
+            page.wait_for_timeout(200)
+            # 新しい要求（別の askId）として出す＝前の段の「回答済み」（同じ要求の楽観表示）を引き継がない。
+            # 差し込みで回答済みが外れるかは様式の経路しだい（master の iso では外れずに残り、J で巡回し続けてトレイの位置がずれた）
+            ASK_ID2 = "c0ffee11" * 4
+            (APPR / f"{target_session}.{ASK_ID2}.json").write_text(json.dumps({
+                "session": target_session, "askId": ASK_ID2, "tool": "Bash", "kind": "permission",
+                "title": "git push origin main", "options": [],
+                "ts": time.time() - 10, "deadline": time.time() + 600, "pid": 1}), encoding="utf-8")
+            (APPR / f"{target_session}.{ASK_ID}.json").unlink(missing_ok=True)
+            ask_world2 = json.loads(json.dumps(ask_world))
+            for p0 in ask_world2["roster"]:
+                if p0["session"] == target_session:
+                    p0["ask"] = dict(p0["ask"], askId=ASK_ID2)
+            page.evaluate("(w) => window.__office.inject(w)", ask_world2)
+            page.wait_for_timeout(250)
+            page.evaluate("() => document.activeElement && document.activeElement.blur && document.activeElement.blur()")
+            first = ""
+            moved = 0
+            for _ in range(10):                        # ❗が複数並ぶ世界では J で巡回して許可待ちの人へ
+                first = page.evaluate(
+                    "() => (document.querySelector('#attn button[data-idx=\"0\"]')||{}).textContent || ''")
+                if "許可する" in first:
+                    break
+                page.keyboard.press("j")
+                moved += 1
+                page.wait_for_timeout(120)
+            fr = APPR / f"{target_session}.{ASK_ID2}.reply.json"
+            fr.unlink(missing_ok=True)
+            # 掲示の心拍（hook が打つ mtime）の代わり＝この段に来るまでの時間で ASK_STALE（10 秒）を越えて幽霊扱いにしない
+            post = APPR / f"{target_session}.{ASK_ID2}.json"
+            if post.exists():
+                os.utime(post, None)
+            page.keyboard.press("1")
+            if "許可する" in first and wait_file(fr):
+                rec = json.loads(fr.read_text(encoding="utf-8"))
+                if rec["behavior"] == "allow" and rec["src"] == "local" and rec.get("askId") in (ASK_ID2, None):
+                    print("  ✓ R102-11 トレイ: 許可待ちの数字キー 1 は allow（文章の deny にならない）")
+                else:
+                    print(f"  ✗ トレイの 1 番が allow でない: {rec}")
+                    ng += 1
+            else:
+                print(f"  ✗ トレイの 1 番が「許可する」でない／reply を書かない: first={first!r}")
+                ng += 1
+            page.evaluate("() => document.activeElement && document.activeElement.blur && document.activeElement.blur()")
+            for _ in range(moved):                     # 巡回した分を戻す（後ろの段はトレイの先頭「（1/2）」から始まる前提）
+                page.keyboard.press("k")
+                page.wait_for_timeout(80)
             shutil.rmtree(APPR, ignore_errors=True)
             page.keyboard.press("Escape")
             page.evaluate("(w) => window.__office.inject(w)", world)
@@ -420,7 +493,7 @@ def main():
                 print(f"  ✗ R96 シートが❗を隠す/ロック表示がない: {overlap}")
                 ng += 1
             live.keyboard.press("Escape")
-            live.wait_for_selector("#sheet[hidden]", state="attached", timeout=3000)
+            live.wait_for_selector("#sheet[hidden]", state="attached", timeout=8000)   # 高負荷（load 20 前後）で 3 秒を越えた
             reset_before = live.eval_on_selector("#viewreset", "el => el.hidden")
             viewport = live.locator("#viewport").bounding_box()
             live.mouse.move(viewport["x"] + 16, viewport["y"] + 16)

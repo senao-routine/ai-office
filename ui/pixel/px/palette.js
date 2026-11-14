@@ -16,11 +16,12 @@ export const PALETTE = Object.freeze({
   B: "#4fb3a3",   // 胸リング（working のティール）
 });
 
-/** ベンダー別の殻（art-direction v3 §2 の shell-claude / codex / openclaw） */
+/** ベンダー別の殻（art-direction v3 §2 の shell-claude / codex / openclaw / bot） */
 export const SHELL = Object.freeze({
   claude: "#e9e0d5",
   codex: "#787676",
   openclaw: "#bb4838",
+  bot: "#5d76a8",
 });
 
 /** 個体色（背中の 4×2 に差す 8 色）。3D の PROJECT_COLORS と同じ並び。 */

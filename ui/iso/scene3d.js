@@ -27,7 +27,7 @@ import {
   floorTexture, floorNormalTexture, updateClock, keyboardTexture, rugTexture, skyTexture, woodTexture,
 } from "./office.js";
 import {
-  LOBSTER_TINT, GRAPHITE_TINT, RobotBatch, applyPose, makeChibiSkeleton, makeCleanerBot, makeSkeleton,
+  LOBSTER_TINT, GRAPHITE_TINT, BOT_TINT, RobotBatch, applyPose, makeChibiSkeleton, makeCleanerBot, makeSkeleton,
   shellTintFor,
 } from "./robot.js";
 import { SHELL_COLORS } from "/ui/core/archetype.js";
@@ -932,7 +932,7 @@ export class IsoScene {
       // Re-evaluate when a project's active session changes vendor. Legacy cx- IDs are Codex.
       actor.graphite = provider === "codex" || (!provider && agent.session?.startsWith("cx-"));
       actor.lobster = !actor.graphite && (provider === "openclaw" || Boolean(agent.external));
-      actor.vendor = actor.graphite ? "codex" : actor.lobster ? "openclaw" : "claude";
+      actor.vendor = provider === "bot" ? "bot" : actor.graphite ? "codex" : actor.lobster ? "openclaw" : "claude";
       const m = pathTravel(actor.path, actor.startedAt, t);
       const walking = m.u < 1 && m.total > 0.05;
       actor.walking = walking;                     // 💬マーカーの判定で使う（R59）
@@ -1072,7 +1072,7 @@ export class IsoScene {
         // R96-D2: 形と色は姿勢を作る前に決める（後回しにすると初回フレームだけ頭が claude 幅・バイザーだけ広い状態で描かれる）
         actor.rigTint = this._shellTint(actor.shellColor, actor.vendor)
           || (actor.lobster ? LOBSTER_TINT : actor.graphite ? GRAPHITE_TINT : null);
-        actor.rig.setTint(this.rigKit.mode === 2 ? null : actor.rigTint);
+        actor.rig.setTint(this.rigKit.mode === 2 && actor.vendor !== "bot" ? null : actor.rigTint);
         actor.rig.setVendorShape?.(actor.vendor);
         // 骨は clip の純関数サンプル（同じ t → 同じ姿勢）。poseKind が変わったら 0.45s で前の clip から混ぜる。
         // 歩行の位相は距離駆動＝止まった後も到着時の距離（rigDist）を遷移元に渡して膝が跳ばないようにする。
@@ -1270,10 +1270,10 @@ export class IsoScene {
     /** チビ 1 体を置いて描く（生成体のときは clip で待たせ、部品はバイザー・胸リングだけ）。 */
     const paintChibi = (ch, tint, vendor, seed, expr) => {
       const rig = this.chibiRigs?.[chibiN - 1];
-      const body = vendor === "openclaw" ? LOBSTER_TINT : vendor === "codex" ? GRAPHITE_TINT : null;
+      const body = vendor === "bot" ? BOT_TINT : vendor === "openclaw" ? LOBSTER_TINT : vendor === "codex" ? GRAPHITE_TINT : null;
       if (rig) {
         rig.group.visible = true;
-        rig.setTint(this.rigKit.mode === 2 ? null : body);   // 形・色は姿勢の前に（親と同じ扱い）
+        rig.setTint(this.rigKit.mode === 2 && vendor !== "bot" ? null : body);   // 形・色は姿勢の前に（親と同じ扱い）
         rig.setVendorShape?.(vendor);
         rig.apply("chibi", t, 0, false, -Infinity, null, seed);
         ch.root.updateMatrixWorld(true);
@@ -1477,6 +1477,7 @@ export class IsoScene {
   /** core/archetype.js の {kind,tint,acc} を THREE.Color 化してキャッシュ（毎フレーム確保しない）。 */
   /** 殻の色は「名前→THREE.Color」を1度だけ作って使い回す（毎フレーム生成しない）。 */
   _shellTint(name, vendor) {
+    if (vendor === "bot") return BOT_TINT;
     if (typeof name !== "string" || !Object.hasOwn(SHELL_COLORS, name)) return null;
     this._shellCache = this._shellCache || new Map();
     const key = `${vendor}:${name}`;
